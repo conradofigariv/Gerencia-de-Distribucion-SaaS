@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { Header } from "@/components/dashboard/header";
+import { LoginPage } from "@/components/auth/login";
 import { OverviewSection } from "@/components/dashboard/sections/overview";
 import { PipelineSection } from "@/components/dashboard/sections/pipeline";
 import { DealsSection } from "@/components/dashboard/sections/deals";
@@ -11,12 +12,48 @@ import { TeamSection } from "@/components/dashboard/sections/team";
 import { ForecastingSection } from "@/components/dashboard/sections/forecasting";
 import { ReportsSection } from "@/components/dashboard/sections/reports";
 import { SettingsSection } from "@/components/dashboard/sections/settings";
+import { ServiciosResumenSection } from "@/components/dashboard/sections/servicios-resumen";
+import { ServiciosTablaSection } from "@/components/dashboard/sections/servicios-tabla";
+import { ServiciosCargaSection } from "@/components/dashboard/sections/servicios-carga";
 
-export type Section = "overview" | "pipeline" | "deals" | "customers" | "team" | "forecasting" | "reports" | "settings";
+export type Section =
+  | "overview"
+  | "pipeline"
+  | "deals"
+  | "customers"
+  | "team"
+  | "forecasting"
+  | "reports"
+  | "settings"
+  | "servicios-resumen"
+  | "servicios-tabla"
+  | "servicios-carga";
 
 export default function Dashboard() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [activeSection, setActiveSection] = useState<Section>("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Check auth on mount
+  useEffect(() => {
+    const auth = localStorage.getItem("epec_auth");
+    setIsAuthenticated(auth === "true");
+  }, []);
+
+  const handleLogin = () => setIsAuthenticated(true);
+
+  // Hydration guard
+  if (isAuthenticated === null) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-border border-t-accent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
 
   const renderSection = () => {
     switch (activeSection) {
@@ -36,6 +73,12 @@ export default function Dashboard() {
         return <ReportsSection />;
       case "settings":
         return <SettingsSection />;
+      case "servicios-resumen":
+        return <ServiciosResumenSection />;
+      case "servicios-tabla":
+        return <ServiciosTablaSection />;
+      case "servicios-carga":
+        return <ServiciosCargaSection />;
       default:
         return <OverviewSection />;
     }
