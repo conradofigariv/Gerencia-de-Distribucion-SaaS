@@ -1,8 +1,6 @@
 "use client";
 
-import React from "react";
-import LucideCircleDollarSignIcon from "lucide-react"; // Import the missing icon component
-
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { Section } from "@/app/page";
 import {
@@ -17,6 +15,11 @@ import {
   Building2,
   TrendingUp,
   Settings,
+  Server,
+  LayoutGrid,
+  Table2,
+  UploadCloud,
+  ChevronDown,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -26,15 +29,49 @@ interface SidebarProps {
   onCollapsedChange: (collapsed: boolean) => void;
 }
 
-const navItems: { id: Section; label: string; icon: React.ElementType }[] = [
-  { id: "overview", label: "Overview", icon: LayoutDashboard },
-  { id: "pipeline", label: "Pipeline", icon: GitBranch },
-  { id: "deals", label: "Deals", icon: Handshake },
-  { id: "customers", label: "Customers", icon: Building2 },
-  { id: "team", label: "Team", icon: Users },
-  { id: "forecasting", label: "Forecasting", icon: TrendingUp },
-  { id: "reports", label: "Reports", icon: BarChart3 },
-  { id: "settings", label: "Settings", icon: Settings },
+type NavLink = {
+  kind: "link";
+  id: Section;
+  label: string;
+  icon: React.ElementType;
+};
+
+type NavGroup = {
+  kind: "group";
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  children: { id: Section; label: string; icon: React.ElementType }[];
+};
+
+type NavItemDef = NavLink | NavGroup;
+
+const navItems: NavItemDef[] = [
+  { kind: "link", id: "overview", label: "Overview", icon: LayoutDashboard },
+  { kind: "link", id: "pipeline", label: "Pipeline", icon: GitBranch },
+  { kind: "link", id: "deals", label: "Deals", icon: Handshake },
+  { kind: "link", id: "customers", label: "Customers", icon: Building2 },
+  { kind: "link", id: "team", label: "Team", icon: Users },
+  { kind: "link", id: "forecasting", label: "Forecasting", icon: TrendingUp },
+  { kind: "link", id: "reports", label: "Reports", icon: BarChart3 },
+  {
+    kind: "group",
+    id: "servicios",
+    label: "Control de servicios",
+    icon: Server,
+    children: [
+      { id: "servicios-resumen", label: "Resumen", icon: LayoutGrid },
+      { id: "servicios-tabla", label: "Tabla", icon: Table2 },
+      { id: "servicios-carga", label: "Carga de datos", icon: UploadCloud },
+    ],
+  },
+  { kind: "link", id: "settings", label: "Settings", icon: Settings },
+];
+
+const SERVICIOS_SECTIONS: Section[] = [
+  "servicios-resumen",
+  "servicios-tabla",
+  "servicios-carga",
 ];
 
 export function Sidebar({
@@ -43,6 +80,41 @@ export function Sidebar({
   collapsed,
   onCollapsedChange,
 }: SidebarProps) {
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(
+    SERVICIOS_SECTIONS.includes(activeSection) ? ["servicios"] : []
+  );
+
+  // Auto-expand group when a child section becomes active
+  useEffect(() => {
+    if (SERVICIOS_SECTIONS.includes(activeSection)) {
+      setExpandedGroups((prev) =>
+        prev.includes("servicios") ? prev : [...prev, "servicios"]
+      );
+    }
+  }, [activeSection]);
+
+  const toggleGroup = (groupId: string) => {
+    // If sidebar is collapsed, expand it first
+    if (collapsed) {
+      onCollapsedChange(false);
+      setExpandedGroups((prev) =>
+        prev.includes(groupId) ? prev : [...prev, groupId]
+      );
+      return;
+    }
+    setExpandedGroups((prev) =>
+      prev.includes(groupId)
+        ? prev.filter((g) => g !== groupId)
+        : [...prev, groupId]
+    );
+  };
+
+  const isGroupExpanded = (groupId: string) =>
+    expandedGroups.includes(groupId) && !collapsed;
+
+  const isGroupActive = (group: NavGroup) =>
+    group.children.some((c) => c.id === activeSection);
+
   return (
     <aside
       className={cn(
@@ -68,44 +140,125 @@ export function Sidebar({
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-hidden">
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto overflow-x-hidden">
         {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeSection === item.id;
+          if (item.kind === "link") {
+            const Icon = item.icon;
+            const isActive = activeSection === item.id;
 
-          return (
-            <button
-              key={item.id}
-              onClick={() => onSectionChange(item.id)}
-              className={cn(
-                "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative",
-                isActive
-                  ? "bg-sidebar-accent text-sidebar-foreground"
-                  : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
-              )}
-            >
-              {/* Active indicator */}
-              <span
+            return (
+              <button
+                key={item.id}
+                onClick={() => onSectionChange(item.id)}
                 className={cn(
-                  "absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-accent transition-all duration-300",
-                  isActive ? "opacity-100" : "opacity-0"
-                )}
-              />
-              <Icon
-                className={cn(
-                  "w-5 h-5 shrink-0 transition-transform duration-200",
-                  isActive ? "text-accent" : "group-hover:scale-110"
-                )}
-              />
-              <span
-                className={cn(
-                  "whitespace-nowrap transition-all duration-300",
-                  collapsed ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative",
+                  isActive
+                    ? "bg-sidebar-accent text-sidebar-foreground"
+                    : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
                 )}
               >
-                {item.label}
-              </span>
-            </button>
+                <span
+                  className={cn(
+                    "absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-accent transition-all duration-300",
+                    isActive ? "opacity-100" : "opacity-0"
+                  )}
+                />
+                <Icon
+                  className={cn(
+                    "w-5 h-5 shrink-0 transition-transform duration-200",
+                    isActive ? "text-accent" : "group-hover:scale-110"
+                  )}
+                />
+                <span
+                  className={cn(
+                    "whitespace-nowrap transition-all duration-300",
+                    collapsed ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+                  )}
+                >
+                  {item.label}
+                </span>
+              </button>
+            );
+          }
+
+          // NavGroup
+          const Icon = item.icon;
+          const expanded = isGroupExpanded(item.id);
+          const groupActive = isGroupActive(item);
+
+          return (
+            <div key={item.id}>
+              {/* Group header */}
+              <button
+                onClick={() => toggleGroup(item.id)}
+                className={cn(
+                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative",
+                  groupActive
+                    ? "bg-sidebar-accent text-sidebar-foreground"
+                    : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                )}
+              >
+                <span
+                  className={cn(
+                    "absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-accent transition-all duration-300",
+                    groupActive ? "opacity-100" : "opacity-0"
+                  )}
+                />
+                <Icon
+                  className={cn(
+                    "w-5 h-5 shrink-0 transition-transform duration-200",
+                    groupActive ? "text-accent" : "group-hover:scale-110"
+                  )}
+                />
+                <span
+                  className={cn(
+                    "flex-1 text-left whitespace-nowrap transition-all duration-300",
+                    collapsed ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+                  )}
+                >
+                  {item.label}
+                </span>
+                {!collapsed && (
+                  <ChevronDown
+                    className={cn(
+                      "w-4 h-4 shrink-0 transition-transform duration-200",
+                      expanded ? "rotate-180" : "rotate-0"
+                    )}
+                  />
+                )}
+              </button>
+
+              {/* Children */}
+              <div
+                className={cn(
+                  "overflow-hidden transition-all duration-300 ease-out",
+                  expanded ? "max-h-40 opacity-100 mt-1" : "max-h-0 opacity-0"
+                )}
+              >
+                <div className="ml-4 pl-3 border-l border-sidebar-border space-y-1">
+                  {item.children.map((child) => {
+                    const ChildIcon = child.icon;
+                    const isActive = activeSection === child.id;
+
+                    return (
+                      <button
+                        key={child.id}
+                        onClick={() => onSectionChange(child.id)}
+                        className={cn(
+                          "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-all duration-200",
+                          isActive
+                            ? "bg-accent/15 text-accent"
+                            : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                        )}
+                      >
+                        <ChildIcon className="w-4 h-4 shrink-0" />
+                        <span className="whitespace-nowrap">{child.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           );
         })}
       </nav>
