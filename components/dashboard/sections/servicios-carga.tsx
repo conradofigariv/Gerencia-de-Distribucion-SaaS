@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import {
@@ -361,6 +361,34 @@ export function ServiciosCargaSection() {
 
   const bothAssigned = files.QW !== null && files.OP !== null;
 
+  // ── Bottom table
+  const PAGE_SIZE = 50;
+  const [tableData, setTableData] = useState<MappedRow[]>([]);
+  const [tableTotal, setTableTotal] = useState(0);
+  const [tablePage, setTablePage] = useState(0);
+  const [tableLoading, setTableLoading] = useState(false);
+
+  const fetchTableData = useCallback(async (page: number) => {
+    setTableLoading(true);
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+    const { data, count, error } = await supabase
+      .from("servicios")
+      .select("*", { count: "exact" })
+      .range(from, to)
+      .order("oc_numero", { ascending: true });
+    if (!error && data) {
+      setTableData(data as MappedRow[]);
+      setTableTotal(count ?? 0);
+      setTablePage(page);
+    }
+    setTableLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchTableData(0);
+  }, [fetchTableData]);
+
   // ── Swap files between roles
   const swapFiles = () => {
     setFiles((prev) => ({ QW: prev.OP, OP: prev.QW }));
@@ -415,6 +443,7 @@ export function ServiciosCargaSection() {
       await uploadToSupabase(allData, strategy, (pct) => setProgress(pct));
       setUploadedCount(allData.length);
       setStep("done");
+      fetchTableData(0);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Error al subir datos");
       setStep("error");
@@ -771,6 +800,131 @@ export function ServiciosCargaSection() {
           </button>
         </div>
       )}
+
+      {/* ════════════════════════════════════════════
+          TABLA DE DATOS ACTUALES
+      ════════════════════════════════════════════ */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-3">
+            <Database className="w-5 h-5 text-accent" />
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Datos en Supabase</h3>
+              <p className="text-xs text-muted-foreground">
+                {tableLoading
+                  ? "Cargando..."
+                  : `${tableTotal.toLocaleString("es-AR")} registro${tableTotal !== 1 ? "s" : ""} en total`}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => fetchTableData(tablePage)}
+            disabled={tableLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-40 transition-all duration-200"
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", tableLoading && "animate-spin")} />
+            Actualizar
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          {tableLoading && tableData.length === 0 ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 text-accent animate-spin" />
+            </div>
+          ) : tableData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <Database className="w-8 h-8 mb-2 opacity-30" />
+              <p className="text-sm">No hay registros en la tabla</p>
+            </div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-secondary/50 border-b border-border">
+                  {[
+                    { key: "oc_numero", label: "OC Nro" },
+                    { key: "linea", label: "Línea" },
+                    { key: "descripcion", label: "Descripción" },
+                    { key: "proveedor", label: "Proveedor" },
+                    { key: "cantidad", label: "Cantidad" },
+                    { key: "cantidad_recibida", label: "Recibida" },
+                    { key: "estado", label: "Estado" },
+                    { key: "precio_unitario", label: "P. Unit." },
+                  ].map((c) => (
+                    <th
+                      key={c.key}
+                      className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider whitespace-nowrap"
+                    >
+                      {c.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tableData.map((row, i) => (
+                  <tr
+                    key={i}
+                    className="border-b border-border last:border-0 hover:bg-secondary/20 transition-colors"
+                  >
+                    <td className="py-2.5 px-3 text-foreground font-mono whitespace-nowrap">{row.oc_numero}</td>
+                    <td className="py-2.5 px-3 text-foreground whitespace-nowrap">{row.linea}</td>
+                    <td className="py-2.5 px-3 text-foreground max-w-[240px] truncate">
+                      {String(row.descripcion ?? "").slice(0, 50)}{String(row.descripcion ?? "").length > 50 ? "…" : ""}
+                    </td>
+                    <td className="py-2.5 px-3 text-foreground whitespace-nowrap max-w-[160px] truncate">{row.proveedor}</td>
+                    <td className="py-2.5 px-3 text-foreground whitespace-nowrap text-right">{toNum(row.cantidad).toLocaleString("es-AR")}</td>
+                    <td className="py-2.5 px-3 text-foreground whitespace-nowrap text-right">{toNum(row.cantidad_recibida).toLocaleString("es-AR")}</td>
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-full text-[11px] font-medium",
+                        row.estado === "Autorizada"
+                          ? "bg-success/15 text-success"
+                          : row.estado === "Cancelada"
+                          ? "bg-destructive/15 text-destructive"
+                          : "bg-secondary text-muted-foreground"
+                      )}>
+                        {row.estado || "—"}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-foreground whitespace-nowrap text-right">
+                      ${toNum(row.precio_unitario).toLocaleString("es-AR")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Pagination */}
+        {tableTotal > PAGE_SIZE && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-border">
+            <span className="text-xs text-muted-foreground">
+              Página {tablePage + 1} de {Math.ceil(tableTotal / PAGE_SIZE)} · {tableTotal.toLocaleString("es-AR")} registros
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => fetchTableData(tablePage - 1)}
+                disabled={tablePage === 0 || tableLoading}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                Anterior
+              </button>
+              <button
+                onClick={() => fetchTableData(tablePage + 1)}
+                disabled={(tablePage + 1) * PAGE_SIZE >= tableTotal || tableLoading}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                Siguiente
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
