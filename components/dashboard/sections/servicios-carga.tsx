@@ -2,10 +2,11 @@
 
 import React, { useState, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
+import { dbAppend } from "@/lib/db";
 import {
   UploadCloud, FileSpreadsheet, X, Loader2,
   ChevronLeft, ChevronRight, Download, AlertCircle, AlertTriangle,
-  Plus, Trash2, ChevronRight as Arrow,
+  Plus, Trash2, ChevronRight as Arrow, Database, CheckCircle2,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -609,6 +610,7 @@ export function ServiciosCargaSection() {
   const [error, setError]         = useState("");
   const [generating, setGen]      = useState(false);
   const [exporting, setExp]       = useState(false);
+  const [saved, setSaved]         = useState(false);
 
   const takenRoles = useMemo(
     () => slots.filter(Boolean).map(s => s!.role).filter(Boolean) as Role[],
@@ -675,6 +677,12 @@ export function ServiciosCargaSection() {
     }
   };
 
+  const handleSaveToDb = () => {
+    const rows = result.map(({ _errors: _e, ...row }) => row as Record<string, unknown>);
+    dbAppend(rows);
+    setSaved(true);
+  };
+
   const reset = () => {
     setSlots([null, null, null]);
     setStep("upload");
@@ -682,6 +690,7 @@ export function ServiciosCargaSection() {
     setManual([]);
     setResult([]);
     setError("");
+    setSaved(false);
   };
 
   const errorCount = result.filter(r => r._errors.length > 0).length;
@@ -767,6 +776,18 @@ export function ServiciosCargaSection() {
               </p>
             </div>
             <div className="flex items-center gap-3">
+              {saved ? (
+                <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-success/15 text-success text-sm font-medium">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Guardado en Base de datos
+                </div>
+              ) : (
+                <button onClick={handleSaveToDb}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-all border border-border">
+                  <Database className="w-4 h-4" />
+                  Guardar en Base de datos
+                </button>
+              )}
               <button onClick={handleExport} disabled={exporting}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-medium transition-all disabled:opacity-50">
                 {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}

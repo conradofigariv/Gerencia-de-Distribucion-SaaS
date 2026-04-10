@@ -61,7 +61,7 @@ const navItems: NavItemDef[] = [
     icon: Server,
     children: [
       { id: "servicios-resumen", label: "Resumen", icon: LayoutGrid },
-      { id: "servicios-tabla", label: "Tabla", icon: Table2 },
+      { id: "servicios-tabla", label: "Base de datos", icon: Table2 },
       { id: "servicios-carga", label: "Carga de datos", icon: UploadCloud },
     ],
   },

@@ -19,7 +19,7 @@ const sectionTitles: Record<Section, string> = {
   reports: "Reports",
   settings: "Settings",
   "servicios-resumen": "Control de servicios — Resumen",
-  "servicios-tabla": "Control de servicios — Tabla",
+  "servicios-tabla": "Control de servicios — Base de datos",
   "servicios-carga": "Control de servicios — Carga de datos",
 };
 
