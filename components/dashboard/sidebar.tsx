@@ -11,7 +11,6 @@ import {
   BarChart3,
   ChevronLeft,
   ChevronRight,
-  CircleDollarSign,
   Building2,
   TrendingUp,
   Settings,
@@ -21,6 +20,7 @@ import {
   UploadCloud,
   ChevronDown,
 } from "lucide-react";
+import { Logo } from "@/components/logo";
 
 interface SidebarProps {
   activeSection: Section;
@@ -47,13 +47,6 @@ type NavGroup = {
 type NavItemDef = NavLink | NavGroup;
 
 const navItems: NavItemDef[] = [
-  { kind: "link", id: "overview", label: "Overview", icon: LayoutDashboard },
-  { kind: "link", id: "pipeline", label: "Pipeline", icon: GitBranch },
-  { kind: "link", id: "deals", label: "Deals", icon: Handshake },
-  { kind: "link", id: "customers", label: "Customers", icon: Building2 },
-  { kind: "link", id: "team", label: "Team", icon: Users },
-  { kind: "link", id: "forecasting", label: "Forecasting", icon: TrendingUp },
-  { kind: "link", id: "reports", label: "Reports", icon: BarChart3 },
   {
     kind: "group",
     id: "servicios",
@@ -65,6 +58,13 @@ const navItems: NavItemDef[] = [
       { id: "servicios-carga", label: "Carga de datos", icon: UploadCloud },
     ],
   },
+  { kind: "link", id: "overview", label: "Overview", icon: LayoutDashboard },
+  { kind: "link", id: "pipeline", label: "Pipeline", icon: GitBranch },
+  { kind: "link", id: "deals", label: "Deals", icon: Handshake },
+  { kind: "link", id: "customers", label: "Customers", icon: Building2 },
+  { kind: "link", id: "team", label: "Team", icon: Users },
+  { kind: "link", id: "forecasting", label: "Forecasting", icon: TrendingUp },
+  { kind: "link", id: "reports", label: "Reports", icon: BarChart3 },
   { kind: "link", id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -125,16 +125,14 @@ export function Sidebar({
       {/* Logo */}
       <div className="h-16 flex items-center px-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-white">
-            <CircleDollarSign className="w-5 h-5 text-accent-foreground" />
-          </div>
+          <Logo className="w-9 h-9 shrink-0" />
           <span
             className={cn(
               "font-semibold text-lg text-sidebar-foreground whitespace-nowrap transition-all duration-300",
               collapsed ? "opacity-0 w-0" : "opacity-100 w-auto"
             )}
           >
-            EPEC SaaS
+            SaaS Soft
           </span>
         </div>
       </div>

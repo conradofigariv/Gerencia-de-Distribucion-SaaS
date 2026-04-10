@@ -31,6 +31,7 @@ import {
   Check,
   ExternalLink,
   Zap,
+  LogOut,
 } from "lucide-react";
 
 const integrations = [
@@ -279,14 +280,13 @@ export function SettingsSection() {
                     <p className="text-sm text-muted-foreground">Display currency in your locale</p>
                   </div>
                 </div>
-                <Select defaultValue="usd">
-                  <SelectTrigger className="w-[120px] bg-secondary border-border">
+                <Select defaultValue="ars">
+                  <SelectTrigger className="w-[140px] bg-secondary border-border">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="usd">USD ($)</SelectItem>
-                    <SelectItem value="eur">EUR (€)</SelectItem>
-                    <SelectItem value="gbp">GBP (£)</SelectItem>
+                    <SelectItem value="ars">ARS ($)</SelectItem>
+                    <SelectItem value="usd">USD (US$)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -564,6 +564,33 @@ export function SettingsSection() {
                     )}
                   </div>
                 ))}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-destructive/30 bg-card">
+            <CardHeader>
+              <CardTitle className="text-base font-medium text-destructive">Zona de peligro</CardTitle>
+              <CardDescription>Acciones irreversibles sobre tu sesión</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between p-4 rounded-lg bg-destructive/5 border border-destructive/20">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-destructive/15 flex items-center justify-center">
+                    <LogOut className="w-5 h-5 text-destructive" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">Cerrar sesión</p>
+                    <p className="text-sm text-muted-foreground">Salís de tu cuenta en este dispositivo</p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  className="border-destructive/40 text-destructive hover:bg-destructive hover:text-white transition-all"
+                  onClick={() => { localStorage.removeItem("epec_auth"); window.location.reload(); }}
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Cerrar sesión
+                </Button>
               </div>
             </CardContent>
           </Card>
