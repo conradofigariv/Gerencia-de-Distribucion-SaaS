@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { dbAppend } from "@/lib/db";
+import { dbGet, dbAppend, dbOverwriteByKey } from "@/lib/db";
 import {
   UploadCloud, FileSpreadsheet, X, Loader2,
   ChevronLeft, ChevronRight, Download, AlertCircle, AlertTriangle,
@@ -643,6 +643,7 @@ export function ServiciosCargaSection() {
   const [exporting, setExp]       = useState(false);
   const [saved, setSaved]         = useState(false);
   const [selected, setSelected]   = useState<Set<number>>(new Set());
+  const [saveModal, setSaveModal] = useState<{ fresh: ResultRow[]; dupes: ResultRow[] } | null>(null);
 
   const takenRoles = useMemo(
     () => slots.filter(Boolean).map(s => s!.role).filter(Boolean) as Role[],
@@ -710,11 +711,35 @@ export function ServiciosCargaSection() {
     }
   };
 
+  const rowKey = (r: Record<string, unknown> | ResultRow) => {
+    const x = r as Record<string, unknown>;
+    return `${norm(x["OP"])}||${norm(x["LÍNEA"])}||${norm(x["MATRICULA"])}`;
+  };
+
   const handleSaveToDb = () => {
-    const rows = result
-      .filter((_, i) => selected.has(i))
-      .map(({ _errors: _e, ...row }) => row as Record<string, unknown>);
-    dbAppend(rows);
+    const selectedRows = result.filter((_, i) => selected.has(i));
+    const existing     = dbGet();
+    const existingKeys = new Set(existing.map(rowKey));
+    const fresh = selectedRows.filter(r => !existingKeys.has(rowKey(r)));
+    const dupes = selectedRows.filter(r =>  existingKeys.has(rowKey(r)));
+    if (dupes.length === 0) {
+      dbAppend(fresh.map(({ _errors: _e, ...row }) => row));
+      setSaved(true);
+    } else {
+      setSaveModal({ fresh, dupes });
+    }
+  };
+
+  const handleSaveConfirm = (strategy: "overwrite" | "skip") => {
+    if (!saveModal) return;
+    const { fresh, dupes } = saveModal;
+    if (strategy === "overwrite") {
+      const allRows = [...fresh, ...dupes].map(({ _errors: _e, ...row }) => row);
+      dbOverwriteByKey(allRows, rowKey);
+    } else {
+      dbAppend(fresh.map(({ _errors: _e, ...row }) => row));
+    }
+    setSaveModal(null);
     setSaved(true);
   };
 
@@ -801,6 +826,70 @@ export function ServiciosCargaSection() {
           <button onClick={reset} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-all">
             Intentar de nuevo
           </button>
+        </div>
+      )}
+
+      {/* ══ MODAL: duplicate confirmation ══ */}
+      {saveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-warning/15 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-warning" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-foreground">Filas duplicadas encontradas</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Se comparan por <span className="text-foreground font-medium">OP + LÍNEA + MATRÍCULA</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <div className="flex-1 bg-destructive/8 border border-destructive/20 rounded-xl px-4 py-3 text-center">
+                <p className="text-2xl font-bold text-destructive">{saveModal.dupes.length}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">ya existen</p>
+              </div>
+              <div className="flex-1 bg-success/8 border border-success/20 rounded-xl px-4 py-3 text-center">
+                <p className="text-2xl font-bold text-success">{saveModal.fresh.length}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">nuevas</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-muted-foreground">¿Qué querés hacer con las <strong className="text-foreground">{saveModal.dupes.length}</strong> filas duplicadas?</p>
+
+            <div className="space-y-2">
+              <button onClick={() => handleSaveConfirm("overwrite")}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-secondary hover:bg-secondary/80 border border-border text-sm font-medium text-foreground transition-all text-left">
+                <div className="w-7 h-7 rounded-lg bg-warning/15 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-3.5 h-3.5 text-warning" />
+                </div>
+                <div>
+                  <p className="font-semibold">Sobreescribir</p>
+                  <p className="text-xs text-muted-foreground font-normal">Reemplaza las {saveModal.dupes.length} existentes y agrega las {saveModal.fresh.length} nuevas</p>
+                </div>
+              </button>
+              <button onClick={() => handleSaveConfirm("skip")}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-secondary hover:bg-secondary/80 border border-border text-sm font-medium text-foreground transition-all text-left">
+                <div className="w-7 h-7 rounded-lg bg-success/15 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-success" />
+                </div>
+                <div>
+                  <p className="font-semibold">Omitir repetidas</p>
+                  <p className="text-xs text-muted-foreground font-normal">
+                    {saveModal.fresh.length > 0
+                      ? `Solo agrega las ${saveModal.fresh.length} filas nuevas`
+                      : "No se guardará ninguna fila (todas ya existen)"}
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <button onClick={() => setSaveModal(null)}
+              className="w-full px-4 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
+              Cancelar
+            </button>
+          </div>
         </div>
       )}
 
