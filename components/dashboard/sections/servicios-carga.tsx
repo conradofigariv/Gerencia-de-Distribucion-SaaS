@@ -262,20 +262,26 @@ function FileSlotCard({
 // ─── ManualEntry step ─────────────────────────────────────────────────────────
 
 const EMPTY_FORM = { op: "", opMadre: "", linea: "1", matricula: "" };
+const splitCol   = (t: string) => t.split(/\r?\n/).map(v => v.trim()).filter(v => v !== "");
 
 function ManualEntryStep({
-  rows, onAdd, onDelete, onGenerate, onBack, generating,
+  rows, onAdd, onAddBulk, onDelete, onGenerate, onBack, generating,
 }: {
   rows: ManualRow[];
   onAdd: (r: Omit<ManualRow, "id">) => void;
+  onAddBulk: (rs: Omit<ManualRow, "id">[]) => void;
   onDelete: (id: string) => void;
   onGenerate: () => void;
   onBack: () => void;
   generating: boolean;
 }) {
-  const [form, setForm]     = useState(EMPTY_FORM);
-  const [errors, setErrors] = useState<Partial<typeof EMPTY_FORM>>({});
+  const [mode, setMode]       = useState<"single" | "bulk">("single");
+  const [form, setForm]       = useState(EMPTY_FORM);
+  const [errors, setErrors]   = useState<Partial<typeof EMPTY_FORM>>({});
+  const [bulk, setBulk]       = useState({ op: "", opMadre: "", linea: "", matricula: "" });
+  const [bulkErr, setBulkErr] = useState("");
 
+  // ── Single
   const validate = () => {
     const e: Partial<typeof EMPTY_FORM> = {};
     if (!form.op.trim() || isNaN(Number(form.op)))           e.op        = "Debe ser un número";
@@ -284,7 +290,6 @@ function ManualEntryStep({
     if (!form.matricula.trim())                               e.matricula = "No puede estar vacía";
     return e;
   };
-
   const handleAdd = () => {
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
@@ -292,6 +297,46 @@ function ManualEntryStep({
     onAdd({ op: form.op.trim(), opMadre: form.opMadre.trim(), linea: form.linea.trim(), matricula: form.matricula.trim() });
     setForm(EMPTY_FORM);
   };
+
+  // ── Bulk
+  const handleBulkAdd = () => {
+    setBulkErr("");
+    const ops        = splitCol(bulk.op);
+    const opMadres   = splitCol(bulk.opMadre);
+    const lineas     = splitCol(bulk.linea);
+    const matriculas = splitCol(bulk.matricula);
+
+    if (ops.length === 0)        { setBulkErr("La columna OP está vacía.");        return; }
+    if (opMadres.length === 0)   { setBulkErr("La columna OP MADRE está vacía.");  return; }
+    if (matriculas.length === 0) { setBulkErr("La columna MATRÍCULA está vacía."); return; }
+
+    const n = ops.length;
+    if (opMadres.length !== n || matriculas.length !== n) {
+      setBulkErr(`Las columnas tienen distinto número de filas — OP: ${n}, OP MADRE: ${opMadres.length}, MATRÍCULA: ${matriculas.length}. Deben coincidir.`);
+      return;
+    }
+
+    const lineaFinal = lineas.length === n ? lineas : Array(n).fill("1");
+    const errs: string[] = [];
+    const newRows: Omit<ManualRow, "id">[] = [];
+
+    for (let i = 0; i < n; i++) {
+      const op = ops[i], opMadre = opMadres[i], linea = lineaFinal[i], matricula = matriculas[i];
+      if (isNaN(Number(op)))      errs.push(`Fila ${i + 1}: OP "${op}" no es número`);
+      if (isNaN(Number(opMadre))) errs.push(`Fila ${i + 1}: OP MADRE "${opMadre}" no es número`);
+      if (isNaN(Number(linea)))   errs.push(`Fila ${i + 1}: LÍNEA "${linea}" no es número`);
+      if (!matricula)             errs.push(`Fila ${i + 1}: MATRÍCULA vacía`);
+      if (!errs.length) newRows.push({ op, opMadre, linea, matricula });
+    }
+
+    if (errs.length) { setBulkErr(errs.slice(0, 5).join(" · ") + (errs.length > 5 ? ` …y ${errs.length - 5} más` : "")); return; }
+
+    onAddBulk(newRows);
+    setBulk({ op: "", opMadre: "", linea: "", matricula: "" });
+    setMode("single");
+  };
+
+  const colCount = (t: string) => { const n = splitCol(t).length; return n > 0 ? `${n} fila${n !== 1 ? "s" : ""}` : ""; };
 
   const field = (
     key: keyof typeof EMPTY_FORM,
@@ -322,26 +367,90 @@ function ManualEntryStep({
           <ChevronLeft className="w-3.5 h-3.5" />Volver
         </button>
         <div>
-          <h3 className="text-sm font-semibold text-foreground">Paso 2 — Ingreso manual de datos</h3>
+          <h3 className="text-sm font-semibold text-foreground">Paso 2 — Ingreso de datos</h3>
           <p className="text-xs text-muted-foreground mt-0.5">Cada fila será buscada en los archivos cargados</p>
+        </div>
+        {/* Mode toggle */}
+        <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 ml-auto">
+          {(["single", "bulk"] as const).map(m => (
+            <button key={m} onClick={() => setMode(m)}
+              className={cn(
+                "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                mode === m ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}>
+              {m === "single" ? "Fila individual" : "Pegar columnas"}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Form */}
-      <div className="bg-card border border-border rounded-xl p-5">
-        <div className="grid grid-cols-4 gap-4 mb-4">
-          {field("op",        "OP",        "ej. 4500012345")}
-          {field("opMadre",   "OP MADRE",  "ej. 4500099999")}
-          {field("linea",     "LÍNEA",     "ej. 1")}
-          {field("matricula", "MATRÍCULA", "ej. 00702632.0")}
+      {/* ── Single form ── */}
+      {mode === "single" && (
+        <div className="bg-card border border-border rounded-xl p-5">
+          <div className="grid grid-cols-4 gap-4 mb-4">
+            {field("op",        "OP",        "ej. 4500012345")}
+            {field("opMadre",   "OP MADRE",  "ej. 4500099999")}
+            {field("linea",     "LÍNEA",     "ej. 1")}
+            {field("matricula", "MATRÍCULA", "ej. 00702632.0")}
+          </div>
+          <div className="flex justify-end">
+            <button onClick={handleAdd}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-all">
+              <Plus className="w-4 h-4" />Agregar fila
+            </button>
+          </div>
         </div>
-        <div className="flex justify-end">
-          <button onClick={handleAdd}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-all">
-            <Plus className="w-4 h-4" />Agregar fila
-          </button>
+      )}
+
+      {/* ── Bulk paste ── */}
+      {mode === "bulk" && (
+        <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Copiá una columna de Excel y pegála en el campo correspondiente. LÍNEA es opcional (default 1).
+          </p>
+          <div className="grid grid-cols-4 gap-4">
+            {([
+              { key: "op",        label: "OP",        required: true  },
+              { key: "opMadre",   label: "OP MADRE",  required: true  },
+              { key: "linea",     label: "LÍNEA",     required: false },
+              { key: "matricula", label: "MATRÍCULA", required: true  },
+            ] as const).map(({ key, label, required }) => (
+              <div key={key} className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-foreground">
+                    {label}{required && <span className="text-destructive ml-0.5">*</span>}
+                  </label>
+                  {bulk[key] && (
+                    <span className="text-[11px] text-accent font-medium">{colCount(bulk[key])}</span>
+                  )}
+                </div>
+                <textarea
+                  value={bulk[key]}
+                  onChange={(e) => { setBulk(p => ({ ...p, [key]: e.target.value })); setBulkErr(""); }}
+                  placeholder={`Pegá la columna ${label} aquí…`}
+                  rows={8}
+                  className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-xs text-foreground font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all resize-none"
+                />
+              </div>
+            ))}
+          </div>
+
+          {bulkErr && (
+            <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              {bulkErr}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button onClick={handleBulkAdd}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-all">
+              <Plus className="w-4 h-4" />
+              Agregar {splitCol(bulk.op).length > 0 ? `${splitCol(bulk.op).length} filas` : "filas"}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Rows table */}
       {rows.length > 0 ? (
@@ -350,49 +459,50 @@ function ManualEntryStep({
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Filas ingresadas ({rows.length})
             </span>
+            <button onClick={() => { if (confirm("¿Eliminar todas las filas?")) rows.forEach(r => onDelete(r.id)); }}
+              className="text-xs text-muted-foreground hover:text-destructive transition-colors">
+              Limpiar todo
+            </button>
           </div>
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-secondary/50 border-b border-border">
-                {["OP", "OP MADRE", "LÍNEA", "MATRÍCULA", ""].map((h, i) => (
-                  <th key={i} className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(row => (
-                <tr key={row.id} className="border-b border-border last:border-0 hover:bg-secondary/20 transition-colors">
-                  <td className="py-2.5 px-3 text-foreground font-mono">{row.op}</td>
-                  <td className="py-2.5 px-3 text-foreground font-mono">{row.opMadre}</td>
-                  <td className="py-2.5 px-3 text-foreground">{row.linea}</td>
-                  <td className="py-2.5 px-3 text-foreground font-mono">{row.matricula}</td>
-                  <td className="py-2.5 px-3 text-right">
-                    <button onClick={() => onDelete(row.id)}
-                      className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all ml-auto">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </td>
+          <div className="max-h-72 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0">
+                <tr className="bg-secondary/50 border-b border-border">
+                  {["OP", "OP MADRE", "LÍNEA", "MATRÍCULA", ""].map((h, i) => (
+                    <th key={i} className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider whitespace-nowrap bg-secondary/50">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map(row => (
+                  <tr key={row.id} className="border-b border-border last:border-0 hover:bg-secondary/20 transition-colors">
+                    <td className="py-2 px-3 text-foreground font-mono">{row.op}</td>
+                    <td className="py-2 px-3 text-foreground font-mono">{row.opMadre}</td>
+                    <td className="py-2 px-3 text-foreground">{row.linea}</td>
+                    <td className="py-2 px-3 text-foreground font-mono">{row.matricula}</td>
+                    <td className="py-2 px-3 text-right">
+                      <button onClick={() => onDelete(row.id)}
+                        className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all ml-auto">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         <div className="bg-card border border-dashed border-border rounded-xl py-10 text-center text-muted-foreground">
           <p className="text-sm">Todavía no hay filas ingresadas</p>
-          <p className="text-xs mt-1 opacity-60">Completá el formulario y presioná "Agregar fila"</p>
+          <p className="text-xs mt-1 opacity-60">Usá "Fila individual" o "Pegar columnas"</p>
         </div>
       )}
 
       {/* Generate button */}
       <div className="flex justify-end">
-        <button
-          onClick={onGenerate}
-          disabled={rows.length === 0 || generating}
-          className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
+        <button onClick={onGenerate} disabled={rows.length === 0 || generating}
+          className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
           {generating
             ? <><Loader2 className="w-4 h-4 animate-spin" />Procesando...</>
             : <>Generar Seguimiento <Arrow className="w-4 h-4" /></>}
@@ -620,7 +730,8 @@ export function ServiciosCargaSection() {
       {step === "manual" && (
         <ManualEntryStep
           rows={manualRows}
-          onAdd={(r) => setManual(prev => [...prev, { ...r, id: uid() }])}
+          onAdd={(r)    => setManual(prev => [...prev, { ...r, id: uid() }])}
+          onAddBulk={(rs) => setManual(prev => [...prev, ...rs.map(r => ({ ...r, id: uid() }))])}
           onDelete={(id) => setManual(prev => prev.filter(r => r.id !== id))}
           onGenerate={handleGenerate}
           onBack={() => setStep("upload")}
