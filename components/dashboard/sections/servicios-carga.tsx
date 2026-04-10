@@ -55,9 +55,16 @@ const parseExcel = async (file: File): Promise<Record<string, unknown>[]> => {
         const data = new Uint8Array(e.target!.result as ArrayBuffer);
         const wb   = XLSX.read(data, { type: "array", cellDates: false });
         const ws   = wb.Sheets[wb.SheetNames[0]];
-        resolve(
-          XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null, raw: false })
-        );
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null, raw: false });
+        // Normalizar todos los headers: trim + uppercase para evitar mismatch
+        const normalized = rows.map((row) => {
+          const out: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(row)) {
+            out[k.trim().toUpperCase()] = v;
+          }
+          return out;
+        });
+        resolve(normalized);
       } catch {
         reject(new Error("No se pudo leer el archivo. Verificá que sea un Excel válido."));
       }
@@ -225,6 +232,8 @@ export function ServiciosCargaSection() {
   const [estadoFilter, setEstado]   = useState("todos");
   const [tablePage, setTablePage]   = useState(0);
   const [exporting, setExporting]   = useState(false);
+  const [diagHeaders, setDiagHeaders] = useState<Record<FileRole, string[]> | null>(null);
+  const [showDiag, setShowDiag]       = useState(false);
 
   const allAssigned = files.OP !== null && files.QW !== null && files.MATRICULAS !== null;
   const missing     = (["OP", "QW", "MATRICULAS"] as FileRole[]).filter((r) => !files[r]);
@@ -263,6 +272,14 @@ export function ServiciosCargaSection() {
       ]);
       if (opRows.length === 0) throw new Error("El archivo OP está vacío.");
       if (qwRows.length === 0) throw new Error("El archivo QW está vacío.");
+
+      // Guardar headers reales para diagnóstico
+      setDiagHeaders({
+        OP:         opRows.length  > 0 ? Object.keys(opRows[0])  : [],
+        QW:         qwRows.length  > 0 ? Object.keys(qwRows[0])  : [],
+        MATRICULAS: matRows.length > 0 ? Object.keys(matRows[0]) : [],
+      });
+
       const data = buildSeguimiento(opRows, qwRows, matRows);
       if (data.length === 0) throw new Error("El archivo OP no contiene filas válidas.");
       setAllData(data);
@@ -311,6 +328,8 @@ export function ServiciosCargaSection() {
     setSearch("");
     setEstado("todos");
     setTablePage(0);
+    setDiagHeaders(null);
+    setShowDiag(false);
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -389,6 +408,45 @@ export function ServiciosCargaSection() {
       {/* ════════ RESULTADO ════════ */}
       {step === "result" && (
         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+          {/* Panel diagnóstico — se muestra cuando hay filas sin datos */}
+          {diagHeaders && allData.every((r) => r.estado === "Sin datos en QW") && (
+            <div className="bg-warning/10 border border-warning/30 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-medium text-warning">
+                  <AlertTriangle className="w-4 h-4" />
+                  El join no encontró coincidencias — revisá los nombres de columna
+                </div>
+                <button
+                  onClick={() => setShowDiag((v) => !v)}
+                  className="text-xs text-muted-foreground hover:text-foreground underline"
+                >
+                  {showDiag ? "Ocultar" : "Ver columnas detectadas"}
+                </button>
+              </div>
+              {showDiag && (
+                <div className="grid grid-cols-3 gap-3 text-xs">
+                  {(["OP","QW","MATRICULAS"] as FileRole[]).map((role) => (
+                    <div key={role} className="bg-card border border-border rounded-lg p-3">
+                      <p className="font-semibold text-foreground mb-2">{role}</p>
+                      <ul className="space-y-0.5">
+                        {(diagHeaders[role] ?? []).map((h) => (
+                          <li key={h} className="font-mono text-muted-foreground truncate" title={h}>{h}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Los campos esperados son: <span className="font-mono text-foreground">NRO OP</span> (OP y QW) ·{" "}
+                <span className="font-mono text-foreground">MATRICULA</span> (OP y MATRICULAS) ·{" "}
+                <span className="font-mono text-foreground">CLIENTE, FECHA, TIPO DE SERVICIO</span> (OP) ·{" "}
+                <span className="font-mono text-foreground">ESTADO, OBSERVACIONES, FECHA PROMETIDA</span> (QW) ·{" "}
+                <span className="font-mono text-foreground">MODELO, SERIE, PROPIETARIO</span> (MATRICULAS)
+              </p>
+            </div>
+          )}
 
           {/* Barra de controles */}
           <div className="bg-card border border-border rounded-xl p-4 flex flex-wrap items-center gap-3">
