@@ -45,7 +45,7 @@ type DbRow = Record<string, unknown> & { id: string };
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ServiciosTablaSection() {
-  const [rows, setRows]       = useState<DbRow[] | null>(null);
+  const [rows, setRows]       = useState<DbRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState("");
   const [page, setPage]       = useState(0);
@@ -58,6 +58,7 @@ export function ServiciosTablaSection() {
       .order("created_at", { ascending: true });
     if (error) {
       toast.error(`Error al cargar seguimiento: ${error.message}`);
+      // leave rows as [] so empty state renders
     } else {
       setRows((data ?? []) as DbRow[]);
     }
@@ -66,7 +67,7 @@ export function ServiciosTablaSection() {
 
   useEffect(() => { load(); }, [load]);
 
-  if (rows === null || loading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
         <Loader2 className="w-6 h-6 text-accent animate-spin" />
