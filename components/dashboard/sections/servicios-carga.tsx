@@ -515,10 +515,17 @@ function ManualEntryStep({
 
 // ─── Result table ─────────────────────────────────────────────────────────────
 
-function ResultTable({ rows }: { rows: ResultRow[] }) {
+function ResultTable({ rows, selected, onToggle, onToggleAll }: {
+  rows: ResultRow[];
+  selected: Set<number>;
+  onToggle: (i: number) => void;
+  onToggleAll: () => void;
+}) {
   const [page, setPage] = useState(0);
-  const total = Math.ceil(rows.length / PAGE_SIZE);
-  const paged = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const total      = Math.ceil(rows.length / PAGE_SIZE);
+  const paged      = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const allSel     = selected.size === rows.length && rows.length > 0;
+  const someSel    = selected.size > 0 && !allSel;
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
@@ -526,6 +533,15 @@ function ResultTable({ rows }: { rows: ResultRow[] }) {
         <table className="w-full text-xs">
           <thead>
             <tr className="bg-secondary/60 border-b border-border">
+              <th className="py-2 px-3 w-8">
+                <input
+                  type="checkbox"
+                  checked={allSel}
+                  ref={(el) => { if (el) el.indeterminate = someSel; }}
+                  onChange={onToggleAll}
+                  className="w-3.5 h-3.5 cursor-pointer accent-[hsl(var(--accent))]"
+                />
+              </th>
               <th className="text-left py-2 px-3 text-muted-foreground font-semibold whitespace-nowrap">#</th>
               {COLUMNS.map(c => (
                 <th key={c} className="text-left py-2 px-3 text-muted-foreground font-semibold whitespace-nowrap">{c}</th>
@@ -534,14 +550,29 @@ function ResultTable({ rows }: { rows: ResultRow[] }) {
           </thead>
           <tbody>
             {paged.map((row, i) => {
+              const globalIdx = page * PAGE_SIZE + i;
+              const isSelected = selected.has(globalIdx);
               const hasErr = row._errors.length > 0;
               return (
                 <React.Fragment key={i}>
-                  <tr className={cn(
-                    "border-b border-border transition-colors",
-                    hasErr ? "bg-destructive/8 hover:bg-destructive/12" : "hover:bg-secondary/20"
-                  )}>
-                    <td className="py-2 px-3 text-muted-foreground">{page * PAGE_SIZE + i + 1}</td>
+                  <tr
+                    onClick={() => onToggle(globalIdx)}
+                    className={cn(
+                      "border-b border-border transition-colors cursor-pointer",
+                      isSelected
+                        ? hasErr ? "bg-destructive/10" : "bg-accent/8"
+                        : hasErr ? "bg-destructive/8 hover:bg-destructive/12 opacity-60" : "hover:bg-secondary/20 opacity-60"
+                    )}
+                  >
+                    <td className="py-2 px-3" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => onToggle(globalIdx)}
+                        className="w-3.5 h-3.5 cursor-pointer accent-[hsl(var(--accent))]"
+                      />
+                    </td>
+                    <td className="py-2 px-3 text-muted-foreground">{globalIdx + 1}</td>
                     {COLUMNS.map(c => {
                       const val = row[c];
                       const display = typeof val === "number" ? val.toLocaleString("es-AR") : String(val ?? "");
@@ -565,7 +596,7 @@ function ResultTable({ rows }: { rows: ResultRow[] }) {
                   </tr>
                   {hasErr && (
                     <tr className="bg-destructive/5 border-b border-destructive/20">
-                      <td colSpan={COLUMNS.length + 1} className="px-4 py-1.5">
+                      <td colSpan={COLUMNS.length + 2} className="px-4 py-1.5">
                         <div className="flex items-start gap-1.5">
                           <AlertCircle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
                           <span className="text-[11px] text-destructive">{row._errors.join(" · ")}</span>
@@ -611,6 +642,7 @@ export function ServiciosCargaSection() {
   const [generating, setGen]      = useState(false);
   const [exporting, setExp]       = useState(false);
   const [saved, setSaved]         = useState(false);
+  const [selected, setSelected]   = useState<Set<number>>(new Set());
 
   const takenRoles = useMemo(
     () => slots.filter(Boolean).map(s => s!.role).filter(Boolean) as Role[],
@@ -658,6 +690,7 @@ export function ServiciosCargaSection() {
     await new Promise(r => setTimeout(r, 50)); // let UI update
     const data = buildSeguimiento(manualRows, maps);
     setResult(data);
+    setSelected(new Set(data.map((_, i) => i)));
     setStep("result");
     setGen(false);
   };
@@ -678,10 +711,18 @@ export function ServiciosCargaSection() {
   };
 
   const handleSaveToDb = () => {
-    const rows = result.map(({ _errors: _e, ...row }) => row as Record<string, unknown>);
+    const rows = result
+      .filter((_, i) => selected.has(i))
+      .map(({ _errors: _e, ...row }) => row as Record<string, unknown>);
     dbAppend(rows);
     setSaved(true);
   };
+
+  const handleToggle = (i: number) =>
+    setSelected(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
+
+  const handleToggleAll = () =>
+    setSelected(prev => prev.size === result.length ? new Set() : new Set(result.map((_, i) => i)));
 
   const reset = () => {
     setSlots([null, null, null]);
@@ -691,6 +732,7 @@ export function ServiciosCargaSection() {
     setResult([]);
     setError("");
     setSaved(false);
+    setSelected(new Set());
   };
 
   const errorCount = result.filter(r => r._errors.length > 0).length;
@@ -782,10 +824,12 @@ export function ServiciosCargaSection() {
                   Guardado en Base de datos
                 </div>
               ) : (
-                <button onClick={handleSaveToDb}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-all border border-border">
+                <button onClick={handleSaveToDb} disabled={selected.size === 0}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-all border border-border disabled:opacity-40 disabled:cursor-not-allowed">
                   <Database className="w-4 h-4" />
-                  Guardar en Base de datos
+                  {selected.size > 0
+                    ? `Guardar ${selected.size} fila${selected.size !== 1 ? "s" : ""}`
+                    : "Guardar seleccionadas"}
                 </button>
               )}
               <button onClick={handleExport} disabled={exporting}
@@ -803,7 +847,7 @@ export function ServiciosCargaSection() {
               </button>
             </div>
           </div>
-          <ResultTable rows={result} />
+          <ResultTable rows={result} selected={selected} onToggle={handleToggle} onToggleAll={handleToggleAll} />
         </div>
       )}
     </div>
