@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useRef, useCallback, useMemo } from "react";
+import React, { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
-import { dbGet, dbAppend, dbOverwriteByKey } from "@/lib/db";
+import { supabase } from "@/lib/supabaseClient";
+import { toast } from "sonner";
 import {
   UploadCloud, FileSpreadsheet, X, Loader2,
   ChevronLeft, ChevronRight, Download, AlertCircle, AlertTriangle,
@@ -192,6 +193,36 @@ const buildSeguimiento = (
   });
 };
 
+// ─── DB helpers ──────────────────────────────────────────────────────────────
+
+const toDbRow = (row: SeguimientoRow) => ({
+  op:                       row.OP,
+  op_madre:                 row["OP MADRE"],
+  sc:                       row.SC,
+  descripcion_sc:           row["DESCRIPCIÓN DE SC"],
+  linea:                    row.LÍNEA,
+  matricula:                row.MATRICULA,
+  descripcion_matricula:    row["DESCRIPCIÓN DE MATRICULA"],
+  cantidad:                 row.CANTIDAD,
+  cantidad_recibida:        row["CANTIDAD RECIBIDA"],
+  saldo_de_linea:           row["SALDO DE LINEA"],
+  fecha_de_creacion:        row["FECHA DE CREACION"]       || null,
+  fecha_pactada:            row["FECHA PACTADA"]           || null,
+  proveedor:                row.PROVEEDOR,
+  fecha_redeterminacion:    row["FECHA REDETERMINACIÓN"]   || null,
+  precio_redeterminacion:   row["PRECIO REDETERMINACIÓN"]  || null,
+  estado:                   row.ESTADO,
+  estado_de_plazo:          row["ESTADO DE PLAZO"],
+  estado_de_cantidades:     row["ESTADO DE CANTIDADES"],
+  revision:                 row.REVISION,
+  observacion:              row.OBSERVACION,
+  disponibilidad_en_meses:  row["DISPONIBILIDAD EN MESES"],
+  fecha_actual:             row["FECHA ACTUAL"]            || null,
+  cantidad2:                row.CANTIDAD2,
+  cantidad_de_meses:        row["CANTIDAD DE MESES"],
+  cantidad_consumida_por_mes: row["CANTIDAD CONSUMIDA POR MES"],
+});
+
 // ─── FileSlotCard ─────────────────────────────────────────────────────────────
 
 const ROLE_LABELS: Record<Role, string> = {
@@ -270,8 +301,8 @@ function ManualEntryStep({
   rows, onAdd, onAddBulk, onDelete, onGenerate, onBack, generating,
 }: {
   rows: ManualRow[];
-  onAdd: (r: Omit<ManualRow, "id">) => void;
-  onAddBulk: (rs: Omit<ManualRow, "id">[]) => void;
+  onAdd: (r: Omit<ManualRow, "id">) => Promise<void>;
+  onAddBulk: (rs: Omit<ManualRow, "id">[]) => Promise<void>;
   onDelete: (id: string) => void;
   onGenerate: () => void;
   onBack: () => void;
@@ -282,6 +313,7 @@ function ManualEntryStep({
   const [errors, setErrors]   = useState<Partial<typeof EMPTY_FORM>>({});
   const [bulk, setBulk]       = useState({ op: "", opMadre: "", linea: "", matricula: "" });
   const [bulkErr, setBulkErr] = useState("");
+  const [adding, setAdding]   = useState(false);
 
   // ── Single
   const validate = () => {
@@ -292,16 +324,21 @@ function ManualEntryStep({
     if (!form.matricula.trim())                               e.matricula = "No puede estar vacía";
     return e;
   };
-  const handleAdd = () => {
+  const handleAdd = async () => {
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
     setErrors({});
-    onAdd({ op: form.op.trim(), opMadre: form.opMadre.trim(), linea: form.linea.trim(), matricula: form.matricula.trim() });
-    setForm(EMPTY_FORM);
+    setAdding(true);
+    try {
+      await onAdd({ op: form.op.trim(), opMadre: form.opMadre.trim(), linea: form.linea.trim(), matricula: form.matricula.trim() });
+      setForm(EMPTY_FORM);
+    } finally {
+      setAdding(false);
+    }
   };
 
   // ── Bulk
-  const handleBulkAdd = () => {
+  const handleBulkAdd = async () => {
     setBulkErr("");
     const ops        = splitCol(bulk.op);
     const opMadres   = splitCol(bulk.opMadre);
@@ -333,9 +370,14 @@ function ManualEntryStep({
 
     if (errs.length) { setBulkErr(errs.slice(0, 5).join(" · ") + (errs.length > 5 ? ` …y ${errs.length - 5} más` : "")); return; }
 
-    onAddBulk(newRows);
-    setBulk({ op: "", opMadre: "", linea: "", matricula: "" });
-    setMode("single");
+    setAdding(true);
+    try {
+      await onAddBulk(newRows);
+      setBulk({ op: "", opMadre: "", linea: "", matricula: "" });
+      setMode("single");
+    } finally {
+      setAdding(false);
+    }
   };
 
   const colCount = (t: string) => { const n = splitCol(t).length; return n > 0 ? `${n} fila${n !== 1 ? "s" : ""}` : ""; };
@@ -396,9 +438,10 @@ function ManualEntryStep({
             {field("matricula", "MATRÍCULA", "ej. 00702632.0")}
           </div>
           <div className="flex justify-end">
-            <button onClick={handleAdd}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-all">
-              <Plus className="w-4 h-4" />Agregar fila
+            <button onClick={handleAdd} disabled={adding}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+              {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              {adding ? "Guardando..." : "Agregar fila"}
             </button>
           </div>
         </div>
@@ -445,10 +488,10 @@ function ManualEntryStep({
           )}
 
           <div className="flex justify-end">
-            <button onClick={handleBulkAdd}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-all">
-              <Plus className="w-4 h-4" />
-              Agregar {splitCol(bulk.op).length > 0 ? `${splitCol(bulk.op).length} filas` : "filas"}
+            <button onClick={handleBulkAdd} disabled={adding}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+              {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              {adding ? "Guardando..." : `Agregar ${splitCol(bulk.op).length > 0 ? `${splitCol(bulk.op).length} filas` : "filas"}`}
             </button>
           </div>
         </div>
@@ -643,8 +686,30 @@ export function ServiciosCargaSection() {
   const [generating, setGen]      = useState(false);
   const [exporting, setExp]       = useState(false);
   const [saved, setSaved]         = useState(false);
+  const [saving, setSaving]       = useState(false);
   const [selected, setSelected]   = useState<Set<number>>(new Set());
-  const [saveModal, setSaveModal] = useState<{ fresh: ResultRow[]; dupes: ResultRow[] } | null>(null);
+  const [saveModal, setSaveModal] = useState<{ existingCount: number; rowsToSave: ResultRow[] } | null>(null);
+
+  // ── Load saved manual rows from Supabase on mount
+  useEffect(() => {
+    (async () => {
+      const { data, error: err } = await supabase
+        .from("filas_manuales")
+        .select("*")
+        .order("created_at", { ascending: true });
+      if (err) { toast.error(`Error al cargar filas guardadas: ${err.message}`); return; }
+      if (data && data.length > 0) {
+        setManual(data.map(r => ({
+          id:        r.id as string,
+          op:        String(r.op),
+          opMadre:   String(r.op_madre),
+          linea:     String(r.linea),
+          matricula: r.matricula as string,
+        })));
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const takenRoles = useMemo(
     () => slots.filter(Boolean).map(s => s!.role).filter(Boolean) as Role[],
@@ -676,6 +741,25 @@ export function ServiciosCargaSection() {
       if (opRows.length  === 0) throw new Error("El archivo OP no tiene datos (verificá que los headers estén en fila 2).");
       if (qwRows.length  === 0) throw new Error("El archivo QW no tiene datos.");
       if (matRows.length === 0) throw new Error("El archivo MATRICULAS no tiene datos.");
+
+      // ── Upsert MATRICULAS (insert new, ignore existing)
+      const matForDb = matRows
+        .map(r => ({
+          articulo:      str(r["Artículo"]        ?? r["ARTICULO"]      ?? r["articulo"]),
+          descripcion:   str(r["Descripción"]     ?? r["DESCRIPCION"]   ?? r["descripcion"]),
+          unidad_medida: str(r["Unidad de medida"] ?? r["UM"]           ?? r["Unidad"]),
+          estado:        str(r["Estado"]           ?? r["ESTADO"]       ?? ""),
+          mat_serv:      str(r["Mat./serv."]       ?? r["MAT_SERV"]     ?? r["Mat/Serv"] ?? ""),
+        }))
+        .filter(r => r.articulo);
+      if (matForDb.length > 0) {
+        const { error: upsErr } = await supabase
+          .from("matriculas")
+          .upsert(matForDb, { onConflict: "articulo", ignoreDuplicates: true });
+        if (upsErr) toast.error(`Error al sincronizar matrículas: ${upsErr.message}`);
+        else toast.success(`${matForDb.length} matrículas sincronizadas`);
+      }
+
       setMaps(buildMaps(opRows, qwRows, matRows));
       setStep("manual");
     } catch (e) {
@@ -712,36 +796,69 @@ export function ServiciosCargaSection() {
     }
   };
 
-  const rowKey = (r: Record<string, unknown> | ResultRow) => {
-    const x = r as Record<string, unknown>;
-    return `${norm(x["OP"])}||${norm(x["LÍNEA"])}||${norm(x["MATRICULA"])}`;
+  // ── Manual row handlers (Supabase-backed)
+  const handleAdd = async (r: Omit<ManualRow, "id">) => {
+    const { data, error: err } = await supabase
+      .from("filas_manuales")
+      .insert({ op: parseInt(r.op), op_madre: parseInt(r.opMadre), linea: parseInt(r.linea), matricula: r.matricula })
+      .select("id")
+      .single();
+    if (err) { toast.error(`Error al guardar fila: ${err.message}`); throw err; }
+    setManual(prev => [...prev, { ...r, id: (data as { id: string }).id }]);
   };
 
-  const handleSaveToDb = () => {
-    const selectedRows = result.filter((_, i) => selected.has(i));
-    const existing     = dbGet();
-    const existingKeys = new Set(existing.map(rowKey));
-    const fresh = selectedRows.filter(r => !existingKeys.has(rowKey(r)));
-    const dupes = selectedRows.filter(r =>  existingKeys.has(rowKey(r)));
-    if (dupes.length === 0) {
-      dbAppend(fresh.map(({ _errors: _e, ...row }) => row));
+  const handleAddBulk = async (rs: Omit<ManualRow, "id">[]) => {
+    const { data, error: err } = await supabase
+      .from("filas_manuales")
+      .insert(rs.map(r => ({ op: parseInt(r.op), op_madre: parseInt(r.opMadre), linea: parseInt(r.linea), matricula: r.matricula })))
+      .select("id");
+    if (err) { toast.error(`Error al guardar filas: ${err.message}`); throw err; }
+    const withIds = rs.map((r, i) => ({ ...r, id: (data as { id: string }[])[i].id }));
+    setManual(prev => [...prev, ...withIds]);
+  };
+
+  const handleDeleteRow = (id: string) => {
+    setManual(prev => prev.filter(r => r.id !== id));
+    supabase.from("filas_manuales").delete().eq("id", id)
+      .then(({ error: err }) => { if (err) toast.error(`Error al eliminar fila: ${err.message}`); });
+  };
+
+  // ── Seguimiento → Supabase
+  const doSaveToDb = async (rows: ResultRow[], deleteFirst: boolean) => {
+    setSaving(true);
+    try {
+      if (deleteFirst) {
+        const { error: delErr } = await supabase.from("seguimiento").delete().not("id", "is", null);
+        if (delErr) { toast.error(`Error al limpiar seguimiento: ${delErr.message}`); return; }
+      }
+      const dbRows = rows.map(({ _errors: _e, ...row }) => toDbRow(row));
+      const { error: insErr } = await supabase.from("seguimiento").insert(dbRows);
+      if (insErr) { toast.error(`Error al guardar seguimiento: ${insErr.message}`); return; }
+      toast.success(`${rows.length} filas guardadas en seguimiento`);
       setSaved(true);
-    } else {
-      setSaveModal({ fresh, dupes });
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleSaveConfirm = (strategy: "overwrite" | "skip") => {
-    if (!saveModal) return;
-    const { fresh, dupes } = saveModal;
-    if (strategy === "overwrite") {
-      const allRows = [...fresh, ...dupes].map(({ _errors: _e, ...row }) => row);
-      dbOverwriteByKey(allRows, rowKey);
+  const handleSaveToDb = async () => {
+    const rowsToSave = result.filter((_, i) => selected.has(i));
+    const { count, error: countErr } = await supabase
+      .from("seguimiento")
+      .select("*", { count: "exact", head: true });
+    if (countErr) { toast.error(`Error: ${countErr.message}`); return; }
+    if ((count ?? 0) > 0) {
+      setSaveModal({ existingCount: count!, rowsToSave });
     } else {
-      dbAppend(fresh.map(({ _errors: _e, ...row }) => row));
+      await doSaveToDb(rowsToSave, false);
     }
+  };
+
+  const handleSaveConfirm = async (strategy: "replace" | "accumulate") => {
+    if (!saveModal) return;
+    const { rowsToSave } = saveModal;
     setSaveModal(null);
-    setSaved(true);
+    await doSaveToDb(rowsToSave, strategy === "replace");
   };
 
   const handleToggle = (i: number) =>
@@ -807,9 +924,9 @@ export function ServiciosCargaSection() {
       {step === "manual" && (
         <ManualEntryStep
           rows={manualRows}
-          onAdd={(r)    => setManual(prev => [...prev, { ...r, id: uid() }])}
-          onAddBulk={(rs) => setManual(prev => [...prev, ...rs.map(r => ({ ...r, id: uid() }))])}
-          onDelete={(id) => setManual(prev => prev.filter(r => r.id !== id))}
+          onAdd={handleAdd}
+          onAddBulk={handleAddBulk}
+          onDelete={handleDeleteRow}
           onGenerate={handleGenerate}
           onBack={() => setStep("upload")}
           generating={generating}
@@ -830,7 +947,7 @@ export function ServiciosCargaSection() {
         </div>
       )}
 
-      {/* ══ MODAL: duplicate confirmation ══ */}
+      {/* ══ MODAL: replace / accumulate ══ */}
       {saveModal && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5 animate-in zoom-in-95 duration-200">
@@ -839,49 +956,43 @@ export function ServiciosCargaSection() {
                 <AlertTriangle className="w-5 h-5 text-warning" />
               </div>
               <div>
-                <h3 className="text-base font-semibold text-foreground">Filas duplicadas encontradas</h3>
+                <h3 className="text-base font-semibold text-foreground">Ya existen registros en seguimiento</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Se comparan por <span className="text-foreground font-medium">OP + LÍNEA + MATRÍCULA</span>
+                  Hay <span className="text-foreground font-medium">{saveModal.existingCount}</span> registros en la base de datos.
                 </p>
               </div>
             </div>
 
             <div className="flex gap-3">
-              <div className="flex-1 bg-destructive/8 border border-destructive/20 rounded-xl px-4 py-3 text-center">
-                <p className="text-2xl font-bold text-destructive">{saveModal.dupes.length}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">ya existen</p>
+              <div className="flex-1 bg-secondary border border-border rounded-xl px-4 py-3 text-center">
+                <p className="text-2xl font-bold text-foreground">{saveModal.existingCount}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">existentes</p>
               </div>
-              <div className="flex-1 bg-success/8 border border-success/20 rounded-xl px-4 py-3 text-center">
-                <p className="text-2xl font-bold text-success">{saveModal.fresh.length}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">nuevas</p>
+              <div className="flex-1 bg-accent/8 border border-accent/20 rounded-xl px-4 py-3 text-center">
+                <p className="text-2xl font-bold text-accent">{saveModal.rowsToSave.length}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">a guardar</p>
               </div>
             </div>
 
-            <p className="text-sm text-muted-foreground">¿Qué querés hacer con las <strong className="text-foreground">{saveModal.dupes.length}</strong> filas duplicadas?</p>
-
             <div className="space-y-2">
-              <button onClick={() => handleSaveConfirm("overwrite")}
+              <button onClick={() => handleSaveConfirm("replace")}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-secondary hover:bg-secondary/80 border border-border text-sm font-medium text-foreground transition-all text-left">
-                <div className="w-7 h-7 rounded-lg bg-warning/15 flex items-center justify-center shrink-0">
-                  <AlertTriangle className="w-3.5 h-3.5 text-warning" />
+                <div className="w-7 h-7 rounded-lg bg-destructive/15 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-3.5 h-3.5 text-destructive" />
                 </div>
                 <div>
-                  <p className="font-semibold">Sobreescribir</p>
-                  <p className="text-xs text-muted-foreground font-normal">Reemplaza las {saveModal.dupes.length} existentes y agrega las {saveModal.fresh.length} nuevas</p>
+                  <p className="font-semibold">Reemplazar todo</p>
+                  <p className="text-xs text-muted-foreground font-normal">Borra los {saveModal.existingCount} registros existentes e inserta los {saveModal.rowsToSave.length} nuevos</p>
                 </div>
               </button>
-              <button onClick={() => handleSaveConfirm("skip")}
+              <button onClick={() => handleSaveConfirm("accumulate")}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-secondary hover:bg-secondary/80 border border-border text-sm font-medium text-foreground transition-all text-left">
                 <div className="w-7 h-7 rounded-lg bg-success/15 flex items-center justify-center shrink-0">
                   <CheckCircle2 className="w-3.5 h-3.5 text-success" />
                 </div>
                 <div>
-                  <p className="font-semibold">Omitir repetidas</p>
-                  <p className="text-xs text-muted-foreground font-normal">
-                    {saveModal.fresh.length > 0
-                      ? `Solo agrega las ${saveModal.fresh.length} filas nuevas`
-                      : "No se guardará ninguna fila (todas ya existen)"}
-                  </p>
+                  <p className="font-semibold">Acumular</p>
+                  <p className="text-xs text-muted-foreground font-normal">Agrega los {saveModal.rowsToSave.length} registros a los {saveModal.existingCount} existentes</p>
                 </div>
               </button>
             </div>
@@ -915,10 +1026,10 @@ export function ServiciosCargaSection() {
                   Guardado en Base de datos
                 </div>
               ) : (
-                <button onClick={handleSaveToDb} disabled={selected.size === 0}
+                <button onClick={handleSaveToDb} disabled={selected.size === 0 || saving}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-all border border-border disabled:opacity-40 disabled:cursor-not-allowed">
-                  <Database className="w-4 h-4" />
-                  {selected.size > 0
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
+                  {saving ? "Guardando..." : selected.size > 0
                     ? `Guardar ${selected.size} fila${selected.size !== 1 ? "s" : ""}`
                     : "Guardar seleccionadas"}
                 </button>
