@@ -690,21 +690,22 @@ export function ServiciosCargaSection() {
   const [selected, setSelected]   = useState<Set<number>>(new Set());
   const [saveModal, setSaveModal] = useState<{ existingCount: number; rowsToSave: ResultRow[] } | null>(null);
 
-  // ── Load saved manual rows from Supabase on mount
+  // ── Load draft rows (manual input not yet processed) from seguimiento on mount
   useEffect(() => {
     (async () => {
       const { data, error: err } = await supabase
-        .from("filas_manuales")
-        .select("*")
+        .from("seguimiento")
+        .select("id, op, op_madre, linea, matricula")
+        .is("estado_de_plazo", null)
         .order("created_at", { ascending: true });
       if (err) { toast.error(`Error al cargar filas guardadas: ${err.message}`); return; }
       if (data && data.length > 0) {
         setManual(data.map(r => ({
           id:        r.id as string,
-          op:        String(r.op),
-          opMadre:   String(r.op_madre),
-          linea:     String(r.linea),
-          matricula: r.matricula as string,
+          op:        String(r.op ?? ""),
+          opMadre:   String(r.op_madre ?? ""),
+          linea:     String(r.linea ?? ""),
+          matricula: String(r.matricula ?? ""),
         })));
       }
     })();
@@ -796,11 +797,11 @@ export function ServiciosCargaSection() {
     }
   };
 
-  // ── Manual row handlers (Supabase-backed)
+  // ── Manual row handlers — stored as draft rows in seguimiento (estado_de_plazo = null)
   const handleAdd = async (r: Omit<ManualRow, "id">) => {
     const { data, error: err } = await supabase
-      .from("filas_manuales")
-      .insert({ op: parseInt(r.op), op_madre: parseInt(r.opMadre), linea: parseInt(r.linea), matricula: r.matricula })
+      .from("seguimiento")
+      .insert({ op: r.op, op_madre: r.opMadre, linea: r.linea, matricula: r.matricula })
       .select("id")
       .single();
     if (err) { toast.error(`Error al guardar fila: ${err.message}`); throw err; }
@@ -809,8 +810,8 @@ export function ServiciosCargaSection() {
 
   const handleAddBulk = async (rs: Omit<ManualRow, "id">[]) => {
     const { data, error: err } = await supabase
-      .from("filas_manuales")
-      .insert(rs.map(r => ({ op: parseInt(r.op), op_madre: parseInt(r.opMadre), linea: parseInt(r.linea), matricula: r.matricula })))
+      .from("seguimiento")
+      .insert(rs.map(r => ({ op: r.op, op_madre: r.opMadre, linea: r.linea, matricula: r.matricula })))
       .select("id");
     if (err) { toast.error(`Error al guardar filas: ${err.message}`); throw err; }
     const withIds = rs.map((r, i) => ({ ...r, id: (data as { id: string }[])[i].id }));
@@ -819,7 +820,7 @@ export function ServiciosCargaSection() {
 
   const handleDeleteRow = (id: string) => {
     setManual(prev => prev.filter(r => r.id !== id));
-    supabase.from("filas_manuales").delete().eq("id", id)
+    supabase.from("seguimiento").delete().eq("id", id)
       .then(({ error: err }) => { if (err) toast.error(`Error al eliminar fila: ${err.message}`); });
   };
 
@@ -828,8 +829,16 @@ export function ServiciosCargaSection() {
     setSaving(true);
     try {
       if (deleteFirst) {
+        // Replace all: delete every row (drafts + processed)
         const { error: delErr } = await supabase.from("seguimiento").delete().not("id", "is", null);
         if (delErr) { toast.error(`Error al limpiar seguimiento: ${delErr.message}`); return; }
+      } else {
+        // Accumulate: delete only the draft rows so they get replaced by their processed versions
+        const draftIds = manualRows.map(r => r.id).filter(Boolean);
+        if (draftIds.length > 0) {
+          const { error: delErr } = await supabase.from("seguimiento").delete().in("id", draftIds);
+          if (delErr) { toast.error(`Error al eliminar borradores: ${delErr.message}`); return; }
+        }
       }
       const dbRows = rows.map(({ _errors: _e, ...row }) => toDbRow(row));
       const { error: insErr } = await supabase.from("seguimiento").insert(dbRows);
@@ -843,9 +852,11 @@ export function ServiciosCargaSection() {
 
   const handleSaveToDb = async () => {
     const rowsToSave = result.filter((_, i) => selected.has(i));
+    // Count only processed rows (not drafts) to decide whether to show replace/accumulate dialog
     const { count, error: countErr } = await supabase
       .from("seguimiento")
-      .select("*", { count: "exact", head: true });
+      .select("*", { count: "exact", head: true })
+      .not("estado_de_plazo", "is", null);
     if (countErr) { toast.error(`Error: ${countErr.message}`); return; }
     if ((count ?? 0) > 0) {
       setSaveModal({ existingCount: count!, rowsToSave });
