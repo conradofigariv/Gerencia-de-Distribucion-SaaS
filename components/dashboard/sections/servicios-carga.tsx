@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { dbGet, dbAppend, dbOverwriteByKey } from "@/lib/db";
 import {
@@ -830,7 +831,7 @@ export function ServiciosCargaSection() {
       )}
 
       {/* ══ MODAL: duplicate confirmation ══ */}
-      {saveModal && (
+      {saveModal && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5 animate-in zoom-in-95 duration-200">
             <div className="flex items-start gap-3">
@@ -890,7 +891,8 @@ export function ServiciosCargaSection() {
               Cancelar
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ══ STEP: result ══ */}
