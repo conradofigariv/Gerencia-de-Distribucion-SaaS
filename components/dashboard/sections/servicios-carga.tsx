@@ -772,20 +772,20 @@ export function ServiciosCargaSection() {
       if (qwRows.length  === 0) throw new Error("El archivo QW no tiene datos.");
       if (matRows.length === 0) throw new Error("El archivo MATRICULAS no tiene datos.");
 
-      // ── Upsert MATRICULAS (insert new, ignore existing)
+      // ── Upsert MATRICULAS (insert new, update existing)
       const matForDb = matRows
         .map(r => ({
-          articulo:      str(r["Artículo"]        ?? r["ARTICULO"]      ?? r["articulo"]),
-          descripcion:   str(r["Descripción"]     ?? r["DESCRIPCION"]   ?? r["descripcion"]),
-          unidad_medida: str(r["Unidad de medida"] ?? r["UM"]           ?? r["Unidad"]),
-          estado:        str(r["Estado"]           ?? r["ESTADO"]       ?? ""),
-          mat_serv:      str(r["Mat./serv."]       ?? r["MAT_SERV"]     ?? r["Mat/Serv"] ?? ""),
+          articulo:      str(r["Artículo"]        ?? r["ARTICULO"]       ?? r["articulo"]       ?? r["Artículo SAP"] ?? r["Material"]),
+          descripcion:   str(r["Descripción"]     ?? r["DESCRIPCION"]    ?? r["descripcion"]    ?? r["Texto breve"]),
+          unidad_medida: str(r["Unidad de medida"] ?? r["UM"]            ?? r["Unidad"]         ?? r["UdM"]         ?? r["Unid.med."] ?? r["Unid. medida"] ?? r["UMB"]),
+          estado:        str(r["Estado"]           ?? r["ESTADO"]        ?? r["Status"]         ?? r["Ce.ben."]     ?? r["Estado art."] ?? ""),
+          mat_serv:      str(r["Mat./serv."]       ?? r["MAT_SERV"]      ?? r["Mat/Serv"]       ?? r["Tipo"]        ?? ""),
         }))
         .filter(r => r.articulo);
       if (matForDb.length > 0) {
         const { error: upsErr } = await supabase
           .from("matriculas")
-          .upsert(matForDb, { onConflict: "articulo", ignoreDuplicates: true });
+          .upsert(matForDb, { onConflict: "articulo", ignoreDuplicates: false });
         if (upsErr) toast.error(`Error al sincronizar matrículas: ${upsErr.message}`);
         else toast.success(`${matForDb.length} matrículas sincronizadas`);
       }
