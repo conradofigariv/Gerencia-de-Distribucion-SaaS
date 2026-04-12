@@ -206,15 +206,6 @@ export function ServiciosTablaSection() {
             </button>
           )}
         </div>
-        {rows.length > 0 && (
-          <button
-            onClick={handleClear}
-            className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm text-destructive hover:bg-destructive/10 border border-destructive/30 transition-all"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Limpiar todo
-          </button>
-        )}
       </div>
 
       {/* Empty state */}
