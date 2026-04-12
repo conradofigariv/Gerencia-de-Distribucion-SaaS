@@ -262,6 +262,11 @@ export function ServiciosPlanillasSection() {
         return;
       }
 
+      // Log all column headers so we can identify exact names
+      const headers = Object.keys(rows[0]);
+      console.log("[MATRICULAS] Columnas detectadas:", headers);
+      toast.info(`Columnas detectadas: ${headers.join(" · ")}`, { duration: 15000 });
+
       const mapped = rows
         .map(r => ({
           articulo:      str(r["Artículo"]        ?? r["ARTICULO"]      ?? r["articulo"]      ?? r["Artículo SAP"] ?? r["Material"]),
