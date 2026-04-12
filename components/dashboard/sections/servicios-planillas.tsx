@@ -262,17 +262,12 @@ export function ServiciosPlanillasSection() {
         return;
       }
 
-      // Log all column headers so we can identify exact names
-      const headers = Object.keys(rows[0]);
-      console.log("[MATRICULAS] Columnas detectadas:", headers);
-      toast.info(`Columnas detectadas: ${headers.join(" · ")}`, { duration: 15000 });
-
       const mapped = rows
         .map(r => ({
           articulo:      str(r["Artículo"]        ?? r["ARTICULO"]      ?? r["articulo"]      ?? r["Artículo SAP"] ?? r["Material"]),
           descripcion:   str(r["Descripción"]     ?? r["DESCRIPCION"]   ?? r["descripcion"]   ?? r["Texto breve"]),
-          unidad_medida: str(r["Unidad de medida"] ?? r["UM"]           ?? r["Unidad"]        ?? r["UdM"]         ?? r["Unid.med."] ?? r["Unid. medida"] ?? r["UMB"]),
-          estado:        str(r["Estado"]           ?? r["ESTADO"]       ?? r["Status"]        ?? r["Ce.ben."]     ?? r["Estado art."] ?? ""),
+          unidad_medida: str(r["Unidad Medida Primaria"] ?? r["Unidad de medida"] ?? r["UM"] ?? r["Unidad"] ?? r["UdM"] ?? r["Unid.med."] ?? r["Unid. medida"] ?? r["UMB"]),
+          estado:        str(r["Estado Artículo"]  ?? r["Estado art."]  ?? r["Estado"]       ?? r["ESTADO"]      ?? r["Status"]      ?? r["Ce.ben."] ?? ""),
           mat_serv:      str(r["Mat./serv."]       ?? r["MAT_SERV"]     ?? r["Mat/Serv"]      ?? r["Tipo"]        ?? ""),
         }))
         .filter(r => r.articulo);
