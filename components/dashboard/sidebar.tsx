@@ -48,16 +48,16 @@ type NavGroup = {
 type NavItemDef = NavLink | NavGroup;
 
 const navItems: NavItemDef[] = [
+  { kind: "link", id: "servicios-planillas", label: "Carga de datos", icon: Layers },
   {
     kind: "group",
     id: "servicios",
     label: "Control de servicios",
     icon: Server,
     children: [
-      { id: "servicios-resumen",    label: "Resumen",      icon: LayoutGrid },
-      { id: "servicios-tabla",      label: "Base de datos", icon: Table2 },
-      { id: "servicios-planillas",  label: "Planillas",     icon: Layers },
-      { id: "servicios-carga",      label: "Carga de datos", icon: UploadCloud },
+      { id: "servicios-resumen", label: "Resumen",             icon: LayoutGrid },
+      { id: "servicios-tabla",   label: "Lista de seguimiento", icon: Table2 },
+      { id: "servicios-carga",   label: "Crear seguimiento",    icon: UploadCloud },
     ],
   },
   { kind: "link", id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -73,7 +73,6 @@ const navItems: NavItemDef[] = [
 const SERVICIOS_SECTIONS: Section[] = [
   "servicios-resumen",
   "servicios-tabla",
-  "servicios-planillas",
   "servicios-carga",
 ];
 

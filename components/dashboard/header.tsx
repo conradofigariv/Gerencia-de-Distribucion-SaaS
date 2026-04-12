@@ -19,9 +19,9 @@ const sectionTitles: Record<Section, string> = {
   reports: "Reports",
   settings: "Settings",
   "servicios-resumen":   "Control de servicios — Resumen",
-  "servicios-tabla":     "Control de servicios — Base de datos",
-  "servicios-planillas": "Control de servicios — Planillas",
-  "servicios-carga":     "Control de servicios — Carga de datos",
+  "servicios-tabla":     "Control de servicios — Lista de seguimiento",
+  "servicios-planillas": "Carga de datos",
+  "servicios-carga":     "Control de servicios — Crear seguimiento",
 };
 
 export function Header({ activeSection }: HeaderProps) {
