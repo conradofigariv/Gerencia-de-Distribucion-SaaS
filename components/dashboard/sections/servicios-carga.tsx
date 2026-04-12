@@ -62,8 +62,7 @@ interface SeguimientoRow {
 }
 
 interface ResultRow extends SeguimientoRow {
-  _errors:   string[];
-  _rawDates: { fechaCreac: Date | null; fechaPact: Date | null; fechaActual: Date };
+  _errors: string[];
 }
 
 const COLUMNS: (keyof SeguimientoRow)[] = [
@@ -91,13 +90,17 @@ const toDate = (v: unknown): Date | null => {
   if (typeof v === "string" && v.trim()) { const d = new Date(v); return isNaN(d.getTime()) ? null : d; }
   return null;
 };
-// Always produces "DD/MM/YYYY" regardless of locale/environment
-const fmtDate = (d: Date | null): string => {
-  if (!d) return "";
-  const dd   = String(d.getDate()).padStart(2, "0");
-  const mm   = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+// Produce "YYYY-MM-DD" para almacenar (ISO, compatible con Supabase/PostgreSQL)
+const isoDate = (d: Date | null): string => {
+  if (!d || isNaN(d.getTime())) return "";
+  return d.toISOString().split("T")[0]; // "YYYY-MM-DD"
+};
+
+// Solo para mostrar en la tabla de preview ("DD/MM/YYYY")
+const displayDate = (iso: string): string => {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
 };
 
 // Converts "DD/MM/YYYY" → "YYYY-MM-DD" for Supabase/PostgreSQL
@@ -148,7 +151,7 @@ const buildSeguimiento = (
   { opMap, qwMap, matMap }: LookupMaps
 ): ResultRow[] => {
   const today    = new Date();
-  const todayStr = fmtDate(today);
+  const todayIso = isoDate(today);
 
   return manualRows.map(mrow => {
     const opKey  = norm(mrow.op)      + norm(mrow.linea);
@@ -180,8 +183,7 @@ const buildSeguimiento = (
     const disponib = consMes  === 0 ? 0 : saldoLinea / consMes;
 
     return {
-      _errors:   errors,
-      _rawDates: { fechaCreac, fechaPact, fechaActual: today },
+      _errors: errors,
       ZONA:                         "",
       OP:                           mrow.op,
       "OP MADRE":                   mrow.opMadre,
@@ -193,8 +195,8 @@ const buildSeguimiento = (
       CANTIDAD:                     cantidad,
       "CANTIDAD RECIBIDA":          cantRecib,
       "SALDO DE LINEA":             parseFloat(saldoLinea.toFixed(4)),
-      "FECHA DE CREACION":          fmtDate(fechaCreac),
-      "FECHA PACTADA":              fmtDate(fechaPact),
+      "FECHA DE CREACION":          isoDate(fechaCreac),   // YYYY-MM-DD
+      "FECHA PACTADA":              isoDate(fechaPact),    // YYYY-MM-DD
       PROVEEDOR:                    opRow  ? str(opRow["Proveedor"])                : "",
       "FECHA REDETERMINACIÓN":      "",
       "PRECIO REDETERMINACIÓN":     qwRow  ? num(qwRow["OC_PRECIO_UNITARIO"])       : "",
@@ -204,7 +206,7 @@ const buildSeguimiento = (
       REVISION:                     revision,
       OBSERVACION:                  "",
       "DISPONIBILIDAD EN MESES":    parseFloat(disponib.toFixed(2)),
-      "FECHA ACTUAL":               todayStr,
+      "FECHA ACTUAL":               todayIso,              // YYYY-MM-DD
       CANTIDAD2:                    dias,
       "CANTIDAD DE MESES":          parseFloat(meses.toFixed(2)),
       "CANTIDAD CONSUMIDA POR MES": parseFloat(consMes.toFixed(4)),
@@ -214,14 +216,8 @@ const buildSeguimiento = (
 
 // ─── DB helpers ──────────────────────────────────────────────────────────────
 
-// Convert a Date directly to YYYY-MM-DD — no string parsing, no locale issues
-const isoDate = (d: Date | null | undefined): string | null => {
-  if (!d || isNaN(d.getTime())) return null;
-  const yyyy = d.getFullYear();
-  const mm   = String(d.getMonth() + 1).padStart(2, "0");
-  const dd   = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-};
+// Dates in SeguimientoRow are already YYYY-MM-DD — send "" as null
+const dbDate = (s: string): string | null => s || null;
 
 const toDbRow = (row: ResultRow) => ({
   op:                       row.OP,
@@ -234,8 +230,8 @@ const toDbRow = (row: ResultRow) => ({
   cantidad:                 row.CANTIDAD,
   cantidad_recibida:        row["CANTIDAD RECIBIDA"],
   saldo_de_linea:           row["SALDO DE LINEA"],
-  fecha_de_creacion:        isoDate(row._rawDates.fechaCreac),
-  fecha_pactada:            isoDate(row._rawDates.fechaPact),
+  fecha_de_creacion:        dbDate(row["FECHA DE CREACION"]),
+  fecha_pactada:            dbDate(row["FECHA PACTADA"]),
   proveedor:                row.PROVEEDOR,
   fecha_redeterminacion:    null,
   precio_redeterminacion:   row["PRECIO REDETERMINACIÓN"]  || null,
@@ -245,7 +241,7 @@ const toDbRow = (row: ResultRow) => ({
   revision:                 row.REVISION,
   observacion:              row.OBSERVACION,
   disponibilidad_en_meses:  row["DISPONIBILIDAD EN MESES"],
-  fecha_actual:             isoDate(row._rawDates.fechaActual),
+  fecha_actual:             dbDate(row["FECHA ACTUAL"]),
   cantidad2:                row.CANTIDAD2,
   cantidad_de_meses:        row["CANTIDAD DE MESES"],
   cantidad_consumida_por_mes: row["CANTIDAD CONSUMIDA POR MES"],
@@ -647,7 +643,12 @@ function ResultTable({ rows, selected, onToggle, onToggleAll }: {
                     <td className="py-2 px-3 text-muted-foreground">{globalIdx + 1}</td>
                     {COLUMNS.map(c => {
                       const val = row[c];
-                      const display = typeof val === "number" ? val.toLocaleString("es-AR") : String(val ?? "");
+                      const isDateCol = c === "FECHA DE CREACION" || c === "FECHA PACTADA" || c === "FECHA ACTUAL" || c === "FECHA REDETERMINACIÓN";
+                      const display = typeof val === "number"
+                        ? val.toLocaleString("es-AR")
+                        : isDateCol
+                        ? displayDate(String(val ?? ""))
+                        : String(val ?? "");
                       const isStatus = c === "ESTADO DE PLAZO" || c === "REVISION" || c === "ESTADO DE CANTIDADES";
                       return (
                         <td key={c} className="py-2 px-3 whitespace-nowrap max-w-[180px] truncate" title={display}>
