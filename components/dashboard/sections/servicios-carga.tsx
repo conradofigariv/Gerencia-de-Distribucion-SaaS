@@ -1,22 +1,19 @@
 "use client";
 
-import React, { useState, useRef, useCallback, useMemo, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import {
-  UploadCloud, FileSpreadsheet, X, Loader2,
+  Loader2,
   ChevronLeft, ChevronRight, Download, AlertCircle, AlertTriangle,
   Plus, Trash2, ChevronRight as Arrow, Database, CheckCircle2,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type Role = "OP" | "QW" | "MATRICULAS";
-type Step = "upload" | "manual" | "processing" | "result" | "error";
-
-interface FileSlot { file: File; role: Role | ""; }
+type Step = "manual" | "result" | "error";
 
 interface ManualRow {
   id:        string;
@@ -103,34 +100,6 @@ const displayDate = (iso: string): string => {
   return `${d}/${m}/${y}`;
 };
 
-// Converts "DD/MM/YYYY" → "YYYY-MM-DD" for Supabase/PostgreSQL
-const argDateToIso = (s: string | null | undefined): string | null => {
-  if (!s) return null;
-  // Accept DD/MM/YYYY or DD-MM-YYYY separators
-  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (!m) return null;
-  const dd = m[1].padStart(2, "0");
-  const mm = m[2].padStart(2, "0");
-  return `${m[3]}-${mm}-${dd}`;
-};
-
-const parseFile = async (file: File): Promise<Record<string, unknown>[]> => {
-  const XLSX = await import("xlsx");
-  const buf  = await file.arrayBuffer();
-  const wb   = XLSX.read(buf, { type: "array", cellDates: true });
-  const ws   = wb.Sheets[wb.SheetNames[0]];
-  const raw  = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null, raw: true });
-  if (raw.length < 2) return [];
-  const hdrs = (raw[1] as unknown[]).map(h => str(h));
-  return raw.slice(2)
-    .filter(row => (row as unknown[]).some(c => c != null && c !== ""))
-    .map(row => {
-      const arr = row as unknown[];
-      const obj: Record<string, unknown> = {};
-      hdrs.forEach((h, i) => { if (h) obj[h] = arr[i] ?? null; });
-      return obj;
-    });
-};
 
 const buildMaps = (
   opRows: Record<string, unknown>[],
@@ -247,82 +216,13 @@ const toDbRow = (row: ResultRow) => ({
   cantidad_consumida_por_mes: row["CANTIDAD CONSUMIDA POR MES"],
 });
 
-// ─── FileSlotCard ─────────────────────────────────────────────────────────────
-
-const ROLE_LABELS: Record<Role, string> = {
-  OP:         "OP — Órdenes de compra",
-  QW:         "QW — Expedientes / SCs",
-  MATRICULAS: "MATRICULAS — Catálogo",
-};
-
-function FileSlotCard({
-  idx, slot, takenRoles, loading, onFile, onRole, onClear,
-}: {
-  idx: number; slot: FileSlot | null; takenRoles: Role[];
-  loading: boolean; onFile: (f: File) => void;
-  onRole: (r: Role | "") => void; onClear: () => void;
-}) {
-  const [drag, setDrag] = useState(false);
-  const ref = useRef<HTMLInputElement>(null);
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault(); setDrag(false);
-    const f = e.dataTransfer.files[0]; if (f) onFile(f);
-  }, [onFile]);
-
-  return (
-    <div className="flex-1 min-w-0 bg-card border border-border rounded-xl p-4 space-y-3">
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Archivo {idx + 1}</p>
-      <div
-        onClick={() => !slot && !loading && ref.current?.click()}
-        onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={handleDrop}
-        className={cn(
-          "border-2 border-dashed rounded-lg p-4 text-center transition-all duration-200",
-          slot ? "border-accent/40 bg-accent/8 cursor-default"
-          : drag ? "border-accent bg-accent/8 cursor-pointer"
-          : "border-border hover:border-muted-foreground/40 hover:bg-secondary/20 cursor-pointer"
-        )}
-      >
-        {loading ? <Loader2 className="w-5 h-5 text-accent animate-spin mx-auto" />
-        : slot ? (
-          <div className="flex items-center gap-2">
-            <FileSpreadsheet className="w-4 h-4 text-accent shrink-0" />
-            <span className="text-xs font-medium text-foreground truncate flex-1">{slot.file.name}</span>
-            <button onClick={(e) => { e.stopPropagation(); onClear(); }}
-              className="w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-all shrink-0">
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-        ) : (
-          <>
-            <UploadCloud className="w-5 h-5 text-muted-foreground mx-auto mb-1" />
-            <p className="text-xs text-muted-foreground">Arrastrá o <span className="text-foreground font-medium">seleccioná</span></p>
-          </>
-        )}
-      </div>
-      <input ref={ref} type="file" accept=".xlsx,.xls" className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
-      {slot && (
-        <select value={slot.role} onChange={(e) => onRole(e.target.value as Role | "")}
-          className="w-full h-8 px-2 rounded-lg bg-secondary border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all cursor-pointer">
-          <option value="">— Asignar tipo —</option>
-          {(["OP", "QW", "MATRICULAS"] as Role[]).map(r => (
-            <option key={r} value={r} disabled={takenRoles.includes(r) && slot.role !== r}>{ROLE_LABELS[r]}</option>
-          ))}
-        </select>
-      )}
-    </div>
-  );
-}
-
 // ─── ManualEntry step ─────────────────────────────────────────────────────────
 
 const EMPTY_FORM = { op: "", opMadre: "", linea: "1", matricula: "" };
 const splitCol   = (t: string) => t.split(/\r?\n/).map(v => v.trim()).filter(v => v !== "");
 
 function ManualEntryStep({
-  rows, onAdd, onAddBulk, onDelete, onGenerate, onBack, generating,
+  rows, onAdd, onAddBulk, onDelete, onGenerate, onBack, generating, mapsReady,
 }: {
   rows: ManualRow[];
   onAdd: (r: Omit<ManualRow, "id">) => Promise<void>;
@@ -331,6 +231,7 @@ function ManualEntryStep({
   onGenerate: () => void;
   onBack: () => void;
   generating: boolean;
+  mapsReady: boolean;
 }) {
   const [mode, setMode]       = useState<"single" | "bulk">("single");
   const [form, setForm]       = useState(EMPTY_FORM);
@@ -431,12 +332,9 @@ function ManualEntryStep({
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-3">
-        <button onClick={onBack} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-          <ChevronLeft className="w-3.5 h-3.5" />Volver
-        </button>
         <div>
-          <h3 className="text-sm font-semibold text-foreground">Paso 2 — Ingreso de datos</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Cada fila será buscada en los archivos cargados</p>
+          <h3 className="text-sm font-semibold text-foreground">Ingreso de datos</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Cada fila será buscada en las planillas guardadas en Supabase</p>
         </div>
         {/* Mode toggle */}
         <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 ml-auto">
@@ -570,7 +468,7 @@ function ManualEntryStep({
 
       {/* Generate button */}
       <div className="flex justify-end">
-        <button onClick={onGenerate} disabled={rows.length === 0 || generating}
+        <button onClick={onGenerate} disabled={rows.length === 0 || generating || !mapsReady}
           className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
           {generating
             ? <><Loader2 className="w-4 h-4 animate-spin" />Procesando...</>
@@ -705,10 +603,10 @@ function ResultTable({ rows, selected, onToggle, onToggleAll }: {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export function ServiciosCargaSection() {
-  const [slots, setSlots]         = useState<(FileSlot | null)[]>([null, null, null]);
-  const [loadingSlot, setLoadingS] = useState<boolean[]>([false, false, false]);
-  const [step, setStep]           = useState<Step>("upload");
+  const [step, setStep]           = useState<Step>("manual");
   const [maps, setMaps]           = useState<LookupMaps | null>(null);
+  const [planillasLoading, setPlanLoad]   = useState(true);
+  const [planillasStatus, setPlanStatus] = useState({ op: 0, qw: 0, mat: 0 });
   const [manualRows, setManual]   = useState<ManualRow[]>([]);
   const [result, setResult]       = useState<ResultRow[]>([]);
   const [error, setError]         = useState("");
@@ -718,6 +616,37 @@ export function ServiciosCargaSection() {
   const [saving, setSaving]       = useState(false);
   const [selected, setSelected]   = useState<Set<number>>(new Set());
   const [saveModal, setSaveModal] = useState<{ existingCount: number; rowsToSave: ResultRow[] } | null>(null);
+
+  // ── Load planillas from Supabase and build lookup maps
+  useEffect(() => {
+    (async () => {
+      setPlanLoad(true);
+      try {
+        const [opRes, qwRes, matRes] = await Promise.all([
+          supabase.from("planillas_op").select("data"),
+          supabase.from("planillas_qw").select("data"),
+          supabase.from("matriculas").select("articulo, descripcion, unidad_medida, estado, mat_serv"),
+        ]);
+        const opRows  = (opRes.data  ?? []).map(r => r.data as Record<string, unknown>);
+        const qwRows  = (qwRes.data  ?? []).map(r => r.data as Record<string, unknown>);
+        const matRows = (matRes.data ?? []).map(r => ({
+          "Artículo":         r.articulo,
+          "Descripción":      r.descripcion,
+          "Unidad de medida": r.unidad_medida,
+          "Estado":           r.estado,
+          "Mat./serv.":       r.mat_serv,
+        }));
+        setPlanStatus({ op: opRows.length, qw: qwRows.length, mat: matRows.length });
+        if (opRows.length > 0 && qwRows.length > 0 && matRows.length > 0) {
+          setMaps(buildMaps(opRows, qwRows, matRows));
+        }
+      } catch (e) {
+        toast.error(`Error al cargar planillas: ${e instanceof Error ? e.message : "Error"}`);
+      }
+      setPlanLoad(false);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Load draft rows (manual input not yet processed) from seguimiento on mount
   useEffect(() => {
@@ -740,65 +669,6 @@ export function ServiciosCargaSection() {
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const takenRoles = useMemo(
-    () => slots.filter(Boolean).map(s => s!.role).filter(Boolean) as Role[],
-    [slots]
-  );
-  const allReady = useMemo(() => {
-    const r = new Set(takenRoles);
-    return r.has("OP") && r.has("QW") && r.has("MATRICULAS");
-  }, [takenRoles]);
-
-  const updSlot = (idx: number, u: Partial<FileSlot> | null) =>
-    setSlots(prev => { const n = [...prev]; n[idx] = u === null ? null : { ...n[idx]!, ...u }; return n; });
-
-  const handleFile = useCallback((idx: number, file: File) => {
-    updSlot(idx, { file, role: "" });
-  }, []);
-
-  // Parse files and advance to manual step
-  const handleContinue = async () => {
-    setGen(true);
-    setError("");
-    try {
-      const get = (role: Role) => slots.find(s => s?.role === role)!;
-      const [opRows, qwRows, matRows] = await Promise.all([
-        parseFile(get("OP").file),
-        parseFile(get("QW").file),
-        parseFile(get("MATRICULAS").file),
-      ]);
-      if (opRows.length  === 0) throw new Error("El archivo OP no tiene datos (verificá que los headers estén en fila 2).");
-      if (qwRows.length  === 0) throw new Error("El archivo QW no tiene datos.");
-      if (matRows.length === 0) throw new Error("El archivo MATRICULAS no tiene datos.");
-
-      // ── Upsert MATRICULAS (insert new, update existing)
-      const matForDb = matRows
-        .map(r => ({
-          articulo:      str(r["Artículo"]        ?? r["ARTICULO"]       ?? r["articulo"]       ?? r["Artículo SAP"] ?? r["Material"]),
-          descripcion:   str(r["Descripción"]     ?? r["DESCRIPCION"]    ?? r["descripcion"]    ?? r["Texto breve"]),
-          unidad_medida: str(r["Unidad de medida"] ?? r["UM"]            ?? r["Unidad"]         ?? r["UdM"]         ?? r["Unid.med."] ?? r["Unid. medida"] ?? r["UMB"]),
-          estado:        str(r["Estado"]           ?? r["ESTADO"]        ?? r["Status"]         ?? r["Ce.ben."]     ?? r["Estado art."] ?? ""),
-          mat_serv:      str(r["Mat./serv."]       ?? r["MAT_SERV"]      ?? r["Mat/Serv"]       ?? r["Tipo"]        ?? ""),
-        }))
-        .filter(r => r.articulo);
-      if (matForDb.length > 0) {
-        const { error: upsErr } = await supabase
-          .from("matriculas")
-          .upsert(matForDb, { onConflict: "articulo", ignoreDuplicates: false });
-        if (upsErr) toast.error(`Error al sincronizar matrículas: ${upsErr.message}`);
-        else toast.success(`${matForDb.length} matrículas sincronizadas`);
-      }
-
-      setMaps(buildMaps(opRows, qwRows, matRows));
-      setStep("manual");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Error desconocido");
-      setStep("error");
-    } finally {
-      setGen(false);
-    }
-  };
 
   const handleGenerate = async () => {
     if (!maps || manualRows.length === 0) return;
@@ -908,10 +778,7 @@ export function ServiciosCargaSection() {
     setSelected(prev => prev.size === result.length ? new Set() : new Set(result.map((_, i) => i)));
 
   const reset = () => {
-    setSlots([null, null, null]);
-    setStep("upload");
-    setMaps(null);
-    setManual([]);
+    setStep("manual");
     setResult([]);
     setError("");
     setSaved(false);
@@ -924,41 +791,37 @@ export function ServiciosCargaSection() {
   return (
     <div className="space-y-6">
 
-      {/* ══ STEP: upload ══ */}
-      {(step === "upload") && (
-        <div className="space-y-5">
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Paso 1 — Cargá los 3 archivos y asigná el tipo</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Headers deben estar en la fila 2 de cada archivo</p>
-          </div>
-          <div className="flex gap-4">
-            {slots.map((slot, idx) => (
-              <FileSlotCard key={idx} idx={idx} slot={slot}
-                takenRoles={takenRoles.filter(r => slots[idx]?.role !== r)}
-                loading={loadingSlot[idx]}
-                onFile={(f) => handleFile(idx, f)}
-                onRole={(r) => updSlot(idx, { role: r })}
-                onClear={() => updSlot(idx, null)} />
-            ))}
-          </div>
-          {!allReady && slots.some(Boolean) && (
-            <div className="flex items-center gap-2 text-xs bg-warning/10 border border-warning/20 rounded-lg px-3 py-2.5">
-              <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />
-              <span className="text-muted-foreground">
-                Falta asignar:{" "}
-                {(["OP","QW","MATRICULAS"] as Role[]).filter(r => !takenRoles.includes(r))
-                  .map(r => <strong key={r} className="text-foreground mx-0.5">{r}</strong>)}
-              </span>
-            </div>
-          )}
-          <div className="flex justify-end">
-            <button onClick={handleContinue} disabled={!allReady || generating}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-              {generating ? <><Loader2 className="w-4 h-4 animate-spin" />Leyendo archivos...</> : <>Continuar <Arrow className="w-4 h-4" /></>}
-            </button>
-          </div>
-        </div>
-      )}
+      {/* ══ Planillas status banner ══ */}
+      <div className={cn(
+        "flex items-center gap-2 text-xs rounded-lg px-3 py-2.5 border",
+        planillasLoading
+          ? "bg-secondary border-border text-muted-foreground"
+          : maps
+          ? "bg-success/8 border-success/20 text-muted-foreground"
+          : "bg-warning/8 border-warning/20 text-muted-foreground"
+      )}>
+        {planillasLoading ? (
+          <><Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />Cargando planillas desde Supabase...</>
+        ) : maps ? (
+          <>
+            <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
+            <span>
+              Planillas listas — OP:{" "}
+              <strong className="text-foreground">{planillasStatus.op.toLocaleString("es-AR")}</strong> filas · QW:{" "}
+              <strong className="text-foreground">{planillasStatus.qw.toLocaleString("es-AR")}</strong> filas · MATRICULAS:{" "}
+              <strong className="text-foreground">{planillasStatus.mat.toLocaleString("es-AR")}</strong> filas
+            </span>
+          </>
+        ) : (
+          <>
+            <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />
+            <span>
+              No hay planillas cargadas — subílas en la sección{" "}
+              <strong className="text-foreground">Planillas</strong> para poder generar seguimientos
+            </span>
+          </>
+        )}
+      </div>
 
       {/* ══ STEP: manual ══ */}
       {step === "manual" && (
@@ -968,8 +831,9 @@ export function ServiciosCargaSection() {
           onAddBulk={handleAddBulk}
           onDelete={handleDeleteRow}
           onGenerate={handleGenerate}
-          onBack={() => setStep("upload")}
+          onBack={() => {}}
           generating={generating}
+          mapsReady={!!maps && !planillasLoading}
         />
       )}
 

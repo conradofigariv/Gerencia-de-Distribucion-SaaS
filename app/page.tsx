@@ -15,6 +15,7 @@ import { SettingsSection } from "@/components/dashboard/sections/settings";
 import { ServiciosResumenSection } from "@/components/dashboard/sections/servicios-resumen";
 import { ServiciosTablaSection } from "@/components/dashboard/sections/servicios-tabla";
 import { ServiciosCargaSection } from "@/components/dashboard/sections/servicios-carga";
+import { ServiciosPlanillasSection } from "@/components/dashboard/sections/servicios-planillas";
 
 export type Section =
   | "overview"
@@ -27,7 +28,8 @@ export type Section =
   | "settings"
   | "servicios-resumen"
   | "servicios-tabla"
-  | "servicios-carga";
+  | "servicios-carga"
+  | "servicios-planillas";
 
 export default function Dashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -79,6 +81,8 @@ export default function Dashboard() {
         return <ServiciosTablaSection />;
       case "servicios-carga":
         return <ServiciosCargaSection />;
+      case "servicios-planillas":
+        return <ServiciosPlanillasSection />;
       default:
         return <OverviewSection />;
     }

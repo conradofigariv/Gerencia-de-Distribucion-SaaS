@@ -18,6 +18,7 @@ import {
   LayoutGrid,
   Table2,
   UploadCloud,
+  Layers,
   ChevronDown,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
@@ -53,9 +54,10 @@ const navItems: NavItemDef[] = [
     label: "Control de servicios",
     icon: Server,
     children: [
-      { id: "servicios-resumen", label: "Resumen", icon: LayoutGrid },
-      { id: "servicios-tabla", label: "Base de datos", icon: Table2 },
-      { id: "servicios-carga", label: "Carga de datos", icon: UploadCloud },
+      { id: "servicios-resumen",    label: "Resumen",      icon: LayoutGrid },
+      { id: "servicios-tabla",      label: "Base de datos", icon: Table2 },
+      { id: "servicios-planillas",  label: "Planillas",     icon: Layers },
+      { id: "servicios-carga",      label: "Carga de datos", icon: UploadCloud },
     ],
   },
   { kind: "link", id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -71,6 +73,7 @@ const navItems: NavItemDef[] = [
 const SERVICIOS_SECTIONS: Section[] = [
   "servicios-resumen",
   "servicios-tabla",
+  "servicios-planillas",
   "servicios-carga",
 ];
 
@@ -230,7 +233,7 @@ export function Sidebar({
               <div
                 className={cn(
                   "overflow-hidden transition-all duration-300 ease-out",
-                  expanded ? "max-h-40 opacity-100 mt-1" : "max-h-0 opacity-0"
+                  expanded ? "max-h-52 opacity-100 mt-1" : "max-h-0 opacity-0"
                 )}
               >
                 <div className="ml-4 pl-3 border-l border-sidebar-border space-y-1">
