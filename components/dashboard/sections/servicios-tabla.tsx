@@ -62,7 +62,6 @@ export function ServiciosTablaSection() {
       if (error) {
         console.error("Supabase error details:", {
           message: error.message,
-          status: error.status,
           code: error.code
         });
         toast.error(`Error al cargar seguimiento: ${error.message}`);

@@ -62,7 +62,8 @@ interface SeguimientoRow {
 }
 
 interface ResultRow extends SeguimientoRow {
-  _errors: string[];
+  _errors:   string[];
+  _rawDates: { fechaCreac: Date | null; fechaPact: Date | null; fechaActual: Date };
 }
 
 const COLUMNS: (keyof SeguimientoRow)[] = [
@@ -179,7 +180,8 @@ const buildSeguimiento = (
     const disponib = consMes  === 0 ? 0 : saldoLinea / consMes;
 
     return {
-      _errors: errors,
+      _errors:   errors,
+      _rawDates: { fechaCreac, fechaPact, fechaActual: today },
       ZONA:                         "",
       OP:                           mrow.op,
       "OP MADRE":                   mrow.opMadre,
@@ -212,7 +214,16 @@ const buildSeguimiento = (
 
 // ─── DB helpers ──────────────────────────────────────────────────────────────
 
-const toDbRow = (row: SeguimientoRow) => ({
+// Convert a Date directly to YYYY-MM-DD — no string parsing, no locale issues
+const isoDate = (d: Date | null | undefined): string | null => {
+  if (!d || isNaN(d.getTime())) return null;
+  const yyyy = d.getFullYear();
+  const mm   = String(d.getMonth() + 1).padStart(2, "0");
+  const dd   = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const toDbRow = (row: ResultRow) => ({
   op:                       row.OP,
   op_madre:                 row["OP MADRE"],
   sc:                       row.SC,
@@ -223,10 +234,10 @@ const toDbRow = (row: SeguimientoRow) => ({
   cantidad:                 row.CANTIDAD,
   cantidad_recibida:        row["CANTIDAD RECIBIDA"],
   saldo_de_linea:           row["SALDO DE LINEA"],
-  fecha_de_creacion:        argDateToIso(row["FECHA DE CREACION"]),
-  fecha_pactada:            argDateToIso(row["FECHA PACTADA"]),
+  fecha_de_creacion:        isoDate(row._rawDates.fechaCreac),
+  fecha_pactada:            isoDate(row._rawDates.fechaPact),
   proveedor:                row.PROVEEDOR,
-  fecha_redeterminacion:    argDateToIso(row["FECHA REDETERMINACIÓN"]),
+  fecha_redeterminacion:    null,
   precio_redeterminacion:   row["PRECIO REDETERMINACIÓN"]  || null,
   estado:                   row.ESTADO,
   estado_de_plazo:          row["ESTADO DE PLAZO"],
@@ -234,7 +245,7 @@ const toDbRow = (row: SeguimientoRow) => ({
   revision:                 row.REVISION,
   observacion:              row.OBSERVACION,
   disponibilidad_en_meses:  row["DISPONIBILIDAD EN MESES"],
-  fecha_actual:             argDateToIso(row["FECHA ACTUAL"]),
+  fecha_actual:             isoDate(row._rawDates.fechaActual),
   cantidad2:                row.CANTIDAD2,
   cantidad_de_meses:        row["CANTIDAD DE MESES"],
   cantidad_consumida_por_mes: row["CANTIDAD CONSUMIDA POR MES"],
@@ -857,7 +868,7 @@ export function ServiciosCargaSection() {
           if (delErr) { toast.error(`Error al eliminar borradores: ${delErr.message}`); return; }
         }
       }
-      const dbRows = rows.map(({ _errors: _e, ...row }) => toDbRow(row));
+      const dbRows = rows.map(row => toDbRow(row));
       const { error: insErr } = await supabase.from("seguimiento").insert(dbRows);
       if (insErr) { toast.error(`Error al guardar seguimiento: ${insErr.message}`); return; }
       toast.success(`${rows.length} filas guardadas en seguimiento`);
