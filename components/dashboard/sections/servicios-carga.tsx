@@ -90,15 +90,24 @@ const toDate = (v: unknown): Date | null => {
   if (typeof v === "string" && v.trim()) { const d = new Date(v); return isNaN(d.getTime()) ? null : d; }
   return null;
 };
-const fmtDate = (d: Date | null): string =>
-  d ? d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }) : "";
+// Always produces "DD/MM/YYYY" regardless of locale/environment
+const fmtDate = (d: Date | null): string => {
+  if (!d) return "";
+  const dd   = String(d.getDate()).padStart(2, "0");
+  const mm   = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+};
 
-// Converts "DD/MM/YYYY" display format to "YYYY-MM-DD" for Supabase/PostgreSQL
+// Converts "DD/MM/YYYY" → "YYYY-MM-DD" for Supabase/PostgreSQL
 const argDateToIso = (s: string | null | undefined): string | null => {
   if (!s) return null;
-  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  // Accept DD/MM/YYYY or DD-MM-YYYY separators
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if (!m) return null;
-  return `${m[3]}-${m[2]}-${m[1]}`;
+  const dd = m[1].padStart(2, "0");
+  const mm = m[2].padStart(2, "0");
+  return `${m[3]}-${mm}-${dd}`;
 };
 
 const parseFile = async (file: File): Promise<Record<string, unknown>[]> => {
