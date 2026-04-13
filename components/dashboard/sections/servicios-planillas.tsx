@@ -228,10 +228,8 @@ export function ServiciosPlanillasSection() {
   const uploadOP = async (file: File) => {
     setS("OP", { uploading: true });
     try {
-      const rows = await parseFile(file, 0);  // OP tiene headers en fila 1
-      if (rows.length === 0) { toast.error("OP: el archivo no tiene datos (headers en fila 1)"); return; }
-      // Diagnóstico: mostrar columnas detectadas
-      toast.info(`OP columnas: ${Object.keys(rows[0]).join(" | ")}`, { duration: 20000 });
+      const rows = await parseFile(file);  // OP tiene headers en fila 2 (igual que QW/MATRICULAS)
+      if (rows.length === 0) { toast.error("OP: el archivo no tiene datos (headers en fila 2)"); return; }
       const { error: delErr } = await supabase.from("planillas_op").delete().not("id", "is", null);
       if (delErr) { toast.error(`Error al limpiar OP: ${delErr.message}`); return; }
       for (let i = 0; i < rows.length; i += BATCH) {
