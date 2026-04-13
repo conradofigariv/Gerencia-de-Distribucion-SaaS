@@ -33,6 +33,7 @@ const DISPLAY_COLS: { db: string; label: string }[] = [
 ];
 
 const STATUS_COLS = new Set(["estado_plazo", "estado_cantidades", "revision"]);
+const RAW_COLS    = new Set(["op", "op_madre", "linea"]);
 
 const PAGE_SIZE = 50;
 
@@ -252,7 +253,7 @@ export function ServiciosTablaSection() {
                       <td className="py-2.5 px-3 text-muted-foreground">{page * PAGE_SIZE + pageIdx + 1}</td>
                       {DISPLAY_COLS.map(c => {
                         const val     = row[c.db];
-                        const display = typeof val === "number" ? val.toLocaleString("es-AR") : String(val ?? "");
+                        const display = typeof val === "number" && !RAW_COLS.has(c.db) ? val.toLocaleString("es-AR") : String(val ?? "");
                         const isStat  = STATUS_COLS.has(c.db);
                         return (
                           <td key={c.db} className="py-2.5 px-3 whitespace-nowrap max-w-[180px] truncate" title={display}>
