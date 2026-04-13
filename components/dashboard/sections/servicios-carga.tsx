@@ -624,11 +624,27 @@ export function ServiciosCargaSection() {
       try {
         const [opRes, qwRes, matRes] = await Promise.all([
           supabase.from("planillas_op").select("data"),
-          supabase.from("planillas_qw").select("data"),
+          supabase.from("planillas_qw").select("combinacion, expediente_plazo_entrega, sc_descripcion, oc_precio_unitario, oc_fecha_pactada, oc_estado_cierre, sc_numero, expediente_numero, sc_estado, estado_siga, ult_responsable, ult_reparto, proveedor_nombre, sc_cantidad_solicitada, ult_cant_dias"),
           supabase.from("matriculas").select("articulo, descripcion, unidad_medida, estado, mat_serv"),
         ]);
         const opRows  = (opRes.data  ?? []).map(r => r.data as Record<string, unknown>);
-        const qwRows  = (qwRes.data  ?? []).map(r => r.data as Record<string, unknown>);
+        const qwRows  = (qwRes.data  ?? []).map(r => ({
+          "COMBINACION":               r.combinacion,
+          "EXPEDIENTE_PLAZO_ENTREGA":  r.expediente_plazo_entrega,
+          "SC_DESCRIPCION":            r.sc_descripcion,
+          "OC_PRECIO_UNITARIO":        r.oc_precio_unitario,
+          "OC_FECHA_PACTADA":          r.oc_fecha_pactada,
+          "OC_ESTADO_CIERRE":          r.oc_estado_cierre,
+          "SC_NUMERO":                 r.sc_numero,
+          "EXPEDIENTE_NUMERO":         r.expediente_numero,
+          "SC_ESTADO":                 r.sc_estado,
+          "ESTADO_SIGA":               r.estado_siga,
+          "ULT_RESPONSABLE":           r.ult_responsable,
+          "ULT_REPARTO":               r.ult_reparto,
+          "PROVEEDOR_NOMBRE":          r.proveedor_nombre,
+          "SC_CANTIDAD_SOLICITADA":    r.sc_cantidad_solicitada,
+          "ULT_CANT_DIAS":             r.ult_cant_dias,
+        }) as Record<string, unknown>);
         const matRows = (matRes.data ?? []).map(r => ({
           "Artículo":         r.articulo,
           "Descripción":      r.descripcion,

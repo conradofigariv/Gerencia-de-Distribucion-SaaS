@@ -223,31 +223,82 @@ export function ServiciosPlanillasSection() {
 
   useEffect(() => { loadStatus(); }, [loadStatus]);
 
-  // ── Upload OP / QW as JSONB rows
-  const uploadJsonb = async (tipo: "OP" | "QW", tabla: string, file: File) => {
-    setS(tipo, { uploading: true });
+  // ── Upload OP as JSONB (flexible, sus columnas se definen por el archivo)
+  const uploadOP = async (file: File) => {
+    setS("OP", { uploading: true });
     try {
       const rows = await parseFile(file);
-      if (rows.length === 0) {
-        toast.error(`${tipo}: el archivo no tiene datos (headers en fila 2)`);
-        return;
-      }
-
-      const { error: delErr } = await supabase.from(tabla).delete().not("id", "is", null);
-      if (delErr) { toast.error(`Error al limpiar ${tipo}: ${delErr.message}`); return; }
-
+      if (rows.length === 0) { toast.error("OP: el archivo no tiene datos (headers en fila 2)"); return; }
+      const { error: delErr } = await supabase.from("planillas_op").delete().not("id", "is", null);
+      if (delErr) { toast.error(`Error al limpiar OP: ${delErr.message}`); return; }
       for (let i = 0; i < rows.length; i += BATCH) {
         const { error: insErr } = await supabase
-          .from(tabla)
+          .from("planillas_op")
           .insert(rows.slice(i, i + BATCH).map(r => ({ data: r, uploaded_at: new Date().toISOString() })));
-        if (insErr) { toast.error(`Error al insertar ${tipo}: ${insErr.message}`); return; }
+        if (insErr) { toast.error(`Error al insertar OP: ${insErr.message}`); return; }
       }
-
-      toast.success(`${tipo}: ${rows.length.toLocaleString("es-AR")} filas guardadas`);
+      toast.success(`OP: ${rows.length.toLocaleString("es-AR")} filas guardadas`);
     } catch (e) {
-      toast.error(`Error al procesar ${tipo}: ${e instanceof Error ? e.message : "Error desconocido"}`);
+      toast.error(`Error al procesar OP: ${e instanceof Error ? e.message : "Error desconocido"}`);
     } finally {
-      setS(tipo, { uploading: false });
+      setS("OP", { uploading: false });
+      await loadStatus();
+    }
+  };
+
+  // ── Upload QW (Qlik View) — columnas estructuradas
+  const uploadQW = async (file: File) => {
+    setS("QW", { uploading: true });
+    try {
+      const rows = await parseFile(file);
+      if (rows.length === 0) { toast.error("QW: el archivo no tiene datos (headers en fila 2)"); return; }
+
+      const now = new Date().toISOString();
+      const mapped = rows.map(r => ({
+        combinacion:                   str(r["COMBINACION"]),
+        oc_numero:                     str(r["OC_NUMERO"]),
+        sc_numero_linea:               str(r["SC_NUMERO_LINEA"]),
+        expediente_plazo_entrega:      str(r["EXPEDIENTE_PLAZO_ENTREGA"]),
+        sc_descripcion:                str(r["SC_DESCRIPCION"]),
+        sc_numero:                     str(r["SC_NUMERO"]),
+        expediente_numero:             str(r["EXPEDIENTE_NUMERO"]),
+        expediente_nro_contratacion:   str(r["EXPEDIENTE_NRO_CONTRATACION"]),
+        expediente_tipo_contratacion:  str(r["EXPEDIENTE_TIPO_CONTRATACION"]),
+        sc_fecha_creacion:             str(r["SC_FECHA_CREACION"]),
+        sc_estado:                     str(r["SC_ESTADO"]),
+        estado_siga:                   str(r["ESTADO_SIGA"]),
+        ult_responsable:               str(r["ULT_RESPONSABLE"]),
+        ult_reparto:                   str(r["ULT_REPARTO"]),
+        expediente_fecha_apertura:     str(r["EXPEDIENTE_FECHA_APERTURA"]),
+        ult_cant_dias:                 r["ULT_CANT_DIAS"] != null ? Number(r["ULT_CANT_DIAS"]) : null,
+        articulo_codigo:               str(r["ARTICULO_CODIGO"]),
+        sc_cantidad_solicitada:        r["SC_CANTIDAD_SOLICITADA"] != null ? Number(r["SC_CANTIDAD_SOLICITADA"]) : null,
+        oc_precio_unitario:            r["OC_PRECIO_UNITARIO"] != null ? Number(r["OC_PRECIO_UNITARIO"]) : null,
+        proveedor_nombre:              str(r["PROVEEDOR_NOMBRE"]),
+        oc_fecha_aprobacion:           str(r["OC_FECHA_APROBACION"]),
+        sc_es_inversion:               str(r["SC_ES_INVERSION"]),
+        sc_preparador_nombre:          str(r["SC_PREPARADOR_NOMBRE"]),
+        articulo_id:                   str(r["ARTICULO_ID"]),
+        articulo_descripcion:          str(r["ARTICULO_DESCRIPCION"]),
+        oc_fecha_pactada:              str(r["OC_FECHA_PACTADA"]),
+        oc_estado_cierre:              str(r["OC_ESTADO_CIERRE"]),
+        uploaded_at:                   now,
+      })).filter(r => r.combinacion);
+
+      if (mapped.length === 0) { toast.error("QW: no se encontró columna 'COMBINACION' en el archivo"); return; }
+
+      const { error: delErr } = await supabase.from("planillas_qw").delete().not("id", "is", null);
+      if (delErr) { toast.error(`Error al limpiar QW: ${delErr.message}`); return; }
+
+      for (let i = 0; i < mapped.length; i += BATCH) {
+        const { error: insErr } = await supabase.from("planillas_qw").insert(mapped.slice(i, i + BATCH));
+        if (insErr) { toast.error(`Error al insertar QW: ${insErr.message}`); return; }
+      }
+      toast.success(`QW: ${mapped.length.toLocaleString("es-AR")} filas guardadas`);
+    } catch (e) {
+      toast.error(`Error al procesar QW: ${e instanceof Error ? e.message : "Error desconocido"}`);
+    } finally {
+      setS("QW", { uploading: false });
       await loadStatus();
     }
   };
@@ -305,8 +356,8 @@ export function ServiciosPlanillasSection() {
   };
 
   const handleUpload = (tipo: PlanillaType, file: File) => {
-    if (tipo === "OP")        uploadJsonb("OP",  "planillas_op", file);
-    else if (tipo === "QW")   uploadJsonb("QW",  "planillas_qw", file);
+    if (tipo === "OP")        uploadOP(file);
+    else if (tipo === "QW")   uploadQW(file);
     else                      uploadMatriculas(file);
   };
 
@@ -386,21 +437,63 @@ export function ServiciosPlanillasSection() {
         <h4 className="text-sm font-semibold text-foreground">Configuración inicial de Supabase</h4>
         <p className="text-xs text-muted-foreground">
           Las tablas{" "}
-          <code className="bg-secondary px-1 py-0.5 rounded">planillas_op</code> y{" "}
-          <code className="bg-secondary px-1 py-0.5 rounded">planillas_qw</code> deben existir en
-          tu proyecto de Supabase. Si aún no las creaste, ejecutá este SQL en el{" "}
+          <code className="bg-secondary px-1 py-0.5 rounded">planillas_op</code>,{" "}
+          <code className="bg-secondary px-1 py-0.5 rounded">planillas_qw</code> y{" "}
+          <code className="bg-secondary px-1 py-0.5 rounded">matriculas</code> deben existir en
+          tu proyecto de Supabase. Si aún no las creaste (o necesitás recrear{" "}
+          <code className="bg-secondary px-1 py-0.5 rounded">planillas_qw</code>), ejecutá este SQL en el{" "}
           <strong>SQL Editor</strong> de Supabase:
         </p>
-        <pre className="bg-secondary rounded-lg p-4 text-xs text-foreground overflow-x-auto leading-relaxed">{`CREATE TABLE IF NOT EXISTS planillas_op (
+        <pre className="bg-secondary rounded-lg p-4 text-xs text-foreground overflow-x-auto leading-relaxed">{`-- Tabla OP (flexible, JSONB)
+CREATE TABLE IF NOT EXISTS planillas_op (
   id          UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
   data        JSONB       NOT NULL,
   uploaded_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS planillas_qw (
-  id          UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
-  data        JSONB       NOT NULL,
-  uploaded_at TIMESTAMPTZ DEFAULT NOW()
+-- Tabla QW (columnas estructuradas — recrear si ya existe con JSONB)
+DROP TABLE IF EXISTS planillas_qw;
+CREATE TABLE planillas_qw (
+  id                            UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  combinacion                   TEXT,
+  oc_numero                     TEXT,
+  sc_numero_linea               TEXT,
+  expediente_plazo_entrega      TEXT,
+  sc_descripcion                TEXT,
+  sc_numero                     TEXT,
+  expediente_numero             TEXT,
+  expediente_nro_contratacion   TEXT,
+  expediente_tipo_contratacion  TEXT,
+  sc_fecha_creacion             TEXT,
+  sc_estado                     TEXT,
+  estado_siga                   TEXT,
+  ult_responsable               TEXT,
+  ult_reparto                   TEXT,
+  expediente_fecha_apertura     TEXT,
+  ult_cant_dias                 NUMERIC,
+  articulo_codigo               TEXT,
+  sc_cantidad_solicitada        NUMERIC,
+  oc_precio_unitario            NUMERIC,
+  proveedor_nombre              TEXT,
+  oc_fecha_aprobacion           TEXT,
+  sc_es_inversion               TEXT,
+  sc_preparador_nombre          TEXT,
+  articulo_id                   TEXT,
+  articulo_descripcion          TEXT,
+  oc_fecha_pactada              TEXT,
+  oc_estado_cierre              TEXT,
+  uploaded_at                   TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Tabla MATRICULAS
+CREATE TABLE IF NOT EXISTS matriculas (
+  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  articulo      TEXT,
+  descripcion   TEXT,
+  unidad_medida TEXT,
+  estado        TEXT,
+  mat_serv      TEXT,
+  updated_at    TIMESTAMPTZ DEFAULT NOW()
 );`}</pre>
       </div>
     </div>
