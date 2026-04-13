@@ -9,34 +9,30 @@ import { toast } from "sonner";
 // ─── Column config ────────────────────────────────────────────────────────────
 
 const DISPLAY_COLS: { db: string; label: string }[] = [
-  { db: "op",                        label: "OP" },
-  { db: "op_madre",                  label: "OP MADRE" },
-  { db: "sc",                        label: "SC" },
-  { db: "descripcion_sc",            label: "DESCRIPCIÓN DE SC" },
-  { db: "linea",                     label: "LÍNEA" },
-  { db: "matricula",                 label: "MATRICULA" },
-  { db: "descripcion_matricula",     label: "DESCRIPCIÓN DE MATRICULA" },
-  { db: "cantidad",                  label: "CANTIDAD" },
-  { db: "cantidad_recibida",         label: "CANTIDAD RECIBIDA" },
-  { db: "saldo_de_linea",            label: "SALDO DE LINEA" },
-  { db: "fecha_de_creacion",         label: "FECHA DE CREACION" },
-  { db: "fecha_pactada",             label: "FECHA PACTADA" },
-  { db: "proveedor",                 label: "PROVEEDOR" },
-  { db: "fecha_redeterminacion",     label: "FECHA REDETERMINACIÓN" },
-  { db: "precio_redeterminacion",    label: "PRECIO REDETERMINACIÓN" },
-  { db: "estado",                    label: "ESTADO" },
-  { db: "estado_de_plazo",           label: "ESTADO DE PLAZO" },
-  { db: "estado_de_cantidades",      label: "ESTADO DE CANTIDADES" },
-  { db: "revision",                  label: "REVISION" },
-  { db: "observacion",               label: "OBSERVACION" },
-  { db: "disponibilidad_en_meses",   label: "DISPONIBILIDAD EN MESES" },
-  { db: "fecha_actual",              label: "FECHA ACTUAL" },
-  { db: "cantidad2",                 label: "CANTIDAD2" },
-  { db: "cantidad_de_meses",         label: "CANTIDAD DE MESES" },
-  { db: "cantidad_consumida_por_mes", label: "CANTIDAD CONSUMIDA POR MES" },
+  { db: "zona",                  label: "ZONA"                    },
+  { db: "op",                    label: "OP"                      },
+  { db: "op_madre",              label: "OP MADRE"                },
+  { db: "sc",                    label: "SC"                      },
+  { db: "descripcion_sc",        label: "DESCRIPCIÓN DE SC"       },
+  { db: "linea",                 label: "LÍNEA"                   },
+  { db: "matricula",             label: "MATRICULA"               },
+  { db: "descripcion_matricula", label: "DESCRIPCIÓN DE MATRICULA"},
+  { db: "cantidad",              label: "CANTIDAD"                },
+  { db: "cantidad_recibida",     label: "CANTIDAD RECIBIDA"       },
+  { db: "saldo_linea",           label: "SALDO DE LINEA"          },
+  { db: "fecha_pactada",         label: "FECHA PACTADA"           },
+  { db: "proveedor",             label: "PROVEEDOR"               },
+  { db: "fecha_redeterminacion", label: "FECHA REDETERMINACIÓN"   },
+  { db: "precio_redeterminacion",label: "PRECIO REDETERMINACIÓN"  },
+  { db: "estado",                label: "ESTADO"                  },
+  { db: "estado_plazo",          label: "ESTADO DE PLAZO"         },
+  { db: "estado_cantidades",     label: "ESTADO DE CANTIDADES"    },
+  { db: "revision",              label: "REVISION"                },
+  { db: "observacion",           label: "OBSERVACION"             },
+  { db: "disponibilidad_meses",  label: "DISPONIBILIDAD EN MESES" },
 ];
 
-const STATUS_COLS = new Set(["estado_de_plazo", "estado_de_cantidades", "revision"]);
+const STATUS_COLS = new Set(["estado_plazo", "estado_cantidades", "revision"]);
 
 const PAGE_SIZE = 50;
 
