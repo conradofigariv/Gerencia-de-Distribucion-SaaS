@@ -390,8 +390,7 @@ export function ServiciosPlanillasSection() {
       {allLoaded && allReady && (
         <div className="flex items-center gap-2 text-sm text-success bg-success/10 border border-success/20 rounded-lg px-4 py-3">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
-          Las 3 planillas están cargadas. Podés ir a{" "}
-          <strong className="mx-0.5">Carga de datos</strong> para generar seguimientos.
+          Las 3 planillas están cargadas.
         </div>
       )}
       {allLoaded && !allReady && (
