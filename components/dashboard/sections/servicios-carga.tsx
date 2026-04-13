@@ -101,6 +101,20 @@ const displayDate = (iso: string): string => {
 };
 
 
+// Intenta obtener un valor de un objeto probando múltiples nombres de columna
+const pick = (r: Record<string, unknown>, ...names: string[]): unknown => {
+  for (const n of names) {
+    const v = r[n]; if (v != null && v !== "") return v;
+  }
+  return null;
+};
+
+// Quita separadores (/, -, espacio, punto) de una clave
+const noSep = (s: string) => s.replace(/[\s\/\-_.]/g, "");
+
+// Normaliza número: quita ceros al frente y ".0" al final → "00702632.0" → "702632"
+const numNorm = (s: string) => s.replace(/^0+(\d)/, "$1").replace(/\.0+$/, "");
+
 const buildMaps = (
   opRows: Record<string, unknown>[],
   qwRows: Record<string, unknown>[],
@@ -109,9 +123,39 @@ const buildMaps = (
   const opMap  = new Map<string, Record<string, unknown>>();
   const qwMap  = new Map<string, Record<string, unknown>>();
   const matMap = new Map<string, Record<string, unknown>>();
-  for (const r of opRows)  { const k = norm(r["Relación"]);   if (k) opMap.set(k, r); }
-  for (const r of qwRows)  { const k = norm(r["COMBINACION"]); if (k) qwMap.set(k, r); }
-  for (const r of matRows) { const k = norm(r["Artículo"]);   if (k) matMap.set(k, r); }
+
+  // ── OP: indexar por Relación con variantes de formato
+  const addOp = (k: string, r: Record<string, unknown>) => {
+    if (!k) return;
+    opMap.set(k, r);
+    const c = noSep(k); if (c !== k) opMap.set(c, r);
+  };
+  for (const r of opRows) {
+    // Intentar múltiples variantes del nombre de columna (con/sin acento, mayúsculas)
+    const relK = norm(str(pick(r, "Relación", "Relacion", "RELACIÓN", "RELACION") ?? ""));
+    const numK = norm(str(pick(r, "Número",   "Numero",   "NÚMERO",   "NUMERO")   ?? ""));
+    const linK = norm(str(pick(r, "Línea",    "Linea",    "LÍNEA",    "LINEA")    ?? ""));
+    addOp(relK, r);
+    if (numK && linK) addOp(numK + linK, r);
+  }
+
+  // ── QW: indexar por COMBINACION con variantes de separador
+  for (const r of qwRows) {
+    const k = norm(str(r["COMBINACION"] ?? ""));
+    if (!k) continue;
+    qwMap.set(k, r);
+    const c = noSep(k); if (c !== k) qwMap.set(c, r);
+  }
+
+  // ── MATRICULAS: indexar por Artículo con variantes numéricas
+  for (const r of matRows) {
+    const k = norm(str(r["Artículo"] ?? ""));
+    if (!k) continue;
+    matMap.set(k, r);
+    const kNoDot = k.replace(/\./g, ""); if (kNoDot !== k) matMap.set(kNoDot, r);
+    const kNum   = numNorm(k);           if (kNum !== k && kNum !== kNoDot) matMap.set(kNum, r);
+  }
+
   return { opMap, qwMap, matMap };
 };
 
@@ -123,18 +167,25 @@ const buildSeguimiento = (
   const todayIso = isoDate(today);
 
   return manualRows.map(mrow => {
-    const opKey  = norm(mrow.op)      + norm(mrow.linea);
-    const qwKey  = norm(mrow.opMadre) + norm(mrow.linea);
-    const matKey = norm(mrow.matricula);
+    const stripZ  = (s: string) => s.replace(/^0+/, "") || "0";
 
-    const opRow  = opMap.get(opKey)   ?? null;
-    const qwRow  = qwMap.get(qwKey)   ?? null;
-    const matRow = matMap.get(matKey) ?? null;
+    const opK  = norm(mrow.op)      + norm(mrow.linea);
+    const opKS = stripZ(norm(mrow.op))      + stripZ(norm(mrow.linea));
+    const qwK  = norm(mrow.opMadre) + norm(mrow.linea);
+    const qwKS = stripZ(norm(mrow.opMadre)) + stripZ(norm(mrow.linea));
+    const matK = norm(mrow.matricula);
+
+    const opRow  = opMap.get(opK)  ?? opMap.get(opKS)  ?? null;
+    const qwRow  = qwMap.get(qwK)  ?? qwMap.get(qwKS)  ?? null;
+    const matRow = matMap.get(matK)
+      ?? matMap.get(matK.replace(/\./g, ""))
+      ?? matMap.get(numNorm(matK))
+      ?? null;
 
     const errors: string[] = [];
-    if (!opRow)  errors.push(`OP+LÍNEA "${opKey}" no encontrado en OP (col. Relación)`);
-    if (!qwRow)  errors.push(`OP MADRE+LÍNEA "${qwKey}" no encontrado en QW (col. COMBINACION)`);
-    if (!matRow) errors.push(`MATRÍCULA "${matKey}" no encontrada en MATRICULAS (col. Artículo)`);
+    if (!opRow)  errors.push(`OP+LÍNEA "${opK}" no encontrado en OP (col. Relación)`);
+    if (!qwRow)  errors.push(`OP MADRE+LÍNEA "${qwK}" no encontrado en QW (col. COMBINACION)`);
+    if (!matRow) errors.push(`MATRÍCULA "${matK}" no encontrada en MATRICULAS (col. Artículo)`);
 
     const cantidad   = opRow ? num(opRow["Cantidad"])          : 0;
     const cantRecib  = opRow ? num(opRow["Cantidad Recibida"]) : 0;
