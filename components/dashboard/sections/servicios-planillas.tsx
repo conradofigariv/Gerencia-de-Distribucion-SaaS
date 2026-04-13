@@ -188,14 +188,31 @@ export function ServiciosPlanillasSection() {
     try {
       const rows = await parseFile(file);
       if (!rows.length) { toast.error("OP: sin datos (headers en fila 2)"); return; }
+      const now = new Date().toISOString();
+      const mapped = rows.map(r => ({
+        relacion:             str(r["Relación"]            ?? r["Relacion"]),
+        numero:               str(r["Número"]              ?? r["Numero"]),
+        linea:                str(r["Línea"]               ?? r["Linea"]),
+        descripcion_articulo: str(r["Descripción Artículo"] ?? r["Descripcion Articulo"]),
+        udm:                  str(r["UDM"]                 ?? r["UdM"]              ?? r["Unidad de medida"]),
+        fecha_creacion:       str(r["Fecha Creación"]      ?? r["Fecha Creacion"]),
+        fecha_pactada:        str(r["Fecha Pactada"]),
+        organizacion_envio:   str(r["Organización Envío"]  ?? r["Organizacion Envio"]),
+        cantidad:             r["Cantidad"]          != null ? Number(r["Cantidad"])          : null,
+        cantidad_recibida:    r["Cantidad Recibida"] != null ? Number(r["Cantidad Recibida"]) : null,
+        proveedor:            str(r["Proveedor"]),
+        estado_autorizacion:  str(r["Estado Autorización"] ?? r["Estado Autorizacion"]),
+        estado_cierre:        str(r["Estado Cierre"]),
+        uploaded_at:          now,
+      })).filter(r => r.relacion);
+      if (!mapped.length) { toast.error("OP: no se encontró columna 'Relación'"); return; }
       const { error: del } = await supabase.from("planillas_op").delete().not("id", "is", null);
       if (del) { toast.error(`Error limpiando OP: ${del.message}`); return; }
-      for (let i = 0; i < rows.length; i += BATCH) {
-        const { error } = await supabase.from("planillas_op")
-          .insert(rows.slice(i, i + BATCH).map(r => ({ data: r, uploaded_at: new Date().toISOString() })));
+      for (let i = 0; i < mapped.length; i += BATCH) {
+        const { error } = await supabase.from("planillas_op").insert(mapped.slice(i, i + BATCH));
         if (error) { toast.error(`Error insertando OP: ${error.message}`); return; }
       }
-      toast.success(`OP: ${rows.length.toLocaleString("es-AR")} filas guardadas`);
+      toast.success(`OP: ${mapped.length.toLocaleString("es-AR")} filas guardadas`);
     } catch (e) {
       toast.error(`Error OP: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
@@ -211,34 +228,13 @@ export function ServiciosPlanillasSection() {
       if (!rows.length) { toast.error("QW: sin datos (headers en fila 2)"); return; }
       const now = new Date().toISOString();
       const mapped = rows.map(r => ({
-        combinacion:                  str(r["COMBINACION"]),
-        oc_numero:                    str(r["OC_NUMERO"]),
-        sc_numero_linea:              str(r["SC_NUMERO_LINEA"]),
-        expediente_plazo_entrega:     str(r["EXPEDIENTE_PLAZO_ENTREGA"]),
-        sc_descripcion:               str(r["SC_DESCRIPCION"]),
-        sc_numero:                    str(r["SC_NUMERO"]),
-        expediente_numero:            str(r["EXPEDIENTE_NUMERO"]),
-        expediente_nro_contratacion:  str(r["EXPEDIENTE_NRO_CONTRATACION"]),
-        expediente_tipo_contratacion: str(r["EXPEDIENTE_TIPO_CONTRATACION"]),
-        sc_fecha_creacion:            str(r["SC_FECHA_CREACION"]),
-        sc_estado:                    str(r["SC_ESTADO"]),
-        estado_siga:                  str(r["ESTADO_SIGA"]),
-        ult_responsable:              str(r["ULT_RESPONSABLE"]),
-        ult_reparto:                  str(r["ULT_REPARTO"]),
-        expediente_fecha_apertura:    str(r["EXPEDIENTE_FECHA_APERTURA"]),
-        ult_cant_dias:                r["ULT_CANT_DIAS"] != null ? Number(r["ULT_CANT_DIAS"]) : null,
-        articulo_codigo:              str(r["ARTICULO_CODIGO"]),
-        sc_cantidad_solicitada:       r["SC_CANTIDAD_SOLICITADA"] != null ? Number(r["SC_CANTIDAD_SOLICITADA"]) : null,
-        oc_precio_unitario:           r["OC_PRECIO_UNITARIO"] != null ? Number(r["OC_PRECIO_UNITARIO"]) : null,
-        proveedor_nombre:             str(r["PROVEEDOR_NOMBRE"]),
-        oc_fecha_aprobacion:          str(r["OC_FECHA_APROBACION"]),
-        sc_es_inversion:              str(r["SC_ES_INVERSION"]),
-        sc_preparador_nombre:         str(r["SC_PREPARADOR_NOMBRE"]),
-        articulo_id:                  str(r["ARTICULO_ID"]),
-        articulo_descripcion:         str(r["ARTICULO_DESCRIPCION"]),
-        oc_fecha_pactada:             str(r["OC_FECHA_PACTADA"]),
-        oc_estado_cierre:             str(r["OC_ESTADO_CIERRE"]),
-        uploaded_at:                  now,
+        combinacion:              str(r["COMBINACION"]),
+        expediente_plazo_entrega: str(r["EXPEDIENTE_PLAZO_ENTREGA"]),
+        sc_descripcion:           str(r["SC_DESCRIPCION"]),
+        oc_precio_unitario:       r["OC_PRECIO_UNITARIO"] != null ? Number(r["OC_PRECIO_UNITARIO"]) : null,
+        oc_fecha_pactada:         str(r["OC_FECHA_PACTADA"]),
+        oc_estado_cierre:         str(r["OC_ESTADO_CIERRE"]),
+        uploaded_at:              now,
       })).filter(r => r.combinacion);
       if (!mapped.length) { toast.error("QW: no se encontró columna COMBINACION"); return; }
       const { error: del } = await supabase.from("planillas_qw").delete().not("id", "is", null);
@@ -262,11 +258,11 @@ export function ServiciosPlanillasSection() {
       const rows = await parseFile(file);
       if (!rows.length) { toast.error("MATRICULAS: sin datos (headers en fila 2)"); return; }
       const rawMapped = rows.map(r => ({
-        articulo:      str(r["Artículo"]             ?? r["ARTICULO"]      ?? r["articulo"]      ?? r["Artículo SAP"] ?? r["Material"]),
-        descripcion:   str(r["Descripción"]          ?? r["DESCRIPCION"]   ?? r["descripcion"]   ?? r["Texto breve"]),
-        unidad_medida: str(r["Unidad Medida Primaria"] ?? r["Unidad de medida"] ?? r["UM"]       ?? r["Unidad"]       ?? r["UdM"]),
-        estado:        str(r["Estado Artículo"]      ?? r["Estado art."]   ?? r["Estado"]        ?? r["ESTADO"]       ?? r["Status"] ?? ""),
-        mat_serv:      str(r["Mat./serv."]           ?? r["MAT_SERV"]      ?? r["Mat/Serv"]      ?? r["Tipo"]         ?? ""),
+        articulo:      str(r["Artículo"]              ?? r["Articulo"]),
+        descripcion:   str(r["Descripción"]          ?? r["Descripcion"]),
+        unidad_medida: str(r["Unidad Medida Primaria"] ?? r["Unidad de medida"] ?? r["UDM"] ?? r["UdM"]),
+        estado:        str(r["Estado Artículo"]      ?? r["Estado Articulo"] ?? r["Estado"] ?? ""),
+        mat_serv:      str(r["Mat/Serv"]             ?? r["Mat./serv."]    ?? r["MAT_SERV"] ?? ""),
       })).filter(r => r.articulo);
       if (!rawMapped.length) { toast.error("No se encontró columna 'Artículo'"); return; }
       // Deduplicar por artículo
