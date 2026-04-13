@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import {
-  Zap,
   Users,
   AlertTriangle,
   CheckCircle2,
@@ -12,6 +11,8 @@ import {
   TrendingDown,
   MapPin,
   BarChart3,
+  XCircle,
+  CalendarClock,
 } from "lucide-react";
 import {
   AreaChart,
@@ -58,40 +59,32 @@ const alertasRecientes = [
 
 const metrics = [
   {
-    label: "Total Servicios",
-    value: "5.755",
-    change: "+2.3%",
-    up: true,
-    icon: Zap,
-    color: "text-accent",
-    bg: "bg-accent/10",
-  },
-  {
     label: "Activos",
-    value: "5.612",
-    change: "+1.8%",
-    up: true,
+    value: "—",
     icon: CheckCircle2,
     color: "text-success",
     bg: "bg-success/10",
   },
   {
-    label: "En corte",
-    value: "87",
-    change: "-12%",
-    up: false,
-    icon: AlertTriangle,
-    color: "text-destructive",
-    bg: "bg-destructive/10",
-  },
-  {
-    label: "Pendientes",
-    value: "56",
-    change: "+5",
-    up: false,
-    icon: Clock,
+    label: "Por vencer",
+    value: "—",
+    icon: CalendarClock,
     color: "text-warning",
     bg: "bg-warning/10",
+  },
+  {
+    label: "Por Consumirse",
+    value: "—",
+    icon: TrendingDown,
+    color: "text-orange-400",
+    bg: "bg-orange-400/10",
+  },
+  {
+    label: "Vencidos",
+    value: "—",
+    icon: XCircle,
+    color: "text-destructive",
+    bg: "bg-destructive/10",
   },
 ];
 
@@ -115,10 +108,6 @@ export function ServiciosResumenSection() {
                 </div>
               </div>
               <p className="text-2xl font-bold text-foreground">{m.value}</p>
-              <div className={cn("flex items-center gap-1 text-xs mt-1 font-medium", m.up ? "text-success" : "text-destructive")}>
-                {m.up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                {m.change} vs mes anterior
-              </div>
             </div>
           );
         })}
