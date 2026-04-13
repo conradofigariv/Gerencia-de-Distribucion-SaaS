@@ -81,9 +81,6 @@ export function ServiciosCargaSection() {
   const [step, setStep]       = useState<Step>("input");
   const [filas, setFilas]     = useState<FilaManual[]>([]);
   const [preview, setPreview] = useState<PreviewRow[]>([]);
-  const [mode, setMode]       = useState<"single" | "bulk">("single");
-  const [form, setForm]       = useState(EMPTY);
-  const [errors, setErrors]   = useState<Partial<typeof EMPTY>>({});
   const [bulk, setBulk]       = useState({ op: "", op_madre: "", linea: "", matricula: "" });
   const [bulkErr, setBulkErr] = useState("");
   const [adding, setAdding]   = useState(false);
@@ -104,33 +101,6 @@ export function ServiciosCargaSection() {
     })();
   }, []);
 
-  // ── Validación
-  const validate = () => {
-    const e: Partial<typeof EMPTY> = {};
-    if (!form.op.trim()       || isNaN(Number(form.op)))       e.op        = "Debe ser un número";
-    if (!form.op_madre.trim() || isNaN(Number(form.op_madre))) e.op_madre  = "Debe ser un número";
-    if (!form.linea.trim()    || isNaN(Number(form.linea)))    e.linea     = "Debe ser un número";
-    if (!form.matricula.trim())                                 e.matricula = "Requerido";
-    return e;
-  };
-
-  // ── Agregar fila individual
-  const handleAdd = async () => {
-    const e = validate();
-    if (Object.keys(e).length) { setErrors(e); return; }
-    setErrors({});
-    setAdding(true);
-    try {
-      const { data, error } = await supabase
-        .from("filas_manuales")
-        .insert({ op: Number(form.op), op_madre: Number(form.op_madre), linea: Number(form.linea), matricula: form.matricula.trim() })
-        .select("id, op, op_madre, linea, matricula")
-        .single();
-      if (error) { toast.error(`Error: ${error.message}`); return; }
-      setFilas(prev => [...prev, data as FilaManual]);
-      setForm(EMPTY);
-    } finally { setAdding(false); }
-  };
 
   // ── Eliminar fila
   const handleDelete = async (id: string) => {
@@ -170,7 +140,6 @@ export function ServiciosCargaSection() {
       if (error) { toast.error(`Error: ${error.message}`); return; }
       setFilas(prev => [...prev, ...((data ?? []) as FilaManual[])]);
       setBulk({ op: "", op_madre: "", linea: "", matricula: "" });
-      setMode("single");
       toast.success(`${payload.length} filas agregadas`);
     } finally { setAdding(false); }
   };
@@ -285,10 +254,6 @@ export function ServiciosCargaSection() {
   };
 
   const colCount = (t: string) => { const n = splitCol(t).length; return n > 0 ? `${n} fila${n !== 1 ? "s" : ""}` : ""; };
-  const inputCls = (err?: string) => cn(
-    "h-9 px-3 rounded-lg bg-secondary border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all",
-    err ? "border-destructive" : "border-border focus:border-accent"
-  );
 
   // ════════════════════════════════════════════════════════════════
   // PREVIEW STEP
@@ -404,63 +369,18 @@ export function ServiciosCargaSection() {
   // ════════════════════════════════════════════════════════════════
   return (
     <div className="space-y-5">
-      {/* Encabezado + toggle */}
-      <div className="flex items-center gap-3">
-        <div>
-          <h3 className="text-sm font-semibold text-foreground">Crear seguimiento</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {loading ? "Cargando..." : `${filas.length} fila${filas.length !== 1 ? "s" : ""} cargada${filas.length !== 1 ? "s" : ""}`}
-          </p>
-        </div>
-        <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 ml-auto">
-          {(["single", "bulk"] as const).map(m => (
-            <button key={m} onClick={() => setMode(m)}
-              className={cn("px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                mode === m ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-              {m === "single" ? "Fila individual" : "Pegar columnas"}
-            </button>
-          ))}
-        </div>
+      {/* Encabezado */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">Crear seguimiento</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {loading ? "Cargando..." : `${filas.length} fila${filas.length !== 1 ? "s" : ""} cargada${filas.length !== 1 ? "s" : ""}`}
+        </p>
       </div>
 
-      {/* ── Formulario individual ── */}
-      {mode === "single" && (
-        <div className="bg-card border border-border rounded-xl p-5">
-          <div className="grid grid-cols-4 gap-4 mb-4">
-            {([
-              { key: "op",        label: "OP",        placeholder: "ej. 4500012345" },
-              { key: "op_madre",  label: "OP MADRE",  placeholder: "ej. 4500099999" },
-              { key: "linea",     label: "LÍNEA",     placeholder: "1"              },
-              { key: "matricula", label: "MATRÍCULA", placeholder: "ej. 00702632.0" },
-            ] as const).map(({ key, label, placeholder }) => (
-              <div key={key} className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-foreground">{label}</label>
-                <input
-                  type="text"
-                  value={form[key]}
-                  onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
-                  onKeyDown={e => { if (e.key === "Enter") handleAdd(); }}
-                  placeholder={placeholder}
-                  className={inputCls(errors[key])}
-                />
-                {errors[key] && <p className="text-[11px] text-destructive">{errors[key]}</p>}
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-end">
-            <button onClick={handleAdd} disabled={adding}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-all disabled:opacity-50">
-              {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              {adding ? "Guardando..." : "Agregar fila"}
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* ── Pegar columnas ── */}
-      {mode === "bulk" && (
+      {!loading && (
         <div className="bg-card border border-border rounded-xl p-5 space-y-4">
-          <p className="text-xs text-muted-foreground">Copiá una columna de Excel y pegala. LÍNEA es opcional (default 1).</p>
+          <p className="text-xs text-muted-foreground">Pegá los valores de cada columna (una por una, de arriba hacia abajo). Podés pegar una sola línea o columnas completas. LÍNEA es opcional (default 1).</p>
           <div className="grid grid-cols-4 gap-4">
             {([
               { key: "op",        label: "OP"        },
