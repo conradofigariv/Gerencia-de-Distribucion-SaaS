@@ -674,6 +674,20 @@ export function ServiciosCargaSection() {
     if (!maps || manualRows.length === 0) return;
     setGen(true);
     await new Promise(r => setTimeout(r, 50)); // let UI update
+
+    // ── Diagnostic: log first keys in each map and first lookup keys
+    const opSample  = Array.from(maps.opMap.keys()).slice(0, 5);
+    const qwSample  = Array.from(maps.qwMap.keys()).slice(0, 5);
+    const matSample = Array.from(maps.matMap.keys()).slice(0, 5);
+    const firstRow  = manualRows[0];
+    console.log("[DEBUG] opMap keys (primeros 5):",  opSample);
+    console.log("[DEBUG] qwMap keys (primeros 5):",  qwSample);
+    console.log("[DEBUG] matMap keys (primeros 5):", matSample);
+    console.log("[DEBUG] Primera fila manual:", firstRow);
+    console.log("[DEBUG] opKey buscado:",  norm(firstRow.op)      + norm(firstRow.linea));
+    console.log("[DEBUG] qwKey buscado:",  norm(firstRow.opMadre) + norm(firstRow.linea));
+    console.log("[DEBUG] matKey buscado:", norm(firstRow.matricula));
+
     const data = buildSeguimiento(manualRows, maps);
     setResult(data);
     setSelected(new Set(data.map((_, i) => i)));
