@@ -53,6 +53,28 @@ const EMPTY = { op: "", op_madre: "", linea: "1", matricula: "" };
 const num = (v: unknown) => { const n = Number(v); return isNaN(n) ? 0 : n; };
 const isoDate = (d: Date | null) => d ? d.toISOString().split("T")[0] : null;
 
+// Trae TODAS las filas de una tabla paginando de a 1000
+async function fetchAll<T extends Record<string, unknown>>(
+  table: string,
+  columns: string
+): Promise<T[]> {
+  const PAGE = 1000;
+  const result: T[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from(table)
+      .select(columns)
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`Error cargando ${table}: ${error.message}`);
+    if (!data?.length) break;
+    result.push(...(data as unknown as T[]));
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return result;
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export function ServiciosCargaSection() {
@@ -158,18 +180,19 @@ export function ServiciosCargaSection() {
     if (!filas.length) { toast.error("No hay filas para generar"); return; }
     setGenerating(true);
     try {
-      const [opRes, qwRes, matRes] = await Promise.all([
-        supabase.from("planillas_op").select("relacion, cantidad, cantidad_recibida, fecha_creacion, fecha_pactada, proveedor, estado_cierre"),
-        supabase.from("planillas_qw").select("combinacion, expediente_plazo_entrega, sc_descripcion, oc_precio_unitario"),
-        supabase.from("matriculas").select("articulo, descripcion"),
-      ]);
-      if (opRes.error)  throw new Error(`Error cargando OP: ${opRes.error.message}`);
-      if (qwRes.error)  throw new Error(`Error cargando QW: ${qwRes.error.message}`);
-      if (matRes.error) throw new Error(`Error cargando MATRICULAS: ${matRes.error.message}`);
+      type OpRow  = { relacion: string; cantidad: unknown; cantidad_recibida: unknown; fecha_creacion: unknown; fecha_pactada: unknown; proveedor: unknown; estado_cierre: unknown };
+      type QwRow  = { combinacion: string; expediente_plazo_entrega: unknown; sc_descripcion: unknown; oc_precio_unitario: unknown };
+      type MatRow = { articulo: string; descripcion: unknown };
 
-      const opMap  = new Map((opRes.data  ?? []).map(r => [String(r.relacion),    r]));
-      const qwMap  = new Map((qwRes.data  ?? []).map(r => [String(r.combinacion), r]));
-      const matMap = new Map((matRes.data ?? []).map(r => [String(r.articulo),    r]));
+      const [opData, qwData, matData] = await Promise.all([
+        fetchAll<OpRow> ("planillas_op", "relacion, cantidad, cantidad_recibida, fecha_creacion, fecha_pactada, proveedor, estado_cierre"),
+        fetchAll<QwRow> ("planillas_qw", "combinacion, expediente_plazo_entrega, sc_descripcion, oc_precio_unitario"),
+        fetchAll<MatRow>("matriculas",   "articulo, descripcion"),
+      ]);
+
+      const opMap  = new Map(opData .map(r => [String(r.relacion),    r]));
+      const qwMap  = new Map(qwData .map(r => [String(r.combinacion), r]));
+      const matMap = new Map(matData.map(r => [String(r.articulo),    r]));
 
       const today = new Date();
 
