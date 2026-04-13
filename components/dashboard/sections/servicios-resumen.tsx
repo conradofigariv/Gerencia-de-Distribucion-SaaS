@@ -1,13 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import {
-  Users,
   AlertTriangle,
   CheckCircle2,
-  Clock,
-  TrendingUp,
   TrendingDown,
   MapPin,
   BarChart3,
@@ -26,6 +23,7 @@ import {
   Bar,
   Cell,
 } from "recharts";
+import { supabase } from "@/lib/supabaseClient";
 
 const consumoMensual = [
   { mes: "Ene", kwh: 420000 },
@@ -57,43 +55,36 @@ const alertasRecientes = [
   { id: 4, tipo: "Reconexión", direccion: "Av. Vélez 2310", zona: "Este", tiempo: "Hace 3h", severity: "low" },
 ];
 
-const metrics = [
-  {
-    label: "Activos",
-    value: "—",
-    icon: CheckCircle2,
-    color: "text-success",
-    bg: "bg-success/10",
-  },
-  {
-    label: "Por vencer",
-    value: "—",
-    icon: CalendarClock,
-    color: "text-warning",
-    bg: "bg-warning/10",
-  },
-  {
-    label: "Por Consumirse",
-    value: "—",
-    icon: TrendingDown,
-    color: "text-orange-400",
-    bg: "bg-orange-400/10",
-  },
-  {
-    label: "Vencidos",
-    value: "—",
-    icon: XCircle,
-    color: "text-destructive",
-    bg: "bg-destructive/10",
-  },
-];
 
 export function ServiciosResumenSection() {
+  const [activos,  setActivos]  = useState<number | null>(null);
+  const [vencidos, setVencidos] = useState<number | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const [actRes, venRes] = await Promise.all([
+        supabase.from("seguimiento").select("*", { count: "exact", head: true }).eq("revision", "OK"),
+        supabase.from("seguimiento").select("*", { count: "exact", head: true }).eq("estado_plazo", "VENCIDA"),
+      ]);
+      setActivos(actRes.count ?? 0);
+      setVencidos(venRes.count ?? 0);
+    })();
+  }, []);
+
+  const fmt = (n: number | null) => n === null ? "—" : n.toLocaleString("es-AR");
+
+  const kpis = [
+    { label: "Activos",        value: fmt(activos),  icon: CheckCircle2,  color: "text-success",     bg: "bg-success/10"     },
+    { label: "Por vencer",     value: "—",            icon: CalendarClock, color: "text-warning",     bg: "bg-warning/10"     },
+    { label: "Por Consumirse", value: "—",            icon: TrendingDown,  color: "text-orange-400",  bg: "bg-orange-400/10"  },
+    { label: "Vencidos",       value: fmt(vencidos), icon: XCircle,       color: "text-destructive",  bg: "bg-destructive/10" },
+  ];
+
   return (
     <div className="space-y-6">
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {metrics.map((m, i) => {
+        {kpis.map((m, i) => {
           const Icon = m.icon;
           return (
             <div
