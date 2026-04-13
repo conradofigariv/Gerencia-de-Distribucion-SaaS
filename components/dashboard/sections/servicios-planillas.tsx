@@ -316,7 +316,7 @@ export function ServiciosPlanillasSection() {
         return;
       }
 
-      const mapped = rows
+      const rawMapped = rows
         .map(r => ({
           articulo:      str(r["Artículo"]        ?? r["ARTICULO"]      ?? r["articulo"]      ?? r["Artículo SAP"] ?? r["Material"]),
           descripcion:   str(r["Descripción"]     ?? r["DESCRIPCION"]   ?? r["descripcion"]   ?? r["Texto breve"]),
@@ -325,6 +325,11 @@ export function ServiciosPlanillasSection() {
           mat_serv:      str(r["Mat./serv."]       ?? r["MAT_SERV"]     ?? r["Mat/Serv"]      ?? r["Tipo"]        ?? ""),
         }))
         .filter(r => r.articulo);
+
+      // Deduplicar por artículo (último gana) para evitar violación de unique constraint
+      const dedupMap = new Map<string, typeof rawMapped[0]>();
+      for (const r of rawMapped) dedupMap.set(r.articulo, r);
+      const mapped = [...dedupMap.values()];
 
       if (mapped.length === 0) {
         toast.error("No se encontró columna 'Artículo' en el archivo");
