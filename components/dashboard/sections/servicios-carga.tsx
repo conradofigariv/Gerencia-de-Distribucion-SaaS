@@ -654,7 +654,15 @@ export function ServiciosCargaSection() {
         }));
         setPlanStatus({ op: opRows.length, qw: qwRows.length, mat: matRows.length });
         if (opRows.length > 0 && qwRows.length > 0 && matRows.length > 0) {
-          setMaps(buildMaps(opRows, qwRows, matRows));
+          const maps = buildMaps(opRows, qwRows, matRows);
+          setMaps(maps);
+          // Diagnóstico: primeras 3 claves de cada mapa
+          const opKeys  = [...maps.opMap.keys()].slice(0, 3).join(" | ");
+          const qwKeys  = [...maps.qwMap.keys()].slice(0, 3).join(" | ");
+          const matKeys = [...maps.matMap.keys()].slice(0, 3).join(" | ");
+          toast.info(`OP keys: ${opKeys}`, { duration: 15000 });
+          toast.info(`QW keys: ${qwKeys}`, { duration: 15000 });
+          toast.info(`MAT keys: ${matKeys}`, { duration: 15000 });
         }
       } catch (e) {
         toast.error(`Error al cargar planillas: ${e instanceof Error ? e.message : "Error"}`);
