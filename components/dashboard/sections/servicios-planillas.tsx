@@ -14,16 +14,17 @@ import {
 const str = (v: unknown): string => String(v ?? "").trim();
 const BATCH = 500;
 
-const parseFile = async (file: File): Promise<Record<string, unknown>[]> => {
+// headerRow: índice de la fila de encabezados (0 = fila 1, 1 = fila 2)
+const parseFile = async (file: File, headerRow = 1): Promise<Record<string, unknown>[]> => {
   const XLSX = await import("xlsx");
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array", cellDates: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null, raw: true });
-  if (raw.length < 2) return [];
-  const hdrs = (raw[1] as unknown[]).map(h => str(h));
+  if (raw.length <= headerRow) return [];
+  const hdrs = (raw[headerRow] as unknown[]).map(h => str(h));
   return raw
-    .slice(2)
+    .slice(headerRow + 1)
     .filter(row => (row as unknown[]).some(c => c != null && c !== ""))
     .map(row => {
       const arr = row as unknown[];
@@ -227,8 +228,10 @@ export function ServiciosPlanillasSection() {
   const uploadOP = async (file: File) => {
     setS("OP", { uploading: true });
     try {
-      const rows = await parseFile(file);
-      if (rows.length === 0) { toast.error("OP: el archivo no tiene datos (headers en fila 2)"); return; }
+      const rows = await parseFile(file, 0);  // OP tiene headers en fila 1
+      if (rows.length === 0) { toast.error("OP: el archivo no tiene datos (headers en fila 1)"); return; }
+      // Diagnóstico: mostrar columnas detectadas
+      toast.info(`OP columnas: ${Object.keys(rows[0]).join(" | ")}`, { duration: 20000 });
       const { error: delErr } = await supabase.from("planillas_op").delete().not("id", "is", null);
       if (delErr) { toast.error(`Error al limpiar OP: ${delErr.message}`); return; }
       for (let i = 0; i < rows.length; i += BATCH) {
