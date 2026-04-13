@@ -8,118 +8,134 @@ import { Loader2, Plus, Trash2 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface ManualRow {
+interface FilaManual {
   id:        string;
-  op:        string;
-  opMadre:   string;
-  linea:     string;
+  op:        number;
+  op_madre:  number;
+  linea:     number;
   matricula: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const uid       = () => Math.random().toString(36).slice(2);
-const splitCol  = (t: string) => t.split(/\r?\n/).map(v => v.trim()).filter(v => v !== "");
+const splitCol = (t: string) => t.split(/\r?\n/).map(v => v.trim()).filter(Boolean);
 
-const EMPTY_FORM = { op: "", opMadre: "", linea: "1", matricula: "" };
+const EMPTY = { op: "", op_madre: "", linea: "1", matricula: "" };
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export function ServiciosCargaSection() {
-  const [rows, setRows]       = useState<ManualRow[]>([]);
+  const [filas, setFilas]     = useState<FilaManual[]>([]);
   const [mode, setMode]       = useState<"single" | "bulk">("single");
-  const [form, setForm]       = useState(EMPTY_FORM);
-  const [errors, setErrors]   = useState<Partial<typeof EMPTY_FORM>>({});
-  const [bulk, setBulk]       = useState({ op: "", opMadre: "", linea: "", matricula: "" });
+  const [form, setForm]       = useState(EMPTY);
+  const [errors, setErrors]   = useState<Partial<typeof EMPTY>>({});
+  const [bulk, setBulk]       = useState({ op: "", op_madre: "", linea: "", matricula: "" });
   const [bulkErr, setBulkErr] = useState("");
   const [adding, setAdding]   = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Cargar filas guardadas al montar
+  // ── Cargar filas existentes al montar
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase
-        .from("seguimiento")
+        .from("filas_manuales")
         .select("id, op, op_madre, linea, matricula")
-        .is("estado_de_plazo", null)
         .order("created_at", { ascending: true });
-      if (error) { toast.error(`Error al cargar filas: ${error.message}`); return; }
-      if (data && data.length > 0) {
-        setRows(data.map(r => ({
-          id:        r.id as string,
-          op:        String(r.op ?? ""),
-          opMadre:   String(r.op_madre ?? ""),
-          linea:     String(r.linea ?? ""),
-          matricula: String(r.matricula ?? ""),
-        })));
-      }
+      if (error) { toast.error(`Error al cargar filas: ${error.message}`); }
+      else setFilas((data ?? []) as FilaManual[]);
+      setLoading(false);
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Validación single
+  // ── Validación
   const validate = () => {
-    const e: Partial<typeof EMPTY_FORM> = {};
-    if (!form.op.trim())        e.op        = "Requerido";
-    if (!form.opMadre.trim())   e.opMadre   = "Requerido";
-    if (!form.linea.trim())     e.linea     = "Requerido";
-    if (!form.matricula.trim()) e.matricula = "Requerido";
+    const e: Partial<typeof EMPTY> = {};
+    if (!form.op.trim()       || isNaN(Number(form.op)))       e.op       = "Debe ser un número";
+    if (!form.op_madre.trim() || isNaN(Number(form.op_madre))) e.op_madre = "Debe ser un número";
+    if (!form.linea.trim()    || isNaN(Number(form.linea)))    e.linea    = "Debe ser un número";
+    if (!form.matricula.trim())                                 e.matricula = "Requerido";
     return e;
   };
 
+  // ── Agregar fila individual
   const handleAdd = async () => {
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
     setErrors({});
     setAdding(true);
     try {
+      const payload = {
+        op:        Number(form.op),
+        op_madre:  Number(form.op_madre),
+        linea:     Number(form.linea),
+        matricula: form.matricula.trim(),
+      };
       const { data, error } = await supabase
-        .from("seguimiento")
-        .insert({ op: form.op.trim(), op_madre: form.opMadre.trim(), linea: form.linea.trim(), matricula: form.matricula.trim() })
-        .select("id")
+        .from("filas_manuales")
+        .insert(payload)
+        .select("id, op, op_madre, linea, matricula")
         .single();
       if (error) { toast.error(`Error: ${error.message}`); return; }
-      setRows(prev => [...prev, { id: data.id as string, op: form.op.trim(), opMadre: form.opMadre.trim(), linea: form.linea.trim(), matricula: form.matricula.trim() }]);
-      setForm(EMPTY_FORM);
+      setFilas(prev => [...prev, data as FilaManual]);
+      setForm(EMPTY);
     } finally {
       setAdding(false);
     }
   };
 
+  // ── Eliminar fila
   const handleDelete = async (id: string) => {
-    const { error } = await supabase.from("seguimiento").delete().eq("id", id);
+    const { error } = await supabase.from("filas_manuales").delete().eq("id", id);
     if (error) { toast.error(`Error: ${error.message}`); return; }
-    setRows(prev => prev.filter(r => r.id !== id));
+    setFilas(prev => prev.filter(f => f.id !== id));
   };
 
-  // ── Bulk paste
+  // ── Agregar múltiples filas (pegar columnas)
   const handleBulkAdd = async () => {
     setBulkErr("");
-    const ops        = splitCol(bulk.op);
-    const opMadres   = splitCol(bulk.opMadre);
-    const lineas     = splitCol(bulk.linea);
-    const matriculas = splitCol(bulk.matricula);
+    const ops      = splitCol(bulk.op);
+    const madres   = splitCol(bulk.op_madre);
+    const lineas   = splitCol(bulk.linea);
+    const mats     = splitCol(bulk.matricula);
 
-    if (!ops.length)        { setBulkErr("La columna OP está vacía.");        return; }
-    if (!opMadres.length)   { setBulkErr("La columna OP MADRE está vacía.");  return; }
-    if (!matriculas.length) { setBulkErr("La columna MATRÍCULA está vacía."); return; }
+    if (!ops.length)    { setBulkErr("La columna OP está vacía.");        return; }
+    if (!madres.length) { setBulkErr("La columna OP MADRE está vacía.");  return; }
+    if (!mats.length)   { setBulkErr("La columna MATRÍCULA está vacía."); return; }
+
     const n = ops.length;
-    if (opMadres.length !== n || matriculas.length !== n) {
-      setBulkErr(`Columnas con distinto número de filas — OP: ${n}, OP MADRE: ${opMadres.length}, MATRÍCULA: ${matriculas.length}`);
+    if (madres.length !== n || mats.length !== n) {
+      setBulkErr(`Columnas con distinto número de filas — OP: ${n}, OP MADRE: ${madres.length}, MATRÍCULA: ${mats.length}`);
       return;
     }
+
     const lineaFinal = lineas.length === n ? lineas : Array(n).fill("1");
-    const newRows = ops.map((op, i) => ({ op, op_madre: opMadres[i], linea: lineaFinal[i], matricula: matriculas[i] }));
+    const errs: string[] = [];
+    for (let i = 0; i < n; i++) {
+      if (isNaN(Number(ops[i])))        errs.push(`Fila ${i + 1}: OP "${ops[i]}" no es número`);
+      if (isNaN(Number(madres[i])))     errs.push(`Fila ${i + 1}: OP MADRE "${madres[i]}" no es número`);
+      if (isNaN(Number(lineaFinal[i]))) errs.push(`Fila ${i + 1}: LÍNEA "${lineaFinal[i]}" no es número`);
+      if (!mats[i])                     errs.push(`Fila ${i + 1}: MATRÍCULA vacía`);
+    }
+    if (errs.length) { setBulkErr(errs.slice(0, 5).join(" · ")); return; }
+
+    const payload = ops.map((op, i) => ({
+      op:        Number(op),
+      op_madre:  Number(madres[i]),
+      linea:     Number(lineaFinal[i]),
+      matricula: mats[i],
+    }));
 
     setAdding(true);
     try {
-      const { data, error } = await supabase.from("seguimiento").insert(newRows).select("id, op, op_madre, linea, matricula");
+      const { data, error } = await supabase
+        .from("filas_manuales")
+        .insert(payload)
+        .select("id, op, op_madre, linea, matricula");
       if (error) { toast.error(`Error: ${error.message}`); return; }
-      setRows(prev => [...prev, ...(data ?? []).map((r: { id: string; op: string; op_madre: string; linea: string; matricula: string }) => ({
-        id: r.id, op: String(r.op ?? ""), opMadre: String(r.op_madre ?? ""), linea: String(r.linea ?? ""), matricula: String(r.matricula ?? ""),
-      }))]);
-      setBulk({ op: "", opMadre: "", linea: "", matricula: "" });
+      setFilas(prev => [...prev, ...((data ?? []) as FilaManual[])]);
+      setBulk({ op: "", op_madre: "", linea: "", matricula: "" });
       setMode("single");
-      toast.success(`${newRows.length} filas agregadas`);
+      toast.success(`${payload.length} filas agregadas`);
     } finally {
       setAdding(false);
     }
@@ -139,7 +155,9 @@ export function ServiciosCargaSection() {
       <div className="flex items-center gap-3">
         <div>
           <h3 className="text-sm font-semibold text-foreground">Crear seguimiento</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">{rows.length} fila{rows.length !== 1 ? "s" : ""} cargada{rows.length !== 1 ? "s" : ""}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {loading ? "Cargando..." : `${filas.length} fila${filas.length !== 1 ? "s" : ""} cargada${filas.length !== 1 ? "s" : ""}`}
+          </p>
         </div>
         <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 ml-auto">
           {(["single", "bulk"] as const).map(m => (
@@ -152,21 +170,24 @@ export function ServiciosCargaSection() {
         </div>
       </div>
 
-      {/* ── Single form ── */}
+      {/* ── Formulario individual ── */}
       {mode === "single" && (
         <div className="bg-card border border-border rounded-xl p-5">
           <div className="grid grid-cols-4 gap-4 mb-4">
-            {(["op", "opMadre", "linea", "matricula"] as const).map(key => (
+            {([
+              { key: "op",        label: "OP",        placeholder: "ej. 4500012345", type: "number" },
+              { key: "op_madre",  label: "OP MADRE",  placeholder: "ej. 4500099999", type: "number" },
+              { key: "linea",     label: "LÍNEA",     placeholder: "1",              type: "number" },
+              { key: "matricula", label: "MATRÍCULA", placeholder: "ej. 00702632.0", type: "text"   },
+            ] as const).map(({ key, label, placeholder, type }) => (
               <div key={key} className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-foreground">
-                  {key === "op" ? "OP" : key === "opMadre" ? "OP MADRE" : key === "linea" ? "LÍNEA" : "MATRÍCULA"}
-                </label>
+                <label className="text-xs font-medium text-foreground">{label}</label>
                 <input
-                  type="text"
+                  type={type}
                   value={form[key]}
                   onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
                   onKeyDown={e => { if (e.key === "Enter") handleAdd(); }}
-                  placeholder={key === "linea" ? "1" : ""}
+                  placeholder={placeholder}
                   className={inputCls(errors[key])}
                 />
                 {errors[key] && <p className="text-[11px] text-destructive">{errors[key]}</p>}
@@ -183,15 +204,15 @@ export function ServiciosCargaSection() {
         </div>
       )}
 
-      {/* ── Bulk paste ── */}
+      {/* ── Pegar columnas ── */}
       {mode === "bulk" && (
         <div className="bg-card border border-border rounded-xl p-5 space-y-4">
           <p className="text-xs text-muted-foreground">Copiá una columna de Excel y pegala en el campo. LÍNEA es opcional (default 1).</p>
           <div className="grid grid-cols-4 gap-4">
             {([
-              { key: "op",        label: "OP" },
-              { key: "opMadre",   label: "OP MADRE" },
-              { key: "linea",     label: "LÍNEA" },
+              { key: "op",        label: "OP"        },
+              { key: "op_madre",  label: "OP MADRE"  },
+              { key: "linea",     label: "LÍNEA"     },
               { key: "matricula", label: "MATRÍCULA" },
             ] as const).map(({ key, label }) => (
               <div key={key} className="flex flex-col gap-1.5">
@@ -221,26 +242,26 @@ export function ServiciosCargaSection() {
       )}
 
       {/* ── Tabla de filas ── */}
-      {rows.length > 0 && (
+      {!loading && filas.length > 0 && (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <table className="w-full text-xs">
             <thead className="bg-secondary/50 border-b border-border">
               <tr>
-                {["#", "OP", "OP MADRE", "LÍNEA", "MATRÍCULA", ""].map(h => (
-                  <th key={h} className="py-2 px-3 text-left text-muted-foreground font-medium">{h}</th>
+                {["#", "OP", "OP MADRE", "LÍNEA", "MATRÍCULA", ""].map((h, i) => (
+                  <th key={i} className="py-2 px-3 text-left text-muted-foreground font-medium">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, i) => (
-                <tr key={row.id} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
+              {filas.map((fila, i) => (
+                <tr key={fila.id} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
                   <td className="py-2 px-3 text-muted-foreground">{i + 1}</td>
-                  <td className="py-2 px-3 text-foreground">{row.op}</td>
-                  <td className="py-2 px-3 text-foreground">{row.opMadre}</td>
-                  <td className="py-2 px-3 text-foreground">{row.linea}</td>
-                  <td className="py-2 px-3 text-foreground">{row.matricula}</td>
+                  <td className="py-2 px-3 text-foreground font-mono">{fila.op}</td>
+                  <td className="py-2 px-3 text-foreground font-mono">{fila.op_madre}</td>
+                  <td className="py-2 px-3 text-foreground">{fila.linea}</td>
+                  <td className="py-2 px-3 text-foreground font-mono">{fila.matricula}</td>
                   <td className="py-2 px-3">
-                    <button onClick={() => handleDelete(row.id)}
+                    <button onClick={() => handleDelete(fila.id)}
                       className="text-muted-foreground hover:text-destructive transition-colors">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
