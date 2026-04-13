@@ -318,16 +318,11 @@ export function ServiciosCargaSection() {
               <AlertCircle className="w-3.5 h-3.5" />{errCount} con errores (se guardan igual)
             </span>
           )}
-          <div className="ml-auto flex items-center gap-2">
-            <button onClick={() => handleSave("accumulate")} disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 border border-border text-sm font-medium text-foreground transition-all disabled:opacity-50">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              Acumular
-            </button>
+          <div className="ml-auto">
             <button onClick={() => handleSave("replace")} disabled={saving}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-medium transition-all disabled:opacity-50">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-              Reemplazar y guardar
+              {saving ? "Guardando..." : "Guardar seguimiento"}
             </button>
           </div>
         </div>
