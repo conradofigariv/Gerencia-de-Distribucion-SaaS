@@ -10,6 +10,7 @@ import {
   BarChart3,
   XCircle,
   CalendarClock,
+  Loader2,
 } from "lucide-react";
 import {
   AreaChart,
@@ -60,6 +61,31 @@ const FILTROS_VENCER  = [3, 4]   as const;
 const FILTROS_CONSUMO = [30, 40] as const;
 type FiltroVencer  = typeof FILTROS_VENCER[number];
 type FiltroConsumo = typeof FILTROS_CONSUMO[number];
+
+const TABLE_COLS: { db: string; label: string }[] = [
+  { db: "zona",                  label: "ZONA"                    },
+  { db: "op",                    label: "OP"                      },
+  { db: "op_madre",              label: "OP MADRE"                },
+  { db: "sc",                    label: "SC"                      },
+  { db: "descripcion_sc",        label: "DESCRIPCIÓN SC"          },
+  { db: "linea",                 label: "LÍNEA"                   },
+  { db: "matricula",             label: "MATRICULA"               },
+  { db: "cantidad",              label: "CANTIDAD"                },
+  { db: "cantidad_recibida",     label: "CANT. RECIBIDA"          },
+  { db: "saldo_linea",           label: "SALDO"                   },
+  { db: "fecha_pactada",         label: "FECHA PACTADA"           },
+  { db: "proveedor",             label: "PROVEEDOR"               },
+  { db: "estado",                label: "ESTADO"                  },
+  { db: "estado_plazo",          label: "E. PLAZO"                },
+  { db: "estado_cantidades",     label: "E. CANT."                },
+  { db: "revision",              label: "REVISION"                },
+  { db: "disponibilidad_meses",  label: "DISPONIB."               },
+];
+const STATUS_COLS_T = new Set(["estado_plazo", "estado_cantidades", "revision"]);
+const RAW_COLS_T    = new Set(["op", "op_madre", "linea"]);
+const PAGE_SIZE     = 50;
+
+type SeguimientoRow = Record<string, unknown>;
 
 export function ServiciosResumenSection() {
   const [activos,        setActivos]        = useState<number | null>(null);
@@ -125,10 +151,52 @@ export function ServiciosResumenSection() {
     })();
   }, [filtroConsumo]);
 
+  const [tableRows,    setTableRows]    = useState<SeguimientoRow[]>([]);
+  const [tableLoading, setTableLoading] = useState(true);
+  const [tablePage,    setTablePage]    = useState(0);
+
+  // Tabla filtrada — re-ejecuta cuando cambia cualquier filtro
+  useEffect(() => {
+    (async () => {
+      setTableLoading(true);
+      setTablePage(0);
+      const today  = new Date();
+      const limite = new Date(today);
+      limite.setMonth(limite.getMonth() + filtroVencer);
+      const PAGE = 1000;
+      const all: SeguimientoRow[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("seguimiento")
+          .select("*")
+          .gte("fecha_pactada", today.toISOString().split("T")[0])
+          .lte("fecha_pactada", limite.toISOString().split("T")[0])
+          .range(from, from + PAGE - 1);
+        if (error || !data?.length) break;
+        all.push(...data);
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+      const pct = filtroConsumo / 100;
+      const filtered = all.filter(r => {
+        const cantidad = Number(r.cantidad);
+        const saldo    = Number(r.saldo_linea);
+        if (cantidad === 0) return false;
+        return saldo / cantidad <= pct;
+      });
+      setTableRows(filtered);
+      setTableLoading(false);
+    })();
+  }, [filtroVencer, filtroConsumo]);
+
   const cycleVencer  = () => { const i = FILTROS_VENCER.indexOf(filtroVencer);   setFiltroVencer(FILTROS_VENCER[(i + 1) % FILTROS_VENCER.length]);   };
   const cycleConsumo = () => { const i = FILTROS_CONSUMO.indexOf(filtroConsumo); setFiltroConsumo(FILTROS_CONSUMO[(i + 1) % FILTROS_CONSUMO.length]); };
 
   const fmt = (n: number | null) => n === null ? "—" : n.toLocaleString("es-AR");
+
+  const totalPages = Math.ceil(tableRows.length / PAGE_SIZE);
+  const pagedRows  = tableRows.slice(tablePage * PAGE_SIZE, (tablePage + 1) * PAGE_SIZE);
 
   return (
     <div className="space-y-6">
@@ -192,6 +260,98 @@ export function ServiciosResumenSection() {
           <p className="text-2xl font-bold text-foreground">{fmt(vencidos)}</p>
         </div>
 
+      </div>
+
+      {/* Tabla filtrada */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-secondary/30">
+          <div>
+            <p className="text-sm font-semibold text-foreground">
+              Servicios — próximos {filtroVencer} meses · ≤{filtroConsumo}% restante
+            </p>
+            {!tableLoading && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {tableRows.length} resultado{tableRows.length !== 1 ? "s" : ""}
+              </p>
+            )}
+          </div>
+          {tableLoading && <Loader2 className="w-4 h-4 text-accent animate-spin" />}
+        </div>
+
+        {tableLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-5 h-5 text-accent animate-spin" />
+          </div>
+        ) : tableRows.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">
+            Sin resultados para los filtros seleccionados
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-secondary/50">
+                    <th className="py-2.5 px-3 text-left text-muted-foreground font-semibold">#</th>
+                    {TABLE_COLS.map(c => (
+                      <th key={c.db} className="py-2.5 px-3 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider">{c.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedRows.map((row, idx) => (
+                    <tr key={idx} className="border-b border-border last:border-0 hover:bg-secondary/30 transition-colors">
+                      <td className="py-2.5 px-3 text-muted-foreground">{tablePage * PAGE_SIZE + idx + 1}</td>
+                      {TABLE_COLS.map(c => {
+                        const val     = row[c.db];
+                        const display = typeof val === "number" && !RAW_COLS_T.has(c.db)
+                          ? val.toLocaleString("es-AR")
+                          : String(val ?? "");
+                        const isStat  = STATUS_COLS_T.has(c.db);
+                        return (
+                          <td key={c.db} className="py-2.5 px-3 whitespace-nowrap max-w-[160px] truncate" title={display}>
+                            {isStat ? (
+                              <span className={cn(
+                                "px-1.5 py-0.5 rounded text-[11px] font-medium",
+                                val === "VENCIDA" || val === "CERRAR" ? "bg-destructive/15 text-destructive" :
+                                val === "SIN SALDO"                   ? "bg-warning/15 text-warning"         :
+                                val === "OK" || val === "VIGENTE"     ? "bg-success/15 text-success"         :
+                                "bg-secondary text-muted-foreground"
+                              )}>{display || "—"}</span>
+                            ) : (
+                              <span className="text-foreground">{display || "—"}</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-secondary/30">
+                <span className="text-xs text-muted-foreground">
+                  {tableRows.length} resultado{tableRows.length !== 1 ? "s" : ""}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setTablePage(p => p - 1)} disabled={tablePage === 0}
+                    className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                    Anterior
+                  </button>
+                  <span className="px-3 py-1.5 rounded-lg text-xs bg-accent text-accent-foreground font-medium">
+                    {tablePage + 1} / {totalPages}
+                  </span>
+                  <button onClick={() => setTablePage(p => p + 1)} disabled={tablePage >= totalPages - 1}
+                    className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                    Siguiente
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Charts row */}
