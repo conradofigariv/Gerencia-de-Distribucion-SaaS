@@ -432,11 +432,11 @@ export function ServiciosResumenSection() {
                 <div className="flex items-center gap-3">
                   <div className={cn("w-2 h-2 rounded-full shrink-0 mt-0.5", alerta.severity === "high" ? "bg-destructive" : "bg-warning")} />
                   <div>
-                    <p className="text-sm font-semibold text-foreground truncate max-w-[700px]">
-                      {alerta.tipo === "Vencimiento 3M" ? "Vence en 3 meses" :
+                    <p className="text-sm text-foreground truncate max-w-[700px]">
+                      <span className="font-bold">OP {alerta.op}</span>
+                      <span className="font-normal text-muted-foreground"> · {alerta.tipo === "Vencimiento 3M" ? "Vence en 3 meses" :
                        alerta.tipo === "Vencimiento 4M" ? "Vence en 4 meses" :
-                       alerta.tipo === "Consumo 30%"    ? "Consumo ≤30%"     : "Consumo ≤40%"}
-                      <span className="font-normal text-muted-foreground"> · OP {alerta.op}</span>
+                       alerta.tipo === "Consumo 30%"    ? "Consumo ≤30%"     : "Consumo ≤40%"}</span>
                       {alerta.descripcion && (
                         <span className="font-normal text-muted-foreground"> — {alerta.descripcion.length > 60 ? alerta.descripcion.slice(0, 60) + "…" : alerta.descripcion}</span>
                       )}
