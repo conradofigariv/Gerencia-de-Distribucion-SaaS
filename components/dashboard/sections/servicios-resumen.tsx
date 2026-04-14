@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   TrendingDown,
-  MapPin,
   XCircle,
   CalendarClock,
   Loader2,
@@ -442,10 +441,6 @@ export function ServiciosResumenSection() {
                         <span className="font-normal text-muted-foreground"> — {alerta.descripcion.length > 60 ? alerta.descripcion.slice(0, 60) + "…" : alerta.descripcion}</span>
                       )}
                     </p>
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
-                      <MapPin className="w-3 h-3" />
-                      {alerta.zona}
-                    </div>
                   </div>
                 </div>
                 <span className="text-xs text-muted-foreground shrink-0 ml-4">{alerta.fecha}</span>
