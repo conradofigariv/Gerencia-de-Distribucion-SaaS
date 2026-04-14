@@ -108,7 +108,8 @@ export function SettingsSection({ user }: { user: User }) {
 
     const { error: saveError } = await supabase
       .from("profiles")
-      .upsert({ id: user.id, avatar_url: url, updated_at: new Date().toISOString() });
+      .update({ avatar_url: url, updated_at: new Date().toISOString() })
+      .eq("id", user.id);
 
     if (saveError) toast.error(`Error al guardar: ${saveError.message}`);
     else {
