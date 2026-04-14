@@ -13,12 +13,14 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
-const alertasRecientes = [
-  { id: 1, tipo: "Corte", direccion: "Av. Colón 1234", zona: "Centro", tiempo: "Hace 15 min", severity: "high" },
-  { id: 2, tipo: "Baja tensión", direccion: "Bv. San Juan 567", zona: "Norte", tiempo: "Hace 1h", severity: "medium" },
-  { id: 3, tipo: "Medidor falla", direccion: "Calle Lima 890", zona: "Sur", tiempo: "Hace 2h", severity: "medium" },
-  { id: 4, tipo: "Reconexión", direccion: "Av. Vélez 2310", zona: "Este", tiempo: "Hace 3h", severity: "low" },
-];
+type Alerta = {
+  id: string;
+  tipo: "Vencimiento 3M" | "Vencimiento 4M" | "Consumo 30%" | "Consumo 40%";
+  op: number;
+  zona: string;
+  fecha: string;
+  severity: "high" | "medium" | "low";
+};
 
 
 const CYCLE_VENCER  = [3, 4, null]  as const;
@@ -66,6 +68,7 @@ export function ServiciosResumenSection() {
   const [tableRows,    setTableRows]    = useState<SeguimientoRow[]>([]);
   const [tableLoading, setTableLoading] = useState(true);
   const [tablePage,    setTablePage]    = useState(0);
+  const [alertas,      setAlertas]      = useState<Alerta[]>([]);
 
   // Conteos fijos (siempre activos)
   useEffect(() => {
@@ -137,6 +140,66 @@ export function ServiciosResumenSection() {
       setTableRows(result); setTableLoading(false);
     })();
   }, [filtroVencer, filtroConsumo, filtroActivos, filtroVencidos]);
+
+  // Generar alertas dinámicamente
+  useEffect(() => {
+    (async () => {
+      const PAGE = 1000; const all: SeguimientoRow[] = []; let from = 0;
+      while (true) {
+        const { data, error } = await supabase.from("seguimiento").select("*").range(from, from + PAGE - 1);
+        if (error || !data?.length) break;
+        all.push(...data); if (data.length < PAGE) break; from += PAGE;
+      }
+      const today = new Date();
+      const alertasGen: Alerta[] = [];
+      const alertIds = new Set<string>();
+      for (const row of all) {
+        const op = Number(row.op);
+        const zona = String(row.zona ?? "—");
+        const fecha_pactada = row.fecha_pactada ? new Date(String(row.fecha_pactada)) : null;
+        const cantidad = Number(row.cantidad);
+        const saldo = Number(row.saldo_linea);
+        const razon = cantidad > 0 ? saldo / cantidad : 1;
+        let alertId = `${op}-${zona}`;
+
+        // Vencimiento 3M (rojo)
+        if (fecha_pactada && fecha_pactada >= today && fecha_pactada.getTime() - today.getTime() <= 3 * 30 * 86400000) {
+          const id = `${alertId}-3m`;
+          if (!alertIds.has(id)) {
+            alertasGen.push({ id, tipo: "Vencimiento 3M", op, zona, fecha: fecha_pactada.toISOString().split("T")[0], severity: "high" });
+            alertIds.add(id);
+          }
+        }
+        // Vencimiento 4M (amarillo)
+        else if (fecha_pactada && fecha_pactada >= today && fecha_pactada.getTime() - today.getTime() <= 4 * 30 * 86400000) {
+          const id = `${alertId}-4m`;
+          if (!alertIds.has(id)) {
+            alertasGen.push({ id, tipo: "Vencimiento 4M", op, zona, fecha: fecha_pactada.toISOString().split("T")[0], severity: "medium" });
+            alertIds.add(id);
+          }
+        }
+
+        // Consumo 30% (rojo)
+        if (cantidad > 0 && razon <= 0.3) {
+          const id = `${alertId}-30p`;
+          if (!alertIds.has(id)) {
+            alertasGen.push({ id, tipo: "Consumo 30%", op, zona, fecha: new Date().toISOString().split("T")[0], severity: "high" });
+            alertIds.add(id);
+          }
+        }
+        // Consumo 40% (amarillo)
+        else if (cantidad > 0 && razon <= 0.4) {
+          const id = `${alertId}-40p`;
+          if (!alertIds.has(id)) {
+            alertasGen.push({ id, tipo: "Consumo 40%", op, zona, fecha: new Date().toISOString().split("T")[0], severity: "medium" });
+            alertIds.add(id);
+          }
+        }
+      }
+      alertasGen.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+      setAlertas(alertasGen.slice(0, 10));
+    })();
+  }, []);
 
   const cycleVencer  = () => { const i = CYCLE_VENCER.indexOf(filtroVencer);   setFiltroVencer(CYCLE_VENCER[(i + 1) % CYCLE_VENCER.length]);   };
   const cycleConsumo = () => { const i = CYCLE_CONSUMO.indexOf(filtroConsumo); setFiltroConsumo(CYCLE_CONSUMO[(i + 1) % CYCLE_CONSUMO.length]); };
@@ -346,42 +409,44 @@ export function ServiciosResumenSection() {
         <div className="flex items-center justify-between p-5 border-b border-border">
           <div>
             <h3 className="text-base font-semibold text-foreground">Alertas recientes</h3>
-            <p className="text-sm text-muted-foreground mt-0.5">Últimas incidencias del servicio</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Servicios por vencer o con alto consumo</p>
           </div>
           <span className="flex items-center gap-1.5 text-xs text-destructive font-medium bg-destructive/10 px-2.5 py-1 rounded-full">
             <AlertTriangle className="w-3 h-3" />
-            {alertasRecientes.filter((a) => a.severity === "high").length} críticas
+            {alertas.filter((a) => a.severity === "high").length} críticas
           </span>
         </div>
         <div className="divide-y divide-border">
-          {alertasRecientes.map((alerta, i) => (
-            <div
-              key={alerta.id}
-              className="flex items-center justify-between px-5 py-3.5 hover:bg-secondary/30 transition-colors duration-150 animate-in fade-in slide-in-from-left-2"
-              style={{ animationDelay: `${(i + 6) * 50}ms`, animationFillMode: "both" }}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={cn(
-                    "w-2 h-2 rounded-full shrink-0",
-                    alerta.severity === "high"
-                      ? "bg-destructive"
-                      : alerta.severity === "medium"
-                      ? "bg-warning"
-                      : "bg-success"
-                  )}
-                />
-                <div>
-                  <p className="text-sm font-medium text-foreground">{alerta.tipo}</p>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                    <MapPin className="w-3 h-3" />
-                    {alerta.direccion} · Zona {alerta.zona}
+          {alertas.length === 0 ? (
+            <div className="px-5 py-8 text-center text-sm text-muted-foreground">
+              Sin alertas — todos los servicios están en buen estado
+            </div>
+          ) : (
+            alertas.map((alerta, i) => (
+              <div
+                key={alerta.id}
+                className="flex items-center justify-between px-5 py-3.5 hover:bg-secondary/30 transition-colors duration-150 animate-in fade-in slide-in-from-left-2"
+                style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={cn(
+                      "w-2 h-2 rounded-full shrink-0",
+                      alerta.severity === "high" ? "bg-destructive" : "bg-warning"
+                    )}
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{alerta.tipo}</p>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                      <MapPin className="w-3 h-3" />
+                      OP {alerta.op} · Zona {alerta.zona}
+                    </div>
                   </div>
                 </div>
+                <span className="text-xs text-muted-foreground">{alerta.fecha}</span>
               </div>
-              <span className="text-xs text-muted-foreground">{alerta.tiempo}</span>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>
