@@ -140,9 +140,9 @@ export function SettingsSection({ user }: { user: User }) {
                 <>
                   {/* Avatar */}
                   <div className="flex items-center gap-5">
-                    <Avatar className="w-16 h-16">
-                      {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={initials} />}
-                      <AvatarFallback className="bg-gradient-to-br from-accent/80 to-chart-1 text-accent-foreground text-xl font-semibold">
+                    <Avatar className="w-16 h-16 rounded-lg">
+                      {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={initials} className="rounded-lg" />}
+                      <AvatarFallback className="rounded-lg bg-gradient-to-br from-accent/80 to-chart-1 text-accent-foreground text-xl font-semibold">
                         {initials}
                       </AvatarFallback>
                     </Avatar>
