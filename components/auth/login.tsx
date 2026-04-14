@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState } from "react";
-import { CircleDollarSign, Eye, EyeOff, Lock, Mail, AlertCircle } from "lucide-react";
+import { Eye, EyeOff, Lock, Mail, AlertCircle } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { Logo } from "@/components/logo";
 
 export function LoginPage() {
   const [email, setEmail]             = useState("");
@@ -31,9 +32,7 @@ export function LoginPage() {
       <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-6 duration-500">
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-8">
-          <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-lg">
-            <CircleDollarSign className="w-7 h-7 text-accent-foreground" />
-          </div>
+          <Logo className="w-12 h-12" />
           <span className="text-2xl font-semibold text-foreground">EPEC SaaS</span>
         </div>
 
