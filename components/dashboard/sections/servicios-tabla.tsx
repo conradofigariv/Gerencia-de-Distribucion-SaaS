@@ -80,32 +80,10 @@ export function ServiciosTablaSection() {
   const [editingValue, setEditingValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // ── Column resize
+  // ── Column resize (pointer capture)
   const [colWidths, setColWidths] = useState<Record<string, number>>(DEFAULT_WIDTHS);
   const [isResizing, setIsResizing] = useState(false);
   const resizing = useRef<{ col: string; startX: number; startW: number } | null>(null);
-
-  const startResize = (e: React.MouseEvent, col: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const startW = colWidths[col] ?? DEFAULT_WIDTHS[col] ?? 100;
-    resizing.current = { col, startX: e.clientX, startW };
-    setIsResizing(true);
-
-    const onMove = (ev: MouseEvent) => {
-      if (!resizing.current) return;
-      const newW = Math.max(50, resizing.current.startW + (ev.clientX - resizing.current.startX));
-      setColWidths(prev => ({ ...prev, [resizing.current!.col]: newW }));
-    };
-    const onUp = () => {
-      resizing.current = null;
-      setIsResizing(false);
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -285,10 +263,26 @@ export function ServiciosTablaSection() {
                   {DISPLAY_COLS.map(c => (
                     <th key={c.db} className="relative text-left py-2.5 pl-3 pr-4 text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider overflow-hidden">
                       <span className="block truncate">{c.label}</span>
-                      {/* Resize handle */}
+                      {/* Resize handle — usa pointer capture para drag confiable */}
                       <div
-                        onMouseDown={e => startResize(e, c.db)}
-                        className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize group/handle flex items-center justify-center"
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize group/handle flex items-center justify-center z-10"
+                        onPointerDown={e => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.currentTarget.setPointerCapture(e.pointerId);
+                          resizing.current = { col: c.db, startX: e.clientX, startW: colWidths[c.db] ?? DEFAULT_WIDTHS[c.db] ?? 100 };
+                          setIsResizing(true);
+                        }}
+                        onPointerMove={e => {
+                          if (!resizing.current) return;
+                          const newW = Math.max(50, resizing.current.startW + (e.clientX - resizing.current.startX));
+                          setColWidths(prev => ({ ...prev, [resizing.current!.col]: newW }));
+                        }}
+                        onPointerUp={e => {
+                          e.currentTarget.releasePointerCapture(e.pointerId);
+                          resizing.current = null;
+                          setIsResizing(false);
+                        }}
                       >
                         <div className="w-px h-4 bg-border group-hover/handle:bg-accent transition-colors" />
                       </div>
