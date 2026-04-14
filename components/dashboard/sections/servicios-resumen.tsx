@@ -434,7 +434,7 @@ export function ServiciosResumenSection() {
                   <div>
                     <p className="text-sm text-foreground truncate max-w-[700px]">
                       <span className="font-bold">OP {alerta.op}</span>
-                      <span className="font-normal text-muted-foreground"> · {alerta.tipo === "Vencimiento 3M" ? "Vence en 3 meses" :
+                      <span className="font-bold"> · {alerta.tipo === "Vencimiento 3M" ? "Vence en 3 meses" :
                        alerta.tipo === "Vencimiento 4M" ? "Vence en 4 meses" :
                        alerta.tipo === "Consumo 30%"    ? "Consumo ≤30%"     : "Consumo ≤40%"}</span>
                       {alerta.descripcion && (
