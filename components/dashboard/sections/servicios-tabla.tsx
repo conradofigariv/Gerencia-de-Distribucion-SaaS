@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { Search, Trash2, Database, RefreshCw, Loader2 } from "lucide-react";
+import { Search, Trash2, Database, RefreshCw, Loader2, Pencil } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 
@@ -34,6 +34,8 @@ const DISPLAY_COLS: { db: string; label: string }[] = [
 
 const STATUS_COLS = new Set(["estado_plazo", "estado_cantidades", "revision"]);
 const RAW_COLS    = new Set(["op", "op_madre", "linea"]);
+const NUM_COLS    = new Set(["op", "op_madre", "linea", "cantidad", "cantidad_recibida", "saldo_linea", "precio_redeterminacion", "disponibilidad_meses"]);
+const DATE_COLS   = new Set(["fecha_pactada", "fecha_redeterminacion"]);
 
 const PAGE_SIZE = 50;
 
@@ -49,6 +51,11 @@ export function ServiciosTablaSection() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
 
+  // ── Edit state
+  const [editingCell, setEditingCell] = useState<{ rowId: string; col: string } | null>(null);
+  const [editingValue, setEditingValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -57,24 +64,47 @@ export function ServiciosTablaSection() {
         .select("*")
         .order("created_at", { ascending: true });
       if (error) {
-        console.error("Supabase error details:", {
-          message: error.message,
-          code: error.code
-        });
         toast.error(`Error al cargar seguimiento: ${error.message}`);
       } else {
         setRows((data ?? []) as DbRow[]);
         setSelected(new Set());
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Error desconocido";
-      console.error("Fetch error:", err);
-      toast.error(`Error al cargar seguimiento: ${message}`);
+      toast.error(`Error al cargar seguimiento: ${err instanceof Error ? err.message : "Error desconocido"}`);
     }
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // ── Start editing a cell
+  const startEdit = (rowId: string, col: string, val: unknown) => {
+    let str = "";
+    if (val !== null && val !== undefined) {
+      str = DATE_COLS.has(col) ? String(val).split("T")[0] : String(val);
+    }
+    setEditingCell({ rowId, col });
+    setEditingValue(str);
+  };
+
+  // ── Save edit to DB
+  const saveEdit = useCallback(async () => {
+    if (!editingCell) return;
+    const { rowId, col } = editingCell;
+    setEditingCell(null);
+
+    let newVal: unknown = editingValue.trim() === "" ? null : editingValue.trim();
+    if (newVal !== null && NUM_COLS.has(col)) newVal = Number(newVal);
+
+    // Optimistic update
+    setRows(prev => prev.map(r => r.id === rowId ? { ...r, [col]: newVal } : r));
+
+    const { error } = await supabase.from("seguimiento").update({ [col]: newVal }).eq("id", rowId);
+    if (error) {
+      toast.error(`Error al guardar: ${error.message}`);
+      load();
+    }
+  }, [editingCell, editingValue, load]);
 
   if (loading) {
     return (
@@ -93,24 +123,14 @@ export function ServiciosTablaSection() {
   const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   // ── Selection helpers
-  const pagedIds       = paged.map(r => r.id);
-  const allPageSel     = pagedIds.length > 0 && pagedIds.every(id => selected.has(id));
-  const somePageSel    = pagedIds.some(id => selected.has(id));
+  const pagedIds    = paged.map(r => r.id);
+  const allPageSel  = pagedIds.length > 0 && pagedIds.every(id => selected.has(id));
+  const somePageSel = pagedIds.some(id => selected.has(id));
 
-  const toggleRow = (id: string) => {
-    setSelected(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
+  const toggleRow = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () => {
-    if (allPageSel) {
-      setSelected(prev => { const n = new Set(prev); pagedIds.forEach(id => n.delete(id)); return n; });
-    } else {
-      setSelected(prev => { const n = new Set(prev); pagedIds.forEach(id => n.add(id)); return n; });
-    }
+    if (allPageSel) setSelected(prev => { const n = new Set(prev); pagedIds.forEach(id => n.delete(id)); return n; });
+    else            setSelected(prev => { const n = new Set(prev); pagedIds.forEach(id => n.add(id));    return n; });
   };
 
   // ── Delete single row
@@ -118,10 +138,7 @@ export function ServiciosTablaSection() {
     setRows(prev => prev.filter(r => r.id !== id));
     setSelected(prev => { const n = new Set(prev); n.delete(id); return n; });
     const { error } = await supabase.from("seguimiento").delete().eq("id", id);
-    if (error) {
-      toast.error(`Error al eliminar: ${error.message}`);
-      load();
-    }
+    if (error) { toast.error(`Error al eliminar: ${error.message}`); load(); }
   };
 
   // ── Delete selected rows
@@ -131,10 +148,8 @@ export function ServiciosTablaSection() {
     setDeleting(true);
     const ids = Array.from(selected);
     const { error } = await supabase.from("seguimiento").delete().in("id", ids);
-    if (error) {
-      toast.error(`Error al eliminar: ${error.message}`);
-      load();
-    } else {
+    if (error) { toast.error(`Error al eliminar: ${error.message}`); load(); }
+    else {
       setRows(prev => prev.filter(r => !selected.has(r.id)));
       setSelected(new Set());
       toast.success(`${ids.length} registro${ids.length !== 1 ? "s" : ""} eliminado${ids.length !== 1 ? "s" : ""}`);
@@ -170,30 +185,20 @@ export function ServiciosTablaSection() {
             className="w-72 h-9 pl-9 pr-4 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all duration-200"
           />
         </div>
-        <button
-          onClick={load}
-          className="flex items-center gap-1.5 h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-muted-foreground hover:text-foreground transition-all"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          Actualizar
+        <button onClick={load} className="flex items-center gap-1.5 h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-muted-foreground hover:text-foreground transition-all">
+          <RefreshCw className="w-3.5 h-3.5" />Actualizar
         </button>
         {selected.size > 0 && (
-          <button
-            onClick={handleDeleteSelected}
-            disabled={deleting}
-            className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm text-destructive hover:bg-destructive/10 border border-destructive/30 transition-all disabled:opacity-50"
-          >
+          <button onClick={handleDeleteSelected} disabled={deleting}
+            className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm text-destructive hover:bg-destructive/10 border border-destructive/30 transition-all disabled:opacity-50">
             {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
             Borrar selección ({selected.size})
           </button>
         )}
         {rows.length > 0 && (
-          <button
-            onClick={handleClear}
-            className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm text-destructive hover:bg-destructive/10 border border-destructive/30 transition-all"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Limpiar todo
+          <button onClick={handleClear}
+            className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm text-destructive hover:bg-destructive/10 border border-destructive/30 transition-all">
+            <Trash2 className="w-3.5 h-3.5" />Limpiar todo
           </button>
         )}
       </div>
@@ -203,9 +208,7 @@ export function ServiciosTablaSection() {
         <div className="bg-card border border-dashed border-border rounded-xl py-16 text-center">
           <Database className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
           <p className="text-sm font-medium text-foreground">Base de datos vacía</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Generá un seguimiento y presioná "Guardar en Base de datos"
-          </p>
+          <p className="text-xs text-muted-foreground mt-1">Generá un seguimiento y presioná "Guardar en Base de datos"</p>
         </div>
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -213,11 +216,8 @@ export function ServiciosTablaSection() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border bg-secondary/50">
-                  {/* Select all checkbox */}
                   <th className="py-2.5 px-3 w-8">
-                    <input
-                      type="checkbox"
-                      checked={allPageSel}
+                    <input type="checkbox" checked={allPageSel}
                       ref={el => { if (el) el.indeterminate = somePageSel && !allPageSel; }}
                       onChange={toggleAll}
                       className="w-3.5 h-3.5 rounded accent-accent cursor-pointer"
@@ -235,47 +235,68 @@ export function ServiciosTablaSection() {
                 {paged.map((row, pageIdx) => {
                   const isSelected = selected.has(row.id);
                   return (
-                    <tr
-                      key={row.id}
-                      className={cn(
-                        "border-b border-border last:border-0 transition-colors duration-150",
-                        isSelected ? "bg-accent/8 hover:bg-accent/12" : "hover:bg-secondary/30"
-                      )}
-                    >
+                    <tr key={row.id} className={cn(
+                      "border-b border-border last:border-0 transition-colors duration-150",
+                      isSelected ? "bg-accent/8 hover:bg-accent/12" : "hover:bg-secondary/30"
+                    )}>
                       <td className="py-2.5 px-3">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleRow(row.id)}
-                          className="w-3.5 h-3.5 rounded accent-accent cursor-pointer"
-                        />
+                        <input type="checkbox" checked={isSelected} onChange={() => toggleRow(row.id)}
+                          className="w-3.5 h-3.5 rounded accent-accent cursor-pointer" />
                       </td>
                       <td className="py-2.5 px-3 text-muted-foreground">{page * PAGE_SIZE + pageIdx + 1}</td>
+
                       {DISPLAY_COLS.map(c => {
-                        const val     = row[c.db];
-                        const display = typeof val === "number" && !RAW_COLS.has(c.db) ? val.toLocaleString("es-AR") : String(val ?? "");
-                        const isStat  = STATUS_COLS.has(c.db);
+                        const val      = row[c.db];
+                        const display  = typeof val === "number" && !RAW_COLS.has(c.db) ? val.toLocaleString("es-AR") : String(val ?? "");
+                        const isStat   = STATUS_COLS.has(c.db);
+                        const isEditing = editingCell?.rowId === row.id && editingCell.col === c.db;
+
                         return (
-                          <td key={c.db} className="py-2.5 px-3 whitespace-nowrap max-w-[180px] truncate" title={display}>
-                            {isStat ? (
-                              <span className={cn(
-                                "px-1.5 py-0.5 rounded text-[11px] font-medium",
-                                val === "VENCIDA" || val === "CERRAR" ? "bg-destructive/15 text-destructive" :
-                                val === "SIN SALDO"                   ? "bg-warning/15 text-warning"         :
-                                val === "OK" || val === "VIGENTE"     ? "bg-success/15 text-success"         :
-                                "bg-secondary text-muted-foreground"
-                              )}>{display || "—"}</span>
+                          <td
+                            key={c.db}
+                            className="py-1.5 px-3 whitespace-nowrap max-w-[180px] group"
+                            title={isEditing ? undefined : display}
+                          >
+                            {isEditing ? (
+                              <input
+                                ref={inputRef}
+                                autoFocus
+                                type={DATE_COLS.has(c.db) ? "date" : NUM_COLS.has(c.db) ? "number" : "text"}
+                                value={editingValue}
+                                onChange={e => setEditingValue(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === "Enter")  { e.preventDefault(); saveEdit(); }
+                                  if (e.key === "Escape") { setEditingCell(null); }
+                                }}
+                                onBlur={saveEdit}
+                                className="w-full min-w-[80px] bg-secondary border border-accent rounded px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+                              />
                             ) : (
-                              <span className="text-foreground">{display || "—"}</span>
+                              <div
+                                className="flex items-center gap-1.5 cursor-pointer"
+                                onClick={() => startEdit(row.id, c.db, val)}
+                              >
+                                {isStat ? (
+                                  <span className={cn(
+                                    "px-1.5 py-0.5 rounded text-[11px] font-medium",
+                                    val === "VENCIDA" || val === "CERRAR" ? "bg-destructive/15 text-destructive" :
+                                    val === "SIN SALDO"                   ? "bg-warning/15 text-warning"         :
+                                    val === "OK" || val === "VIGENTE"     ? "bg-success/15 text-success"         :
+                                    "bg-secondary text-muted-foreground"
+                                  )}>{display || "—"}</span>
+                                ) : (
+                                  <span className="text-foreground truncate max-w-[140px] block">{display || "—"}</span>
+                                )}
+                                <Pencil className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 shrink-0 transition-opacity duration-150" />
+                              </div>
                             )}
                           </td>
                         );
                       })}
+
                       <td className="py-2.5 px-3">
-                        <button
-                          onClick={() => handleDelete(row.id)}
-                          className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
-                        >
+                        <button onClick={() => handleDelete(row.id)}
+                          className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </td>
@@ -288,28 +309,22 @@ export function ServiciosTablaSection() {
 
           <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-secondary/30">
             <span className="text-sm text-muted-foreground">
-              {selected.size > 0
-                ? `${selected.size} seleccionado${selected.size !== 1 ? "s" : ""} · `
-                : ""}
+              {selected.size > 0 ? `${selected.size} seleccionado${selected.size !== 1 ? "s" : ""} · ` : ""}
               {filtered.length !== rows.length
                 ? `${filtered.length} resultado${filtered.length !== 1 ? "s" : ""} de ${rows.length} registros`
                 : `${rows.length} registro${rows.length !== 1 ? "s" : ""} en Supabase`}
             </span>
             {total > 1 && (
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setPage(p => p - 1)} disabled={page === 0}
-                  className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
+                <button onClick={() => setPage(p => p - 1)} disabled={page === 0}
+                  className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                   Anterior
                 </button>
                 <span className="px-3 py-1.5 rounded-lg text-sm bg-accent text-accent-foreground font-medium">
                   {page + 1} / {total}
                 </span>
-                <button
-                  onClick={() => setPage(p => p + 1)} disabled={page >= total - 1}
-                  className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
+                <button onClick={() => setPage(p => p + 1)} disabled={page >= total - 1}
+                  className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                   Siguiente
                 </button>
               </div>
