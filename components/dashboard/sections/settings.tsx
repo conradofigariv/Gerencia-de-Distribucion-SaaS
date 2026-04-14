@@ -94,7 +94,10 @@ export function SettingsSection({ user }: { user: User }) {
       .upload(path, file, { upsert: true, contentType: file.type });
 
     if (upError) {
-      toast.error(`Error al subir: ${upError.message}`);
+      const msg = upError.message.toLowerCase().includes("bucket")
+        ? "Bucket 'avatars' no encontrado — crealo en Supabase Storage"
+        : `Error al subir: ${upError.message}`;
+      toast.error(msg);
       setUploadingAvatar(false);
       e.target.value = "";
       return;
