@@ -15,6 +15,7 @@ type Step = "input" | "preview";
 
 interface FilaManual {
   id:        string;
+  zona:      string;
   op:        number;
   op_madre:  number;
   linea:     number;
@@ -81,7 +82,7 @@ export function ServiciosCargaSection() {
   const [step, setStep]       = useState<Step>("input");
   const [filas, setFilas]     = useState<FilaManual[]>([]);
   const [preview, setPreview] = useState<PreviewRow[]>([]);
-  const [bulk, setBulk]       = useState({ op: "", op_madre: "", linea: "", matricula: "" });
+  const [bulk, setBulk]       = useState({ zona: "", op: "", op_madre: "", linea: "", matricula: "" });
   const [bulkErr, setBulkErr] = useState("");
   const [adding, setAdding]   = useState(false);
   const [loading, setLoading] = useState(true);
@@ -93,7 +94,7 @@ export function ServiciosCargaSection() {
     (async () => {
       const { data, error } = await supabase
         .from("filas_manuales")
-        .select("id, op, op_madre, linea, matricula")
+        .select("id, zona, op, op_madre, linea, matricula")
         .order("created_at", { ascending: true });
       if (error) toast.error(`Error al cargar filas: ${error.message}`);
       else setFilas((data ?? []) as FilaManual[]);
@@ -112,6 +113,7 @@ export function ServiciosCargaSection() {
   // ── Agregar múltiples filas
   const handleBulkAdd = async () => {
     setBulkErr("");
+    const zonas  = splitCol(bulk.zona);
     const ops    = splitCol(bulk.op);
     const madres = splitCol(bulk.op_madre);
     const lineas = splitCol(bulk.linea);
@@ -125,6 +127,7 @@ export function ServiciosCargaSection() {
       return;
     }
     const lineaFinal = lineas.length === n ? lineas : Array(n).fill("1");
+    const zonaFinal  = zonas.length  === n ? zonas  : Array(n).fill("");
     const errs: string[] = [];
     for (let i = 0; i < n; i++) {
       if (isNaN(Number(ops[i])))        errs.push(`Fila ${i+1}: OP no es número`);
@@ -133,13 +136,13 @@ export function ServiciosCargaSection() {
       if (!mats[i])                     errs.push(`Fila ${i+1}: MATRÍCULA vacía`);
     }
     if (errs.length) { setBulkErr(errs.slice(0, 5).join(" · ")); return; }
-    const payload = ops.map((op, i) => ({ op: Number(op), op_madre: Number(madres[i]), linea: Number(lineaFinal[i]), matricula: mats[i] }));
+    const payload = ops.map((op, i) => ({ zona: zonaFinal[i], op: Number(op), op_madre: Number(madres[i]), linea: Number(lineaFinal[i]), matricula: mats[i] }));
     setAdding(true);
     try {
-      const { data, error } = await supabase.from("filas_manuales").insert(payload).select("id, op, op_madre, linea, matricula");
+      const { data, error } = await supabase.from("filas_manuales").insert(payload).select("id, zona, op, op_madre, linea, matricula");
       if (error) { toast.error(`Error: ${error.message}`); return; }
       setFilas(prev => [...prev, ...((data ?? []) as FilaManual[])]);
-      setBulk({ op: "", op_madre: "", linea: "", matricula: "" });
+      setBulk({ zona: "", op: "", op_madre: "", linea: "", matricula: "" });
       toast.success(`${payload.length} filas agregadas`);
     } finally { setAdding(false); }
   };
@@ -196,7 +199,7 @@ export function ServiciosCargaSection() {
         const dispMeses = consMes === 0 ? 0 : saldoLinea / consMes;
 
         return {
-          zona:                   "",
+          zona:                   fila.zona,
           op:                     fila.op,
           op_madre:               fila.op_madre,
           sc:                     String(qwRow?.expediente_plazo_entrega ?? ""),
@@ -298,7 +301,7 @@ export function ServiciosCargaSection() {
             <table className="w-full text-xs">
               <thead className="bg-secondary/50 border-b border-border">
                 <tr>
-                  {["#", "OP", "OP MADRE", "SC", "DESCRIPCIÓN SC", "LÍNEA", "MATRÍCULA", "CANTIDAD", "CANT. RECIBIDA", "SALDO", "FECHA PACTADA", "PROVEEDOR", "PRECIO RDET.", "ESTADO", "E. PLAZO", "E. CANT.", "REVISION", "DISPONIB."].map((h, i) => (
+                  {["#", "ZONA", "OP", "OP MADRE", "SC", "DESCRIPCIÓN SC", "LÍNEA", "MATRÍCULA", "CANTIDAD", "CANT. RECIBIDA", "SALDO", "FECHA PACTADA", "PROVEEDOR", "PRECIO RDET.", "ESTADO", "E. PLAZO", "E. CANT.", "REVISION", "DISPONIB."].map((h, i) => (
                     <th key={i} className="py-2 px-3 text-left text-muted-foreground font-medium whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -310,6 +313,7 @@ export function ServiciosCargaSection() {
                     <React.Fragment key={i}>
                       <tr className={cn("border-b border-border/50", hasErr ? "bg-destructive/5" : "hover:bg-secondary/20")}>
                         <td className="py-2 px-3 text-muted-foreground">{i + 1}</td>
+                        <td className="py-2 px-3">{row.zona || "—"}</td>
                         <td className="py-2 px-3 font-mono">{row.op}</td>
                         <td className="py-2 px-3 font-mono">{row.op_madre}</td>
                         <td className="py-2 px-3 max-w-[120px] truncate" title={row.sc}>{row.sc || "—"}</td>
@@ -345,7 +349,7 @@ export function ServiciosCargaSection() {
                       </tr>
                       {hasErr && (
                         <tr className="bg-destructive/5 border-b border-destructive/10">
-                          <td colSpan={18} className="px-4 py-1.5">
+                          <td colSpan={19} className="px-4 py-1.5">
                             <div className="flex items-start gap-1.5">
                               <AlertCircle className="w-3 h-3 text-destructive shrink-0 mt-0.5" />
                               <span className="text-[11px] text-destructive">{row._errors.join(" · ")}</span>
@@ -381,8 +385,9 @@ export function ServiciosCargaSection() {
       {!loading && (
         <div className="bg-card border border-border rounded-xl p-5 space-y-4">
           <p className="text-xs text-muted-foreground">Pegá los valores de cada columna (una por una, de arriba hacia abajo). Podés pegar una sola línea o columnas completas. LÍNEA es opcional (default 1).</p>
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-5 gap-4">
             {([
+              { key: "zona",      label: "ZONA"      },
               { key: "op",        label: "OP"        },
               { key: "op_madre",  label: "OP MADRE"  },
               { key: "linea",     label: "LÍNEA"     },
@@ -420,7 +425,7 @@ export function ServiciosCargaSection() {
           <table className="w-full text-xs">
             <thead className="bg-secondary/50 border-b border-border">
               <tr>
-                {["#", "OP", "OP MADRE", "LÍNEA", "MATRÍCULA", ""].map((h, i) => (
+                {["#", "ZONA", "OP", "OP MADRE", "LÍNEA", "MATRÍCULA", ""].map((h, i) => (
                   <th key={i} className="py-2 px-3 text-left text-muted-foreground font-medium">{h}</th>
                 ))}
               </tr>
@@ -429,6 +434,7 @@ export function ServiciosCargaSection() {
               {filas.map((fila, i) => (
                 <tr key={fila.id} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
                   <td className="py-2 px-3 text-muted-foreground">{i + 1}</td>
+                  <td className="py-2 px-3">{fila.zona || "—"}</td>
                   <td className="py-2 px-3 font-mono">{fila.op}</td>
                   <td className="py-2 px-3 font-mono">{fila.op_madre}</td>
                   <td className="py-2 px-3">{fila.linea}</td>
