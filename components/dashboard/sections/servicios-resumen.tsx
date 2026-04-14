@@ -71,7 +71,7 @@ export function ServiciosResumenSection() {
   useEffect(() => {
     (async () => {
       const [actRes, venRes] = await Promise.all([
-        supabase.from("seguimiento").select("*", { count: "exact", head: true }).eq("revision", "OK"),
+        supabase.from("seguimiento").select("*", { count: "exact", head: true }).eq("estado_plazo", "OK").eq("estado_cantidades", "VIGENTE"),
         supabase.from("seguimiento").select("*", { count: "exact", head: true }).eq("estado_plazo", "VENCIDA"),
       ]);
       setActivos(actRes.count ?? 0);
@@ -123,7 +123,7 @@ export function ServiciosResumenSection() {
           const l = new Date(); l.setMonth(l.getMonth() + filtroVencer);
           q = q.gte("fecha_pactada", todayStr).lte("fecha_pactada", l.toISOString().split("T")[0]);
         }
-        if (filtroActivos)  q = q.eq("revision",     "OK");
+        if (filtroActivos)  q = q.eq("estado_plazo", "OK").eq("estado_cantidades", "VIGENTE");
         if (filtroVencidos) q = q.eq("estado_plazo", "VENCIDA");
         const { data, error } = await q.range(from, from + PAGE - 1);
         if (error || !data?.length) break;
