@@ -1,17 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  User as UserIcon, Shield, RefreshCw, Check, LogOut, Eye, EyeOff, Lock, Loader2,
+  User as UserIcon, Shield, RefreshCw, Check, LogOut, Eye, EyeOff, Lock, Loader2, Upload,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -33,6 +32,9 @@ export function SettingsSection({ user }: { user: User }) {
   const [profile, setProfile]     = useState<Profile>(EMPTY_PROFILE);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [savingProfile, setSavingProfile]   = useState(false);
+
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Password change
   const [newPass, setNewPass]       = useState("");
@@ -74,6 +76,45 @@ export function SettingsSection({ user }: { user: User }) {
     if (error) toast.error(`Error al guardar: ${error.message}`);
     else toast.success("Perfil actualizado");
     setSavingProfile(false);
+  };
+
+  // ── Upload avatar
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { toast.error("Solo se permiten imágenes"); return; }
+    if (file.size > 2 * 1024 * 1024) { toast.error("La imagen no puede superar 2 MB"); return; }
+
+    setUploadingAvatar(true);
+    const ext  = file.name.split(".").pop() ?? "jpg";
+    const path = `${user.id}/avatar.${ext}`;
+
+    const { error: upError } = await supabase.storage
+      .from("avatars")
+      .upload(path, file, { upsert: true, contentType: file.type });
+
+    if (upError) {
+      toast.error(`Error al subir: ${upError.message}`);
+      setUploadingAvatar(false);
+      e.target.value = "";
+      return;
+    }
+
+    const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+    const url = `${publicUrl}?t=${Date.now()}`;
+
+    const { error: saveError } = await supabase
+      .from("profiles")
+      .upsert({ id: user.id, avatar_url: url, updated_at: new Date().toISOString() });
+
+    if (saveError) toast.error(`Error al guardar: ${saveError.message}`);
+    else {
+      setProfile(p => ({ ...p, avatar_url: url }));
+      toast.success("Avatar actualizado");
+    }
+
+    setUploadingAvatar(false);
+    e.target.value = "";
   };
 
   // ── Change password
@@ -140,21 +181,38 @@ export function SettingsSection({ user }: { user: User }) {
                 <>
                   {/* Avatar */}
                   <div className="flex items-center gap-5">
-                    <Avatar className="w-16 h-16 rounded-lg">
-                      {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={initials} className="rounded-lg" />}
-                      <AvatarFallback className="rounded-lg bg-gradient-to-br from-accent/80 to-chart-1 text-accent-foreground text-xl font-semibold">
-                        {initials}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 space-y-1">
-                      <Label className="text-xs text-muted-foreground">URL de avatar (opcional)</Label>
+                    <div className="relative shrink-0">
+                      <Avatar className="w-16 h-16 rounded-lg">
+                        {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={initials} className="rounded-lg" />}
+                        <AvatarFallback className="rounded-lg bg-gradient-to-br from-accent/80 to-chart-1 text-accent-foreground text-xl font-semibold">
+                          {initials}
+                        </AvatarFallback>
+                      </Avatar>
+                      {uploadingAvatar && (
+                        <div className="absolute inset-0 rounded-lg bg-black/40 flex items-center justify-center">
+                          <Loader2 className="w-5 h-5 text-white animate-spin" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-2">
                       <input
-                        type="url"
-                        value={profile.avatar_url}
-                        onChange={e => setProfile(p => ({ ...p, avatar_url: e.target.value }))}
-                        placeholder="https://..."
-                        className="w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all"
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleAvatarUpload}
                       />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={uploadingAvatar}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <Upload className="w-4 h-4 mr-2" />
+                        {uploadingAvatar ? "Subiendo..." : "Cambiar foto"}
+                      </Button>
+                      <p className="text-xs text-muted-foreground">JPG, PNG o GIF · máx. 2 MB</p>
                     </div>
                   </div>
 
