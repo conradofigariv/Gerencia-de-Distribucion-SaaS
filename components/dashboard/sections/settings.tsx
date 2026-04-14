@@ -142,7 +142,7 @@ export function SettingsSection({ user }: { user: User }) {
                   <div className="flex items-center gap-5">
                     <Avatar className="w-16 h-16">
                       {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={initials} />}
-                      <AvatarFallback className="bg-accent text-accent-foreground text-xl font-semibold">
+                      <AvatarFallback className="bg-gradient-to-br from-accent/80 to-chart-1 text-accent-foreground text-xl font-semibold">
                         {initials}
                       </AvatarFallback>
                     </Avatar>
@@ -208,6 +208,35 @@ export function SettingsSection({ user }: { user: User }) {
                 : <><Check className="w-4 h-4 mr-2" />Guardar cambios</>}
             </Button>
           </div>
+
+          {/* Cerrar sesión */}
+          <Card className="border-destructive/30 bg-card">
+            <CardHeader>
+              <CardTitle className="text-base font-medium text-destructive">Zona de peligro</CardTitle>
+              <CardDescription>Acciones que afectan tu sesión activa</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between p-4 rounded-lg bg-destructive/5 border border-destructive/20">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-destructive/15 flex items-center justify-center">
+                    <LogOut className="w-5 h-5 text-destructive" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">Cerrar sesión</p>
+                    <p className="text-sm text-muted-foreground">Salís de tu cuenta en este dispositivo</p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={handleLogout}
+                  className="border-destructive/40 text-destructive hover:bg-destructive hover:text-white transition-all"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Cerrar sesión
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ── SEGURIDAD ──────────────────────────────────────────── */}
@@ -266,35 +295,6 @@ export function SettingsSection({ user }: { user: User }) {
                   ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Actualizando...</>
                   : <><Check className="w-4 h-4 mr-2" />Actualizar contraseña</>}
               </Button>
-            </CardContent>
-          </Card>
-
-          {/* Cerrar sesión */}
-          <Card className="border-destructive/30 bg-card">
-            <CardHeader>
-              <CardTitle className="text-base font-medium text-destructive">Zona de peligro</CardTitle>
-              <CardDescription>Acciones que afectan tu sesión activa</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between p-4 rounded-lg bg-destructive/5 border border-destructive/20">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-destructive/15 flex items-center justify-center">
-                    <LogOut className="w-5 h-5 text-destructive" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">Cerrar sesión</p>
-                    <p className="text-sm text-muted-foreground">Salís de tu cuenta en este dispositivo</p>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={handleLogout}
-                  className="border-destructive/40 text-destructive hover:bg-destructive hover:text-white transition-all"
-                >
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Cerrar sesión
-                </Button>
-              </div>
             </CardContent>
           </Card>
 
