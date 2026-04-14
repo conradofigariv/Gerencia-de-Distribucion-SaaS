@@ -56,10 +56,16 @@ const alertasRecientes = [
 ];
 
 
-export function ServiciosResumenSection() {
-  const [activos,  setActivos]  = useState<number | null>(null);
-  const [vencidos, setVencidos] = useState<number | null>(null);
+const FILTROS_VENCER = [3, 4] as const;
+type FiltroVencer = typeof FILTROS_VENCER[number];
 
+export function ServiciosResumenSection() {
+  const [activos,       setActivos]       = useState<number | null>(null);
+  const [vencidos,      setVencidos]      = useState<number | null>(null);
+  const [porVencer,     setPorVencer]     = useState<number | null>(null);
+  const [filtroVencer,  setFiltroVencer]  = useState<FiltroVencer>(3);
+
+  // Activos y Vencidos
   useEffect(() => {
     (async () => {
       const [actRes, venRes] = await Promise.all([
@@ -71,37 +77,84 @@ export function ServiciosResumenSection() {
     })();
   }, []);
 
-  const fmt = (n: number | null) => n === null ? "—" : n.toLocaleString("es-AR");
+  // Por vencer — se re-ejecuta cuando cambia el filtro
+  useEffect(() => {
+    (async () => {
+      setPorVencer(null);
+      const today  = new Date();
+      const limite = new Date(today);
+      limite.setMonth(limite.getMonth() + filtroVencer);
+      const { count } = await supabase
+        .from("seguimiento")
+        .select("*", { count: "exact", head: true })
+        .gte("fecha_pactada", today.toISOString().split("T")[0])
+        .lte("fecha_pactada", limite.toISOString().split("T")[0]);
+      setPorVencer(count ?? 0);
+    })();
+  }, [filtroVencer]);
 
-  const kpis = [
-    { label: "Activos",        value: fmt(activos),  icon: CheckCircle2,  color: "text-success",     bg: "bg-success/10"     },
-    { label: "Por vencer",     value: "—",            icon: CalendarClock, color: "text-warning",     bg: "bg-warning/10"     },
-    { label: "Por Consumirse", value: "—",            icon: TrendingDown,  color: "text-orange-400",  bg: "bg-orange-400/10"  },
-    { label: "Vencidos",       value: fmt(vencidos), icon: XCircle,       color: "text-destructive",  bg: "bg-destructive/10" },
-  ];
+  const cycleVencer = () => {
+    const idx = FILTROS_VENCER.indexOf(filtroVencer);
+    setFiltroVencer(FILTROS_VENCER[(idx + 1) % FILTROS_VENCER.length]);
+  };
+
+  const fmt = (n: number | null) => n === null ? "—" : n.toLocaleString("es-AR");
 
   return (
     <div className="space-y-6">
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpis.map((m, i) => {
-          const Icon = m.icon;
-          return (
-            <div
-              key={m.label}
-              className="bg-card border border-border rounded-xl p-5 animate-in fade-in slide-in-from-bottom-4 duration-500"
-              style={{ animationDelay: `${i * 75}ms`, animationFillMode: "both" }}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm text-muted-foreground">{m.label}</span>
-                <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center", m.bg)}>
-                  <Icon className={cn("w-5 h-5", m.color)} />
-                </div>
-              </div>
-              <p className="text-2xl font-bold text-foreground">{m.value}</p>
+
+        <div className="bg-card border border-border rounded-xl p-5 animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationFillMode: "both" }}>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-muted-foreground">Activos</span>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-success/10">
+              <CheckCircle2 className="w-5 h-5 text-success" />
             </div>
-          );
-        })}
+          </div>
+          <p className="text-2xl font-bold text-foreground">{fmt(activos)}</p>
+        </div>
+
+        {/* Por vencer — clickeable */}
+        <button
+          onClick={cycleVencer}
+          className="bg-card border border-border rounded-xl p-5 text-left transition-all hover:border-warning/50 hover:bg-warning/5 animate-in fade-in slide-in-from-bottom-4 duration-500"
+          style={{ animationDelay: "75ms", animationFillMode: "both" }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-muted-foreground">Por vencer</span>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-warning/10">
+              <CalendarClock className="w-5 h-5 text-warning" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-foreground">{fmt(porVencer)}</p>
+          <p className="text-xs text-warning mt-1.5 font-medium">
+            Próximos {filtroVencer} meses · clic para cambiar
+          </p>
+        </button>
+
+        {/* Por Consumirse */}
+        <div className="bg-card border border-border rounded-xl p-5 animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: "150ms", animationFillMode: "both" }}>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-muted-foreground">Por Consumirse</span>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-orange-400/10">
+              <TrendingDown className="w-5 h-5 text-orange-400" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-foreground">—</p>
+        </div>
+
+        {/* Vencidos */}
+        <div className="bg-card border border-border rounded-xl p-5 animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: "225ms", animationFillMode: "both" }}>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-muted-foreground">Vencidos</span>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-destructive/10">
+              <XCircle className="w-5 h-5 text-destructive" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-foreground">{fmt(vencidos)}</p>
+        </div>
+
       </div>
 
       {/* Charts row */}
