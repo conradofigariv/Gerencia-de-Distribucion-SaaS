@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import {
   Loader2, Plus, Trash2, AlertCircle, CheckCircle2,
-  ChevronLeft, ArrowRight,
+  ChevronLeft, ArrowRight, X,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -84,10 +84,13 @@ export function ServiciosCargaSection() {
   const [preview, setPreview] = useState<PreviewRow[]>([]);
   const [bulk, setBulk]       = useState({ zona: "", op: "", op_madre: "", linea: "", matricula: "" });
   const [bulkErr, setBulkErr] = useState("");
-  const [adding, setAdding]   = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [adding, setAdding]       = useState(false);
+  const [loading, setLoading]     = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [saving, setSaving]   = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [selected, setSelected]   = useState<Set<string>>(new Set());
+  const [deletingSelected, setDeletingSelected] = useState(false);
+  const [clearingAll, setClearingAll] = useState(false);
 
   // ── Cargar filas al montar
   useEffect(() => {
@@ -108,6 +111,31 @@ export function ServiciosCargaSection() {
     const { error } = await supabase.from("filas_manuales").delete().eq("id", id);
     if (error) { toast.error(`Error: ${error.message}`); return; }
     setFilas(prev => prev.filter(f => f.id !== id));
+    setSelected(prev => { const s = new Set(prev); s.delete(id); return s; });
+  };
+
+  // ── Eliminar seleccionados
+  const handleDeleteSelected = async () => {
+    if (!selected.size) return;
+    setDeletingSelected(true);
+    const ids = [...selected];
+    const { error } = await supabase.from("filas_manuales").delete().in("id", ids);
+    if (error) { toast.error(`Error: ${error.message}`); setDeletingSelected(false); return; }
+    setFilas(prev => prev.filter(f => !selected.has(f.id)));
+    setSelected(new Set());
+    toast.success(`${ids.length} fila${ids.length !== 1 ? "s" : ""} eliminada${ids.length !== 1 ? "s" : ""}`);
+    setDeletingSelected(false);
+  };
+
+  // ── Limpiar todo
+  const handleClearAll = async () => {
+    setClearingAll(true);
+    const { error } = await supabase.from("filas_manuales").delete().not("id", "is", null);
+    if (error) { toast.error(`Error: ${error.message}`); setClearingAll(false); return; }
+    setFilas([]);
+    setSelected(new Set());
+    toast.success("Todas las filas eliminadas");
+    setClearingAll(false);
   };
 
   // ── Agregar múltiples filas
@@ -422,9 +450,45 @@ export function ServiciosCargaSection() {
       {/* ── Tabla de filas ── */}
       {!loading && filas.length > 0 && (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
+          {/* Barra de acciones */}
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary/30">
+            <span className="text-xs text-muted-foreground">
+              {selected.size > 0
+                ? `${selected.size} fila${selected.size !== 1 ? "s" : ""} seleccionada${selected.size !== 1 ? "s" : ""}`
+                : `${filas.length} fila${filas.length !== 1 ? "s" : ""}`}
+            </span>
+            <div className="flex items-center gap-2">
+              {selected.size > 0 && (
+                <button
+                  onClick={handleDeleteSelected}
+                  disabled={deletingSelected}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-destructive bg-destructive/10 hover:bg-destructive/20 transition-colors disabled:opacity-50">
+                  {deletingSelected ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  Eliminar seleccionadas
+                </button>
+              )}
+              <button
+                onClick={handleClearAll}
+                disabled={clearingAll}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50">
+                {clearingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                Limpiar todo
+              </button>
+            </div>
+          </div>
+
           <table className="w-full text-xs">
             <thead className="bg-secondary/50 border-b border-border">
               <tr>
+                <th className="py-2 px-3 w-8">
+                  <input
+                    type="checkbox"
+                    checked={selected.size === filas.length && filas.length > 0}
+                    ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < filas.length; }}
+                    onChange={e => setSelected(e.target.checked ? new Set(filas.map(f => f.id)) : new Set())}
+                    className="accent-accent w-3.5 h-3.5 cursor-pointer"
+                  />
+                </th>
                 {["#", "ZONA", "OP", "OP MADRE", "LÍNEA", "MATRÍCULA", ""].map((h, i) => (
                   <th key={i} className="py-2 px-3 text-left text-muted-foreground font-medium">{h}</th>
                 ))}
@@ -432,7 +496,19 @@ export function ServiciosCargaSection() {
             </thead>
             <tbody>
               {filas.map((fila, i) => (
-                <tr key={fila.id} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
+                <tr key={fila.id} className={cn("border-b border-border/50 transition-colors", selected.has(fila.id) ? "bg-accent/5" : "hover:bg-secondary/20")}>
+                  <td className="py-2 px-3">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(fila.id)}
+                      onChange={e => setSelected(prev => {
+                        const s = new Set(prev);
+                        e.target.checked ? s.add(fila.id) : s.delete(fila.id);
+                        return s;
+                      })}
+                      className="accent-accent w-3.5 h-3.5 cursor-pointer"
+                    />
+                  </td>
                   <td className="py-2 px-3 text-muted-foreground">{i + 1}</td>
                   <td className="py-2 px-3">{fila.zona || "—"}</td>
                   <td className="py-2 px-3 font-mono">{fila.op}</td>
