@@ -33,7 +33,7 @@ export function LoginPage() {
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-8">
           <Logo className="w-12 h-12" />
-          <span className="text-2xl font-semibold text-foreground">EPEC SaaS</span>
+          <span className="text-2xl font-semibold text-foreground">SaaS Soft</span>
         </div>
 
         {/* Card */}
@@ -112,7 +112,7 @@ export function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          EPEC SaaS — Acceso restringido a administradores
+          SaaS Soft — Acceso restringido a administradores
         </p>
       </div>
     </div>
