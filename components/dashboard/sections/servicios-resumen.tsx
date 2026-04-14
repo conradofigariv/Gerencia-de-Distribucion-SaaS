@@ -18,8 +18,9 @@ type Alerta = {
   tipo: "Vencimiento 3M" | "Vencimiento 4M" | "Consumo 30%" | "Consumo 40%";
   op: number;
   zona: string;
+  descripcion: string;
   fecha: string;
-  severity: "high" | "medium" | "low";
+  severity: "high" | "medium";
 };
 
 
@@ -60,8 +61,8 @@ export function ServiciosResumenSection() {
   const [porConsumirse, setPorConsumirse] = useState<number | null>(null);
 
   // filtros: null = sin selección
-  const [filtroVencer,   setFiltroVencer]   = useState<FiltroVencer>(3);
-  const [filtroConsumo,  setFiltroConsumo]  = useState<FiltroConsumo>(30);
+  const [filtroVencer,   setFiltroVencer]   = useState<FiltroVencer>(null);
+  const [filtroConsumo,  setFiltroConsumo]  = useState<FiltroConsumo>(null);
   const [filtroActivos,  setFiltroActivos]  = useState(false);
   const [filtroVencidos, setFiltroVencidos] = useState(false);
 
@@ -156,17 +157,18 @@ export function ServiciosResumenSection() {
       for (const row of all) {
         const op = Number(row.op);
         const zona = String(row.zona ?? "—");
+        const descripcion = String(row.descripcion_sc ?? row.descripcion_matricula ?? "");
         const fecha_pactada = row.fecha_pactada ? new Date(String(row.fecha_pactada)) : null;
         const cantidad = Number(row.cantidad);
         const saldo = Number(row.saldo_linea);
         const razon = cantidad > 0 ? saldo / cantidad : 1;
-        let alertId = `${op}-${zona}`;
+        const alertId = `${op}-${zona}`;
 
         // Vencimiento 3M (rojo)
         if (fecha_pactada && fecha_pactada >= today && fecha_pactada.getTime() - today.getTime() <= 3 * 30 * 86400000) {
           const id = `${alertId}-3m`;
           if (!alertIds.has(id)) {
-            alertasGen.push({ id, tipo: "Vencimiento 3M", op, zona, fecha: fecha_pactada.toISOString().split("T")[0], severity: "high" });
+            alertasGen.push({ id, tipo: "Vencimiento 3M", op, zona, descripcion, fecha: fecha_pactada.toISOString().split("T")[0], severity: "high" });
             alertIds.add(id);
           }
         }
@@ -174,7 +176,7 @@ export function ServiciosResumenSection() {
         else if (fecha_pactada && fecha_pactada >= today && fecha_pactada.getTime() - today.getTime() <= 4 * 30 * 86400000) {
           const id = `${alertId}-4m`;
           if (!alertIds.has(id)) {
-            alertasGen.push({ id, tipo: "Vencimiento 4M", op, zona, fecha: fecha_pactada.toISOString().split("T")[0], severity: "medium" });
+            alertasGen.push({ id, tipo: "Vencimiento 4M", op, zona, descripcion, fecha: fecha_pactada.toISOString().split("T")[0], severity: "medium" });
             alertIds.add(id);
           }
         }
@@ -183,7 +185,7 @@ export function ServiciosResumenSection() {
         if (cantidad > 0 && razon <= 0.3) {
           const id = `${alertId}-30p`;
           if (!alertIds.has(id)) {
-            alertasGen.push({ id, tipo: "Consumo 30%", op, zona, fecha: new Date().toISOString().split("T")[0], severity: "high" });
+            alertasGen.push({ id, tipo: "Consumo 30%", op, zona, descripcion, fecha: today.toISOString().split("T")[0], severity: "high" });
             alertIds.add(id);
           }
         }
@@ -191,13 +193,13 @@ export function ServiciosResumenSection() {
         else if (cantidad > 0 && razon <= 0.4) {
           const id = `${alertId}-40p`;
           if (!alertIds.has(id)) {
-            alertasGen.push({ id, tipo: "Consumo 40%", op, zona, fecha: new Date().toISOString().split("T")[0], severity: "medium" });
+            alertasGen.push({ id, tipo: "Consumo 40%", op, zona, descripcion, fecha: today.toISOString().split("T")[0], severity: "medium" });
             alertIds.add(id);
           }
         }
       }
       alertasGen.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
-      setAlertas(alertasGen.slice(0, 10));
+      setAlertas(alertasGen.slice(0, 20));
     })();
   }, []);
 
@@ -426,24 +428,25 @@ export function ServiciosResumenSection() {
               <div
                 key={alerta.id}
                 className="flex items-center justify-between px-5 py-3.5 hover:bg-secondary/30 transition-colors duration-150 animate-in fade-in slide-in-from-left-2"
-                style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }}
+                style={{ animationDelay: `${i * 40}ms`, animationFillMode: "both" }}
               >
                 <div className="flex items-center gap-3">
-                  <div
-                    className={cn(
-                      "w-2 h-2 rounded-full shrink-0",
-                      alerta.severity === "high" ? "bg-destructive" : "bg-warning"
-                    )}
-                  />
+                  <div className={cn("w-2 h-2 rounded-full shrink-0 mt-0.5", alerta.severity === "high" ? "bg-destructive" : "bg-warning")} />
                   <div>
-                    <p className="text-sm font-medium text-foreground">{alerta.tipo}</p>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                    <p className="text-sm font-semibold text-foreground">
+                      {alerta.tipo === "Vencimiento 3M" ? "Vence en 3 meses" :
+                       alerta.tipo === "Vencimiento 4M" ? "Vence en 4 meses" :
+                       alerta.tipo === "Consumo 30%"    ? "Consumo ≤30%"     : "Consumo ≤40%"}
+                      <span className="font-normal text-muted-foreground"> · OP {alerta.op}</span>
+                      {alerta.descripcion && <span className="font-normal text-muted-foreground"> — {alerta.descripcion}</span>}
+                    </p>
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
                       <MapPin className="w-3 h-3" />
-                      OP {alerta.op} · Zona {alerta.zona}
+                      {alerta.zona}
                     </div>
                   </div>
                 </div>
-                <span className="text-xs text-muted-foreground">{alerta.fecha}</span>
+                <span className="text-xs text-muted-foreground shrink-0 ml-4">{alerta.fecha}</span>
               </div>
             ))
           )}
