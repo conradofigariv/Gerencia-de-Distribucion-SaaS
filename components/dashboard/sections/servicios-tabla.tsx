@@ -37,6 +37,30 @@ const RAW_COLS    = new Set(["op", "op_madre", "linea"]);
 const NUM_COLS    = new Set(["op", "op_madre", "linea", "cantidad", "cantidad_recibida", "saldo_linea", "precio_redeterminacion", "disponibilidad_meses"]);
 const DATE_COLS   = new Set(["fecha_pactada", "fecha_redeterminacion"]);
 
+const DEFAULT_WIDTHS: Record<string, number> = {
+  zona:                  80,
+  op:                    90,
+  op_madre:              90,
+  sc:                    100,
+  descripcion_sc:        200,
+  linea:                 60,
+  matricula:             110,
+  descripcion_matricula: 200,
+  cantidad:              90,
+  cantidad_recibida:     110,
+  saldo_linea:           100,
+  fecha_pactada:         110,
+  proveedor:             160,
+  fecha_redeterminacion: 130,
+  precio_redeterminacion:130,
+  estado:                90,
+  estado_plazo:          100,
+  estado_cantidades:     120,
+  revision:              90,
+  observacion:           160,
+  disponibilidad_meses:  130,
+};
+
 const PAGE_SIZE = 50;
 
 type DbRow = Record<string, unknown> & { id: string };
@@ -55,6 +79,33 @@ export function ServiciosTablaSection() {
   const [editingCell, setEditingCell] = useState<{ rowId: string; col: string } | null>(null);
   const [editingValue, setEditingValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // ── Column resize
+  const [colWidths, setColWidths] = useState<Record<string, number>>(DEFAULT_WIDTHS);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizing = useRef<{ col: string; startX: number; startW: number } | null>(null);
+
+  const startResize = (e: React.MouseEvent, col: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startW = colWidths[col] ?? DEFAULT_WIDTHS[col] ?? 100;
+    resizing.current = { col, startX: e.clientX, startW };
+    setIsResizing(true);
+
+    const onMove = (ev: MouseEvent) => {
+      if (!resizing.current) return;
+      const newW = Math.max(50, resizing.current.startW + (ev.clientX - resizing.current.startX));
+      setColWidths(prev => ({ ...prev, [resizing.current!.col]: newW }));
+    };
+    const onUp = () => {
+      resizing.current = null;
+      setIsResizing(false);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -212,11 +263,17 @@ export function ServiciosTablaSection() {
         </div>
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+          <div className={cn("overflow-x-auto", isResizing && "select-none cursor-col-resize")}>
+            <table className="text-xs table-fixed" style={{ minWidth: "100%" }}>
+              <colgroup>
+                <col style={{ width: 32 }} />
+                <col style={{ width: 40 }} />
+                {DISPLAY_COLS.map(c => <col key={c.db} style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS[c.db] ?? 100 }} />)}
+                <col style={{ width: 40 }} />
+              </colgroup>
               <thead>
                 <tr className="border-b border-border bg-secondary/50">
-                  <th className="py-2.5 px-3 w-8">
+                  <th className="py-2.5 px-3">
                     <input type="checkbox" checked={allPageSel}
                       ref={el => { if (el) el.indeterminate = somePageSel && !allPageSel; }}
                       onChange={toggleAll}
@@ -224,9 +281,18 @@ export function ServiciosTablaSection() {
                       title="Seleccionar todos en esta página"
                     />
                   </th>
-                  <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold whitespace-nowrap">#</th>
+                  <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold">#</th>
                   {DISPLAY_COLS.map(c => (
-                    <th key={c.db} className="text-left py-2.5 px-3 text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider">{c.label}</th>
+                    <th key={c.db} className="relative text-left py-2.5 pl-3 pr-4 text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider overflow-hidden">
+                      <span className="block truncate">{c.label}</span>
+                      {/* Resize handle */}
+                      <div
+                        onMouseDown={e => startResize(e, c.db)}
+                        className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize group/handle flex items-center justify-center"
+                      >
+                        <div className="w-px h-4 bg-border group-hover/handle:bg-accent transition-colors" />
+                      </div>
+                    </th>
                   ))}
                   <th className="w-10" />
                 </tr>
