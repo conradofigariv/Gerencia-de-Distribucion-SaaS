@@ -199,7 +199,7 @@ export function ServiciosResumenSection() {
         }
       }
       alertasGen.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
-      setAlertas(alertasGen.slice(0, 20));
+      setAlertas(alertasGen.slice(0, 10));
     })();
   }, []);
 
