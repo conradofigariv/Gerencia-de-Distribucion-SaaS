@@ -2,34 +2,26 @@
 
 import React, { useState } from "react";
 import { CircleDollarSign, Eye, EyeOff, Lock, Mail, AlertCircle } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 
-const ADMIN_EMAIL = "conradofigari.v@gmail.com";
-const ADMIN_PASSWORD = "Epec.2026!";
-
-interface LoginPageProps {
-  onLogin: () => void;
-}
-
-export function LoginPage({ onLogin }: LoginPageProps) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+export function LoginPage() {
+  const [email, setEmail]             = useState("");
+  const [password, setPassword]       = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError]             = useState("");
+  const [isLoading, setIsLoading]     = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
 
-    await new Promise((resolve) => setTimeout(resolve, 700));
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-      localStorage.setItem("epec_auth", "true");
-      onLogin();
-    } else {
+    if (authError) {
       setError("Credenciales incorrectas. Verificá tu email y contraseña.");
     }
+    // Si tiene éxito, page.tsx detecta el cambio via onAuthStateChange automáticamente.
 
     setIsLoading(false);
   };
@@ -89,11 +81,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
