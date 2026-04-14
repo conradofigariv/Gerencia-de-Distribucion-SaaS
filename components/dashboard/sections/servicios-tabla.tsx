@@ -88,16 +88,23 @@ export function ServiciosTablaSection() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("seguimiento")
-        .select("*")
-        .order("created_at", { ascending: true });
-      if (error) {
-        toast.error(`Error al cargar seguimiento: ${error.message}`);
-      } else {
-        setRows((data ?? []) as DbRow[]);
-        setSelected(new Set());
+      const PAGE = 1000;
+      const all: DbRow[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("seguimiento")
+          .select("*")
+          .order("created_at", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) { toast.error(`Error al cargar seguimiento: ${error.message}`); break; }
+        if (!data?.length) break;
+        all.push(...(data as DbRow[]));
+        if (data.length < PAGE) break;
+        from += PAGE;
       }
+      setRows(all);
+      setSelected(new Set());
     } catch (err) {
       toast.error(`Error al cargar seguimiento: ${err instanceof Error ? err.message : "Error desconocido"}`);
     }
