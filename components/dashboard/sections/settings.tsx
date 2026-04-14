@@ -49,13 +49,19 @@ export function SettingsSection({ user }: { user: User }) {
         .select("nombre, apellido, empresa, cargo, telefono, avatar_url")
         .eq("id", user.id)
         .single();
-      if (!error && data) setProfile({ ...EMPTY_PROFILE, ...data });
+      if (!error && data) {
+        // Coerce null DB values to empty strings to avoid runtime errors
+        const clean = Object.fromEntries(
+          Object.entries(data).map(([k, v]) => [k, v ?? ""])
+        ) as Profile;
+        setProfile({ ...EMPTY_PROFILE, ...clean });
+      }
       setLoadingProfile(false);
     })();
   }, [user.id]);
 
   const initials = [profile.nombre, profile.apellido]
-    .map(s => s.trim()[0] ?? "")
+    .map(s => (s ?? "").trim()[0] ?? "")
     .join("")
     .toUpperCase() || user.email?.[0]?.toUpperCase() || "U";
 
