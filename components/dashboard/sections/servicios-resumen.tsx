@@ -57,10 +57,10 @@ const alertasRecientes = [
 ];
 
 
-const FILTROS_VENCER  = [3, 4]   as const;
-const FILTROS_CONSUMO = [30, 40] as const;
-type FiltroVencer  = typeof FILTROS_VENCER[number];
-type FiltroConsumo = typeof FILTROS_CONSUMO[number];
+const CYCLE_VENCER  = [3, 4, null]  as const;
+const CYCLE_CONSUMO = [30, 40, null] as const;
+type FiltroVencer  = 3 | 4 | null;
+type FiltroConsumo = 30 | 40 | null;
 
 const TABLE_COLS: { db: string; label: string }[] = [
   { db: "zona",                  label: "ZONA"                    },
@@ -88,14 +88,22 @@ const PAGE_SIZE     = 50;
 type SeguimientoRow = Record<string, unknown>;
 
 export function ServiciosResumenSection() {
-  const [activos,        setActivos]        = useState<number | null>(null);
-  const [vencidos,       setVencidos]       = useState<number | null>(null);
-  const [porVencer,      setPorVencer]      = useState<number | null>(null);
-  const [porConsumirse,  setPorConsumirse]  = useState<number | null>(null);
+  const [activos,       setActivos]       = useState<number | null>(null);
+  const [vencidos,      setVencidos]      = useState<number | null>(null);
+  const [porVencer,     setPorVencer]     = useState<number | null>(null);
+  const [porConsumirse, setPorConsumirse] = useState<number | null>(null);
+
+  // filtros: null = sin selección
   const [filtroVencer,   setFiltroVencer]   = useState<FiltroVencer>(3);
   const [filtroConsumo,  setFiltroConsumo]  = useState<FiltroConsumo>(30);
+  const [filtroActivos,  setFiltroActivos]  = useState(false);
+  const [filtroVencidos, setFiltroVencidos] = useState(false);
 
-  // Activos y Vencidos
+  const [tableRows,    setTableRows]    = useState<SeguimientoRow[]>([]);
+  const [tableLoading, setTableLoading] = useState(true);
+  const [tablePage,    setTablePage]    = useState(0);
+
+  // Conteos fijos (siempre activos)
   useEffect(() => {
     (async () => {
       const [actRes, venRes] = await Promise.all([
@@ -107,15 +115,14 @@ export function ServiciosResumenSection() {
     })();
   }, []);
 
-  // Por vencer — re-ejecuta cuando cambia el filtro
+  // Conteo Por vencer
   useEffect(() => {
+    if (filtroVencer === null) { setPorVencer(null); return; }
     (async () => {
       setPorVencer(null);
-      const today  = new Date();
-      const limite = new Date(today);
+      const today = new Date(); const limite = new Date(today);
       limite.setMonth(limite.getMonth() + filtroVencer);
-      const { count } = await supabase
-        .from("seguimiento")
+      const { count } = await supabase.from("seguimiento")
         .select("*", { count: "exact", head: true })
         .gte("fecha_pactada", today.toISOString().split("T")[0])
         .lte("fecha_pactada", limite.toISOString().split("T")[0]);
@@ -123,78 +130,54 @@ export function ServiciosResumenSection() {
     })();
   }, [filtroVencer]);
 
-  // Por consumirse — trae saldo_linea y cantidad, filtra client-side
+  // Conteo Por consumirse
   useEffect(() => {
+    if (filtroConsumo === null) { setPorConsumirse(null); return; }
     (async () => {
       setPorConsumirse(null);
-      const PAGE = 1000;
-      const rows: { saldo_linea: unknown; cantidad: unknown }[] = [];
-      let from = 0;
+      const PAGE = 1000; const rows: { saldo_linea: unknown; cantidad: unknown }[] = []; let from = 0;
       while (true) {
-        const { data, error } = await supabase
-          .from("seguimiento")
-          .select("saldo_linea, cantidad")
-          .range(from, from + PAGE - 1);
+        const { data, error } = await supabase.from("seguimiento").select("saldo_linea, cantidad").range(from, from + PAGE - 1);
         if (error || !data?.length) break;
-        rows.push(...data);
-        if (data.length < PAGE) break;
-        from += PAGE;
+        rows.push(...data); if (data.length < PAGE) break; from += PAGE;
       }
       const pct = filtroConsumo / 100;
-      const count = rows.filter(r => {
-        const cantidad = Number(r.cantidad);
-        const saldo    = Number(r.saldo_linea);
-        if (cantidad === 0) return false;
-        return saldo / cantidad <= pct;
-      }).length;
-      setPorConsumirse(count);
+      setPorConsumirse(rows.filter(r => { const c = Number(r.cantidad); const s = Number(r.saldo_linea); return c > 0 && s / c <= pct; }).length);
     })();
   }, [filtroConsumo]);
 
-  const [tableRows,    setTableRows]    = useState<SeguimientoRow[]>([]);
-  const [tableLoading, setTableLoading] = useState(true);
-  const [tablePage,    setTablePage]    = useState(0);
-
-  // Tabla filtrada — re-ejecuta cuando cambia cualquier filtro
+  // Tabla — re-ejecuta cuando cambia cualquier filtro
   useEffect(() => {
     (async () => {
-      setTableLoading(true);
-      setTablePage(0);
-      const today  = new Date();
-      const limite = new Date(today);
-      limite.setMonth(limite.getMonth() + filtroVencer);
-      const PAGE = 1000;
-      const all: SeguimientoRow[] = [];
-      let from = 0;
+      setTableLoading(true); setTablePage(0);
+      const todayStr = new Date().toISOString().split("T")[0];
+      const PAGE = 1000; const all: SeguimientoRow[] = []; let from = 0;
       while (true) {
-        const { data, error } = await supabase
-          .from("seguimiento")
-          .select("*")
-          .gte("fecha_pactada", today.toISOString().split("T")[0])
-          .lte("fecha_pactada", limite.toISOString().split("T")[0])
-          .range(from, from + PAGE - 1);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let q: any = supabase.from("seguimiento").select("*");
+        if (filtroVencer !== null) {
+          const l = new Date(); l.setMonth(l.getMonth() + filtroVencer);
+          q = q.gte("fecha_pactada", todayStr).lte("fecha_pactada", l.toISOString().split("T")[0]);
+        }
+        if (filtroActivos)  q = q.eq("revision",     "OK");
+        if (filtroVencidos) q = q.eq("estado_plazo", "VENCIDA");
+        const { data, error } = await q.range(from, from + PAGE - 1);
         if (error || !data?.length) break;
-        all.push(...data);
-        if (data.length < PAGE) break;
-        from += PAGE;
+        all.push(...data); if (data.length < PAGE) break; from += PAGE;
       }
-      const pct = filtroConsumo / 100;
-      const filtered = all.filter(r => {
-        const cantidad = Number(r.cantidad);
-        const saldo    = Number(r.saldo_linea);
-        if (cantidad === 0) return false;
-        return saldo / cantidad <= pct;
-      });
-      setTableRows(filtered);
-      setTableLoading(false);
+      let result = all;
+      if (filtroConsumo !== null) {
+        const pct = filtroConsumo / 100;
+        result = all.filter(r => { const c = Number(r.cantidad); const s = Number(r.saldo_linea); return c > 0 && s / c <= pct; });
+      }
+      setTableRows(result); setTableLoading(false);
     })();
-  }, [filtroVencer, filtroConsumo]);
+  }, [filtroVencer, filtroConsumo, filtroActivos, filtroVencidos]);
 
-  const cycleVencer  = () => { const i = FILTROS_VENCER.indexOf(filtroVencer);   setFiltroVencer(FILTROS_VENCER[(i + 1) % FILTROS_VENCER.length]);   };
-  const cycleConsumo = () => { const i = FILTROS_CONSUMO.indexOf(filtroConsumo); setFiltroConsumo(FILTROS_CONSUMO[(i + 1) % FILTROS_CONSUMO.length]); };
+  const cycleVencer  = () => { const i = CYCLE_VENCER.indexOf(filtroVencer);   setFiltroVencer(CYCLE_VENCER[(i + 1) % CYCLE_VENCER.length]);   };
+  const cycleConsumo = () => { const i = CYCLE_CONSUMO.indexOf(filtroConsumo); setFiltroConsumo(CYCLE_CONSUMO[(i + 1) % CYCLE_CONSUMO.length]); };
 
   const fmt = (n: number | null) => n === null ? "—" : n.toLocaleString("es-AR");
-
   const totalPages = Math.ceil(tableRows.length / PAGE_SIZE);
   const pagedRows  = tableRows.slice(tablePage * PAGE_SIZE, (tablePage + 1) * PAGE_SIZE);
 
@@ -203,7 +186,17 @@ export function ServiciosResumenSection() {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
-        <div className="bg-card border border-border rounded-xl p-5 animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationFillMode: "both" }}>
+        {/* Activos — toggle */}
+        <button
+          onClick={() => setFiltroActivos(v => !v)}
+          className={cn(
+            "bg-card rounded-xl p-5 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
+            filtroActivos
+              ? "border-2 border-success shadow-[0_0_0_1px_oklch(0.55_0.18_145/0.3)]"
+              : "border border-border hover:border-success/40"
+          )}
+          style={{ animationFillMode: "both" }}
+        >
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm text-muted-foreground">Activos</span>
             <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-success/10">
@@ -211,12 +204,20 @@ export function ServiciosResumenSection() {
             </div>
           </div>
           <p className="text-2xl font-bold text-foreground">{fmt(activos)}</p>
-        </div>
+          <p className={cn("text-xs mt-1.5 font-medium", filtroActivos ? "text-success" : "text-muted-foreground/50")}>
+            {filtroActivos ? "Filtro activo" : "Sin selección"}
+          </p>
+        </button>
 
-        {/* Por vencer — clickeable */}
+        {/* Por vencer — ciclo */}
         <button
           onClick={cycleVencer}
-          className="bg-card border border-border rounded-xl p-5 text-left transition-all hover:border-warning/50 hover:bg-warning/5 animate-in fade-in slide-in-from-bottom-4 duration-500"
+          className={cn(
+            "bg-card rounded-xl p-5 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
+            filtroVencer !== null
+              ? "border-2 border-warning shadow-[0_0_0_1px_oklch(0.75_0.18_80/0.3)]"
+              : "border border-border hover:border-warning/40"
+          )}
           style={{ animationDelay: "75ms", animationFillMode: "both" }}
         >
           <div className="flex items-center justify-between mb-3">
@@ -226,15 +227,20 @@ export function ServiciosResumenSection() {
             </div>
           </div>
           <p className="text-2xl font-bold text-foreground">{fmt(porVencer)}</p>
-          <p className="text-xs text-warning mt-1.5 font-medium">
-            Próximos {filtroVencer} meses · clic para cambiar
+          <p className={cn("text-xs mt-1.5 font-medium", filtroVencer !== null ? "text-warning" : "text-muted-foreground/50")}>
+            {filtroVencer !== null ? `Próximos ${filtroVencer} meses · clic para cambiar` : "Sin selección · clic para activar"}
           </p>
         </button>
 
-        {/* Por Consumirse — clickeable */}
+        {/* Por Consumirse — ciclo */}
         <button
           onClick={cycleConsumo}
-          className="bg-card border border-border rounded-xl p-5 text-left transition-all hover:border-orange-400/50 hover:bg-orange-400/5 animate-in fade-in slide-in-from-bottom-4 duration-500"
+          className={cn(
+            "bg-card rounded-xl p-5 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
+            filtroConsumo !== null
+              ? "border-2 border-orange-400 shadow-[0_0_0_1px_oklch(0.75_0.18_50/0.3)]"
+              : "border border-border hover:border-orange-400/40"
+          )}
           style={{ animationDelay: "150ms", animationFillMode: "both" }}
         >
           <div className="flex items-center justify-between mb-3">
@@ -244,13 +250,22 @@ export function ServiciosResumenSection() {
             </div>
           </div>
           <p className="text-2xl font-bold text-foreground">{fmt(porConsumirse)}</p>
-          <p className="text-xs text-orange-400 mt-1.5 font-medium">
-            {filtroConsumo}% restante o menos · clic para cambiar
+          <p className={cn("text-xs mt-1.5 font-medium", filtroConsumo !== null ? "text-orange-400" : "text-muted-foreground/50")}>
+            {filtroConsumo !== null ? `≤${filtroConsumo}% restante · clic para cambiar` : "Sin selección · clic para activar"}
           </p>
         </button>
 
-        {/* Vencidos */}
-        <div className="bg-card border border-border rounded-xl p-5 animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: "225ms", animationFillMode: "both" }}>
+        {/* Vencidos — toggle */}
+        <button
+          onClick={() => setFiltroVencidos(v => !v)}
+          className={cn(
+            "bg-card rounded-xl p-5 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
+            filtroVencidos
+              ? "border-2 border-destructive shadow-[0_0_0_1px_oklch(0.55_0.22_25/0.3)]"
+              : "border border-border hover:border-destructive/40"
+          )}
+          style={{ animationDelay: "225ms", animationFillMode: "both" }}
+        >
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm text-muted-foreground">Vencidos</span>
             <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-destructive/10">
@@ -258,7 +273,10 @@ export function ServiciosResumenSection() {
             </div>
           </div>
           <p className="text-2xl font-bold text-foreground">{fmt(vencidos)}</p>
-        </div>
+          <p className={cn("text-xs mt-1.5 font-medium", filtroVencidos ? "text-destructive" : "text-muted-foreground/50")}>
+            {filtroVencidos ? "Filtro activo" : "Sin selección"}
+          </p>
+        </button>
 
       </div>
 
@@ -267,7 +285,12 @@ export function ServiciosResumenSection() {
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-secondary/30">
           <div>
             <p className="text-sm font-semibold text-foreground">
-              Servicios — próximos {filtroVencer} meses · ≤{filtroConsumo}% restante
+              {[
+                filtroActivos  && "Activos",
+                filtroVencer  !== null && `Próximos ${filtroVencer} meses`,
+                filtroConsumo !== null && `≤${filtroConsumo}% restante`,
+                filtroVencidos && "Vencidos",
+              ].filter(Boolean).join(" · ") || "Todos los servicios"}
             </p>
             {!tableLoading && (
               <p className="text-xs text-muted-foreground mt-0.5">
