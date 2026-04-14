@@ -321,7 +321,7 @@ export function ServiciosTablaSection() {
                         return (
                           <td
                             key={c.db}
-                            className="py-1.5 px-3 whitespace-nowrap max-w-[180px] group"
+                            className="py-1.5 px-3 whitespace-nowrap overflow-hidden group"
                             title={isEditing ? undefined : display}
                           >
                             {isEditing ? (
@@ -352,7 +352,7 @@ export function ServiciosTablaSection() {
                                     "bg-secondary text-muted-foreground"
                                   )}>{display || "—"}</span>
                                 ) : (
-                                  <span className="text-foreground truncate max-w-[140px] block">{display || "—"}</span>
+                                  <span className="text-foreground truncate block">{display || "—"}</span>
                                 )}
                                 <Pencil className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 shrink-0 transition-opacity duration-150" />
                               </div>
