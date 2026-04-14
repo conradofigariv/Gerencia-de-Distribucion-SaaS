@@ -56,14 +56,18 @@ const alertasRecientes = [
 ];
 
 
-const FILTROS_VENCER = [3, 4] as const;
-type FiltroVencer = typeof FILTROS_VENCER[number];
+const FILTROS_VENCER  = [3, 4]   as const;
+const FILTROS_CONSUMO = [30, 40] as const;
+type FiltroVencer  = typeof FILTROS_VENCER[number];
+type FiltroConsumo = typeof FILTROS_CONSUMO[number];
 
 export function ServiciosResumenSection() {
-  const [activos,       setActivos]       = useState<number | null>(null);
-  const [vencidos,      setVencidos]      = useState<number | null>(null);
-  const [porVencer,     setPorVencer]     = useState<number | null>(null);
-  const [filtroVencer,  setFiltroVencer]  = useState<FiltroVencer>(3);
+  const [activos,        setActivos]        = useState<number | null>(null);
+  const [vencidos,       setVencidos]       = useState<number | null>(null);
+  const [porVencer,      setPorVencer]      = useState<number | null>(null);
+  const [porConsumirse,  setPorConsumirse]  = useState<number | null>(null);
+  const [filtroVencer,   setFiltroVencer]   = useState<FiltroVencer>(3);
+  const [filtroConsumo,  setFiltroConsumo]  = useState<FiltroConsumo>(30);
 
   // Activos y Vencidos
   useEffect(() => {
@@ -77,7 +81,7 @@ export function ServiciosResumenSection() {
     })();
   }, []);
 
-  // Por vencer — se re-ejecuta cuando cambia el filtro
+  // Por vencer — re-ejecuta cuando cambia el filtro
   useEffect(() => {
     (async () => {
       setPorVencer(null);
@@ -93,10 +97,36 @@ export function ServiciosResumenSection() {
     })();
   }, [filtroVencer]);
 
-  const cycleVencer = () => {
-    const idx = FILTROS_VENCER.indexOf(filtroVencer);
-    setFiltroVencer(FILTROS_VENCER[(idx + 1) % FILTROS_VENCER.length]);
-  };
+  // Por consumirse — trae saldo_linea y cantidad, filtra client-side
+  useEffect(() => {
+    (async () => {
+      setPorConsumirse(null);
+      const PAGE = 1000;
+      const rows: { saldo_linea: unknown; cantidad: unknown }[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("seguimiento")
+          .select("saldo_linea, cantidad")
+          .range(from, from + PAGE - 1);
+        if (error || !data?.length) break;
+        rows.push(...data);
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+      const pct = filtroConsumo / 100;
+      const count = rows.filter(r => {
+        const cantidad = Number(r.cantidad);
+        const saldo    = Number(r.saldo_linea);
+        if (cantidad === 0) return false;
+        return saldo / cantidad <= pct;
+      }).length;
+      setPorConsumirse(count);
+    })();
+  }, [filtroConsumo]);
+
+  const cycleVencer  = () => { const i = FILTROS_VENCER.indexOf(filtroVencer);   setFiltroVencer(FILTROS_VENCER[(i + 1) % FILTROS_VENCER.length]);   };
+  const cycleConsumo = () => { const i = FILTROS_CONSUMO.indexOf(filtroConsumo); setFiltroConsumo(FILTROS_CONSUMO[(i + 1) % FILTROS_CONSUMO.length]); };
 
   const fmt = (n: number | null) => n === null ? "—" : n.toLocaleString("es-AR");
 
@@ -133,16 +163,23 @@ export function ServiciosResumenSection() {
           </p>
         </button>
 
-        {/* Por Consumirse */}
-        <div className="bg-card border border-border rounded-xl p-5 animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: "150ms", animationFillMode: "both" }}>
+        {/* Por Consumirse — clickeable */}
+        <button
+          onClick={cycleConsumo}
+          className="bg-card border border-border rounded-xl p-5 text-left transition-all hover:border-orange-400/50 hover:bg-orange-400/5 animate-in fade-in slide-in-from-bottom-4 duration-500"
+          style={{ animationDelay: "150ms", animationFillMode: "both" }}
+        >
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm text-muted-foreground">Por Consumirse</span>
             <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-orange-400/10">
               <TrendingDown className="w-5 h-5 text-orange-400" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-foreground">—</p>
-        </div>
+          <p className="text-2xl font-bold text-foreground">{fmt(porConsumirse)}</p>
+          <p className="text-xs text-orange-400 mt-1.5 font-medium">
+            {filtroConsumo}% restante o menos · clic para cambiar
+          </p>
+        </button>
 
         {/* Vencidos */}
         <div className="bg-card border border-border rounded-xl p-5 animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: "225ms", animationFillMode: "both" }}>
