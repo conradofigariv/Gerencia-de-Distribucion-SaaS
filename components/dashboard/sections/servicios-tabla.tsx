@@ -249,7 +249,7 @@ export function ServiciosTablaSection() {
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className={cn("overflow-x-auto", isResizing && "select-none cursor-col-resize")}>
-            <table className="text-xs table-fixed" style={{ minWidth: "100%" }}>
+            <table className="text-xs" style={{ tableLayout: "fixed", width: 32 + 40 + 40 + DISPLAY_COLS.reduce((s, c) => s + (colWidths[c.db] ?? DEFAULT_WIDTHS[c.db] ?? 100), 0) }}>
               <colgroup>
                 <col style={{ width: 32 }} />
                 <col style={{ width: 40 }} />
@@ -268,7 +268,7 @@ export function ServiciosTablaSection() {
                   </th>
                   <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold">#</th>
                   {DISPLAY_COLS.map(c => (
-                    <th key={c.db} className="relative text-left py-2.5 pl-3 pr-4 text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider overflow-hidden">
+                    <th key={c.db} style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS[c.db] ?? 100 }} className="relative text-left py-2.5 pl-3 pr-4 text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider overflow-hidden">
                       <span className="block truncate">{c.label}</span>
                       {/* Resize handle — usa pointer capture para drag confiable */}
                       <div
