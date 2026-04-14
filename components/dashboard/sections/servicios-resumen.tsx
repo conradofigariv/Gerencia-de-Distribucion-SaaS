@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
@@ -51,6 +51,14 @@ const STATUS_COLS_T = new Set(["estado_plazo", "estado_cantidades", "revision"])
 const RAW_COLS_T    = new Set(["op", "op_madre", "linea"]);
 const PAGE_SIZE     = 50;
 
+const DEFAULT_WIDTHS_R: Record<string, number> = {
+  zona: 80, op: 90, op_madre: 90, sc: 100, descripcion_sc: 200,
+  linea: 60, matricula: 110, cantidad: 90, cantidad_recibida: 110,
+  saldo_linea: 100, fecha_pactada: 110, proveedor: 160,
+  estado: 90, estado_plazo: 100, estado_cantidades: 120,
+  revision: 90, disponibilidad_meses: 130,
+};
+
 type SeguimientoRow = Record<string, unknown>;
 
 export function ServiciosResumenSection() {
@@ -69,6 +77,9 @@ export function ServiciosResumenSection() {
   const [tableLoading, setTableLoading] = useState(true);
   const [tablePage,    setTablePage]    = useState(0);
   const [alertas,      setAlertas]      = useState<Alerta[]>([]);
+  const [colWidths,    setColWidths]    = useState<Record<string, number>>(DEFAULT_WIDTHS_R);
+  const [isResizing,   setIsResizing]   = useState(false);
+  const resizing = useRef<{ col: string; startX: number; startW: number } | null>(null);
 
   // Conteos fijos (siempre activos)
   useEffect(() => {
@@ -339,13 +350,54 @@ export function ServiciosResumenSection() {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+            <div className={cn("overflow-x-auto", isResizing && "select-none cursor-col-resize")}>
+              <table className="text-xs" style={{ tableLayout: "fixed", width: 40 + TABLE_COLS.reduce((s, c) => s + (colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100), 0) }}>
+                <colgroup>
+                  <col style={{ width: 40 }} />
+                  {TABLE_COLS.map(c => <col key={c.db} style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 }} />)}
+                </colgroup>
                 <thead>
                   <tr className="border-b border-border bg-secondary/50">
                     <th className="py-2.5 px-3 text-left text-muted-foreground font-semibold">#</th>
                     {TABLE_COLS.map(c => (
-                      <th key={c.db} className="py-2.5 px-3 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider">{c.label}</th>
+                      <th
+                        key={c.db}
+                        style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 }}
+                        className="relative group/th py-2.5 pl-3 pr-4 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider"
+                        onPointerMove={e => {
+                          if (!resizing.current) return;
+                          const newW = Math.max(50, resizing.current.startW + (e.clientX - resizing.current.startX));
+                          setColWidths(prev => ({ ...prev, [resizing.current!.col]: newW }));
+                        }}
+                        onPointerUp={e => {
+                          e.currentTarget.releasePointerCapture(e.pointerId);
+                          resizing.current = null;
+                          setIsResizing(false);
+                        }}
+                      >
+                        <span className="block truncate">{c.label}</span>
+                        <div
+                          className="absolute right-0 top-0 h-full w-2 flex items-center justify-center cursor-col-resize group/handle hover:bg-accent/10"
+                          onPointerDown={e => {
+                            e.preventDefault(); e.stopPropagation();
+                            e.currentTarget.setPointerCapture(e.pointerId);
+                            resizing.current = { col: c.db, startX: e.clientX, startW: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 };
+                            setIsResizing(true);
+                          }}
+                          onPointerMove={e => {
+                            if (!resizing.current) return;
+                            const newW = Math.max(50, resizing.current.startW + (e.clientX - resizing.current.startX));
+                            setColWidths(prev => ({ ...prev, [resizing.current!.col]: newW }));
+                          }}
+                          onPointerUp={e => {
+                            e.currentTarget.releasePointerCapture(e.pointerId);
+                            resizing.current = null;
+                            setIsResizing(false);
+                          }}
+                        >
+                          <div className="w-px h-4 bg-border group-hover/handle:bg-accent transition-colors" />
+                        </div>
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -360,7 +412,7 @@ export function ServiciosResumenSection() {
                           : String(val ?? "");
                         const isStat  = STATUS_COLS_T.has(c.db);
                         return (
-                          <td key={c.db} className="py-2.5 px-3 whitespace-nowrap max-w-[160px] truncate" title={display}>
+                          <td key={c.db} className="py-2.5 px-3 whitespace-nowrap overflow-hidden" title={display}>
                             {isStat ? (
                               <span className={cn(
                                 "px-1.5 py-0.5 rounded text-[11px] font-medium",
@@ -370,7 +422,7 @@ export function ServiciosResumenSection() {
                                 "bg-secondary text-muted-foreground"
                               )}>{display || "—"}</span>
                             ) : (
-                              <span className="text-foreground">{display || "—"}</span>
+                              <span className="text-foreground truncate block">{display || "—"}</span>
                             )}
                           </td>
                         );
