@@ -9,6 +9,7 @@ import {
   useEdgesState,
   addEdge,
   NodeResizer,
+  ConnectionMode,
   type Node,
   type Edge,
   type NodeProps,
@@ -44,9 +45,9 @@ function ProcessNode({ data, selected }: NodeProps) {
         lineStyle={{ borderColor: "hsl(var(--accent))", borderWidth: 1 }}
         handleStyle={{ background: "hsl(var(--accent))", border: "none", width: 8, height: 8, borderRadius: 2 }}
       />
-      <Handle type="target" position={Position.Left}  className="!bg-border !w-2.5 !h-2.5 !border !border-border/50" />
-      <Handle type="source" position={Position.Right} className="!bg-border !w-2.5 !h-2.5 !border !border-border/50" />
-      <Handle type="target" position={Position.Top}    id="top" className="!bg-border !w-2.5 !h-2.5 !border !border-border/50" />
+      <Handle type="source" position={Position.Left}   id="left" className="!bg-border !w-2.5 !h-2.5 !border !border-border/50" />
+      <Handle type="source" position={Position.Right}  id="right" className="!bg-border !w-2.5 !h-2.5 !border !border-border/50" />
+      <Handle type="source" position={Position.Top}    id="top" className="!bg-border !w-2.5 !h-2.5 !border !border-border/50" />
       <Handle type="source" position={Position.Bottom} id="bot" className="!bg-border !w-2.5 !h-2.5 !border !border-border/50" />
       <div className={cn(
         "w-full h-full rounded-lg border-2 flex flex-col items-center justify-center px-2 py-1.5 text-center cursor-pointer transition-all duration-200 overflow-hidden",
@@ -80,8 +81,8 @@ function StartEndNode({ data, selected }: NodeProps) {
         lineStyle={{ borderColor: "#22c55e", borderWidth: 1 }}
         handleStyle={{ background: "#22c55e", border: "none", width: 8, height: 8, borderRadius: 2 }}
       />
-      <Handle type="source" position={Position.Right} className="!bg-green-500 !w-2.5 !h-2.5" />
-      <Handle type="target" position={Position.Left}  className="!bg-green-500 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Right} id="right" className="!bg-green-500 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Left}  id="left"  className="!bg-green-500 !w-2.5 !h-2.5" />
       <div className={cn(
         "w-full h-full rounded-full border-2 border-green-500 bg-green-500/15 flex items-center justify-center px-3 py-1 overflow-hidden",
         selected && "ring-1 ring-green-400/40"
@@ -101,10 +102,10 @@ function DecisionNode({ data, selected }: NodeProps) {
         lineStyle={{ borderColor: "hsl(var(--accent))", borderWidth: 1 }}
         handleStyle={{ background: "hsl(var(--accent))", border: "none", width: 8, height: 8, borderRadius: 2 }}
       />
-      <Handle type="target" position={Position.Left}   className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Left}   id="left"  className="!bg-border !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Right}  id="right" className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Bottom} id="bot" className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="target" position={Position.Top}    id="top" className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Top}    id="top"   className="!bg-border !w-2.5 !h-2.5" />
       <div className="w-full h-full relative flex items-center justify-center overflow-hidden"
         style={{ filter: selected ? "drop-shadow(0 0 4px hsl(var(--accent)/0.4))" : undefined }}>
         <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
@@ -126,15 +127,15 @@ function DocumentNode({ data, selected }: NodeProps) {
         lineStyle={{ borderColor: "hsl(var(--accent))", borderWidth: 1 }}
         handleStyle={{ background: "hsl(var(--accent))", border: "none", width: 8, height: 8, borderRadius: 2 }}
       />
-      <Handle type="target" position={Position.Top}    className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Bottom} className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="target" position={Position.Left}   className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Right}  className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Top}    id="top"   className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Left}   id="left"  className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Right}  id="right" className="!bg-border !w-2.5 !h-2.5" />
       <div className={cn(
-        "w-full h-full border border-border/60 bg-card/80 rounded flex gap-1.5 px-2 py-1.5 cursor-pointer hover:border-accent/60 transition-colors overflow-hidden",
+        "w-full h-full border border-border/60 bg-card/80 rounded flex items-start gap-1.5 px-2 py-1.5 cursor-pointer hover:border-accent/60 transition-colors overflow-hidden",
         selected && "ring-1 ring-accent/40 border-accent/40"
       )}>
-        <div className="shrink-0 mt-0.5 text-muted-foreground">
+        <div className="shrink-0 pt-0.5 text-muted-foreground">
           <svg width="10" height="12" viewBox="0 0 10 12">
             <path d="M1 1h6l2 2v8H1V1z" fill="none" stroke="currentColor" strokeWidth="1"/>
             <path d="M7 1v2h2" fill="none" stroke="currentColor" strokeWidth="1"/>
@@ -352,14 +353,9 @@ export function SicDiagramaSection() {
     }, 1500);
   }, [nodes, edges, loading]);
 
-  // Add edge on connect
+  // Add edge on connect — keep it minimal; defaultEdgeOptions handles styling
   const onConnect = useCallback((connection: Connection) => {
-    setEdges(es => addEdge({
-      ...connection,
-      id: `e-custom-${Date.now()}`,
-      markerEnd: { type: MarkerType.ArrowClosed, color: "hsl(var(--border))" },
-      style: { stroke: "hsl(var(--border))", strokeWidth: 1.5 },
-    }, es));
+    setEdges(es => addEdge({ ...connection, id: `e-${Date.now()}` }, es));
   }, [setEdges]);
 
   // Double-click node → open responsables editor
@@ -420,6 +416,11 @@ export function SicDiagramaSection() {
             onConnect={onConnect}
             onNodeDoubleClick={onNodeDoubleClick}
             nodeTypes={NODE_TYPES}
+            connectionMode={ConnectionMode.Loose}
+            defaultEdgeOptions={{
+              style: { stroke: "hsl(var(--border))", strokeWidth: 1.5 },
+              markerEnd: { type: MarkerType.ArrowClosed },
+            }}
             fitView
             fitViewOptions={{ padding: 0.12 }}
             deleteKeyCode={["Backspace","Delete"]}
