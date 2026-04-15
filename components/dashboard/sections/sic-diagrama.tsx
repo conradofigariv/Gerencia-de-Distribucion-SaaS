@@ -402,7 +402,8 @@ export function SicDiagramaSection() {
       </div>
 
       {/* Diagram */}
-      <div className="bg-card border border-border rounded-xl overflow-hidden" style={{ height: 580 }}>
+      <div className="bg-card border border-border rounded-xl overflow-hidden"
+        style={{ height: 580, "--xy-edge-stroke": "#94a3b8", "--xy-edge-stroke-width": "1.5" } as React.CSSProperties}>
         {loading ? (
           <div className="flex items-center justify-center h-full gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin"/>Cargando...
