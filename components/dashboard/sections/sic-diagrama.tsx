@@ -321,14 +321,12 @@ export function SicDiagramaSection() {
       setResponsables(respMap);
 
       if (layoutRes.data?.nodes) {
-        // Merge saved positions into default nodes, apply saved responsables
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const savedNodes: any[] = layoutRes.data.nodes;
         const merged = buildNodes(respMap).map(n => {
-          const saved = savedNodes.find((s: { id: string }) => s.id === n.id);
-          return saved ? { ...n, position: saved.position, width: saved.width, height: saved.height, style: saved.style } : n;
+          const sv = savedNodes.find((s: { id: string }) => s.id === n.id);
+          return sv ? { ...n, position: sv.position, width: sv.width, height: sv.height, style: sv.style } : n;
         });
-        // Add any extra custom nodes saved
         const extra = savedNodes.filter((s: { id: string }) => !merged.find(n => n.id === s.id));
         setNodes([...merged, ...extra]);
         if (layoutRes.data.edges) setEdges(layoutRes.data.edges);
@@ -339,43 +337,30 @@ export function SicDiagramaSection() {
     })();
   }, []);
 
-  // Debounced auto-save of layout
-  const scheduleLayoutSave = useCallback((ns: Node[], es: Edge[]) => {
+  // Auto-save whenever nodes or edges change (skip during initial load)
+  useEffect(() => {
+    if (loading) return;
     setSaved(false);
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       const payload = {
-        nodes: ns.map(n => ({ id:n.id, position:n.position, width:n.width, height:n.height, style:n.style, type:n.type, data:n.data })),
-        edges: es,
+        nodes: nodes.map(n => ({ id:n.id, position:n.position, width:n.width, height:n.height, style:n.style, type:n.type, data:n.data })),
+        edges,
       };
       await supabase.from("sic_diagrama_layout").upsert({ id:"main", ...payload, updated_at: new Date().toISOString() });
       setSaved(true);
     }, 1500);
-  }, []);
+  }, [nodes, edges, loading]);
 
-  const handleNodesChange = useCallback((changes: Parameters<typeof onNodesChange>[0]) => {
-    onNodesChange(changes);
-    setNodes(ns => { scheduleLayoutSave(ns, edges); return ns; });
-  }, [onNodesChange, edges, scheduleLayoutSave]);
-
-  const handleEdgesChange = useCallback((changes: Parameters<typeof onEdgesChange>[0]) => {
-    onEdgesChange(changes);
-    setEdges(es => { scheduleLayoutSave(nodes, es); return es; });
-  }, [onEdgesChange, nodes, scheduleLayoutSave]);
-
+  // Add edge on connect
   const onConnect = useCallback((connection: Connection) => {
-    const newEdge: Edge = {
+    setEdges(es => addEdge({
       ...connection,
-      id: `e-${connection.source}-${connection.target}-${Date.now()}`,
+      id: `e-custom-${Date.now()}`,
       markerEnd: { type: MarkerType.ArrowClosed, color: "hsl(var(--border))" },
       style: { stroke: "hsl(var(--border))", strokeWidth: 1.5 },
-    };
-    setEdges(es => {
-      const next = addEdge(newEdge, es);
-      scheduleLayoutSave(nodes, next);
-      return next;
-    });
-  }, [nodes, scheduleLayoutSave]);
+    }, es));
+  }, [setEdges]);
 
   // Double-click node → open responsables editor
   const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
@@ -391,7 +376,6 @@ export function SicDiagramaSection() {
   const resetLayout = () => {
     setNodes(buildNodes(responsables));
     setEdges(DEFAULT_EDGES);
-    scheduleLayoutSave(buildNodes(responsables), DEFAULT_EDGES);
   };
 
   return (
@@ -431,8 +415,8 @@ export function SicDiagramaSection() {
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            onNodesChange={handleNodesChange}
-            onEdgesChange={handleEdgesChange}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeDoubleClick={onNodeDoubleClick}
             nodeTypes={NODE_TYPES}
