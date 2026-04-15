@@ -110,7 +110,7 @@ function DecisionNode({ data, selected }: NodeProps) {
         style={{ filter: selected ? "drop-shadow(0 0 4px hsl(var(--accent)/0.4))" : undefined }}>
         <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
           <polygon points="50%,2 98%,50% 50%,98% 2%,50%"
-            fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth="1.5" />
+            fill="hsl(var(--card))" stroke="#6b7280" strokeWidth="1.5" />
         </svg>
         <p className="relative text-[10px] font-semibold text-foreground text-center leading-tight px-3 z-10">{d.label}</p>
       </div>
@@ -192,8 +192,8 @@ function buildNodes(responsables: Record<string, string[]>): Node[] {
 
 const E = (id: string, source: string, target: string, opts: Partial<Edge> = {}): Edge => ({
   id, source, target,
-  markerEnd: { type: MarkerType.ArrowClosed, color: opts.style?.stroke as string ?? "hsl(var(--border))" },
-  style: { stroke: "hsl(var(--border))", strokeWidth: 1.5 },
+  markerEnd: { type: MarkerType.ArrowClosed, color: opts.style?.stroke as string ?? "#6b7280" },
+  style: { stroke: "#6b7280", strokeWidth: 1.5 },
   ...opts,
 });
 const POS = { style: { stroke: "hsl(var(--success))",     strokeWidth: 1.5 } };
@@ -418,8 +418,8 @@ export function SicDiagramaSection() {
             nodeTypes={NODE_TYPES}
             connectionMode={ConnectionMode.Loose}
             defaultEdgeOptions={{
-              style: { stroke: "hsl(var(--border))", strokeWidth: 1.5 },
-              markerEnd: { type: MarkerType.ArrowClosed },
+              style: { stroke: "#6b7280", strokeWidth: 1.5 },
+              markerEnd: { type: MarkerType.ArrowClosed, color: "#6b7280" },
             }}
             fitView
             fitViewOptions={{ padding: 0.12 }}
@@ -427,7 +427,7 @@ export function SicDiagramaSection() {
             proOptions={{ hideAttribution: true }}
             style={{ background: "hsl(var(--card))" }}
           >
-            <Background color="hsl(var(--border))" gap={24} size={1}/>
+            <Background color="#6b7280" gap={24} size={1}/>
             <Controls showInteractive={false}
               className="[&>button]:bg-secondary [&>button]:border-border [&>button]:text-foreground [&>button:hover]:bg-secondary/80"/>
           </ReactFlow>
@@ -439,7 +439,7 @@ export function SicDiagramaSection() {
         <div className="flex items-center gap-1.5"><div className="w-5 h-5 rounded-full border-2 border-green-500 bg-green-500/15"/>Inicio / Fin</div>
         <div className="flex items-center gap-1.5"><div className="w-5 h-4 rounded border-2 border-border bg-card"/>Actividad</div>
         <div className="flex items-center gap-1.5">
-          <svg width="18" height="14"><polygon points="9,1 17,7 9,13 1,7" fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth="1.5"/></svg>
+          <svg width="18" height="14"><polygon points="9,1 17,7 9,13 1,7" fill="hsl(var(--card))" stroke="#6b7280" strokeWidth="1.5"/></svg>
           Decisión
         </div>
         <div className="flex items-center gap-1.5"><div className="w-4 h-0.5 bg-green-500"/>Resultado positivo</div>
