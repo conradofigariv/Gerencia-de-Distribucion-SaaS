@@ -25,6 +25,7 @@ const sectionTitles: Record<Section, string> = {
   "servicios-tabla":     "Control de servicios — Lista de seguimiento",
   "servicios-planillas": "Carga de datos",
   "servicios-carga":     "Control de servicios — Crear seguimiento",
+  "sic-diagrama":        "Proceso SIC - SIGA — Diagrama de flujo",
 };
 
 export function Header({ activeSection, user }: HeaderProps) {

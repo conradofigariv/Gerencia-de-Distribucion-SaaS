@@ -18,6 +18,7 @@ import { ServiciosResumenSection } from "@/components/dashboard/sections/servici
 import { ServiciosTablaSection } from "@/components/dashboard/sections/servicios-tabla";
 import { ServiciosCargaSection } from "@/components/dashboard/sections/servicios-carga";
 import { ServiciosPlanillasSection } from "@/components/dashboard/sections/servicios-planillas";
+import { SicDiagramaSection } from "@/components/dashboard/sections/sic-diagrama";
 
 export type Section =
   | "overview"
@@ -31,7 +32,8 @@ export type Section =
   | "servicios-resumen"
   | "servicios-tabla"
   | "servicios-carga"
-  | "servicios-planillas";
+  | "servicios-planillas"
+  | "sic-diagrama";
 
 export default function Dashboard() {
   const [user, setUser]                     = useState<User | null>(null);
@@ -79,6 +81,7 @@ export default function Dashboard() {
       case "servicios-tabla":    return <ServiciosTablaSection />;
       case "servicios-carga":    return <ServiciosCargaSection />;
       case "servicios-planillas":return <ServiciosPlanillasSection />;
+      case "sic-diagrama":       return <SicDiagramaSection />;
       default:                   return <OverviewSection />;
     }
   };

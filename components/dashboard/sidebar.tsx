@@ -20,6 +20,8 @@ import {
   UploadCloud,
   Layers,
   ChevronDown,
+  Network,
+  GitMerge,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 
@@ -60,6 +62,15 @@ const navItems: NavItemDef[] = [
       { id: "servicios-carga",   label: "Crear seguimiento",    icon: UploadCloud },
     ],
   },
+  {
+    kind: "group",
+    id: "sic",
+    label: "Proceso SIC - SIGA",
+    icon: Network,
+    children: [
+      { id: "sic-diagrama", label: "Diagrama de flujo", icon: GitMerge },
+    ],
+  },
   { kind: "link", id: "overview", label: "Overview", icon: LayoutDashboard },
   { kind: "link", id: "pipeline", label: "Pipeline", icon: GitBranch },
   { kind: "link", id: "deals", label: "Deals", icon: Handshake },
@@ -76,22 +87,27 @@ const SERVICIOS_SECTIONS: Section[] = [
   "servicios-carga",
 ];
 
+const SIC_SECTIONS: Section[] = ["sic-diagrama"];
+
 export function Sidebar({
   activeSection,
   onSectionChange,
   collapsed,
   onCollapsedChange,
 }: SidebarProps) {
-  const [expandedGroups, setExpandedGroups] = useState<string[]>(
-    SERVICIOS_SECTIONS.includes(activeSection) ? ["servicios"] : []
-  );
+  const initialGroups = [
+    ...(SERVICIOS_SECTIONS.includes(activeSection) ? ["servicios"] : []),
+    ...(SIC_SECTIONS.includes(activeSection)       ? ["sic"]       : []),
+  ];
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(initialGroups);
 
   // Auto-expand group when a child section becomes active
   useEffect(() => {
     if (SERVICIOS_SECTIONS.includes(activeSection)) {
-      setExpandedGroups((prev) =>
-        prev.includes("servicios") ? prev : [...prev, "servicios"]
-      );
+      setExpandedGroups((prev) => prev.includes("servicios") ? prev : [...prev, "servicios"]);
+    }
+    if (SIC_SECTIONS.includes(activeSection)) {
+      setExpandedGroups((prev) => prev.includes("sic") ? prev : [...prev, "sic"]);
     }
   }, [activeSection]);
 
