@@ -301,17 +301,19 @@ function ShapePalette() {
   };
 
   return (
-    <div className="flex gap-2 flex-wrap">
+    <div className="flex flex-col gap-2">
       {SHAPES.map((shape) => (
         <div
           key={shape.type}
           draggable
           onDragStart={(e) => onDragStart(e, shape.type)}
-          className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-border bg-secondary/30 hover:bg-secondary/60 hover:border-accent/50 cursor-move transition-all"
+          className="flex flex-col items-center gap-2 p-2 rounded-lg border border-border bg-secondary/40 hover:bg-secondary/70 hover:border-accent/50 cursor-move transition-all"
           title={`Arrastra para agregar ${shape.label}`}
         >
-          {shape.icon}
-          <span className="text-xs text-muted-foreground text-center">{shape.label}</span>
+          <div className="flex items-center justify-center h-10">
+            {shape.icon}
+          </div>
+          <span className="text-[11px] text-muted-foreground text-center leading-tight">{shape.label}</span>
         </div>
       ))}
     </div>
@@ -440,6 +442,7 @@ function EditModal({ pasoId, initial, onSave, onClose }: EditModalProps) {
 
 function SicDiagramaInner() {
   const { screenToFlowPosition } = useReactFlow();
+  const containerRef = useRef<HTMLDivElement>(null);
   const [responsables, setResponsables] = useState<Record<string,string[]>>({});
   const [loading, setLoading]   = useState(true);
   const [editing, setEditing]   = useState<string|null>(null);
@@ -523,17 +526,17 @@ function SicDiagramaInner() {
   };
 
   // Drag-and-drop handlers
-  const onDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+  const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
   }, []);
 
-  const onDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
+  const onDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     const shapeType = event.dataTransfer.getData("application/reactflow");
-    if (!shapeType) return;
+    if (!shapeType || !containerRef.current) return;
 
-    const containerRect = (event.target as HTMLDivElement).getBoundingClientRect();
+    const containerRect = containerRef.current.getBoundingClientRect();
     const x = event.clientX - containerRect.left;
     const y = event.clientY - containerRect.top;
     const flowPosition = screenToFlowPosition({ x, y });
@@ -561,12 +564,6 @@ function SicDiagramaInner() {
         </div>
       </div>
 
-      {/* Shapes palette */}
-      <div className="bg-card border border-border rounded-xl px-5 py-4">
-        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Agregar forma</p>
-        <ShapePalette />
-      </div>
-
       {/* Status bar */}
       <div className="bg-card border border-border rounded-xl px-5 py-3 grid grid-cols-2 sm:grid-cols-5 gap-4 text-xs">
         {[["SIC","—"],["Estado actual","—"],["Responsable","—"],["Tiempo en paso","—"],["Tiempo total","—"]].map(([k,v])=>(
@@ -575,13 +572,22 @@ function SicDiagramaInner() {
         ))}
       </div>
 
-      {/* Diagram */}
-      <div
-        className="bg-card border border-border rounded-xl overflow-hidden"
-        style={{ height: 580, "--xy-edge-stroke": "#94a3b8", "--xy-edge-stroke-width": "1.5" } as React.CSSProperties}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
-      >
+      {/* Diagram with sidebar */}
+      <div className="flex gap-4">
+        {/* Shapes sidebar */}
+        <div className="w-32 bg-card border border-border rounded-xl px-3 py-4 overflow-y-auto max-h-[600px]">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3 font-semibold">Agregar forma</p>
+          <ShapePalette />
+        </div>
+
+        {/* Canvas */}
+        <div
+          ref={containerRef}
+          className="flex-1 bg-card border border-border rounded-xl overflow-hidden"
+          style={{ height: 580, "--xy-edge-stroke": "#94a3b8", "--xy-edge-stroke-width": "1.5" } as React.CSSProperties}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
+        >
         {loading ? (
           <div className="flex items-center justify-center h-full gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin"/>Cargando...
@@ -611,6 +617,7 @@ function SicDiagramaInner() {
               className="[&>button]:bg-secondary [&>button]:border-border [&>button]:text-foreground [&>button:hover]:bg-secondary/80"/>
           </ReactFlow>
         )}
+        </div>
       </div>
 
       {/* Legend */}
