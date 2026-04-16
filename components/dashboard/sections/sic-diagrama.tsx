@@ -558,22 +558,22 @@ function BendableEdge({ id, sourceX, sourceY, targetX, targetY, style, markerEnd
   const isStep     = lineStyle === "step" || lineStyle === "smoothstep";
   const isStraight = lineStyle === "straight";
 
-  // bezier control point
-  const cpX  = (data?.cpX  as number | undefined) ?? (sourceX + targetX) / 2;
-  const cpY  = (data?.cpY  as number | undefined) ?? (sourceY + targetY) / 2;
+  // bezier control point (free 2D)
+  const cpX = (data?.cpX as number | undefined) ?? (sourceX + targetX) / 2;
+  const cpY = (data?.cpY as number | undefined) ?? (sourceY + targetY) / 2;
 
-  // step: two independent vertical-segment positions + fixed mid-Y
-  const midY = (sourceY + targetY) / 2;
-  const cp1X = (data?.cp1X as number | undefined) ?? sourceX + (targetX - sourceX) / 3;
-  const cp2X = (data?.cp2X as number | undefined) ?? sourceX + (targetX - sourceX) * 2 / 3;
+  // step: vertical folds auto-positioned at 1/3 and 2/3; only bridge Y is draggable
+  const cp1X   = sourceX + (targetX - sourceX) / 3;
+  const cp2X   = sourceX + (targetX - sourceX) * 2 / 3;
+  const bridgeY = (data?.bridgeY as number | undefined) ?? (sourceY + targetY) / 2;
 
   const edgePath = isStep
-    ? `M${sourceX},${sourceY} L${cp1X},${sourceY} L${cp1X},${midY} L${cp2X},${midY} L${cp2X},${targetY} L${targetX},${targetY}`
+    ? `M${sourceX},${sourceY} L${cp1X},${sourceY} L${cp1X},${bridgeY} L${cp2X},${bridgeY} L${cp2X},${targetY} L${targetX},${targetY}`
     : isStraight
     ? `M${sourceX},${sourceY} L${targetX},${targetY}`
     : `M${sourceX},${sourceY} Q${cpX},${cpY} ${targetX},${targetY}`;
 
-  const makeDrag = useCallback((update: (x: number, y: number) => Record<string, unknown>) => (e: React.MouseEvent) => {
+  const startDrag = useCallback((update: (x: number, y: number) => Record<string, unknown>) => (e: React.MouseEvent) => {
     e.stopPropagation(); e.preventDefault();
     const move = (mv: MouseEvent) => {
       const p = screenToFlowPosition({ x: mv.clientX, y: mv.clientY });
@@ -586,15 +586,15 @@ function BendableEdge({ id, sourceX, sourceY, targetX, targetY, style, markerEnd
     document.addEventListener("mouseup", up);
   }, [id, screenToFlowPosition, setEdges]);
 
-  const onBezierDrag = makeDrag((x, y) => ({ cpX: x, cpY: y }));
-  const onStep1Drag  = makeDrag((x)    => ({ cp1X: x }));
-  const onStep2Drag  = makeDrag((x)    => ({ cp2X: x }));
+  const onBezierDrag = startDrag((x, y) => ({ cpX: x, cpY: y }));
+  // step handle: only vertical (Y) matters; X is ignored
+  const onBridgeDrag = startDrag((_, y) => ({ bridgeY: y }));
 
   const dot = (hx: number, hy: number, handler: (e: React.MouseEvent) => void) => (
     <div key={`${hx}-${hy}`}
       style={{ position: "absolute", transform: `translate(-50%,-50%) translate(${hx}px,${hy}px)`, pointerEvents: "all" }}
       className="nodrag nopan" onMouseDown={handler}>
-      <div className="w-3 h-3 rounded-full bg-slate-500/80 border border-slate-300/50 cursor-grab active:cursor-grabbing hover:bg-slate-300 hover:scale-125 transition-all" />
+      <div className="w-3 h-3 rounded-full bg-slate-500/80 border border-slate-300/50 cursor-ns-resize hover:bg-slate-300 hover:scale-125 transition-all" />
     </div>
   );
 
@@ -603,14 +603,11 @@ function BendableEdge({ id, sourceX, sourceY, targetX, targetY, style, markerEnd
       <BaseEdge path={edgePath} style={style} markerEnd={markerEnd} />
       {selected && !isStraight && (
         <EdgeLabelRenderer>
-          {isStep ? (
-            <>
-              {dot(cp1X, (sourceY + midY) / 2, onStep1Drag)}
-              {dot(cp2X, (midY + targetY) / 2, onStep2Drag)}
-            </>
-          ) : (
-            dot(cpX, cpY, onBezierDrag)
-          )}
+          {isStep
+            // single handle at center of horizontal bridge — drag up/down
+            ? dot((cp1X + cp2X) / 2, bridgeY, onBridgeDrag)
+            : dot(cpX, cpY, onBezierDrag)
+          }
         </EdgeLabelRenderer>
       )}
     </>
