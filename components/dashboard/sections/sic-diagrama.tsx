@@ -200,6 +200,9 @@ function DecisionNode({ data, selected }: NodeProps) {
         <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
           <polygon points="50,2 98,50 50,98 2,50" fill="transparent" stroke="#f59e0b" strokeWidth="2.5"/>
         </svg>
+        {/* Handle labels */}
+        <span className="absolute top-1 left-1/2 -translate-x-1/2 text-[7px] font-medium text-amber-500/50 leading-none select-none">No</span>
+        <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[7px] font-medium text-amber-500/50 leading-none select-none">Sí</span>
         <div className="relative z-10 flex flex-col items-center gap-0.5">
           <p className="text-[10px] font-semibold text-amber-400 text-center leading-tight px-6">{d.label}</p>
           {d.responsables && d.responsables.length > 0 && (
