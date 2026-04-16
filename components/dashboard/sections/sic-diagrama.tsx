@@ -479,7 +479,7 @@ function NodeEditModal({ nodeId, initialLabel, initialResponsables, onSave, onCl
 // ─── Edge edit modal ──────────────────────────────────────────────────────────
 
 const EDGE_TYPES_OPTIONS = [
-  { value: "default",    label: "Curva (bezier)" },
+  { value: "bezier",     label: "Curva (bezier)" },
   { value: "smoothstep", label: "Suave" },
   { value: "step",       label: "Escalonada" },
   { value: "straight",   label: "Recta" },
@@ -523,7 +523,7 @@ function EdgeEditModal({ edgeId, initialType, initialCurvature, onSave, onClose 
           </div>
         </div>
 
-        {type === "default" && (
+        {type === "bezier" && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground font-medium">Curvatura</p>
@@ -551,13 +551,25 @@ function EdgeEditModal({ edgeId, initialType, initialCurvature, onSave, onClose 
 
 // ─── Bendable edge (draggable midpoint handle) ───────────────────────────────
 
-function BendableEdge({ id, sourceX, sourceY, targetX, targetY, style, markerEnd, data }: EdgeProps) {
+function BendableEdge({ id, sourceX, sourceY, targetX, targetY, style, markerEnd, data, selected }: EdgeProps) {
   const { setEdges, screenToFlowPosition } = useReactFlow();
 
+  const lineStyle = (data?.lineStyle as string | undefined) ?? "bezier";
   const cpX = (data?.cpX as number | undefined) ?? (sourceX + targetX) / 2;
   const cpY = (data?.cpY as number | undefined) ?? (sourceY + targetY) / 2;
+  const midY = (sourceY + targetY) / 2;
 
-  const edgePath = `M${sourceX},${sourceY} Q${cpX},${cpY} ${targetX},${targetY}`;
+  const isStep = lineStyle === "step" || lineStyle === "smoothstep";
+  const isStraight = lineStyle === "straight";
+
+  const edgePath = isStep
+    ? `M${sourceX},${sourceY} L${cpX},${sourceY} L${cpX},${targetY} L${targetX},${targetY}`
+    : isStraight
+    ? `M${sourceX},${sourceY} L${targetX},${targetY}`
+    : `M${sourceX},${sourceY} Q${cpX},${cpY} ${targetX},${targetY}`;
+
+  const handleX = isStep ? cpX : cpX;
+  const handleY = isStep ? midY : cpY;
 
   const onHandleMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -565,9 +577,13 @@ function BendableEdge({ id, sourceX, sourceY, targetX, targetY, style, markerEnd
 
     const onMove = (mv: MouseEvent) => {
       const pos = screenToFlowPosition({ x: mv.clientX, y: mv.clientY });
-      setEdges(es => es.map(edge =>
-        edge.id !== id ? edge : { ...edge, data: { ...(edge.data as Record<string, unknown> ?? {}), cpX: pos.x, cpY: pos.y } }
-      ));
+      setEdges(es => es.map(edge => {
+        if (edge.id !== id) return edge;
+        const prev = edge.data as Record<string, unknown> ?? {};
+        // for step: only move horizontally (cpX); for bezier: move both
+        const isStepEdge = (prev.lineStyle as string | undefined) === "step" || (prev.lineStyle as string | undefined) === "smoothstep";
+        return { ...edge, data: { ...prev, cpX: pos.x, ...(isStepEdge ? {} : { cpY: pos.y }) } };
+      }));
     };
 
     const onUp = () => {
@@ -582,20 +598,22 @@ function BendableEdge({ id, sourceX, sourceY, targetX, targetY, style, markerEnd
   return (
     <>
       <BaseEdge path={edgePath} style={style} markerEnd={markerEnd} />
-      <EdgeLabelRenderer>
-        <div
-          style={{ position: "absolute", transform: `translate(-50%,-50%) translate(${cpX}px,${cpY}px)`, pointerEvents: "all" }}
-          className="nodrag nopan"
-          onMouseDown={onHandleMouseDown}
-        >
-          <div className="w-3 h-3 rounded-full bg-slate-500/80 border border-slate-300/50 cursor-grab active:cursor-grabbing hover:bg-slate-300 hover:scale-125 transition-all" />
-        </div>
-      </EdgeLabelRenderer>
+      {selected && !isStraight && (
+        <EdgeLabelRenderer>
+          <div
+            style={{ position: "absolute", transform: `translate(-50%,-50%) translate(${handleX}px,${handleY}px)`, pointerEvents: "all" }}
+            className="nodrag nopan"
+            onMouseDown={onHandleMouseDown}
+          >
+            <div className="w-3 h-3 rounded-full bg-slate-500/80 border border-slate-300/50 cursor-grab active:cursor-grabbing hover:bg-slate-300 hover:scale-125 transition-all" />
+          </div>
+        </EdgeLabelRenderer>
+      )}
     </>
   );
 }
 
-const EDGE_TYPES_MAP = { default: BendableEdge };
+const EDGE_TYPES_MAP = { default: BendableEdge, smoothstep: BendableEdge, step: BendableEdge, straight: BendableEdge };
 
 // ─── Edit responsables modal ──────────────────────────────────────────────────
 
@@ -736,18 +754,18 @@ function SicDiagramaInner() {
 
   // Double-click edge → open edge editor
   const onEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const curvature = ((edge as any).pathOptions as { curvature?: number } | undefined)?.curvature ?? 0.25;
-    setEditingEdge({ id: edge.id, type: edge.type ?? "default", curvature });
+    const d = edge.data as Record<string, unknown> | undefined;
+    const lineStyle = (d?.lineStyle as string | undefined) ?? "bezier";
+    const curvature = (d?.curvature as number | undefined) ?? 0.25;
+    setEditingEdge({ id: edge.id, type: lineStyle, curvature });
   }, []);
 
-  const handleSaveEdge = useCallback((id: string, type: string, curvature: number) => {
+  const handleSaveEdge = useCallback((id: string, lineStyle: string, curvature: number) => {
     setEdges(es => es.map(e => e.id !== id ? e : {
       ...e,
-      type,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...(type === "default" ? { pathOptions: { curvature } } : { pathOptions: undefined }),
-    } as any));
+      type: lineStyle,
+      data: { ...(e.data as Record<string, unknown> ?? {}), lineStyle, curvature },
+    }));
   }, [setEdges]);
 
   // Save label + responsables for any node
