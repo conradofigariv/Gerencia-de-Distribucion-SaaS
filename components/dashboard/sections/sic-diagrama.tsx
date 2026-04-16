@@ -203,9 +203,6 @@ function DecisionNode({ data, selected }: NodeProps) {
         <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
           <polygon points="50,2 98,50 50,98 2,50" fill="transparent" stroke="#f59e0b" strokeWidth="2.5"/>
         </svg>
-        {/* Handle labels */}
-        <span className="absolute top-1 left-1/2 -translate-x-1/2 text-[7px] font-medium text-amber-500/50 leading-none select-none">No</span>
-        <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[7px] font-medium text-amber-500/50 leading-none select-none">Sí</span>
         <div className="relative z-10 flex flex-col items-center gap-0.5">
           <p className="text-[10px] font-semibold text-amber-400 text-center leading-tight px-6">{d.label}</p>
           {d.responsables && d.responsables.length > 0 && (
@@ -481,14 +478,16 @@ function NodeEditModal({ nodeId, initialLabel, initialResponsables, onSave, onCl
 interface EdgeEditModalProps {
   edgeId: string;
   initialType: string;
-  onSave: (id: string, type: string) => void;
+  initialLabel: string;
+  onSave: (id: string, type: string, label: string) => void;
   onClose: () => void;
 }
 
-function EdgeEditModal({ edgeId, initialType, onSave, onClose }: EdgeEditModalProps) {
-  const [type, setType] = useState(initialType || "bezier");
+function EdgeEditModal({ edgeId, initialType, initialLabel, onSave, onClose }: EdgeEditModalProps) {
+  const [type, setType]   = useState(initialType || "bezier");
+  const [label, setLabel] = useState(initialLabel);
 
-  const save = () => { onSave(edgeId, type); onClose(); };
+  const save = () => { onSave(edgeId, type, label.trim()); onClose(); };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -512,6 +511,17 @@ function EdgeEditModal({ edgeId, initialType, onSave, onClose }: EdgeEditModalPr
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <p className="text-xs text-muted-foreground font-medium">Etiqueta (opcional)</p>
+          <input
+            value={label}
+            onChange={e => setLabel(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") onClose(); }}
+            placeholder="Ej: Sí, No, Aprobado..."
+            className="w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent"
+          />
         </div>
 
         <div className="flex justify-end gap-2 pt-1">
@@ -664,7 +674,7 @@ function SicDiagramaInner() {
   const [responsables, setResponsables] = useState<Record<string,string[]>>({});
   const [loading, setLoading]   = useState(true);
   const [editingNode, setEditingNode] = useState<{ id: string; label: string; responsables: string[] } | null>(null);
-  const [editingEdge, setEditingEdge] = useState<{ id: string; type: string } | null>(null);
+  const [editingEdge, setEditingEdge] = useState<{ id: string; type: string; label: string } | null>(null);
   const [saved, setSaved]       = useState(true);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes({}));
@@ -737,13 +747,18 @@ function SicDiagramaInner() {
   const onEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge) => {
     const d = edge.data as Record<string, unknown> | undefined;
     const lineStyle = (d?.lineStyle as string | undefined) ?? "bezier";
-    setEditingEdge({ id: edge.id, type: lineStyle });
+    const label = (edge.label as string | undefined) ?? "";
+    setEditingEdge({ id: edge.id, type: lineStyle, label });
   }, []);
 
-  const handleSaveEdge = useCallback((id: string, lineStyle: string) => {
+  const handleSaveEdge = useCallback((id: string, lineStyle: string, label: string) => {
     setEdges(es => es.map(e => e.id !== id ? e : {
       ...e,
       type: lineStyle,
+      label: label || undefined,
+      labelStyle: { fill: "#94a3b8", fontSize: 11, fontWeight: 600 },
+      labelBgStyle: { fill: "hsl(var(--card))", fillOpacity: 0.85 },
+      labelBgPadding: [4, 2] as [number, number],
       data: { ...(e.data as Record<string, unknown> ?? {}), lineStyle },
     }));
   }, [setEdges]);
@@ -884,6 +899,7 @@ function SicDiagramaInner() {
         <EdgeEditModal
           edgeId={editingEdge.id}
           initialType={editingEdge.type}
+          initialLabel={editingEdge.label}
           onSave={handleSaveEdge}
           onClose={() => setEditingEdge(null)}
         />
