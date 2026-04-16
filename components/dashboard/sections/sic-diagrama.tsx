@@ -50,14 +50,14 @@ const SHAPES: ShapeConfig[] = [
   {
     type: "process",
     label: "Actividad",
-    icon: <div className="w-16 h-8 border-2 border-blue-400 rounded-lg" />,
+    icon: <div className="w-14 h-7 border-2 border-blue-400 rounded bg-blue-400/10" />,
     defaultWidth: 120,
     defaultHeight: 70,
   },
   {
     type: "startend",
     label: "Inicio/Fin",
-    icon: <div className="w-16 h-8 border-2 border-green-400 rounded-full" />,
+    icon: <div className="w-14 h-7 border-2 border-green-400 rounded-full bg-green-400/10" />,
     defaultWidth: 110,
     defaultHeight: 48,
   },
@@ -65,8 +65,8 @@ const SHAPES: ShapeConfig[] = [
     type: "decision",
     label: "Decisión",
     icon: (
-      <svg width="16" height="16" viewBox="0 0 16 16">
-        <polygon points="8,2 14,8 8,14 2,8" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-amber-400" />
+      <svg width="20" height="20" viewBox="0 0 20 20">
+        <polygon points="10,2 18,10 10,18 2,10" fill="amber-400/10" stroke="currentColor" strokeWidth="1.5" className="text-amber-400" />
       </svg>
     ),
     defaultWidth: 80,
@@ -75,7 +75,7 @@ const SHAPES: ShapeConfig[] = [
   {
     type: "document",
     label: "Documento",
-    icon: <div className="w-4 h-6 border-2 border-purple-400 rounded" />,
+    icon: <div className="w-6 h-8 border-2 border-purple-400 rounded bg-purple-400/10"><div className="h-1 border-b border-purple-400 mt-1 mx-0.5" /></div>,
     defaultWidth: 120,
     defaultHeight: 65,
   },
