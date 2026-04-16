@@ -38,7 +38,16 @@ interface PasoData {
   active?: boolean;
   responsables?: string[];
   createdAt?: string;
+  color?: string;
 }
+
+// ─── Color palette ────────────────────────────────────────────────────────────
+
+const NODE_COLORS = [
+  "#3b82f6","#22c55e","#f59e0b","#9333ea",
+  "#0ea5e9","#14b8a6","#ef4444","#ec4899",
+  "#f97316","#6366f1","#64748b","#e2e8f0",
+];
 
 // ─── Shapes configuration ─────────────────────────────────────────────────────
 
@@ -48,6 +57,7 @@ interface ShapeConfig {
   icon: ReactNode;
   defaultWidth: number;
   defaultHeight: number;
+  defaultColor: string;
 }
 
 const SHAPES: ShapeConfig[] = [
@@ -61,6 +71,7 @@ const SHAPES: ShapeConfig[] = [
     ),
     defaultWidth: 120,
     defaultHeight: 70,
+    defaultColor: "#3b82f6",
   },
   {
     type: "startend",
@@ -72,6 +83,7 @@ const SHAPES: ShapeConfig[] = [
     ),
     defaultWidth: 110,
     defaultHeight: 48,
+    defaultColor: "#22c55e",
   },
   {
     type: "decision",
@@ -86,6 +98,7 @@ const SHAPES: ShapeConfig[] = [
     ),
     defaultWidth: 80,
     defaultHeight: 50,
+    defaultColor: "#f59e0b",
   },
   {
     type: "document",
@@ -101,6 +114,7 @@ const SHAPES: ShapeConfig[] = [
     ),
     defaultWidth: 120,
     defaultHeight: 65,
+    defaultColor: "#9333ea",
   },
   {
     type: "parallelogram",
@@ -115,6 +129,7 @@ const SHAPES: ShapeConfig[] = [
     ),
     defaultWidth: 120,
     defaultHeight: 60,
+    defaultColor: "#0ea5e9",
   },
   {
     type: "hexagon",
@@ -129,178 +144,150 @@ const SHAPES: ShapeConfig[] = [
     ),
     defaultWidth: 110,
     defaultHeight: 70,
+    defaultColor: "#14b8a6",
   },
 ];
 
 // ─── Node components ──────────────────────────────────────────────────────────
 
+function NodeHandles({ color }: { color: string }) {
+  const s = { background: color, width: 8, height: 8, border: "none" };
+  return (<>
+    <Handle type="source" position={Position.Left}   id="left"   style={s} />
+    <Handle type="source" position={Position.Right}  id="right"  style={s} />
+    <Handle type="source" position={Position.Top}    id="top"    style={s} />
+    <Handle type="source" position={Position.Bottom} id="bot"    style={s} />
+  </>);
+}
+
+function NodeContent({ d, color, days }: { d: PasoData; color: string; days: string | null }) {
+  return (<>
+    <p className="text-[11px] font-semibold leading-tight" style={{ color }}>{d.label}</p>
+    {d.responsables && d.responsables.length > 0 && (
+      <div className="mt-0.5 flex items-center gap-1">
+        <Users className="w-2.5 h-2.5 shrink-0" style={{ color }}/>
+        <span className="text-[8px] truncate" style={{ color }}>{d.responsables.join(", ")}</span>
+      </div>
+    )}
+    {days && <span className="text-[8px] mt-0.5" style={{ color, opacity: 0.6 }}>{days}</span>}
+  </>);
+}
+
 function ProcessNode({ data, selected }: NodeProps) {
   const d = data as unknown as PasoData;
+  const color = d.color ?? "#3b82f6";
   const days = useDays(d.createdAt);
-  return (
-    <>
-      <NodeResizer minWidth={80} minHeight={40} isVisible={selected}
-        color="#3b82f6" lineStyle={{ borderColor: "#3b82f6", borderWidth: 1.5 }}
-        handleStyle={{ background: "#3b82f6", border: "none", width: 8, height: 8, borderRadius: 2 }} />
-      <Handle type="source" position={Position.Left}   id="left"   className="!bg-blue-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Right}  id="right"  className="!bg-blue-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Top}    id="top"    className="!bg-blue-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Bottom} id="bot"    className="!bg-blue-500 !w-2 !h-2 !border-0" />
-      <div className="w-full h-full rounded border-2 border-blue-500 bg-transparent flex flex-col items-center justify-center px-2 py-1 text-center"
-        style={{ boxShadow: selected ? "0 0 0 1px #3b82f6" : undefined }}>
-        <p className="text-[11px] font-semibold text-blue-300 leading-tight">{d.label}</p>
-        {d.sublabel && <p className="text-[9px] text-blue-400/70 mt-0.5 leading-tight">{d.sublabel}</p>}
-        {d.responsables && d.responsables.length > 0 && (
-          <div className="mt-0.5 flex items-center gap-1">
-            <Users className="w-2.5 h-2.5 text-blue-400 shrink-0" />
-            <span className="text-[8px] text-blue-400 truncate">{d.responsables.join(", ")}</span>
-          </div>
-        )}
-        {days && <span className="text-[8px] text-blue-500/60 mt-0.5">{days}</span>}
-      </div>
-    </>
-  );
+  return (<>
+    <NodeResizer minWidth={80} minHeight={40} isVisible={selected} color={color}
+      lineStyle={{ borderColor: color, borderWidth: 1.5 }}
+      handleStyle={{ background: color, border: "none", width: 8, height: 8, borderRadius: 2 }} />
+    <NodeHandles color={color} />
+    <div className="w-full h-full rounded border-2 bg-transparent flex flex-col items-center justify-center px-2 py-1 text-center"
+      style={{ borderColor: color, boxShadow: selected ? `0 0 0 1px ${color}` : undefined }}>
+      <NodeContent d={d} color={color} days={days} />
+    </div>
+  </>);
 }
 
 function StartEndNode({ data, selected }: NodeProps) {
   const d = data as unknown as PasoData;
+  const color = d.color ?? "#22c55e";
   const days = useDays(d.createdAt);
-  return (
-    <>
-      <NodeResizer minWidth={80} minHeight={36} isVisible={selected}
-        color="#22c55e" lineStyle={{ borderColor: "#22c55e", borderWidth: 1.5 }}
-        handleStyle={{ background: "#22c55e", border: "none", width: 8, height: 8, borderRadius: 2 }} />
-      <Handle type="source" position={Position.Right} id="right" className="!bg-green-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Left}  id="left"  className="!bg-green-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Top}   id="top"   className="!bg-green-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Bottom} id="bot"  className="!bg-green-500 !w-2 !h-2 !border-0" />
-      <div className="w-full h-full rounded-full border-2 border-green-500 bg-transparent flex flex-col items-center justify-center px-3 py-1"
-        style={{ boxShadow: selected ? "0 0 0 1px #22c55e" : undefined }}>
-        <p className="text-[10px] font-semibold text-green-400 leading-tight text-center">{d.label}</p>
-        {d.responsables && d.responsables.length > 0 && (
-          <div className="flex items-center gap-1 mt-0.5"><Users className="w-2.5 h-2.5 text-green-500 shrink-0"/><span className="text-[8px] text-green-500 truncate">{d.responsables.join(", ")}</span></div>
-        )}
-        {days && <span className="text-[8px] text-green-500/60 mt-0.5">{days}</span>}
-      </div>
-    </>
-  );
+  return (<>
+    <NodeResizer minWidth={80} minHeight={36} isVisible={selected} color={color}
+      lineStyle={{ borderColor: color, borderWidth: 1.5 }}
+      handleStyle={{ background: color, border: "none", width: 8, height: 8, borderRadius: 2 }} />
+    <NodeHandles color={color} />
+    <div className="w-full h-full rounded-full border-2 bg-transparent flex flex-col items-center justify-center px-3 py-1"
+      style={{ borderColor: color, boxShadow: selected ? `0 0 0 1px ${color}` : undefined }}>
+      <NodeContent d={d} color={color} days={days} />
+    </div>
+  </>);
 }
 
 function DecisionNode({ data, selected }: NodeProps) {
   const d = data as unknown as PasoData;
+  const color = d.color ?? "#f59e0b";
   const days = useDays(d.createdAt);
-  return (
-    <>
-      <NodeResizer minWidth={70} minHeight={44} isVisible={selected}
-        color="#f59e0b" lineStyle={{ borderColor: "#f59e0b", borderWidth: 1.5 }}
-        handleStyle={{ background: "#f59e0b", border: "none", width: 8, height: 8, borderRadius: 2 }} />
-      <Handle type="source" position={Position.Left}   id="left"  className="!bg-amber-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Right}  id="right" className="!bg-amber-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-amber-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Top}    id="top"   className="!bg-amber-500 !w-2 !h-2 !border-0" />
-      <div className="w-full h-full relative flex items-center justify-center"
-        style={{ filter: selected ? "drop-shadow(0 0 4px #f59e0b)" : undefined }}>
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <polygon points="50,2 98,50 50,98 2,50" fill="transparent" stroke="#f59e0b" strokeWidth="2.5"/>
-        </svg>
-        <div className="relative z-10 flex flex-col items-center gap-0.5">
-          <p className="text-[10px] font-semibold text-amber-400 text-center leading-tight px-6">{d.label}</p>
-          {d.responsables && d.responsables.length > 0 && (
-            <div className="flex items-center gap-1"><Users className="w-2.5 h-2.5 text-amber-500 shrink-0"/><span className="text-[8px] text-amber-500 truncate">{d.responsables.join(", ")}</span></div>
-          )}
-          {days && <span className="text-[8px] text-amber-500/60">{days}</span>}
-        </div>
+  return (<>
+    <NodeResizer minWidth={70} minHeight={44} isVisible={selected} color={color}
+      lineStyle={{ borderColor: color, borderWidth: 1.5 }}
+      handleStyle={{ background: color, border: "none", width: 8, height: 8, borderRadius: 2 }} />
+    <NodeHandles color={color} />
+    <div className="w-full h-full relative flex items-center justify-center"
+      style={{ filter: selected ? `drop-shadow(0 0 4px ${color})` : undefined }}>
+      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <polygon points="50,2 98,50 50,98 2,50" fill="transparent" stroke={color} strokeWidth="2.5"/>
+      </svg>
+      <div className="relative z-10 flex flex-col items-center gap-0.5 px-6">
+        <NodeContent d={d} color={color} days={days} />
       </div>
-    </>
-  );
+    </div>
+  </>);
 }
 
 function DocumentNode({ data, selected }: NodeProps) {
   const d = data as unknown as PasoData;
+  const color = d.color ?? "#9333ea";
   const days = useDays(d.createdAt);
-  return (
-    <>
-      <NodeResizer minWidth={90} minHeight={44} isVisible={selected}
-        color="#9333ea" lineStyle={{ borderColor: "#9333ea", borderWidth: 1.5 }}
-        handleStyle={{ background: "#9333ea", border: "none", width: 8, height: 8, borderRadius: 2 }} />
-      <Handle type="source" position={Position.Top}    id="top"   className="!bg-purple-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-purple-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Left}   id="left"  className="!bg-purple-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Right}  id="right" className="!bg-purple-500 !w-2 !h-2 !border-0" />
-      <div className="w-full h-full relative flex items-center justify-center"
-        style={{ filter: selected ? "drop-shadow(0 0 4px #9333ea)" : undefined }}>
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <path d="M2,2 L78,2 L98,22 L98,98 L2,98 Z" fill="transparent" stroke="#9333ea" strokeWidth="2.5"/>
-          <polyline points="78,2 78,22 98,22" fill="transparent" stroke="#9333ea" strokeWidth="2"/>
-        </svg>
-        <div className="relative z-10 flex flex-col items-center gap-0.5">
-          <p className="text-[10px] font-semibold text-purple-300 text-center leading-tight px-3">{d.label}</p>
-          {d.responsables && d.responsables.length > 0 && (
-            <div className="flex items-center gap-1"><Users className="w-2.5 h-2.5 text-purple-400 shrink-0"/><span className="text-[8px] text-purple-400 truncate">{d.responsables.join(", ")}</span></div>
-          )}
-          {days && <span className="text-[8px] text-purple-400/60">{days}</span>}
-        </div>
+  return (<>
+    <NodeResizer minWidth={90} minHeight={44} isVisible={selected} color={color}
+      lineStyle={{ borderColor: color, borderWidth: 1.5 }}
+      handleStyle={{ background: color, border: "none", width: 8, height: 8, borderRadius: 2 }} />
+    <NodeHandles color={color} />
+    <div className="w-full h-full relative flex items-center justify-center"
+      style={{ filter: selected ? `drop-shadow(0 0 4px ${color})` : undefined }}>
+      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <path d="M2,2 L78,2 L98,22 L98,98 L2,98 Z" fill="transparent" stroke={color} strokeWidth="2.5"/>
+        <polyline points="78,2 78,22 98,22" fill="transparent" stroke={color} strokeWidth="2"/>
+      </svg>
+      <div className="relative z-10 flex flex-col items-center gap-0.5 px-3">
+        <NodeContent d={d} color={color} days={days} />
       </div>
-    </>
-  );
+    </div>
+  </>);
 }
 
 function ParallelogramNode({ data, selected }: NodeProps) {
   const d = data as unknown as PasoData;
+  const color = d.color ?? "#0ea5e9";
   const days = useDays(d.createdAt);
-  return (
-    <>
-      <NodeResizer minWidth={80} minHeight={40} isVisible={selected}
-        color="#0ea5e9" lineStyle={{ borderColor: "#0ea5e9", borderWidth: 1.5 }}
-        handleStyle={{ background: "#0ea5e9", border: "none", width: 8, height: 8, borderRadius: 2 }} />
-      <Handle type="source" position={Position.Left}   id="left"  className="!bg-cyan-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Right}  id="right" className="!bg-cyan-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Top}    id="top"   className="!bg-cyan-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-cyan-500 !w-2 !h-2 !border-0" />
-      <div className="w-full h-full relative flex items-center justify-center"
-        style={{ filter: selected ? "drop-shadow(0 0 4px #0ea5e9)" : undefined }}>
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <polygon points="18,2 98,2 82,98 2,98" fill="transparent" stroke="#0ea5e9" strokeWidth="2.5"/>
-        </svg>
-        <div className="relative z-10 flex flex-col items-center gap-0.5">
-          <p className="text-[10px] font-semibold text-cyan-400 text-center leading-tight px-4">{d.label}</p>
-          {d.responsables && d.responsables.length > 0 && (
-            <div className="flex items-center gap-1"><Users className="w-2.5 h-2.5 text-cyan-500 shrink-0"/><span className="text-[8px] text-cyan-500 truncate">{d.responsables.join(", ")}</span></div>
-          )}
-          {days && <span className="text-[8px] text-cyan-500/60">{days}</span>}
-        </div>
+  return (<>
+    <NodeResizer minWidth={80} minHeight={40} isVisible={selected} color={color}
+      lineStyle={{ borderColor: color, borderWidth: 1.5 }}
+      handleStyle={{ background: color, border: "none", width: 8, height: 8, borderRadius: 2 }} />
+    <NodeHandles color={color} />
+    <div className="w-full h-full relative flex items-center justify-center"
+      style={{ filter: selected ? `drop-shadow(0 0 4px ${color})` : undefined }}>
+      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <polygon points="18,2 98,2 82,98 2,98" fill="transparent" stroke={color} strokeWidth="2.5"/>
+      </svg>
+      <div className="relative z-10 flex flex-col items-center gap-0.5 px-4">
+        <NodeContent d={d} color={color} days={days} />
       </div>
-    </>
-  );
+    </div>
+  </>);
 }
 
 function HexagonNode({ data, selected }: NodeProps) {
   const d = data as unknown as PasoData;
+  const color = d.color ?? "#14b8a6";
   const days = useDays(d.createdAt);
-  return (
-    <>
-      <NodeResizer minWidth={80} minHeight={50} isVisible={selected}
-        color="#14b8a6" lineStyle={{ borderColor: "#14b8a6", borderWidth: 1.5 }}
-        handleStyle={{ background: "#14b8a6", border: "none", width: 8, height: 8, borderRadius: 2 }} />
-      <Handle type="source" position={Position.Left}   id="left"  className="!bg-teal-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Right}  id="right" className="!bg-teal-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Top}    id="top"   className="!bg-teal-500 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-teal-500 !w-2 !h-2 !border-0" />
-      <div className="w-full h-full relative flex items-center justify-center"
-        style={{ filter: selected ? "drop-shadow(0 0 4px #14b8a6)" : undefined }}>
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <polygon points="25,2 75,2 98,50 75,98 25,98 2,50" fill="transparent" stroke="#14b8a6" strokeWidth="2.5"/>
-        </svg>
-        <div className="relative z-10 flex flex-col items-center gap-0.5">
-          <p className="text-[10px] font-semibold text-teal-400 text-center leading-tight px-6">{d.label}</p>
-          {d.responsables && d.responsables.length > 0 && (
-            <div className="flex items-center gap-1"><Users className="w-2.5 h-2.5 text-teal-500 shrink-0"/><span className="text-[8px] text-teal-500 truncate">{d.responsables.join(", ")}</span></div>
-          )}
-          {days && <span className="text-[8px] text-teal-500/60">{days}</span>}
-        </div>
+  return (<>
+    <NodeResizer minWidth={80} minHeight={50} isVisible={selected} color={color}
+      lineStyle={{ borderColor: color, borderWidth: 1.5 }}
+      handleStyle={{ background: color, border: "none", width: 8, height: 8, borderRadius: 2 }} />
+    <NodeHandles color={color} />
+    <div className="w-full h-full relative flex items-center justify-center"
+      style={{ filter: selected ? `drop-shadow(0 0 4px ${color})` : undefined }}>
+      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <polygon points="25,2 75,2 98,50 75,98 25,98 2,50" fill="transparent" stroke={color} strokeWidth="2.5"/>
+      </svg>
+      <div className="relative z-10 flex flex-col items-center gap-0.5 px-6">
+        <NodeContent d={d} color={color} days={days} />
       </div>
-    </>
-  );
+    </div>
+  </>);
 }
 
 const NODE_TYPES = { process: ProcessNode, startend: StartEndNode, decision: DecisionNode, document: DocumentNode, parallelogram: ParallelogramNode, hexagon: HexagonNode };
@@ -325,7 +312,7 @@ function createNewNode(type: string, x: number, y: number, label: string = ""): 
     position: { x, y },
     width: shapeConfig.defaultWidth,
     height: shapeConfig.defaultHeight,
-    data: { label: label || shapeConfig.label, createdAt: new Date().toISOString() },
+    data: { label: label || shapeConfig.label, createdAt: new Date().toISOString(), color: shapeConfig.defaultColor },
   };
 }
 
@@ -388,14 +375,16 @@ interface NodeEditModalProps {
   nodeId: string;
   initialLabel: string;
   initialResponsables: string[];
-  onSave: (id: string, label: string, responsables: string[]) => void;
+  initialColor: string;
+  onSave: (id: string, label: string, responsables: string[], color: string) => void;
   onClose: () => void;
 }
 
-function NodeEditModal({ nodeId, initialLabel, initialResponsables, onSave, onClose }: NodeEditModalProps) {
+function NodeEditModal({ nodeId, initialLabel, initialResponsables, initialColor, onSave, onClose }: NodeEditModalProps) {
   const [label, setLabel] = useState(initialLabel);
   const [responsables, setResponsables] = useState<string[]>(initialResponsables);
   const [input, setInput] = useState("");
+  const [color, setColor] = useState(initialColor);
 
   const add = () => {
     const v = input.trim();
@@ -408,7 +397,7 @@ function NodeEditModal({ nodeId, initialLabel, initialResponsables, onSave, onCl
 
   const save = () => {
     if (!label.trim()) return;
-    onSave(nodeId, label.trim(), responsables);
+    onSave(nodeId, label.trim(), responsables, color);
     onClose();
   };
 
@@ -459,6 +448,23 @@ function NodeEditModal({ nodeId, initialLabel, initialResponsables, onSave, onCl
             <button onClick={add} className="h-9 w-9 rounded-lg bg-accent/15 hover:bg-accent/25 flex items-center justify-center text-accent transition-colors">
               <Plus className="w-4 h-4"/>
             </button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground font-medium">Color</p>
+          <div className="flex flex-wrap gap-2">
+            {NODE_COLORS.map(c => (
+              <button key={c} onClick={() => setColor(c)}
+                className="w-6 h-6 rounded-full transition-all"
+                style={{
+                  backgroundColor: c,
+                  outline: color === c ? `2px solid white` : "2px solid transparent",
+                  outlineOffset: "2px",
+                  opacity: color === c ? 1 : 0.55,
+                }}
+              />
+            ))}
           </div>
         </div>
 
@@ -682,7 +688,7 @@ function SicDiagramaInner() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [responsables, setResponsables] = useState<Record<string,string[]>>({});
   const [loading, setLoading]   = useState(true);
-  const [editingNode, setEditingNode] = useState<{ id: string; label: string; responsables: string[] } | null>(null);
+  const [editingNode, setEditingNode] = useState<{ id: string; label: string; responsables: string[]; color: string } | null>(null);
   const [editingEdge, setEditingEdge] = useState<{ id: string; type: string; label: string } | null>(null);
   const [saved, setSaved]       = useState(true);
 
@@ -749,7 +755,7 @@ function SicDiagramaInner() {
   // Double-click node → open unified edit modal
   const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
     const d = node.data as unknown as PasoData;
-    setEditingNode({ id: node.id, label: d.label ?? "", responsables: d.responsables ?? [] });
+    setEditingNode({ id: node.id, label: d.label ?? "", responsables: d.responsables ?? [], color: d.color ?? "" });
   }, []);
 
   // Double-click edge → open edge editor
@@ -772,9 +778,9 @@ function SicDiagramaInner() {
     }));
   }, [setEdges]);
 
-  // Save label + responsables for any node
-  const handleSaveNode = useCallback((id: string, newLabel: string, newResponsables: string[]) => {
-    updateNodeData(id, { label: newLabel, responsables: newResponsables });
+  // Save label + responsables + color for any node
+  const handleSaveNode = useCallback((id: string, newLabel: string, newResponsables: string[], color: string) => {
+    updateNodeData(id, { label: newLabel, responsables: newResponsables, color });
   }, [updateNodeData]);
 
 
@@ -919,6 +925,7 @@ function SicDiagramaInner() {
           nodeId={editingNode.id}
           initialLabel={editingNode.label}
           initialResponsables={editingNode.responsables}
+          initialColor={editingNode.color}
           onSave={handleSaveNode}
           onClose={() => setEditingNode(null)}
         />
