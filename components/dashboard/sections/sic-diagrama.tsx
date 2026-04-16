@@ -706,7 +706,7 @@ function SicDiagramaInner() {
           >
             <Background color="#6b7280" gap={24} size={1}/>
             <Controls showInteractive={false}
-              className="[&>button]:bg-secondary [&>button]:border-border [&>button]:text-foreground [&>button:hover]:bg-secondary/80"/>
+              className="[&>button]:bg-transparent [&>button]:border-transparent [&>button]:text-white [&>button]:shadow-none [&>button:hover]:bg-white/10 [&>button_svg]:fill-white [&>button_path]:fill-white [&>button_rect]:fill-white [&]:bg-transparent [&]:border-transparent [&]:shadow-none"/>
           </ReactFlow>
         )}
         </div>
