@@ -52,8 +52,8 @@ const SHAPES: ShapeConfig[] = [
     type: "process",
     label: "Actividad",
     icon: (
-      <div className="w-full h-9 rounded border-2 border-blue-500 bg-transparent flex items-center justify-center">
-        <span className="text-[9px] font-semibold text-blue-300">Actividad</span>
+      <div className="w-full h-10 rounded border-2 border-blue-500 flex items-center justify-center">
+        <span className="text-[10px] font-semibold text-blue-400">Actividad</span>
       </div>
     ),
     defaultWidth: 120,
@@ -61,10 +61,10 @@ const SHAPES: ShapeConfig[] = [
   },
   {
     type: "startend",
-    label: "Inicio/Fin",
+    label: "Inicio / Fin",
     icon: (
-      <div className="w-full h-9 rounded-full border-2 border-green-500 bg-transparent flex items-center justify-center">
-        <span className="text-[9px] font-semibold text-green-400">Inicio/Fin</span>
+      <div className="w-full h-10 rounded-full border-2 border-green-500 flex items-center justify-center">
+        <span className="text-[10px] font-semibold text-green-400">Inicio/Fin</span>
       </div>
     ),
     defaultWidth: 110,
@@ -74,11 +74,11 @@ const SHAPES: ShapeConfig[] = [
     type: "decision",
     label: "Decisión",
     icon: (
-      <div className="w-full h-10 relative flex items-center justify-center">
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <polygon points="50,2 98,50 50,98 2,50" fill="transparent" stroke="#f59e0b" strokeWidth="3"/>
+      <div className="w-full h-12 relative flex items-center justify-center">
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 80" preserveAspectRatio="none">
+          <polygon points="50,2 98,40 50,78 2,40" fill="transparent" stroke="#f59e0b" strokeWidth="3"/>
         </svg>
-        <span className="relative text-[8px] font-semibold text-amber-400 z-10">Decisión</span>
+        <span className="relative text-[10px] font-semibold text-amber-400 z-10">Decisión</span>
       </div>
     ),
     defaultWidth: 80,
@@ -88,12 +88,12 @@ const SHAPES: ShapeConfig[] = [
     type: "document",
     label: "Documento",
     icon: (
-      <div className="w-full h-10 relative flex items-center justify-center">
+      <div className="w-full h-12 relative flex items-center justify-center">
         <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
           <path d="M2,2 L78,2 L98,22 L98,98 L2,98 Z" fill="transparent" stroke="#9333ea" strokeWidth="3"/>
-          <polyline points="78,2 78,22 98,22" fill="transparent" stroke="#9333ea" strokeWidth="2"/>
+          <polyline points="78,2 78,22 98,22" fill="transparent" stroke="#9333ea" strokeWidth="2.5"/>
         </svg>
-        <span className="relative text-[9px] font-semibold text-purple-300 z-10">Documento</span>
+        <span className="relative text-[10px] font-semibold text-purple-400 z-10">Documento</span>
       </div>
     ),
     defaultWidth: 120,
@@ -101,13 +101,13 @@ const SHAPES: ShapeConfig[] = [
   },
   {
     type: "parallelogram",
-    label: "Entrada/Salida",
+    label: "Entrada / Salida",
     icon: (
-      <div className="w-full h-9 relative flex items-center justify-center">
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <polygon points="18,2 98,2 82,98 2,98" fill="transparent" stroke="#0ea5e9" strokeWidth="3"/>
+      <div className="w-full h-10 relative flex items-center justify-center">
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 60" preserveAspectRatio="none">
+          <polygon points="18,2 98,2 82,58 2,58" fill="transparent" stroke="#0ea5e9" strokeWidth="3"/>
         </svg>
-        <span className="relative text-[8px] font-semibold text-cyan-400 z-10">Entrada/Salida</span>
+        <span className="relative text-[10px] font-semibold text-cyan-400 z-10">E / S</span>
       </div>
     ),
     defaultWidth: 120,
@@ -117,11 +117,11 @@ const SHAPES: ShapeConfig[] = [
     type: "hexagon",
     label: "Preparación",
     icon: (
-      <div className="w-full h-10 relative flex items-center justify-center">
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <polygon points="25,2 75,2 98,50 75,98 25,98 2,50" fill="transparent" stroke="#14b8a6" strokeWidth="3"/>
+      <div className="w-full h-12 relative flex items-center justify-center">
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 80" preserveAspectRatio="none">
+          <polygon points="25,2 75,2 98,40 75,78 25,78 2,40" fill="transparent" stroke="#14b8a6" strokeWidth="3"/>
         </svg>
-        <span className="relative text-[8px] font-semibold text-teal-400 z-10">Preparación</span>
+        <span className="relative text-[10px] font-semibold text-teal-400 z-10">Preparación</span>
       </div>
     ),
     defaultWidth: 110,
@@ -360,19 +360,19 @@ function ShapePalette() {
   };
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
       {SHAPES.map((shape) => (
         <div
           key={shape.type}
           draggable
           onDragStart={(e) => onDragStart(e, shape.type)}
-          className="flex flex-col items-center gap-2 p-2 rounded-lg border border-border bg-secondary/40 hover:bg-secondary/70 hover:border-accent/50 cursor-move transition-all"
+          className="flex flex-col items-center gap-2 p-3 rounded-lg border border-border/60 hover:border-accent/60 hover:bg-accent/5 cursor-grab active:cursor-grabbing transition-all select-none"
           title={`Arrastra para agregar ${shape.label}`}
         >
-          <div className="flex items-center justify-center h-10">
+          <div className="w-full h-12 flex items-center justify-center">
             {shape.icon}
           </div>
-          <span className="text-[11px] text-muted-foreground text-center leading-tight">{shape.label}</span>
+          <span className="text-[10px] font-medium text-muted-foreground text-center leading-tight">{shape.label}</span>
         </div>
       ))}
     </div>
@@ -667,8 +667,8 @@ function SicDiagramaInner() {
       {/* Diagram with sidebar */}
       <div className="flex gap-4">
         {/* Shapes sidebar */}
-        <div className="w-32 bg-card border border-border rounded-xl px-3 py-4 overflow-y-auto max-h-[600px] [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }}>
-          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3 font-semibold">Agregar forma</p>
+        <div className="w-44 shrink-0 bg-card border border-border rounded-xl px-4 py-4 overflow-y-auto max-h-[580px] [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }}>
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-4">Formas</p>
           <ShapePalette />
         </div>
 
