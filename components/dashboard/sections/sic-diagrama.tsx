@@ -682,7 +682,8 @@ function SicDiagramaInner() {
 
   // Double-click edge → open edge editor
   const onEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge) => {
-    const curvature = (edge.pathOptions as { curvature?: number } | undefined)?.curvature ?? 0.25;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const curvature = ((edge as any).pathOptions as { curvature?: number } | undefined)?.curvature ?? 0.25;
     setEditingEdge({ id: edge.id, type: edge.type ?? "default", curvature });
   }, []);
 
