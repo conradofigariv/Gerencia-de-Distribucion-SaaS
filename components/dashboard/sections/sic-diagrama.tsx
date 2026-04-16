@@ -114,30 +114,30 @@ function ProcessNode({ data, selected }: NodeProps) {
   return (
     <>
       <NodeResizer minWidth={80} minHeight={40} isVisible={selected}
-        color="hsl(var(--accent))"
-        lineStyle={{ borderColor: "hsl(var(--accent))", borderWidth: 1 }}
-        handleStyle={{ background: "hsl(var(--accent))", border: "none", width: 8, height: 8, borderRadius: 2 }}
+        color="#3b82f6"
+        lineStyle={{ borderColor: "#3b82f6", borderWidth: 2 }}
+        handleStyle={{ background: "#3b82f6", border: "none", width: 8, height: 8, borderRadius: 2 }}
       />
-      <Handle type="source" position={Position.Left}   id="left" className="!bg-border !w-2.5 !h-2.5 !border !border-border/50" />
-      <Handle type="source" position={Position.Right}  id="right" className="!bg-border !w-2.5 !h-2.5 !border !border-border/50" />
-      <Handle type="source" position={Position.Top}    id="top" className="!bg-border !w-2.5 !h-2.5 !border !border-border/50" />
-      <Handle type="source" position={Position.Bottom} id="bot" className="!bg-border !w-2.5 !h-2.5 !border !border-border/50" />
+      <Handle type="source" position={Position.Left}   id="left" className="!bg-blue-500 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Right}  id="right" className="!bg-blue-500 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Top}    id="top" className="!bg-blue-500 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Bottom} id="bot" className="!bg-blue-500 !w-2.5 !h-2.5" />
       <div className={cn(
         "w-full h-full rounded-lg border-2 flex flex-col items-center justify-center px-2 py-1.5 text-center cursor-pointer transition-all duration-200 overflow-hidden",
         d.active
           ? "border-orange-400 bg-orange-400/10 shadow-[0_0_12px_2px_oklch(0.75_0.18_50/0.3)]"
-          : "border-border bg-card hover:border-accent/60",
-        selected && "ring-1 ring-accent/40"
+          : "border-blue-500 bg-blue-50/50 hover:border-blue-600",
+        selected && "ring-2 ring-blue-400/50"
       )}>
-        <p className={cn("text-[11px] font-semibold leading-tight", d.active ? "text-orange-300" : "text-foreground")}>
+        <p className={cn("text-[11px] font-semibold leading-tight", d.active ? "text-orange-300" : "text-slate-900")}>
           {d.label}
         </p>
-        {d.sublabel  && <p className="text-[9px] text-muted-foreground mt-0.5 leading-tight">{d.sublabel}</p>}
-        {d.sublabel2 && <p className="text-[9px] text-muted-foreground leading-tight">{d.sublabel2}</p>}
+        {d.sublabel  && <p className="text-[9px] text-slate-600 mt-0.5 leading-tight">{d.sublabel}</p>}
+        {d.sublabel2 && <p className="text-[9px] text-slate-600 leading-tight">{d.sublabel2}</p>}
         {d.responsables && d.responsables.length > 0 && (
           <div className="mt-1 flex items-center gap-1">
-            <Users className="w-2.5 h-2.5 text-accent shrink-0" />
-            <span className="text-[8px] text-accent truncate">{d.responsables.join(", ")}</span>
+            <Users className="w-2.5 h-2.5 text-blue-600 shrink-0" />
+            <span className="text-[8px] text-blue-600 truncate">{d.responsables.join(", ")}</span>
           </div>
         )}
       </div>
@@ -151,16 +151,16 @@ function StartEndNode({ data, selected }: NodeProps) {
     <>
       <NodeResizer minWidth={80} minHeight={36} isVisible={selected}
         color="#22c55e"
-        lineStyle={{ borderColor: "#22c55e", borderWidth: 1 }}
+        lineStyle={{ borderColor: "#22c55e", borderWidth: 2 }}
         handleStyle={{ background: "#22c55e", border: "none", width: 8, height: 8, borderRadius: 2 }}
       />
       <Handle type="source" position={Position.Right} id="right" className="!bg-green-500 !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Left}  id="left"  className="!bg-green-500 !w-2.5 !h-2.5" />
       <div className={cn(
-        "w-full h-full rounded-full border-2 border-green-500 bg-green-500/15 flex items-center justify-center px-3 py-1 overflow-hidden",
-        selected && "ring-1 ring-green-400/40"
+        "w-full h-full rounded-full border-2 flex items-center justify-center px-3 py-1 overflow-hidden",
+        selected ? "border-green-600 bg-green-100 ring-2 ring-green-400/50" : "border-green-500 bg-green-50/50"
       )}>
-        <p className="text-[10px] font-semibold text-green-400 leading-tight text-center">{d.label}</p>
+        <p className="text-[10px] font-semibold text-green-700 leading-tight text-center">{d.label}</p>
       </div>
     </>
   );
@@ -171,21 +171,20 @@ function DecisionNode({ data, selected }: NodeProps) {
   return (
     <>
       <NodeResizer minWidth={70} minHeight={44} isVisible={selected}
-        color="hsl(var(--accent))"
-        lineStyle={{ borderColor: "hsl(var(--accent))", borderWidth: 1 }}
-        handleStyle={{ background: "hsl(var(--accent))", border: "none", width: 8, height: 8, borderRadius: 2 }}
+        color="#f59e0b"
+        lineStyle={{ borderColor: "#f59e0b", borderWidth: 2 }}
+        handleStyle={{ background: "#f59e0b", border: "none", width: 8, height: 8, borderRadius: 2 }}
       />
-      <Handle type="source" position={Position.Left}   id="left"  className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Right}  id="right" className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Top}    id="top"   className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Left}   id="left"  className="!bg-amber-500 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Right}  id="right" className="!bg-amber-500 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-amber-500 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Top}    id="top"   className="!bg-amber-500 !w-2.5 !h-2.5" />
       <div className="w-full h-full relative flex items-center justify-center overflow-hidden"
-        style={{ filter: selected ? "drop-shadow(0 0 4px hsl(var(--accent)/0.4))" : undefined }}>
+        style={{ filter: selected ? "drop-shadow(0 0 6px rgba(245, 158, 11, 0.5))" : undefined }}>
         <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          <polygon points="50%,2 98%,50% 50%,98% 2%,50%"
-            fill="hsl(var(--card))" stroke="#6b7280" strokeWidth="1.5" />
+          <polygon points="50%,2 98%,50% 50%,98% 2%,50%" fill="rgb(254, 243, 199)" stroke="#f59e0b" strokeWidth="2" />
         </svg>
-        <p className="relative text-[10px] font-semibold text-foreground text-center leading-tight px-3 z-10">{d.label}</p>
+        <p className="relative text-[10px] font-semibold text-amber-900 text-center leading-tight px-3 z-10">{d.label}</p>
       </div>
     </>
   );
@@ -196,20 +195,20 @@ function DocumentNode({ data, selected }: NodeProps) {
   return (
     <>
       <NodeResizer minWidth={90} minHeight={44} isVisible={selected}
-        color="hsl(var(--accent))"
-        lineStyle={{ borderColor: "hsl(var(--accent))", borderWidth: 1 }}
-        handleStyle={{ background: "hsl(var(--accent))", border: "none", width: 8, height: 8, borderRadius: 2 }}
+        color="#9333ea"
+        lineStyle={{ borderColor: "#9333ea", borderWidth: 2 }}
+        handleStyle={{ background: "#9333ea", border: "none", width: 8, height: 8, borderRadius: 2 }}
       />
-      <Handle type="source" position={Position.Top}    id="top"   className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Left}   id="left"  className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Right}  id="right" className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Top}    id="top"   className="!bg-purple-600 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-purple-600 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Left}   id="left"  className="!bg-purple-600 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Right}  id="right" className="!bg-purple-600 !w-2.5 !h-2.5" />
       <div className="w-full h-full relative flex items-center justify-center overflow-hidden"
-        style={{ filter: selected ? "drop-shadow(0 0 4px hsl(var(--accent)/0.4))" : undefined }}>
+        style={{ filter: selected ? "drop-shadow(0 0 6px rgba(147, 51, 234, 0.5))" : undefined }}>
         <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          <path d="M5,0 L95,0 L100,50 L95,100 L5,100 L0,50 Z" fill="hsl(var(--card))" stroke="#9333ea" strokeWidth="1.5"/>
+          <path d="M2,0 L92,0 L100,8 L100,98 Q100,100 98,100 L2,100 Q0,100 0,98 L0,2 Q0,0 2,0" fill="rgb(243, 232, 255)" stroke="#9333ea" strokeWidth="2"/>
         </svg>
-        <p className="relative text-[10px] font-semibold text-foreground text-center leading-tight px-3 z-10">{d.label}</p>
+        <p className="relative text-[10px] font-semibold text-purple-900 text-center leading-tight px-3 z-10">{d.label}</p>
       </div>
     </>
   );
@@ -220,20 +219,20 @@ function ParallelogramNode({ data, selected }: NodeProps) {
   return (
     <>
       <NodeResizer minWidth={80} minHeight={40} isVisible={selected}
-        color="hsl(var(--accent))"
-        lineStyle={{ borderColor: "hsl(var(--accent))", borderWidth: 1 }}
-        handleStyle={{ background: "hsl(var(--accent))", border: "none", width: 8, height: 8, borderRadius: 2 }}
+        color="#0ea5e9"
+        lineStyle={{ borderColor: "#0ea5e9", borderWidth: 2 }}
+        handleStyle={{ background: "#0ea5e9", border: "none", width: 8, height: 8, borderRadius: 2 }}
       />
-      <Handle type="source" position={Position.Left}   id="left"  className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Right}  id="right" className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Top}    id="top"   className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Left}   id="left"  className="!bg-cyan-500 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Right}  id="right" className="!bg-cyan-500 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Top}    id="top"   className="!bg-cyan-500 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-cyan-500 !w-2.5 !h-2.5" />
       <div className="w-full h-full relative flex items-center justify-center overflow-hidden"
-        style={{ filter: selected ? "drop-shadow(0 0 4px hsl(var(--accent)/0.4))" : undefined }}>
+        style={{ filter: selected ? "drop-shadow(0 0 6px rgba(6, 182, 212, 0.5))" : undefined }}>
         <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          <polygon points="20%,0% 100%,0% 80%,100% 0%,100%" fill="hsl(var(--card))" stroke="#3b82f6" strokeWidth="1.5"/>
+          <polygon points="20%,0% 100%,0% 80%,100% 0%,100%" fill="rgb(207, 250, 254)" stroke="#0ea5e9" strokeWidth="2"/>
         </svg>
-        <p className="relative text-[10px] font-semibold text-foreground text-center leading-tight px-3 z-10">{d.label}</p>
+        <p className="relative text-[10px] font-semibold text-cyan-900 text-center leading-tight px-3 z-10">{d.label}</p>
       </div>
     </>
   );
@@ -244,20 +243,20 @@ function HexagonNode({ data, selected }: NodeProps) {
   return (
     <>
       <NodeResizer minWidth={80} minHeight={50} isVisible={selected}
-        color="hsl(var(--accent))"
-        lineStyle={{ borderColor: "hsl(var(--accent))", borderWidth: 1 }}
-        handleStyle={{ background: "hsl(var(--accent))", border: "none", width: 8, height: 8, borderRadius: 2 }}
+        color="#14b8a6"
+        lineStyle={{ borderColor: "#14b8a6", borderWidth: 2 }}
+        handleStyle={{ background: "#14b8a6", border: "none", width: 8, height: 8, borderRadius: 2 }}
       />
-      <Handle type="source" position={Position.Left}   id="left"  className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Right}  id="right" className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Top}    id="top"   className="!bg-border !w-2.5 !h-2.5" />
-      <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Left}   id="left"  className="!bg-teal-500 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Right}  id="right" className="!bg-teal-500 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Top}    id="top"   className="!bg-teal-500 !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-teal-500 !w-2.5 !h-2.5" />
       <div className="w-full h-full relative flex items-center justify-center overflow-hidden"
-        style={{ filter: selected ? "drop-shadow(0 0 4px hsl(var(--accent)/0.4))" : undefined }}>
+        style={{ filter: selected ? "drop-shadow(0 0 6px rgba(20, 184, 166, 0.5))" : undefined }}>
         <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          <polygon points="25%,0% 75%,0% 100%,50% 75%,100% 25%,100% 0%,50%" fill="hsl(var(--card))" stroke="#14b8a6" strokeWidth="1.5"/>
+          <polygon points="25%,0% 75%,0% 100%,50% 75%,100% 25%,100% 0%,50%" fill="rgb(204, 251, 241)" stroke="#14b8a6" strokeWidth="2"/>
         </svg>
-        <p className="relative text-[10px] font-semibold text-foreground text-center leading-tight px-3 z-10">{d.label}</p>
+        <p className="relative text-[10px] font-semibold text-teal-900 text-center leading-tight px-3 z-10">{d.label}</p>
       </div>
     </>
   );
