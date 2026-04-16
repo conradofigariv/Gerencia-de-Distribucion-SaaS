@@ -478,26 +478,17 @@ function NodeEditModal({ nodeId, initialLabel, initialResponsables, onSave, onCl
 
 // ─── Edge edit modal ──────────────────────────────────────────────────────────
 
-const EDGE_TYPES_OPTIONS = [
-  { value: "bezier",     label: "Curva (bezier)" },
-  { value: "smoothstep", label: "Suave" },
-  { value: "step",       label: "Escalonada" },
-  { value: "straight",   label: "Recta" },
-] as const;
-
 interface EdgeEditModalProps {
   edgeId: string;
   initialType: string;
-  initialCurvature: number;
-  onSave: (id: string, type: string, curvature: number) => void;
+  onSave: (id: string, type: string) => void;
   onClose: () => void;
 }
 
-function EdgeEditModal({ edgeId, initialType, initialCurvature, onSave, onClose }: EdgeEditModalProps) {
-  const [type, setType] = useState(initialType || "default");
-  const [curvature, setCurvature] = useState(initialCurvature ?? 0.25);
+function EdgeEditModal({ edgeId, initialType, onSave, onClose }: EdgeEditModalProps) {
+  const [type, setType] = useState(initialType || "bezier");
 
-  const save = () => { onSave(edgeId, type, curvature); onClose(); };
+  const save = () => { onSave(edgeId, type); onClose(); };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -509,10 +500,10 @@ function EdgeEditModal({ edgeId, initialType, initialCurvature, onSave, onClose 
 
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground font-medium">Tipo de línea</p>
-          <div className="grid grid-cols-2 gap-2">
-            {EDGE_TYPES_OPTIONS.map(opt => (
+          <div className="flex gap-2">
+            {[{ value: "bezier", label: "Curva" }, { value: "step", label: "Escalonada" }].map(opt => (
               <button key={opt.value} onClick={() => setType(opt.value)}
-                className={cn("px-3 py-2 rounded-lg text-xs border transition-colors text-left",
+                className={cn("flex-1 px-3 py-2 rounded-lg text-xs border transition-colors",
                   type === opt.value
                     ? "border-accent bg-accent/10 text-accent"
                     : "border-border text-muted-foreground hover:border-accent/50 hover:text-foreground"
@@ -522,21 +513,6 @@ function EdgeEditModal({ edgeId, initialType, initialCurvature, onSave, onClose 
             ))}
           </div>
         </div>
-
-        {type === "bezier" && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground font-medium">Curvatura</p>
-              <span className="text-xs text-accent font-mono">{curvature.toFixed(2)}</span>
-            </div>
-            <input type="range" min={0} max={1} step={0.05} value={curvature}
-              onChange={e => setCurvature(Number(e.target.value))}
-              className="w-full accent-accent"/>
-            <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>Recta</span><span>Muy curva</span>
-            </div>
-          </div>
-        )}
 
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">Cancelar</button>
@@ -688,7 +664,7 @@ function SicDiagramaInner() {
   const [responsables, setResponsables] = useState<Record<string,string[]>>({});
   const [loading, setLoading]   = useState(true);
   const [editingNode, setEditingNode] = useState<{ id: string; label: string; responsables: string[] } | null>(null);
-  const [editingEdge, setEditingEdge] = useState<{ id: string; type: string; curvature: number } | null>(null);
+  const [editingEdge, setEditingEdge] = useState<{ id: string; type: string } | null>(null);
   const [saved, setSaved]       = useState(true);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes({}));
@@ -755,15 +731,14 @@ function SicDiagramaInner() {
   const onEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge) => {
     const d = edge.data as Record<string, unknown> | undefined;
     const lineStyle = (d?.lineStyle as string | undefined) ?? "bezier";
-    const curvature = (d?.curvature as number | undefined) ?? 0.25;
-    setEditingEdge({ id: edge.id, type: lineStyle, curvature });
+    setEditingEdge({ id: edge.id, type: lineStyle });
   }, []);
 
-  const handleSaveEdge = useCallback((id: string, lineStyle: string, curvature: number) => {
+  const handleSaveEdge = useCallback((id: string, lineStyle: string) => {
     setEdges(es => es.map(e => e.id !== id ? e : {
       ...e,
       type: lineStyle,
-      data: { ...(e.data as Record<string, unknown> ?? {}), lineStyle, curvature },
+      data: { ...(e.data as Record<string, unknown> ?? {}), lineStyle },
     }));
   }, [setEdges]);
 
@@ -903,7 +878,6 @@ function SicDiagramaInner() {
         <EdgeEditModal
           edgeId={editingEdge.id}
           initialType={editingEdge.type}
-          initialCurvature={editingEdge.curvature}
           onSave={handleSaveEdge}
           onClose={() => setEditingEdge(null)}
         />
