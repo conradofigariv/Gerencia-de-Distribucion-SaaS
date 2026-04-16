@@ -693,7 +693,13 @@ function SicDiagramaInner() {
         });
         const extra = savedNodes.filter((s: { id: string }) => !merged.find(n => n.id === s.id));
         setNodes([...merged, ...extra]);
-        if (layoutRes.data.edges) setEdges(layoutRes.data.edges);
+        if (layoutRes.data.edges) setEdges(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          layoutRes.data.edges.map((e: any) => ({
+            ...e,
+            markerEnd: { ...(typeof e.markerEnd === "object" ? e.markerEnd : {}), type: MarkerType.ArrowClosed, width: 14, height: 14 },
+          }))
+        );
       } else {
         setNodes(buildNodes(respMap));
       }
@@ -844,7 +850,7 @@ function SicDiagramaInner() {
             connectionMode={ConnectionMode.Loose}
             defaultEdgeOptions={{
               style: { stroke: "#6b7280", strokeWidth: 1.5 },
-              markerEnd: { type: MarkerType.ArrowClosed, color: "#6b7280" },
+              markerEnd: { type: MarkerType.ArrowClosed, color: "#6b7280", width: 14, height: 14 },
             }}
             fitView
             fitViewOptions={{ padding: 0.12 }}
