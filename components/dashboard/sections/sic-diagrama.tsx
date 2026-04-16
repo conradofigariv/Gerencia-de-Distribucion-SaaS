@@ -470,6 +470,79 @@ function NodeEditModal({ nodeId, initialLabel, initialResponsables, onSave, onCl
   );
 }
 
+// ─── Edge edit modal ──────────────────────────────────────────────────────────
+
+const EDGE_TYPES_OPTIONS = [
+  { value: "default",    label: "Curva (bezier)" },
+  { value: "smoothstep", label: "Suave" },
+  { value: "step",       label: "Escalonada" },
+  { value: "straight",   label: "Recta" },
+] as const;
+
+interface EdgeEditModalProps {
+  edgeId: string;
+  initialType: string;
+  initialCurvature: number;
+  onSave: (id: string, type: string, curvature: number) => void;
+  onClose: () => void;
+}
+
+function EdgeEditModal({ edgeId, initialType, initialCurvature, onSave, onClose }: EdgeEditModalProps) {
+  const [type, setType] = useState(initialType || "default");
+  const [curvature, setCurvature] = useState(initialCurvature ?? 0.25);
+
+  const save = () => { onSave(edgeId, type, curvature); onClose(); };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-xs p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-foreground">Editar flecha</p>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors"><X className="w-4 h-4"/></button>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground font-medium">Tipo de línea</p>
+          <div className="grid grid-cols-2 gap-2">
+            {EDGE_TYPES_OPTIONS.map(opt => (
+              <button key={opt.value} onClick={() => setType(opt.value)}
+                className={cn("px-3 py-2 rounded-lg text-xs border transition-colors text-left",
+                  type === opt.value
+                    ? "border-accent bg-accent/10 text-accent"
+                    : "border-border text-muted-foreground hover:border-accent/50 hover:text-foreground"
+                )}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {type === "default" && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground font-medium">Curvatura</p>
+              <span className="text-xs text-accent font-mono">{curvature.toFixed(2)}</span>
+            </div>
+            <input type="range" min={0} max={1} step={0.05} value={curvature}
+              onChange={e => setCurvature(Number(e.target.value))}
+              className="w-full accent-accent"/>
+            <div className="flex justify-between text-[10px] text-muted-foreground">
+              <span>Recta</span><span>Muy curva</span>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">Cancelar</button>
+          <button onClick={save} className="px-4 py-2 rounded-lg text-sm bg-accent text-accent-foreground hover:bg-accent/90 flex items-center gap-2 transition-colors">
+            <Check className="w-3.5 h-3.5"/>Guardar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Edit responsables modal ──────────────────────────────────────────────────
 
 const PASO_LABELS: Record<string, string> = {
@@ -544,6 +617,7 @@ function SicDiagramaInner() {
   const [responsables, setResponsables] = useState<Record<string,string[]>>({});
   const [loading, setLoading]   = useState(true);
   const [editingNode, setEditingNode] = useState<{ id: string; label: string; responsables: string[] } | null>(null);
+  const [editingEdge, setEditingEdge] = useState<{ id: string; type: string; curvature: number } | null>(null);
   const [saved, setSaved]       = useState(true);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes({}));
@@ -605,6 +679,21 @@ function SicDiagramaInner() {
     const d = node.data as unknown as PasoData;
     setEditingNode({ id: node.id, label: d.label ?? "", responsables: d.responsables ?? [] });
   }, []);
+
+  // Double-click edge → open edge editor
+  const onEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge) => {
+    const curvature = (edge.pathOptions as { curvature?: number } | undefined)?.curvature ?? 0.25;
+    setEditingEdge({ id: edge.id, type: edge.type ?? "default", curvature });
+  }, []);
+
+  const handleSaveEdge = useCallback((id: string, type: string, curvature: number) => {
+    setEdges(es => es.map(e => e.id !== id ? e : {
+      ...e,
+      type,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ...(type === "default" ? { pathOptions: { curvature } } : { pathOptions: undefined }),
+    } as any));
+  }, [setEdges]);
 
   // Save label + responsables for any node
   const handleSaveNode = useCallback((id: string, newLabel: string, newResponsables: string[]) => {
@@ -702,6 +791,7 @@ function SicDiagramaInner() {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeDoubleClick={onNodeDoubleClick}
+            onEdgeDoubleClick={onEdgeDoubleClick}
             nodeTypes={NODE_TYPES}
             connectionMode={ConnectionMode.Loose}
             defaultEdgeOptions={{
@@ -735,6 +825,16 @@ function SicDiagramaInner() {
           Arrastrar nodo = mover · Borde del nodo = redimensionar · Arrastrar desde handle = conectar · Supr = eliminar
         </div>
       </div>
+
+      {editingEdge && (
+        <EdgeEditModal
+          edgeId={editingEdge.id}
+          initialType={editingEdge.type}
+          initialCurvature={editingEdge.curvature}
+          onSave={handleSaveEdge}
+          onClose={() => setEditingEdge(null)}
+        />
+      )}
 
       {editingNode && (
         <NodeEditModal
