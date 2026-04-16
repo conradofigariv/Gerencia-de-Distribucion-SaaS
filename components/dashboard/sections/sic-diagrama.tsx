@@ -122,24 +122,10 @@ function ProcessNode({ data, selected }: NodeProps) {
       <Handle type="source" position={Position.Right}  id="right" className="!bg-blue-500 !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Top}    id="top" className="!bg-blue-500 !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Bottom} id="bot" className="!bg-blue-500 !w-2.5 !h-2.5" />
-      <div className={cn(
-        "w-full h-full rounded-lg border-2 flex flex-col items-center justify-center px-2 py-1.5 text-center cursor-pointer transition-all duration-200 overflow-hidden",
-        d.active
-          ? "border-orange-400 bg-orange-400/10 shadow-[0_0_12px_2px_oklch(0.75_0.18_50/0.3)]"
-          : "border-blue-500 bg-blue-50/50 hover:border-blue-600",
-        selected && "ring-2 ring-blue-400/50"
-      )}>
-        <p className={cn("text-[11px] font-semibold leading-tight", d.active ? "text-orange-300" : "text-slate-900")}>
-          {d.label}
-        </p>
+      <div className="w-full h-full rounded-lg border-4 border-blue-500 bg-blue-50 flex flex-col items-center justify-center px-2 py-1.5 text-center cursor-pointer overflow-hidden"
+        style={{ boxShadow: selected ? "0 0 0 2px #3b82f6" : "none" }}>
+        <p className="text-[11px] font-bold text-slate-900 leading-tight">{d.label}</p>
         {d.sublabel  && <p className="text-[9px] text-slate-600 mt-0.5 leading-tight">{d.sublabel}</p>}
-        {d.sublabel2 && <p className="text-[9px] text-slate-600 leading-tight">{d.sublabel2}</p>}
-        {d.responsables && d.responsables.length > 0 && (
-          <div className="mt-1 flex items-center gap-1">
-            <Users className="w-2.5 h-2.5 text-blue-600 shrink-0" />
-            <span className="text-[8px] text-blue-600 truncate">{d.responsables.join(", ")}</span>
-          </div>
-        )}
       </div>
     </>
   );
@@ -156,11 +142,9 @@ function StartEndNode({ data, selected }: NodeProps) {
       />
       <Handle type="source" position={Position.Right} id="right" className="!bg-green-500 !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Left}  id="left"  className="!bg-green-500 !w-2.5 !h-2.5" />
-      <div className={cn(
-        "w-full h-full rounded-full border-2 flex items-center justify-center px-3 py-1 overflow-hidden",
-        selected ? "border-green-600 bg-green-100 ring-2 ring-green-400/50" : "border-green-500 bg-green-50/50"
-      )}>
-        <p className="text-[10px] font-semibold text-green-700 leading-tight text-center">{d.label}</p>
+      <div className="w-full h-full rounded-full border-4 border-green-500 bg-green-50 flex items-center justify-center px-3 py-1 overflow-hidden"
+        style={{ boxShadow: selected ? "0 0 0 2px #22c55e" : "none" }}>
+        <p className="text-[10px] font-bold text-green-900 leading-tight text-center">{d.label}</p>
       </div>
     </>
   );
@@ -179,12 +163,8 @@ function DecisionNode({ data, selected }: NodeProps) {
       <Handle type="source" position={Position.Right}  id="right" className="!bg-amber-500 !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-amber-500 !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Top}    id="top"   className="!bg-amber-500 !w-2.5 !h-2.5" />
-      <div className="w-full h-full relative flex items-center justify-center overflow-hidden"
-        style={{ filter: selected ? "drop-shadow(0 0 6px rgba(245, 158, 11, 0.5))" : undefined }}>
-        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          <polygon points="50%,2 98%,50% 50%,98% 2%,50%" fill="rgb(254, 243, 199)" stroke="#f59e0b" strokeWidth="2" />
-        </svg>
-        <p className="relative text-[10px] font-semibold text-amber-900 text-center leading-tight px-3 z-10">{d.label}</p>
+      <div className="w-full h-full flex items-center justify-center overflow-hidden" style={{ clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)", backgroundColor: "#fef3c7", border: "3px solid #f59e0b", boxShadow: selected ? "0 0 0 2px #f59e0b" : "none" }}>
+        <p className="text-[10px] font-bold text-amber-900 text-center leading-tight px-3">{d.label}</p>
       </div>
     </>
   );
@@ -203,12 +183,10 @@ function DocumentNode({ data, selected }: NodeProps) {
       <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-purple-600 !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Left}   id="left"  className="!bg-purple-600 !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Right}  id="right" className="!bg-purple-600 !w-2.5 !h-2.5" />
-      <div className="w-full h-full relative flex items-center justify-center overflow-hidden"
-        style={{ filter: selected ? "drop-shadow(0 0 6px rgba(147, 51, 234, 0.5))" : undefined }}>
-        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          <path d="M2,0 L92,0 L100,8 L100,98 Q100,100 98,100 L2,100 Q0,100 0,98 L0,2 Q0,0 2,0" fill="rgb(243, 232, 255)" stroke="#9333ea" strokeWidth="2"/>
-        </svg>
-        <p className="relative text-[10px] font-semibold text-purple-900 text-center leading-tight px-3 z-10">{d.label}</p>
+      <div className="w-full h-full border-4 border-purple-500 rounded-tl-lg bg-purple-50 flex items-center justify-center px-2 py-1 overflow-hidden relative"
+        style={{ boxShadow: selected ? "0 0 0 2px #9333ea" : "none" }}>
+        <div className="absolute top-0 right-0 w-3 h-3 border-l-4 border-b-4 border-purple-500" />
+        <p className="text-[10px] font-bold text-purple-900 text-center leading-tight">{d.label}</p>
       </div>
     </>
   );
@@ -227,12 +205,8 @@ function ParallelogramNode({ data, selected }: NodeProps) {
       <Handle type="source" position={Position.Right}  id="right" className="!bg-cyan-500 !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Top}    id="top"   className="!bg-cyan-500 !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-cyan-500 !w-2.5 !h-2.5" />
-      <div className="w-full h-full relative flex items-center justify-center overflow-hidden"
-        style={{ filter: selected ? "drop-shadow(0 0 6px rgba(6, 182, 212, 0.5))" : undefined }}>
-        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          <polygon points="20%,0% 100%,0% 80%,100% 0%,100%" fill="rgb(207, 250, 254)" stroke="#0ea5e9" strokeWidth="2"/>
-        </svg>
-        <p className="relative text-[10px] font-semibold text-cyan-900 text-center leading-tight px-3 z-10">{d.label}</p>
+      <div className="w-full h-full flex items-center justify-center overflow-hidden" style={{ backgroundColor: "#cffafe", border: "3px solid #0ea5e9", transform: "skewX(-10deg)", boxShadow: selected ? "0 0 0 2px #0ea5e9" : "none" }}>
+        <p className="text-[10px] font-bold text-cyan-900 text-center leading-tight px-3" style={{ transform: "skewX(10deg)" }}>{d.label}</p>
       </div>
     </>
   );
@@ -251,12 +225,8 @@ function HexagonNode({ data, selected }: NodeProps) {
       <Handle type="source" position={Position.Right}  id="right" className="!bg-teal-500 !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Top}    id="top"   className="!bg-teal-500 !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-teal-500 !w-2.5 !h-2.5" />
-      <div className="w-full h-full relative flex items-center justify-center overflow-hidden"
-        style={{ filter: selected ? "drop-shadow(0 0 6px rgba(20, 184, 166, 0.5))" : undefined }}>
-        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          <polygon points="25%,0% 75%,0% 100%,50% 75%,100% 25%,100% 0%,50%" fill="rgb(204, 251, 241)" stroke="#14b8a6" strokeWidth="2"/>
-        </svg>
-        <p className="relative text-[10px] font-semibold text-teal-900 text-center leading-tight px-3 z-10">{d.label}</p>
+      <div className="w-full h-full flex items-center justify-center overflow-hidden" style={{ clipPath: "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)", backgroundColor: "#ccfbf1", border: "3px solid #14b8a6", boxShadow: selected ? "0 0 0 2px #14b8a6" : "none" }}>
+        <p className="text-[10px] font-bold text-teal-900 text-center leading-tight px-3">{d.label}</p>
       </div>
     </>
   );
@@ -289,29 +259,7 @@ function createNewNode(type: string, x: number, y: number, label: string = ""): 
 }
 
 function buildNodes(responsables: Record<string, string[]>): Node[] {
-  const r = (id: string) => responsables[id] ?? [];
-  return [
-    { id:"inicio",            type:"startend", position:{x:0,y:120},    width:110, height:48, data:{label:"Inicio del Proceso SIC"} },
-    { id:"generacion",        type:"process",  position:{x:140,y:100},   width:120, height:70, data:{label:"Generación",sublabel:"Unidad Requirente",sublabel2:r("generacion")[0]||"Preparador",responsables:r("generacion")} },
-    { id:"revision_ur",       type:"process",  position:{x:290,y:100},   width:130, height:70, data:{label:"Revisión Unidad Requirente",sublabel:r("revision_ur")[0]||"Subgerente",responsables:r("revision_ur")} },
-    { id:"decision_ok1",      type:"decision", position:{x:450,y:110},   width:80,  height:50, data:{label:"¿Ok?"} },
-    { id:"presupuesto",       type:"process",  position:{x:560,y:100},   width:120, height:70, data:{label:"Presupuesto PC",sublabel:"Depto. Presupuesto",responsables:r("presupuesto")} },
-    { id:"verificacion",      type:"decision", position:{x:710,y:110},   width:90,  height:50, data:{label:"Verificación PC"} },
-    { id:"remite_compras",    type:"process",  position:{x:830,y:100},   width:110, height:70, data:{label:"Remite a Compras",responsables:r("remite_compras")} },
-    { id:"comprador",         type:"process",  position:{x:970,y:100},   width:110, height:70, data:{label:"Comprador",active:true,responsables:r("comprador")} },
-    { id:"revision_urp",      type:"process",  position:{x:1110,y:100},  width:130, height:70, data:{label:"Revisión Unidad Revisora de Pliegos",responsables:r("revision_urp")} },
-    { id:"decision_correcto", type:"decision", position:{x:1275,y:110},  width:90,  height:50, data:{label:"¿Correcto?"} },
-    { id:"aprobacion_gf",     type:"process",  position:{x:1400,y:100},  width:130, height:70, data:{label:"Aprobación Gerente de Finanzas",responsables:r("aprobacion_gf")} },
-    { id:"decision_ok2",      type:"decision", position:{x:1565,y:110},  width:80,  height:50, data:{label:"¿Ok?"} },
-    { id:"fin",               type:"startend", position:{x:1680,y:110},  width:120, height:48, data:{label:"Fin del Proceso SIC Generada y Reservada"} },
-    { id:"pliego_tecnico",    type:"document", position:{x:130,y:270},   width:120, height:65, data:{label:"Pliego Técnico Solicitud Interna de Contratación",responsables:r("pliego_tecnico")} },
-    { id:"solicitud_autorizacion", type:"document", position:{x:700,y:280}, width:120, height:65, data:{label:"Solicitud de Autorización",sublabel:"Gerencia General",responsables:r("solicitud_autorizacion")} },
-    { id:"pliego_condiciones",type:"document", position:{x:950,y:280},   width:120, height:65, data:{label:"Pliego Particular de Condiciones",responsables:r("pliego_condiciones")} },
-    { id:"decision_obs",      type:"decision", position:{x:1275,y:290},  width:90,  height:60, data:{label:"¿Obs. Técnica o Legal?"} },
-    { id:"tecnica_renv",      type:"process",  position:{x:1140,y:400},  width:120, height:60, data:{label:"Reenvia a Unidad Requirente",responsables:r("tecnica_renv")} },
-    { id:"legal_renv",        type:"process",  position:{x:1275,y:480},  width:110, height:55, data:{label:"Reenvia a Compras",responsables:r("legal_renv")} },
-    { id:"aprobacion_sic",    type:"document", position:{x:1390,y:-90},  width:120, height:65, data:{label:"Aprobación de la SIC",sublabel:"Puesta en Reserva",responsables:r("aprobacion_sic")} },
-  ];
+  return [];
 }
 
 const E = (id: string, source: string, target: string, opts: Partial<Edge> = {}): Edge => ({
@@ -326,33 +274,7 @@ const VIO = { style: { stroke: "#818cf8",                 strokeWidth: 1.5 } };
 const DASH = (s: object) => ({ ...s, style: { ...(s as Edge).style, strokeDasharray: "4 3" } });
 const LBL  = (label: string, color: string) => ({ label, labelStyle: { fill: color, fontSize: 9, fontWeight: 700 }, labelBgStyle: { fill: "transparent" } });
 
-const DEFAULT_EDGES: Edge[] = [
-  E("e-ini-gen",  "inicio",            "generacion"),
-  E("e-gen-rev",  "generacion",        "revision_ur"),
-  E("e-rev-d1",   "revision_ur",       "decision_ok1"),
-  E("e-d1-pre",   "decision_ok1",      "presupuesto",       { ...POS, ...LBL("SI","hsl(var(--success))") }),
-  E("e-d1-no",    "decision_ok1",      "generacion",        { ...NEG, ...LBL("NO · RECHAZADO","hsl(var(--destructive))"), type:"smoothstep", sourceHandle:"top" }),
-  E("e-pre-ver",  "presupuesto",       "verificacion"),
-  E("e-ver-rem",  "verificacion",      "remite_compras",    { ...POS, ...LBL("CORRECTO","hsl(var(--success))"), sourceHandle:"right" }),
-  E("e-ver-sa",   "verificacion",      "solicitud_autorizacion", { ...NEG, ...LBL("INCORRECTO","hsl(var(--destructive))"), sourceHandle:"bot" }),
-  E("e-sa-ur",    "solicitud_autorizacion","revision_ur",   { ...DASH(NEG), ...LBL("REENVIADO A UR","hsl(var(--destructive))"), type:"smoothstep" }),
-  E("e-rem-com",  "remite_compras",    "comprador",         { ...LBL("ASIGNA","hsl(var(--muted-foreground))") }),
-  E("e-com-rurp", "comprador",         "revision_urp"),
-  E("e-rurp-dc",  "revision_urp",      "decision_correcto"),
-  E("e-dc-agf",   "decision_correcto", "aprobacion_gf",     { ...POS, ...LBL("SI","hsl(var(--success))"), sourceHandle:"right" }),
-  E("e-dc-obs",   "decision_correcto", "decision_obs",      { ...NEG, ...LBL("NO","hsl(var(--destructive))"), sourceHandle:"bot" }),
-  E("e-obs-tec",  "decision_obs",      "tecnica_renv",      { ...VIO, ...LBL("TÉCNICA","#818cf8") }),
-  E("e-obs-leg",  "decision_obs",      "legal_renv",        { ...VIO, ...LBL("LEGAL/CONTRACTUAL","#818cf8"), sourceHandle:"bot" }),
-  E("e-tec-ur",   "tecnica_renv",      "revision_ur",       { ...DASH(NEG), type:"smoothstep" }),
-  E("e-leg-com",  "legal_renv",        "comprador",         { ...DASH(NEG), type:"smoothstep" }),
-  E("e-agf-d2",   "aprobacion_gf",     "decision_ok2"),
-  E("e-d2-fin",   "decision_ok2",      "fin",               { ...POS, ...LBL("SI","hsl(var(--success))") }),
-  E("e-d2-no",    "decision_ok2",      "aprobacion_gf",     { ...NEG, ...LBL("NO · RECHAZADO","hsl(var(--destructive))"), type:"smoothstep", sourceHandle:"bot" }),
-  E("e-gen-pt",   "generacion",        "pliego_tecnico",    { ...DASH({}), sourceHandle:"bot" }),
-  E("e-com-pc",   "comprador",         "pliego_condiciones",{ ...DASH({}), sourceHandle:"bot" }),
-  E("e-sic-agf",  "aprobacion_sic",    "aprobacion_gf",     { ...DASH({}), targetHandle:"top" }),
-  E("e-agf-obs",  "aprobacion_gf",     "revision_urp",      { ...DASH(NEG), ...LBL("OBSERVADO","hsl(var(--destructive))"), type:"smoothstep" }),
-];
+const DEFAULT_EDGES: Edge[] = [];
 
 // ─── Shape palette component ─────────────────────────────────────────────────
 
