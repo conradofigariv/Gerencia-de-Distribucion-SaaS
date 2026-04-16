@@ -676,7 +676,17 @@ function SicDiagramaInner() {
         <div
           ref={containerRef}
           className="flex-1 bg-card border border-border rounded-xl overflow-hidden"
-          style={{ height: 580, "--xy-edge-stroke": "#94a3b8", "--xy-edge-stroke-width": "1.5" } as React.CSSProperties}
+          style={{
+            height: 580,
+            "--xy-edge-stroke": "#94a3b8",
+            "--xy-edge-stroke-width": "1.5",
+            "--xy-controls-button-background-color": "transparent",
+            "--xy-controls-button-background-color-hover": "rgba(255,255,255,0.1)",
+            "--xy-controls-button-border-color": "transparent",
+            "--xy-controls-button-color": "white",
+            "--xy-controls-background-color": "transparent",
+            "--xy-controls-box-shadow": "none",
+          } as React.CSSProperties}
           onDragOver={onDragOver}
           onDrop={onDrop}
         >
@@ -705,8 +715,7 @@ function SicDiagramaInner() {
             style={{ background: "hsl(var(--card))" }}
           >
             <Background color="#6b7280" gap={24} size={1}/>
-            <Controls showInteractive={false}
-              className="[&>button]:bg-transparent [&>button]:border-transparent [&>button]:text-white [&>button]:shadow-none [&>button:hover]:bg-white/10 [&>button_svg]:fill-white [&>button_path]:fill-white [&>button_rect]:fill-white [&]:bg-transparent [&]:border-transparent [&]:shadow-none"/>
+            <Controls showInteractive={false}/>
           </ReactFlow>
         )}
         </div>
