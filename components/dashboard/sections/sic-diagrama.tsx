@@ -765,7 +765,7 @@ function SicDiagramaInner() {
       ...e,
       type: lineStyle,
       label: label || undefined,
-      labelStyle: { fill: "#94a3b8", fontSize: 11, fontWeight: 600 },
+      labelStyle: { fill: "#94a3b8", fontSize: 13, fontWeight: 600 },
       labelBgStyle: { fill: "hsl(var(--card))", fillOpacity: 0.85 },
       labelBgPadding: [4, 2] as [number, number],
       data: { ...(e.data as Record<string, unknown> ?? {}), lineStyle },
