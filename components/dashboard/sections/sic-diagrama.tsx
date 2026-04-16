@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, DragEvent, ReactNode } from "react";
 import {
   ReactFlow,
   Background,
@@ -10,6 +10,8 @@ import {
   addEdge,
   NodeResizer,
   ConnectionMode,
+  ReactFlowProvider,
+  useReactFlow,
   type Node,
   type Edge,
   type NodeProps,
@@ -33,6 +35,51 @@ interface PasoData {
   active?: boolean;
   responsables?: string[];
 }
+
+// ─── Shapes configuration ─────────────────────────────────────────────────────
+
+interface ShapeConfig {
+  type: "process" | "startend" | "decision" | "document";
+  label: string;
+  icon: ReactNode;
+  defaultWidth: number;
+  defaultHeight: number;
+}
+
+const SHAPES: ShapeConfig[] = [
+  {
+    type: "process",
+    label: "Actividad",
+    icon: <div className="w-16 h-8 border-2 border-blue-400 rounded-lg" />,
+    defaultWidth: 120,
+    defaultHeight: 70,
+  },
+  {
+    type: "startend",
+    label: "Inicio/Fin",
+    icon: <div className="w-16 h-8 border-2 border-green-400 rounded-full" />,
+    defaultWidth: 110,
+    defaultHeight: 48,
+  },
+  {
+    type: "decision",
+    label: "Decisión",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16">
+        <polygon points="8,2 14,8 8,14 2,8" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-amber-400" />
+      </svg>
+    ),
+    defaultWidth: 80,
+    defaultHeight: 50,
+  },
+  {
+    type: "document",
+    label: "Documento",
+    icon: <div className="w-4 h-6 border-2 border-purple-400 rounded" />,
+    defaultWidth: 120,
+    defaultHeight: 65,
+  },
+];
 
 // ─── Node components ──────────────────────────────────────────────────────────
 
@@ -164,6 +211,21 @@ const PASO_IDS = [
   "tecnica_renv","legal_renv",
 ];
 
+function createNewNode(type: string, x: number, y: number, label: string = ""): Node {
+  const shapeConfig = SHAPES.find(s => s.type === type);
+  if (!shapeConfig) return { id: "", type: "process", position: { x, y }, data: {} };
+
+  const nodeId = `${type}-${Date.now()}`;
+  return {
+    id: nodeId,
+    type,
+    position: { x, y },
+    width: shapeConfig.defaultWidth,
+    height: shapeConfig.defaultHeight,
+    data: { label: label || shapeConfig.label },
+  };
+}
+
 function buildNodes(responsables: Record<string, string[]>): Node[] {
   const r = (id: string) => responsables[id] ?? [];
   return [
@@ -229,6 +291,32 @@ const DEFAULT_EDGES: Edge[] = [
   E("e-sic-agf",  "aprobacion_sic",    "aprobacion_gf",     { ...DASH({}), targetHandle:"top" }),
   E("e-agf-obs",  "aprobacion_gf",     "revision_urp",      { ...DASH(NEG), ...LBL("OBSERVADO","hsl(var(--destructive))"), type:"smoothstep" }),
 ];
+
+// ─── Shape palette component ─────────────────────────────────────────────────
+
+function ShapePalette() {
+  const onDragStart = (event: DragEvent<HTMLDivElement>, shapeType: string) => {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/reactflow", shapeType);
+  };
+
+  return (
+    <div className="flex gap-2 flex-wrap">
+      {SHAPES.map((shape) => (
+        <div
+          key={shape.type}
+          draggable
+          onDragStart={(e) => onDragStart(e, shape.type)}
+          className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-border bg-secondary/30 hover:bg-secondary/60 hover:border-accent/50 cursor-move transition-all"
+          title={`Arrastra para agregar ${shape.label}`}
+        >
+          {shape.icon}
+          <span className="text-xs text-muted-foreground text-center">{shape.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // ─── Label edit modal ────────────────────────────────────────────────────────
 
@@ -350,7 +438,8 @@ function EditModal({ pasoId, initial, onSave, onClose }: EditModalProps) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function SicDiagramaSection() {
+function SicDiagramaInner() {
+  const { screenToFlowPosition } = useReactFlow();
   const [responsables, setResponsables] = useState<Record<string,string[]>>({});
   const [loading, setLoading]   = useState(true);
   const [editing, setEditing]   = useState<string|null>(null);
@@ -433,6 +522,26 @@ export function SicDiagramaSection() {
     setEdges(DEFAULT_EDGES);
   };
 
+  // Drag-and-drop handlers
+  const onDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const onDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const shapeType = event.dataTransfer.getData("application/reactflow");
+    if (!shapeType) return;
+
+    const containerRect = (event.target as HTMLDivElement).getBoundingClientRect();
+    const x = event.clientX - containerRect.left;
+    const y = event.clientY - containerRect.top;
+    const flowPosition = screenToFlowPosition({ x, y });
+
+    const newNode = createNewNode(shapeType, flowPosition.x, flowPosition.y);
+    setNodes(ns => [...ns, newNode]);
+  }, [screenToFlowPosition, setNodes]);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -452,6 +561,12 @@ export function SicDiagramaSection() {
         </div>
       </div>
 
+      {/* Shapes palette */}
+      <div className="bg-card border border-border rounded-xl px-5 py-4">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Agregar forma</p>
+        <ShapePalette />
+      </div>
+
       {/* Status bar */}
       <div className="bg-card border border-border rounded-xl px-5 py-3 grid grid-cols-2 sm:grid-cols-5 gap-4 text-xs">
         {[["SIC","—"],["Estado actual","—"],["Responsable","—"],["Tiempo en paso","—"],["Tiempo total","—"]].map(([k,v])=>(
@@ -461,8 +576,12 @@ export function SicDiagramaSection() {
       </div>
 
       {/* Diagram */}
-      <div className="bg-card border border-border rounded-xl overflow-hidden"
-        style={{ height: 580, "--xy-edge-stroke": "#94a3b8", "--xy-edge-stroke-width": "1.5" } as React.CSSProperties}>
+      <div
+        className="bg-card border border-border rounded-xl overflow-hidden"
+        style={{ height: 580, "--xy-edge-stroke": "#94a3b8", "--xy-edge-stroke-width": "1.5" } as React.CSSProperties}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+      >
         {loading ? (
           <div className="flex items-center justify-center h-full gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin"/>Cargando...
@@ -528,5 +647,15 @@ export function SicDiagramaSection() {
         <EditModal pasoId={editing} initial={responsables[editing]??[]} onSave={handleSaveResp} onClose={()=>setEditing(null)}/>
       )}
     </div>
+  );
+}
+
+// ─── Wrapper with ReactFlowProvider ──────────────────────────────────────────
+
+export function SicDiagramaSection() {
+  return (
+    <ReactFlowProvider>
+      <SicDiagramaInner />
+    </ReactFlowProvider>
   );
 }
