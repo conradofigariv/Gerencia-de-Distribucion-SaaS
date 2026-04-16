@@ -34,6 +34,7 @@ interface PasoData {
   sublabel2?: string;
   active?: boolean;
   responsables?: string[];
+  createdAt?: string;
 }
 
 // ─── Shapes configuration ─────────────────────────────────────────────────────
@@ -132,6 +133,7 @@ const SHAPES: ShapeConfig[] = [
 
 function ProcessNode({ data, selected }: NodeProps) {
   const d = data as unknown as PasoData;
+  const days = useDays(d.createdAt);
   return (
     <>
       <NodeResizer minWidth={80} minHeight={40} isVisible={selected}
@@ -146,11 +148,12 @@ function ProcessNode({ data, selected }: NodeProps) {
         <p className="text-[11px] font-semibold text-blue-300 leading-tight">{d.label}</p>
         {d.sublabel && <p className="text-[9px] text-blue-400/70 mt-0.5 leading-tight">{d.sublabel}</p>}
         {d.responsables && d.responsables.length > 0 && (
-          <div className="mt-1 flex items-center gap-1">
+          <div className="mt-0.5 flex items-center gap-1">
             <Users className="w-2.5 h-2.5 text-blue-400 shrink-0" />
             <span className="text-[8px] text-blue-400 truncate">{d.responsables.join(", ")}</span>
           </div>
         )}
+        {days && <span className="text-[8px] text-blue-500/60 mt-0.5">{days}</span>}
       </div>
     </>
   );
@@ -158,6 +161,7 @@ function ProcessNode({ data, selected }: NodeProps) {
 
 function StartEndNode({ data, selected }: NodeProps) {
   const d = data as unknown as PasoData;
+  const days = useDays(d.createdAt);
   return (
     <>
       <NodeResizer minWidth={80} minHeight={36} isVisible={selected}
@@ -173,6 +177,7 @@ function StartEndNode({ data, selected }: NodeProps) {
         {d.responsables && d.responsables.length > 0 && (
           <div className="flex items-center gap-1 mt-0.5"><Users className="w-2.5 h-2.5 text-green-500 shrink-0"/><span className="text-[8px] text-green-500 truncate">{d.responsables.join(", ")}</span></div>
         )}
+        {days && <span className="text-[8px] text-green-500/60 mt-0.5">{days}</span>}
       </div>
     </>
   );
@@ -180,6 +185,7 @@ function StartEndNode({ data, selected }: NodeProps) {
 
 function DecisionNode({ data, selected }: NodeProps) {
   const d = data as unknown as PasoData;
+  const days = useDays(d.createdAt);
   return (
     <>
       <NodeResizer minWidth={70} minHeight={44} isVisible={selected}
@@ -199,6 +205,7 @@ function DecisionNode({ data, selected }: NodeProps) {
           {d.responsables && d.responsables.length > 0 && (
             <div className="flex items-center gap-1"><Users className="w-2.5 h-2.5 text-amber-500 shrink-0"/><span className="text-[8px] text-amber-500 truncate">{d.responsables.join(", ")}</span></div>
           )}
+          {days && <span className="text-[8px] text-amber-500/60">{days}</span>}
         </div>
       </div>
     </>
@@ -207,6 +214,7 @@ function DecisionNode({ data, selected }: NodeProps) {
 
 function DocumentNode({ data, selected }: NodeProps) {
   const d = data as unknown as PasoData;
+  const days = useDays(d.createdAt);
   return (
     <>
       <NodeResizer minWidth={90} minHeight={44} isVisible={selected}
@@ -227,6 +235,7 @@ function DocumentNode({ data, selected }: NodeProps) {
           {d.responsables && d.responsables.length > 0 && (
             <div className="flex items-center gap-1"><Users className="w-2.5 h-2.5 text-purple-400 shrink-0"/><span className="text-[8px] text-purple-400 truncate">{d.responsables.join(", ")}</span></div>
           )}
+          {days && <span className="text-[8px] text-purple-400/60">{days}</span>}
         </div>
       </div>
     </>
@@ -235,6 +244,7 @@ function DocumentNode({ data, selected }: NodeProps) {
 
 function ParallelogramNode({ data, selected }: NodeProps) {
   const d = data as unknown as PasoData;
+  const days = useDays(d.createdAt);
   return (
     <>
       <NodeResizer minWidth={80} minHeight={40} isVisible={selected}
@@ -254,6 +264,7 @@ function ParallelogramNode({ data, selected }: NodeProps) {
           {d.responsables && d.responsables.length > 0 && (
             <div className="flex items-center gap-1"><Users className="w-2.5 h-2.5 text-cyan-500 shrink-0"/><span className="text-[8px] text-cyan-500 truncate">{d.responsables.join(", ")}</span></div>
           )}
+          {days && <span className="text-[8px] text-cyan-500/60">{days}</span>}
         </div>
       </div>
     </>
@@ -262,6 +273,7 @@ function ParallelogramNode({ data, selected }: NodeProps) {
 
 function HexagonNode({ data, selected }: NodeProps) {
   const d = data as unknown as PasoData;
+  const days = useDays(d.createdAt);
   return (
     <>
       <NodeResizer minWidth={80} minHeight={50} isVisible={selected}
@@ -281,6 +293,7 @@ function HexagonNode({ data, selected }: NodeProps) {
           {d.responsables && d.responsables.length > 0 && (
             <div className="flex items-center gap-1"><Users className="w-2.5 h-2.5 text-teal-500 shrink-0"/><span className="text-[8px] text-teal-500 truncate">{d.responsables.join(", ")}</span></div>
           )}
+          {days && <span className="text-[8px] text-teal-500/60">{days}</span>}
         </div>
       </div>
     </>
@@ -309,8 +322,15 @@ function createNewNode(type: string, x: number, y: number, label: string = ""): 
     position: { x, y },
     width: shapeConfig.defaultWidth,
     height: shapeConfig.defaultHeight,
-    data: { label: label || shapeConfig.label },
+    data: { label: label || shapeConfig.label, createdAt: new Date().toISOString() },
   };
+}
+
+function useDays(createdAt?: string): string | null {
+  if (!createdAt) return null;
+  const diff = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86_400_000);
+  if (diff === 0) return "Hoy";
+  return diff === 1 ? "1 día" : `${diff} días`;
 }
 
 function buildNodes(responsables: Record<string, string[]>): Node[] {
