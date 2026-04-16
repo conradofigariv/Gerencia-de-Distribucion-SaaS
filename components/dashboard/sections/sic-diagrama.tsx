@@ -562,13 +562,11 @@ function BendableEdge({ id, sourceX, sourceY, targetX, targetY, style, markerEnd
   const cpX = (data?.cpX as number | undefined) ?? (sourceX + targetX) / 2;
   const cpY = (data?.cpY as number | undefined) ?? (sourceY + targetY) / 2;
 
-  // step: vertical folds auto-positioned at 1/3 and 2/3; only bridge Y is draggable
-  const cp1X   = sourceX + (targetX - sourceX) / 3;
-  const cp2X   = sourceX + (targetX - sourceX) * 2 / 3;
+  // step: vertical from source → horizontal bridge at bridgeY → vertical to target
   const bridgeY = (data?.bridgeY as number | undefined) ?? (sourceY + targetY) / 2;
 
   const edgePath = isStep
-    ? `M${sourceX},${sourceY} L${cp1X},${sourceY} L${cp1X},${bridgeY} L${cp2X},${bridgeY} L${cp2X},${targetY} L${targetX},${targetY}`
+    ? `M${sourceX},${sourceY} L${sourceX},${bridgeY} L${targetX},${bridgeY} L${targetX},${targetY}`
     : isStraight
     ? `M${sourceX},${sourceY} L${targetX},${targetY}`
     : `M${sourceX},${sourceY} Q${cpX},${cpY} ${targetX},${targetY}`;
@@ -605,7 +603,7 @@ function BendableEdge({ id, sourceX, sourceY, targetX, targetY, style, markerEnd
         <EdgeLabelRenderer>
           {isStep
             // single handle at center of horizontal bridge — drag up/down
-            ? dot((cp1X + cp2X) / 2, bridgeY, onBridgeDrag)
+            ? dot((sourceX + targetX) / 2, bridgeY, onBridgeDrag)
             : dot(cpX, cpY, onBezierDrag)
           }
         </EdgeLabelRenderer>
