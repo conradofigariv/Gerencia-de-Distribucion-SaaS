@@ -519,7 +519,7 @@ function EditModal({ pasoId, initial, onSave, onClose }: EditModalProps) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 function SicDiagramaInner() {
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, updateNodeData } = useReactFlow();
   const containerRef = useRef<HTMLDivElement>(null);
   const [responsables, setResponsables] = useState<Record<string,string[]>>({});
   const [loading, setLoading]   = useState(true);
@@ -588,11 +588,8 @@ function SicDiagramaInner() {
 
   // Save label + responsables for any node
   const handleSaveNode = useCallback((id: string, newLabel: string, newResponsables: string[]) => {
-    setNodes(ns => ns.map(n => n.id === id
-      ? { ...n, data: { ...n.data, label: newLabel, responsables: newResponsables } }
-      : n
-    ));
-  }, [setNodes]);
+    updateNodeData(id, { label: newLabel, responsables: newResponsables });
+  }, [updateNodeData]);
 
 
   const resetLayout = () => {
