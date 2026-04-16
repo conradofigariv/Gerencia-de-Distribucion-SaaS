@@ -39,7 +39,7 @@ interface PasoData {
 // ─── Shapes configuration ─────────────────────────────────────────────────────
 
 interface ShapeConfig {
-  type: "process" | "startend" | "decision" | "document";
+  type: "process" | "startend" | "decision" | "document" | "parallelogram" | "hexagon";
   label: string;
   icon: ReactNode;
   defaultWidth: number;
@@ -75,9 +75,35 @@ const SHAPES: ShapeConfig[] = [
   {
     type: "document",
     label: "Documento",
-    icon: <div className="w-6 h-8 border-2 border-purple-400 rounded bg-purple-400/10"><div className="h-1 border-b border-purple-400 mt-1 mx-0.5" /></div>,
+    icon: (
+      <svg width="18" height="20" viewBox="0 0 18 20">
+        <path d="M2,0 L14,0 L18,4 L18,18 Q18,20 16,20 L2,20 Q0,20 0,18 L0,2 Q0,0 2,0" fill="purple/10" stroke="currentColor" strokeWidth="1.5" className="text-purple-400" />
+      </svg>
+    ),
     defaultWidth: 120,
     defaultHeight: 65,
+  },
+  {
+    type: "parallelogram",
+    label: "Entrada/Salida",
+    icon: (
+      <svg width="18" height="14" viewBox="0 0 18 14">
+        <polygon points="4,0 18,0 14,14 0,14" fill="blue/10" stroke="currentColor" strokeWidth="1.5" className="text-blue-500" />
+      </svg>
+    ),
+    defaultWidth: 120,
+    defaultHeight: 60,
+  },
+  {
+    type: "hexagon",
+    label: "Preparación",
+    icon: (
+      <svg width="18" height="16" viewBox="0 0 18 16">
+        <polygon points="5,0 13,0 18,8 13,16 5,16 0,8" fill="teal/10" stroke="currentColor" strokeWidth="1.5" className="text-teal-400" />
+      </svg>
+    ),
+    defaultWidth: 110,
+    defaultHeight: 70,
   },
 ];
 
@@ -178,29 +204,66 @@ function DocumentNode({ data, selected }: NodeProps) {
       <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-border !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Left}   id="left"  className="!bg-border !w-2.5 !h-2.5" />
       <Handle type="source" position={Position.Right}  id="right" className="!bg-border !w-2.5 !h-2.5" />
-      <div className={cn(
-        "w-full h-full border border-border/60 bg-card/80 rounded flex items-start gap-1.5 px-2 py-1.5 cursor-pointer hover:border-accent/60 transition-colors overflow-hidden",
-        selected && "ring-1 ring-accent/40 border-accent/40"
-      )}>
-        <div className="shrink-0 pt-0.5 text-muted-foreground">
-          <svg width="10" height="12" viewBox="0 0 10 12">
-            <path d="M1 1h6l2 2v8H1V1z" fill="none" stroke="currentColor" strokeWidth="1"/>
-            <path d="M7 1v2h2" fill="none" stroke="currentColor" strokeWidth="1"/>
-          </svg>
-        </div>
-        <div className="min-w-0">
-          <p className="text-[9px] font-semibold text-foreground leading-tight">{d.label}</p>
-          {d.sublabel && <p className="text-[8px] text-muted-foreground leading-tight mt-0.5">{d.sublabel}</p>}
-          {d.responsables && d.responsables.length > 0 && (
-            <p className="text-[8px] text-accent mt-0.5 truncate">{d.responsables.join(", ")}</p>
-          )}
-        </div>
+      <div className="w-full h-full relative flex items-center justify-center overflow-hidden"
+        style={{ filter: selected ? "drop-shadow(0 0 4px hsl(var(--accent)/0.4))" : undefined }}>
+        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+          <path d="M5,0 L95,0 L100,50 L95,100 L5,100 L0,50 Z" fill="hsl(var(--card))" stroke="#9333ea" strokeWidth="1.5"/>
+        </svg>
+        <p className="relative text-[10px] font-semibold text-foreground text-center leading-tight px-3 z-10">{d.label}</p>
       </div>
     </>
   );
 }
 
-const NODE_TYPES = { process: ProcessNode, startend: StartEndNode, decision: DecisionNode, document: DocumentNode };
+function ParallelogramNode({ data, selected }: NodeProps) {
+  const d = data as unknown as PasoData;
+  return (
+    <>
+      <NodeResizer minWidth={80} minHeight={40} isVisible={selected}
+        color="hsl(var(--accent))"
+        lineStyle={{ borderColor: "hsl(var(--accent))", borderWidth: 1 }}
+        handleStyle={{ background: "hsl(var(--accent))", border: "none", width: 8, height: 8, borderRadius: 2 }}
+      />
+      <Handle type="source" position={Position.Left}   id="left"  className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Right}  id="right" className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Top}    id="top"   className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-border !w-2.5 !h-2.5" />
+      <div className="w-full h-full relative flex items-center justify-center overflow-hidden"
+        style={{ filter: selected ? "drop-shadow(0 0 4px hsl(var(--accent)/0.4))" : undefined }}>
+        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+          <polygon points="20%,0% 100%,0% 80%,100% 0%,100%" fill="hsl(var(--card))" stroke="#3b82f6" strokeWidth="1.5"/>
+        </svg>
+        <p className="relative text-[10px] font-semibold text-foreground text-center leading-tight px-3 z-10">{d.label}</p>
+      </div>
+    </>
+  );
+}
+
+function HexagonNode({ data, selected }: NodeProps) {
+  const d = data as unknown as PasoData;
+  return (
+    <>
+      <NodeResizer minWidth={80} minHeight={50} isVisible={selected}
+        color="hsl(var(--accent))"
+        lineStyle={{ borderColor: "hsl(var(--accent))", borderWidth: 1 }}
+        handleStyle={{ background: "hsl(var(--accent))", border: "none", width: 8, height: 8, borderRadius: 2 }}
+      />
+      <Handle type="source" position={Position.Left}   id="left"  className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Right}  id="right" className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Top}    id="top"   className="!bg-border !w-2.5 !h-2.5" />
+      <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-border !w-2.5 !h-2.5" />
+      <div className="w-full h-full relative flex items-center justify-center overflow-hidden"
+        style={{ filter: selected ? "drop-shadow(0 0 4px hsl(var(--accent)/0.4))" : undefined }}>
+        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+          <polygon points="25%,0% 75%,0% 100%,50% 75%,100% 25%,100% 0%,50%" fill="hsl(var(--card))" stroke="#14b8a6" strokeWidth="1.5"/>
+        </svg>
+        <p className="relative text-[10px] font-semibold text-foreground text-center leading-tight px-3 z-10">{d.label}</p>
+      </div>
+    </>
+  );
+}
+
+const NODE_TYPES = { process: ProcessNode, startend: StartEndNode, decision: DecisionNode, document: DocumentNode, parallelogram: ParallelogramNode, hexagon: HexagonNode };
 
 // ─── Default nodes / edges ────────────────────────────────────────────────────
 
