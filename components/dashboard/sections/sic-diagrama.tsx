@@ -555,58 +555,62 @@ function BendableEdge({ id, sourceX, sourceY, targetX, targetY, style, markerEnd
   const { setEdges, screenToFlowPosition } = useReactFlow();
 
   const lineStyle = (data?.lineStyle as string | undefined) ?? "bezier";
-  const cpX = (data?.cpX as number | undefined) ?? (sourceX + targetX) / 2;
-  const cpY = (data?.cpY as number | undefined) ?? (sourceY + targetY) / 2;
-  const midY = (sourceY + targetY) / 2;
-
-  const isStep = lineStyle === "step" || lineStyle === "smoothstep";
+  const isStep     = lineStyle === "step" || lineStyle === "smoothstep";
   const isStraight = lineStyle === "straight";
 
+  // bezier control point
+  const cpX  = (data?.cpX  as number | undefined) ?? (sourceX + targetX) / 2;
+  const cpY  = (data?.cpY  as number | undefined) ?? (sourceY + targetY) / 2;
+
+  // step: two independent vertical-segment positions + fixed mid-Y
+  const midY = (sourceY + targetY) / 2;
+  const cp1X = (data?.cp1X as number | undefined) ?? sourceX + (targetX - sourceX) / 3;
+  const cp2X = (data?.cp2X as number | undefined) ?? sourceX + (targetX - sourceX) * 2 / 3;
+
   const edgePath = isStep
-    ? `M${sourceX},${sourceY} L${cpX},${sourceY} L${cpX},${targetY} L${targetX},${targetY}`
+    ? `M${sourceX},${sourceY} L${cp1X},${sourceY} L${cp1X},${midY} L${cp2X},${midY} L${cp2X},${targetY} L${targetX},${targetY}`
     : isStraight
     ? `M${sourceX},${sourceY} L${targetX},${targetY}`
     : `M${sourceX},${sourceY} Q${cpX},${cpY} ${targetX},${targetY}`;
 
-  const handleX = isStep ? cpX : cpX;
-  const handleY = isStep ? midY : cpY;
-
-  const onHandleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-
-    const onMove = (mv: MouseEvent) => {
-      const pos = screenToFlowPosition({ x: mv.clientX, y: mv.clientY });
-      setEdges(es => es.map(edge => {
-        if (edge.id !== id) return edge;
-        const prev = edge.data as Record<string, unknown> ?? {};
-        // for step: only move horizontally (cpX); for bezier: move both
-        const isStepEdge = (prev.lineStyle as string | undefined) === "step" || (prev.lineStyle as string | undefined) === "smoothstep";
-        return { ...edge, data: { ...prev, cpX: pos.x, ...(isStepEdge ? {} : { cpY: pos.y }) } };
+  const makeDrag = useCallback((update: (x: number, y: number) => Record<string, unknown>) => (e: React.MouseEvent) => {
+    e.stopPropagation(); e.preventDefault();
+    const move = (mv: MouseEvent) => {
+      const p = screenToFlowPosition({ x: mv.clientX, y: mv.clientY });
+      setEdges(es => es.map(edge => edge.id !== id ? edge : {
+        ...edge, data: { ...(edge.data as Record<string, unknown> ?? {}), ...update(p.x, p.y) }
       }));
     };
-
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
+    const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
   }, [id, screenToFlowPosition, setEdges]);
+
+  const onBezierDrag = makeDrag((x, y) => ({ cpX: x, cpY: y }));
+  const onStep1Drag  = makeDrag((x)    => ({ cp1X: x }));
+  const onStep2Drag  = makeDrag((x)    => ({ cp2X: x }));
+
+  const dot = (hx: number, hy: number, handler: (e: React.MouseEvent) => void) => (
+    <div key={`${hx}-${hy}`}
+      style={{ position: "absolute", transform: `translate(-50%,-50%) translate(${hx}px,${hy}px)`, pointerEvents: "all" }}
+      className="nodrag nopan" onMouseDown={handler}>
+      <div className="w-3 h-3 rounded-full bg-slate-500/80 border border-slate-300/50 cursor-grab active:cursor-grabbing hover:bg-slate-300 hover:scale-125 transition-all" />
+    </div>
+  );
 
   return (
     <>
       <BaseEdge path={edgePath} style={style} markerEnd={markerEnd} />
       {selected && !isStraight && (
         <EdgeLabelRenderer>
-          <div
-            style={{ position: "absolute", transform: `translate(-50%,-50%) translate(${handleX}px,${handleY}px)`, pointerEvents: "all" }}
-            className="nodrag nopan"
-            onMouseDown={onHandleMouseDown}
-          >
-            <div className="w-3 h-3 rounded-full bg-slate-500/80 border border-slate-300/50 cursor-grab active:cursor-grabbing hover:bg-slate-300 hover:scale-125 transition-all" />
-          </div>
+          {isStep ? (
+            <>
+              {dot(cp1X, (sourceY + midY) / 2, onStep1Drag)}
+              {dot(cp2X, (midY + targetY) / 2, onStep2Drag)}
+            </>
+          ) : (
+            dot(cpX, cpY, onBezierDrag)
+          )}
         </EdgeLabelRenderer>
       )}
     </>
