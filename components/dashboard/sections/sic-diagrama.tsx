@@ -650,7 +650,7 @@ function SicDiagramaInner() {
       {/* Diagram with sidebar */}
       <div className="flex gap-4">
         {/* Shapes sidebar */}
-        <div className="w-32 bg-card border border-border rounded-xl px-3 py-4 overflow-y-auto max-h-[600px]">
+        <div className="w-32 bg-card border border-border rounded-xl px-3 py-4 overflow-y-auto max-h-[600px] [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }}>
           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3 font-semibold">Agregar forma</p>
           <ShapePalette />
         </div>
