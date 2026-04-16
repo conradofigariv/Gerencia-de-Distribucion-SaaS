@@ -230,6 +230,58 @@ const DEFAULT_EDGES: Edge[] = [
   E("e-agf-obs",  "aprobacion_gf",     "revision_urp",      { ...DASH(NEG), ...LBL("OBSERVADO","hsl(var(--destructive))"), type:"smoothstep" }),
 ];
 
+// ─── Label edit modal ────────────────────────────────────────────────────────
+
+interface LabelEditModalProps {
+  nodeId: string;
+  initialLabel: string;
+  isPaso: boolean;
+  onSave: (id: string, label: string) => void;
+  onClose: () => void;
+  onEditResponsables?: () => void;
+}
+
+function LabelEditModal({ nodeId, initialLabel, isPaso, onSave, onClose, onEditResponsables }: LabelEditModalProps) {
+  const [label, setLabel] = useState(initialLabel);
+
+  const save = () => {
+    if (!label.trim()) return;
+    onSave(nodeId, label.trim());
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-foreground">Editar nombre del objeto</p>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors"><X className="w-4 h-4"/></button>
+        </div>
+        <input
+          autoFocus
+          value={label}
+          onChange={e => setLabel(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") onClose(); }}
+          className="w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent"
+        />
+        <div className="flex items-center justify-between">
+          {isPaso && onEditResponsables ? (
+            <button onClick={onEditResponsables} className="flex items-center gap-1.5 text-xs text-accent hover:text-accent/80 transition-colors">
+              <Users className="w-3.5 h-3.5"/>Editar responsables
+            </button>
+          ) : <span/>}
+          <div className="flex gap-2">
+            <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">Cancelar</button>
+            <button onClick={save} className="px-4 py-2 rounded-lg text-sm bg-accent text-accent-foreground hover:bg-accent/90 flex items-center gap-2 transition-colors">
+              <Check className="w-3.5 h-3.5"/>Guardar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Edit responsables modal ──────────────────────────────────────────────────
 
 const PASO_LABELS: Record<string, string> = {
@@ -302,6 +354,7 @@ export function SicDiagramaSection() {
   const [responsables, setResponsables] = useState<Record<string,string[]>>({});
   const [loading, setLoading]   = useState(true);
   const [editing, setEditing]   = useState<string|null>(null);
+  const [editingLabel, setEditingLabel] = useState<{ id: string; label: string } | null>(null);
   const [saved, setSaved]       = useState(true);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes({}));
@@ -358,10 +411,16 @@ export function SicDiagramaSection() {
     setEdges(es => addEdge({ ...connection, id: `e-${Date.now()}` }, es));
   }, [setEdges]);
 
-  // Double-click node → open responsables editor
+  // Double-click node → open label editor (for all nodes)
   const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
-    if (PASO_IDS.includes(node.id)) setEditing(node.id);
+    const d = node.data as unknown as PasoData;
+    setEditingLabel({ id: node.id, label: d.label ?? "" });
   }, []);
+
+  // Save label changes directly in node data
+  const handleSaveLabel = useCallback((id: string, newLabel: string) => {
+    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, label: newLabel } } : n));
+  }, [setNodes]);
 
   const handleSaveResp = useCallback((id: string, list: string[]) => {
     const next = { ...responsables, [id]: list };
@@ -379,7 +438,7 @@ export function SicDiagramaSection() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-foreground">Diagrama de flujo</h2>
-          <p className="text-sm text-muted-foreground mt-1">Proceso SIC - SIGA · doble clic en un paso para editar responsables</p>
+          <p className="text-sm text-muted-foreground mt-1">Proceso SIC - SIGA · doble clic en un objeto para editar su nombre</p>
         </div>
         <div className="flex items-center gap-2">
           <div className={cn("flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors",
@@ -449,6 +508,21 @@ export function SicDiagramaSection() {
           Arrastrar nodo = mover · Borde del nodo = redimensionar · Arrastrar desde handle = conectar · Supr = eliminar
         </div>
       </div>
+
+      {editingLabel && (
+        <LabelEditModal
+          nodeId={editingLabel.id}
+          initialLabel={editingLabel.label}
+          isPaso={PASO_IDS.includes(editingLabel.id)}
+          onSave={handleSaveLabel}
+          onClose={() => setEditingLabel(null)}
+          onEditResponsables={PASO_IDS.includes(editingLabel.id) ? () => {
+            const id = editingLabel.id;
+            setEditingLabel(null);
+            setEditing(id);
+          } : undefined}
+        />
+      )}
 
       {editing && (
         <EditModal pasoId={editing} initial={responsables[editing]??[]} onSave={handleSaveResp} onClose={()=>setEditing(null)}/>
