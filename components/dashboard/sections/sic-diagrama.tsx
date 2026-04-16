@@ -167,9 +167,12 @@ function StartEndNode({ data, selected }: NodeProps) {
       <Handle type="source" position={Position.Left}  id="left"  className="!bg-green-500 !w-2 !h-2 !border-0" />
       <Handle type="source" position={Position.Top}   id="top"   className="!bg-green-500 !w-2 !h-2 !border-0" />
       <Handle type="source" position={Position.Bottom} id="bot"  className="!bg-green-500 !w-2 !h-2 !border-0" />
-      <div className="w-full h-full rounded-full border-2 border-green-500 bg-transparent flex items-center justify-center px-3 py-1"
+      <div className="w-full h-full rounded-full border-2 border-green-500 bg-transparent flex flex-col items-center justify-center px-3 py-1"
         style={{ boxShadow: selected ? "0 0 0 1px #22c55e" : undefined }}>
         <p className="text-[10px] font-semibold text-green-400 leading-tight text-center">{d.label}</p>
+        {d.responsables && d.responsables.length > 0 && (
+          <div className="flex items-center gap-1 mt-0.5"><Users className="w-2.5 h-2.5 text-green-500 shrink-0"/><span className="text-[8px] text-green-500 truncate">{d.responsables.join(", ")}</span></div>
+        )}
       </div>
     </>
   );
@@ -191,7 +194,12 @@ function DecisionNode({ data, selected }: NodeProps) {
         <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
           <polygon points="50,2 98,50 50,98 2,50" fill="transparent" stroke="#f59e0b" strokeWidth="2.5"/>
         </svg>
-        <p className="relative text-[10px] font-semibold text-amber-400 text-center leading-tight px-6 z-10">{d.label}</p>
+        <div className="relative z-10 flex flex-col items-center gap-0.5">
+          <p className="text-[10px] font-semibold text-amber-400 text-center leading-tight px-6">{d.label}</p>
+          {d.responsables && d.responsables.length > 0 && (
+            <div className="flex items-center gap-1"><Users className="w-2.5 h-2.5 text-amber-500 shrink-0"/><span className="text-[8px] text-amber-500 truncate">{d.responsables.join(", ")}</span></div>
+          )}
+        </div>
       </div>
     </>
   );
@@ -214,7 +222,12 @@ function DocumentNode({ data, selected }: NodeProps) {
           <path d="M2,2 L78,2 L98,22 L98,98 L2,98 Z" fill="transparent" stroke="#9333ea" strokeWidth="2.5"/>
           <polyline points="78,2 78,22 98,22" fill="transparent" stroke="#9333ea" strokeWidth="2"/>
         </svg>
-        <p className="relative text-[10px] font-semibold text-purple-300 text-center leading-tight px-3 z-10">{d.label}</p>
+        <div className="relative z-10 flex flex-col items-center gap-0.5">
+          <p className="text-[10px] font-semibold text-purple-300 text-center leading-tight px-3">{d.label}</p>
+          {d.responsables && d.responsables.length > 0 && (
+            <div className="flex items-center gap-1"><Users className="w-2.5 h-2.5 text-purple-400 shrink-0"/><span className="text-[8px] text-purple-400 truncate">{d.responsables.join(", ")}</span></div>
+          )}
+        </div>
       </div>
     </>
   );
@@ -236,7 +249,12 @@ function ParallelogramNode({ data, selected }: NodeProps) {
         <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
           <polygon points="18,2 98,2 82,98 2,98" fill="transparent" stroke="#0ea5e9" strokeWidth="2.5"/>
         </svg>
-        <p className="relative text-[10px] font-semibold text-cyan-400 text-center leading-tight px-4 z-10">{d.label}</p>
+        <div className="relative z-10 flex flex-col items-center gap-0.5">
+          <p className="text-[10px] font-semibold text-cyan-400 text-center leading-tight px-4">{d.label}</p>
+          {d.responsables && d.responsables.length > 0 && (
+            <div className="flex items-center gap-1"><Users className="w-2.5 h-2.5 text-cyan-500 shrink-0"/><span className="text-[8px] text-cyan-500 truncate">{d.responsables.join(", ")}</span></div>
+          )}
+        </div>
       </div>
     </>
   );
@@ -258,7 +276,12 @@ function HexagonNode({ data, selected }: NodeProps) {
         <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
           <polygon points="25,2 75,2 98,50 75,98 25,98 2,50" fill="transparent" stroke="#14b8a6" strokeWidth="2.5"/>
         </svg>
-        <p className="relative text-[10px] font-semibold text-teal-400 text-center leading-tight px-6 z-10">{d.label}</p>
+        <div className="relative z-10 flex flex-col items-center gap-0.5">
+          <p className="text-[10px] font-semibold text-teal-400 text-center leading-tight px-6">{d.label}</p>
+          {d.responsables && d.responsables.length > 0 && (
+            <div className="flex items-center gap-1"><Users className="w-2.5 h-2.5 text-teal-500 shrink-0"/><span className="text-[8px] text-teal-500 truncate">{d.responsables.join(", ")}</span></div>
+          )}
+        </div>
       </div>
     </>
   );
@@ -336,23 +359,33 @@ function ShapePalette() {
   );
 }
 
-// ─── Label edit modal ────────────────────────────────────────────────────────
+// ─── Node edit modal (label + encargados) ────────────────────────────────────
 
-interface LabelEditModalProps {
+interface NodeEditModalProps {
   nodeId: string;
   initialLabel: string;
-  isPaso: boolean;
-  onSave: (id: string, label: string) => void;
+  initialResponsables: string[];
+  onSave: (id: string, label: string, responsables: string[]) => void;
   onClose: () => void;
-  onEditResponsables?: () => void;
 }
 
-function LabelEditModal({ nodeId, initialLabel, isPaso, onSave, onClose, onEditResponsables }: LabelEditModalProps) {
+function NodeEditModal({ nodeId, initialLabel, initialResponsables, onSave, onClose }: NodeEditModalProps) {
   const [label, setLabel] = useState(initialLabel);
+  const [responsables, setResponsables] = useState<string[]>(initialResponsables);
+  const [input, setInput] = useState("");
+
+  const add = () => {
+    const v = input.trim();
+    if (!v || responsables.includes(v)) return;
+    setResponsables(r => [...r, v]);
+    setInput("");
+  };
+
+  const rem = (i: number) => setResponsables(r => r.filter((_, j) => j !== i));
 
   const save = () => {
     if (!label.trim()) return;
-    onSave(nodeId, label.trim());
+    onSave(nodeId, label.trim(), responsables);
     onClose();
   };
 
@@ -360,28 +393,57 @@ function LabelEditModal({ nodeId, initialLabel, isPaso, onSave, onClose, onEditR
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-foreground">Editar nombre del objeto</p>
+          <p className="text-sm font-semibold text-foreground">Editar objeto</p>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors"><X className="w-4 h-4"/></button>
         </div>
-        <input
-          autoFocus
-          value={label}
-          onChange={e => setLabel(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") onClose(); }}
-          className="w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent"
-        />
-        <div className="flex items-center justify-between">
-          {isPaso && onEditResponsables ? (
-            <button onClick={onEditResponsables} className="flex items-center gap-1.5 text-xs text-accent hover:text-accent/80 transition-colors">
-              <Users className="w-3.5 h-3.5"/>Editar responsables
-            </button>
-          ) : <span/>}
+
+        {/* Label */}
+        <div className="space-y-1.5">
+          <p className="text-xs text-muted-foreground font-medium">Título</p>
+          <input
+            autoFocus
+            value={label}
+            onChange={e => setLabel(e.target.value)}
+            onKeyDown={e => { if (e.key === "Escape") onClose(); }}
+            className="w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent"
+          />
+        </div>
+
+        {/* Encargados */}
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5"/>Encargados
+          </p>
+          {responsables.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-1.5">Sin encargados asignados</p>
+          )}
+          {responsables.map((p, i) => (
+            <div key={i} className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-secondary text-sm">
+              <span className="text-foreground">{p}</span>
+              <button onClick={() => rem(i)} className="text-muted-foreground hover:text-destructive transition-colors">
+                <Trash2 className="w-3.5 h-3.5"/>
+              </button>
+            </div>
+          ))}
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">Cancelar</button>
-            <button onClick={save} className="px-4 py-2 rounded-lg text-sm bg-accent text-accent-foreground hover:bg-accent/90 flex items-center gap-2 transition-colors">
-              <Check className="w-3.5 h-3.5"/>Guardar
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && add()}
+              placeholder="Nombre del encargado"
+              className="flex-1 h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent"
+            />
+            <button onClick={add} className="h-9 w-9 rounded-lg bg-accent/15 hover:bg-accent/25 flex items-center justify-center text-accent transition-colors">
+              <Plus className="w-4 h-4"/>
             </button>
           </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">Cancelar</button>
+          <button onClick={save} className="px-4 py-2 rounded-lg text-sm bg-accent text-accent-foreground hover:bg-accent/90 flex items-center gap-2 transition-colors">
+            <Check className="w-3.5 h-3.5"/>Guardar
+          </button>
         </div>
       </div>
     </div>
@@ -461,8 +523,7 @@ function SicDiagramaInner() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [responsables, setResponsables] = useState<Record<string,string[]>>({});
   const [loading, setLoading]   = useState(true);
-  const [editing, setEditing]   = useState<string|null>(null);
-  const [editingLabel, setEditingLabel] = useState<{ id: string; label: string } | null>(null);
+  const [editingNode, setEditingNode] = useState<{ id: string; label: string; responsables: string[] } | null>(null);
   const [saved, setSaved]       = useState(true);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes({}));
@@ -519,22 +580,20 @@ function SicDiagramaInner() {
     setEdges(es => addEdge({ ...connection, id: `e-${Date.now()}` }, es));
   }, [setEdges]);
 
-  // Double-click node → open label editor (for all nodes)
+  // Double-click node → open unified edit modal
   const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
     const d = node.data as unknown as PasoData;
-    setEditingLabel({ id: node.id, label: d.label ?? "" });
+    setEditingNode({ id: node.id, label: d.label ?? "", responsables: d.responsables ?? [] });
   }, []);
 
-  // Save label changes directly in node data
-  const handleSaveLabel = useCallback((id: string, newLabel: string) => {
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, label: newLabel } } : n));
+  // Save label + responsables for any node
+  const handleSaveNode = useCallback((id: string, newLabel: string, newResponsables: string[]) => {
+    setNodes(ns => ns.map(n => n.id === id
+      ? { ...n, data: { ...n.data, label: newLabel, responsables: newResponsables } }
+      : n
+    ));
   }, [setNodes]);
 
-  const handleSaveResp = useCallback((id: string, list: string[]) => {
-    const next = { ...responsables, [id]: list };
-    setResponsables(next);
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, responsables: list } } : n));
-  }, [responsables]);
 
   const resetLayout = () => {
     setNodes(buildNodes(responsables));
@@ -651,23 +710,14 @@ function SicDiagramaInner() {
         </div>
       </div>
 
-      {editingLabel && (
-        <LabelEditModal
-          nodeId={editingLabel.id}
-          initialLabel={editingLabel.label}
-          isPaso={PASO_IDS.includes(editingLabel.id)}
-          onSave={handleSaveLabel}
-          onClose={() => setEditingLabel(null)}
-          onEditResponsables={PASO_IDS.includes(editingLabel.id) ? () => {
-            const id = editingLabel.id;
-            setEditingLabel(null);
-            setEditing(id);
-          } : undefined}
+      {editingNode && (
+        <NodeEditModal
+          nodeId={editingNode.id}
+          initialLabel={editingNode.label}
+          initialResponsables={editingNode.responsables}
+          onSave={handleSaveNode}
+          onClose={() => setEditingNode(null)}
         />
-      )}
-
-      {editing && (
-        <EditModal pasoId={editing} initial={responsables[editing]??[]} onSave={handleSaveResp} onClose={()=>setEditing(null)}/>
       )}
     </div>
   );
