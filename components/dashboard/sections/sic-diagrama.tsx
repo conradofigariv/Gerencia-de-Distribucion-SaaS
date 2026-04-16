@@ -74,8 +74,8 @@ const SHAPES: ShapeConfig[] = [
     label: "Decisión",
     icon: (
       <div className="w-full h-10 relative flex items-center justify-center">
-        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          <polygon points="50%,2 98%,50% 50%,98% 2%,50%" fill="transparent" stroke="#f59e0b" strokeWidth="2"/>
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <polygon points="50,2 98,50 50,98 2,50" fill="transparent" stroke="#f59e0b" strokeWidth="3"/>
         </svg>
         <span className="relative text-[8px] font-semibold text-amber-400 z-10">Decisión</span>
       </div>
@@ -87,9 +87,12 @@ const SHAPES: ShapeConfig[] = [
     type: "document",
     label: "Documento",
     icon: (
-      <div className="w-full h-9 border-2 border-purple-500 bg-transparent flex items-center justify-center relative">
-        <div className="absolute top-0 right-0 w-2.5 h-2.5 border-l-2 border-b-2 border-purple-500" />
-        <span className="text-[9px] font-semibold text-purple-300">Documento</span>
+      <div className="w-full h-10 relative flex items-center justify-center">
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <path d="M2,2 L78,2 L98,22 L98,98 L2,98 Z" fill="transparent" stroke="#9333ea" strokeWidth="3"/>
+          <polyline points="78,2 78,22 98,22" fill="transparent" stroke="#9333ea" strokeWidth="2"/>
+        </svg>
+        <span className="relative text-[9px] font-semibold text-purple-300 z-10">Documento</span>
       </div>
     ),
     defaultWidth: 120,
@@ -100,8 +103,8 @@ const SHAPES: ShapeConfig[] = [
     label: "Entrada/Salida",
     icon: (
       <div className="w-full h-9 relative flex items-center justify-center">
-        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          <polygon points="18%,2 98%,2 82%,98% 2%,98%" fill="transparent" stroke="#0ea5e9" strokeWidth="2"/>
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <polygon points="18,2 98,2 82,98 2,98" fill="transparent" stroke="#0ea5e9" strokeWidth="3"/>
         </svg>
         <span className="relative text-[8px] font-semibold text-cyan-400 z-10">Entrada/Salida</span>
       </div>
@@ -114,8 +117,8 @@ const SHAPES: ShapeConfig[] = [
     label: "Preparación",
     icon: (
       <div className="w-full h-10 relative flex items-center justify-center">
-        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          <polygon points="25%,2 75%,2 98%,50% 75%,98% 25%,98% 2%,50%" fill="transparent" stroke="#14b8a6" strokeWidth="2"/>
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <polygon points="25,2 75,2 98,50 75,98 25,98 2,50" fill="transparent" stroke="#14b8a6" strokeWidth="3"/>
         </svg>
         <span className="relative text-[8px] font-semibold text-teal-400 z-10">Preparación</span>
       </div>
@@ -185,10 +188,10 @@ function DecisionNode({ data, selected }: NodeProps) {
       <Handle type="source" position={Position.Top}    id="top"   className="!bg-amber-500 !w-2 !h-2 !border-0" />
       <div className="w-full h-full relative flex items-center justify-center"
         style={{ filter: selected ? "drop-shadow(0 0 4px #f59e0b)" : undefined }}>
-        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          <polygon points="50%,2 98%,50% 50%,98% 2%,50%" fill="transparent" stroke="#f59e0b" strokeWidth="2"/>
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <polygon points="50,2 98,50 50,98 2,50" fill="transparent" stroke="#f59e0b" strokeWidth="2.5"/>
         </svg>
-        <p className="relative text-[10px] font-semibold text-amber-400 text-center leading-tight px-4 z-10">{d.label}</p>
+        <p className="relative text-[10px] font-semibold text-amber-400 text-center leading-tight px-6 z-10">{d.label}</p>
       </div>
     </>
   );
@@ -205,10 +208,13 @@ function DocumentNode({ data, selected }: NodeProps) {
       <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-purple-500 !w-2 !h-2 !border-0" />
       <Handle type="source" position={Position.Left}   id="left"  className="!bg-purple-500 !w-2 !h-2 !border-0" />
       <Handle type="source" position={Position.Right}  id="right" className="!bg-purple-500 !w-2 !h-2 !border-0" />
-      <div className="w-full h-full border-2 border-purple-500 bg-transparent flex items-center justify-center px-2 py-1 relative"
-        style={{ borderRadius: "4px 4px 4px 4px", boxShadow: selected ? "0 0 0 1px #9333ea" : undefined }}>
-        <div className="absolute top-0 right-0 w-3 h-3 border-l-2 border-b-2 border-purple-500" />
-        <p className="text-[10px] font-semibold text-purple-300 text-center leading-tight">{d.label}</p>
+      <div className="w-full h-full relative flex items-center justify-center"
+        style={{ filter: selected ? "drop-shadow(0 0 4px #9333ea)" : undefined }}>
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <path d="M2,2 L78,2 L98,22 L98,98 L2,98 Z" fill="transparent" stroke="#9333ea" strokeWidth="2.5"/>
+          <polyline points="78,2 78,22 98,22" fill="transparent" stroke="#9333ea" strokeWidth="2"/>
+        </svg>
+        <p className="relative text-[10px] font-semibold text-purple-300 text-center leading-tight px-3 z-10">{d.label}</p>
       </div>
     </>
   );
@@ -227,8 +233,8 @@ function ParallelogramNode({ data, selected }: NodeProps) {
       <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-cyan-500 !w-2 !h-2 !border-0" />
       <div className="w-full h-full relative flex items-center justify-center"
         style={{ filter: selected ? "drop-shadow(0 0 4px #0ea5e9)" : undefined }}>
-        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          <polygon points="18%,2 98%,2 82%,98% 2%,98%" fill="transparent" stroke="#0ea5e9" strokeWidth="2"/>
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <polygon points="18,2 98,2 82,98 2,98" fill="transparent" stroke="#0ea5e9" strokeWidth="2.5"/>
         </svg>
         <p className="relative text-[10px] font-semibold text-cyan-400 text-center leading-tight px-4 z-10">{d.label}</p>
       </div>
@@ -249,10 +255,10 @@ function HexagonNode({ data, selected }: NodeProps) {
       <Handle type="source" position={Position.Bottom} id="bot"   className="!bg-teal-500 !w-2 !h-2 !border-0" />
       <div className="w-full h-full relative flex items-center justify-center"
         style={{ filter: selected ? "drop-shadow(0 0 4px #14b8a6)" : undefined }}>
-        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          <polygon points="25%,2 75%,2 98%,50% 75%,98% 25%,98% 2%,50%" fill="transparent" stroke="#14b8a6" strokeWidth="2"/>
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <polygon points="25,2 75,2 98,50 75,98 25,98 2,50" fill="transparent" stroke="#14b8a6" strokeWidth="2.5"/>
         </svg>
-        <p className="relative text-[10px] font-semibold text-teal-400 text-center leading-tight px-4 z-10">{d.label}</p>
+        <p className="relative text-[10px] font-semibold text-teal-400 text-center leading-tight px-6 z-10">{d.label}</p>
       </div>
     </>
   );
