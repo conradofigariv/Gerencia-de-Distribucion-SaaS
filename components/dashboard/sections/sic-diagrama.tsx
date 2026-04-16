@@ -12,9 +12,12 @@ import {
   ConnectionMode,
   ReactFlowProvider,
   useReactFlow,
+  BaseEdge,
+  EdgeLabelRenderer,
   type Node,
   type Edge,
   type NodeProps,
+  type EdgeProps,
   type Connection,
   Handle,
   Position,
@@ -546,6 +549,54 @@ function EdgeEditModal({ edgeId, initialType, initialCurvature, onSave, onClose 
   );
 }
 
+// ─── Bendable edge (draggable midpoint handle) ───────────────────────────────
+
+function BendableEdge({ id, sourceX, sourceY, targetX, targetY, style, markerEnd, data }: EdgeProps) {
+  const { setEdges, screenToFlowPosition } = useReactFlow();
+
+  const cpX = (data?.cpX as number | undefined) ?? (sourceX + targetX) / 2;
+  const cpY = (data?.cpY as number | undefined) ?? (sourceY + targetY) / 2;
+
+  const edgePath = `M${sourceX},${sourceY} Q${cpX},${cpY} ${targetX},${targetY}`;
+
+  const onHandleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const onMove = (mv: MouseEvent) => {
+      const pos = screenToFlowPosition({ x: mv.clientX, y: mv.clientY });
+      setEdges(es => es.map(edge =>
+        edge.id !== id ? edge : { ...edge, data: { ...(edge.data as Record<string, unknown> ?? {}), cpX: pos.x, cpY: pos.y } }
+      ));
+    };
+
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [id, screenToFlowPosition, setEdges]);
+
+  return (
+    <>
+      <BaseEdge path={edgePath} style={style} markerEnd={markerEnd} />
+      <EdgeLabelRenderer>
+        <div
+          style={{ position: "absolute", transform: `translate(-50%,-50%) translate(${cpX}px,${cpY}px)`, pointerEvents: "all" }}
+          className="nodrag nopan"
+          onMouseDown={onHandleMouseDown}
+        >
+          <div className="w-3 h-3 rounded-full bg-slate-500/80 border border-slate-300/50 cursor-grab active:cursor-grabbing hover:bg-slate-300 hover:scale-125 transition-all" />
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  );
+}
+
+const EDGE_TYPES_MAP = { default: BendableEdge };
+
 // ─── Edit responsables modal ──────────────────────────────────────────────────
 
 const PASO_LABELS: Record<string, string> = {
@@ -797,6 +848,7 @@ function SicDiagramaInner() {
             onNodeDoubleClick={onNodeDoubleClick}
             onEdgeDoubleClick={onEdgeDoubleClick}
             nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES_MAP}
             connectionMode={ConnectionMode.Loose}
             defaultEdgeOptions={{
               style: { stroke: "#6b7280", strokeWidth: 1.5 },
