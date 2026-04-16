@@ -537,7 +537,7 @@ function EdgeEditModal({ edgeId, initialType, initialLabel, onSave, onClose }: E
 
 // ─── Bendable edge (draggable midpoint handle) ───────────────────────────────
 
-function BendableEdge({ id, sourceX, sourceY, targetX, targetY, style, markerEnd, data, selected }: EdgeProps) {
+function BendableEdge({ id, sourceX, sourceY, targetX, targetY, style, markerEnd, data, selected, label, labelStyle, labelBgStyle, labelBgPadding, labelBgBorderRadius }: EdgeProps) {
   const { setEdges, screenToFlowPosition } = useReactFlow();
 
   const lineStyle = (data?.lineStyle as string | undefined) ?? "bezier";
@@ -556,6 +556,10 @@ function BendableEdge({ id, sourceX, sourceY, targetX, targetY, style, markerEnd
     : isStraight
     ? `M${sourceX},${sourceY} L${targetX},${targetY}`
     : `M${sourceX},${sourceY} Q${cpX},${cpY} ${targetX},${targetY}`;
+
+  // Label midpoint
+  const labelX = isStep ? (sourceX + targetX) / 2 : isStraight ? (sourceX + targetX) / 2 : 0.25 * sourceX + 0.5 * cpX + 0.25 * targetX;
+  const labelY = isStep ? bridgeY : isStraight ? (sourceY + targetY) / 2 : 0.25 * sourceY + 0.5 * cpY + 0.25 * targetY;
 
   const startDrag = useCallback((update: (x: number, y: number) => Record<string, unknown>) => (e: React.MouseEvent) => {
     e.stopPropagation(); e.preventDefault();
@@ -584,7 +588,12 @@ function BendableEdge({ id, sourceX, sourceY, targetX, targetY, style, markerEnd
 
   return (
     <>
-      <BaseEdge path={edgePath} style={style} markerEnd={markerEnd} />
+      <BaseEdge path={edgePath} style={style} markerEnd={markerEnd}
+        label={label} labelX={labelX} labelY={labelY}
+        labelStyle={labelStyle} labelBgStyle={labelBgStyle}
+        labelBgPadding={labelBgPadding} labelBgBorderRadius={labelBgBorderRadius}
+        labelShowBg={!!label}
+      />
       {selected && !isStraight && (
         <EdgeLabelRenderer>
           {isStep
