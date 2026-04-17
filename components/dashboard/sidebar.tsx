@@ -22,6 +22,8 @@ import {
   ChevronDown,
   Network,
   GitMerge,
+  Zap,
+  ImagePlus,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 
@@ -64,6 +66,17 @@ const navItems: NavItemDef[] = [
   },
   {
     kind: "group",
+    id: "transformadores",
+    label: "Stock de Transformadores",
+    icon: Zap,
+    children: [
+      { id: "transformadores-carga",   label: "Carga de datos", icon: ImagePlus },
+      { id: "transformadores-tabla",   label: "Tabla",          icon: Table2 },
+      { id: "transformadores-resumen", label: "Resumen",        icon: LayoutGrid },
+    ],
+  },
+  {
+    kind: "group",
     id: "sic",
     label: "Proceso SIC - SIGA",
     icon: Network,
@@ -89,6 +102,12 @@ const SERVICIOS_SECTIONS: Section[] = [
 
 const SIC_SECTIONS: Section[] = ["sic-diagrama"];
 
+const TRANSFORMADORES_SECTIONS: Section[] = [
+  "transformadores-carga",
+  "transformadores-tabla",
+  "transformadores-resumen",
+];
+
 export function Sidebar({
   activeSection,
   onSectionChange,
@@ -96,8 +115,9 @@ export function Sidebar({
   onCollapsedChange,
 }: SidebarProps) {
   const initialGroups = [
-    ...(SERVICIOS_SECTIONS.includes(activeSection) ? ["servicios"] : []),
-    ...(SIC_SECTIONS.includes(activeSection)       ? ["sic"]       : []),
+    ...(SERVICIOS_SECTIONS.includes(activeSection)      ? ["servicios"]      : []),
+    ...(SIC_SECTIONS.includes(activeSection)            ? ["sic"]            : []),
+    ...(TRANSFORMADORES_SECTIONS.includes(activeSection)? ["transformadores"] : []),
   ];
   const [expandedGroups, setExpandedGroups] = useState<string[]>(initialGroups);
 
@@ -108,6 +128,9 @@ export function Sidebar({
     }
     if (SIC_SECTIONS.includes(activeSection)) {
       setExpandedGroups((prev) => prev.includes("sic") ? prev : [...prev, "sic"]);
+    }
+    if (TRANSFORMADORES_SECTIONS.includes(activeSection)) {
+      setExpandedGroups((prev) => prev.includes("transformadores") ? prev : [...prev, "transformadores"]);
     }
   }, [activeSection]);
 
