@@ -92,8 +92,9 @@ function TotalRow({ label, span, values }: { label: string; span?: number; value
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function TransformadoresCargaSection() {
-  const [fecha, setFecha]           = useState(() => new Date().toISOString().split("T")[0]);
+  const fecha                       = new Date().toISOString().split("T")[0];
   const [archivo, setArchivo]       = useState<File | null>(null);
+  const [dragging, setDragging]     = useState(false);
   const [terceros, setTerceros]     = useState<Record<number, TrafoRow>>(init13Trafo);
   const [taller, setTaller]         = useState<Record<number, TallerRow>>(init13Taller);
   const [autorizados, setAutorizados] = useState<Record<number, number>>(init13Auto);
@@ -197,49 +198,56 @@ export function TransformadoresCargaSection() {
   return (
     <div className="space-y-4">
 
-      {/* ── Header bar ── */}
-      <div className="bg-card border border-border rounded-xl px-5 py-3 shadow-sm flex flex-wrap gap-4 items-end">
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Fecha</label>
-          <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
-            className="h-8 px-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:border-accent transition-colors" />
-        </div>
-        <div className="flex-1 min-w-[200px]">
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Archivo de referencia (imagen / PDF)</label>
-          {archivo ? (
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center gap-2 h-8 px-2.5 rounded-lg bg-secondary border border-border">
-                {analyzing
-                  ? <Loader2 className="w-4 h-4 text-accent shrink-0 animate-spin" />
-                  : <FileText className="w-4 h-4 text-accent shrink-0" />
-                }
-                <span className="truncate flex-1 text-xs text-foreground">{archivo.name}</span>
-                {analyzing
-                  ? <span className="text-[10px] text-accent whitespace-nowrap">Analizando…</span>
-                  : <button onClick={() => { setArchivo(null); if (fileRef.current) fileRef.current.value = ""; }}>
-                      <X className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
-                    </button>
-                }
-              </div>
-              {!analyzing && (
+      {/* ── Drop zone ── */}
+      {archivo ? (
+        <div className="bg-card border border-border rounded-xl px-5 py-3 shadow-sm flex items-center gap-3">
+          {analyzing
+            ? <Loader2 className="w-5 h-5 text-accent shrink-0 animate-spin" />
+            : <FileText className="w-5 h-5 text-accent shrink-0" />
+          }
+          <span className="flex-1 text-sm text-foreground truncate">{archivo.name}</span>
+          {analyzing
+            ? <span className="text-xs text-accent whitespace-nowrap">Analizando con IA…</span>
+            : <>
                 <button
                   onClick={() => analyzeFile(archivo)}
-                  className="flex items-center gap-1.5 text-[10px] text-accent hover:underline"
+                  className="flex items-center gap-1.5 text-xs text-accent hover:underline whitespace-nowrap"
                 >
-                  <Sparkles className="w-3 h-3" /> Volver a analizar con IA
+                  <Sparkles className="w-3.5 h-3.5" /> Volver a analizar
                 </button>
-              )}
-            </div>
-          ) : (
-            <button onClick={() => fileRef.current?.click()}
-              className="flex items-center gap-2 h-8 px-3 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:border-accent hover:text-accent transition-colors w-full">
-              <UploadCloud className="w-4 h-4 shrink-0" /> Adjuntar archivo…
-            </button>
-          )}
-          <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) handleFileChange(f); }} />
+                <button onClick={() => { setArchivo(null); if (fileRef.current) fileRef.current.value = ""; }}
+                  className="ml-1 text-muted-foreground hover:text-foreground transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              </>
+          }
         </div>
-      </div>
+      ) : (
+        <div
+          onClick={() => fileRef.current?.click()}
+          onDragOver={e => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={e => {
+            e.preventDefault();
+            setDragging(false);
+            const f = e.dataTransfer.files?.[0];
+            if (f) handleFileChange(f);
+          }}
+          className={`cursor-pointer rounded-xl border-2 border-dashed px-6 py-10 flex flex-col items-center gap-3 transition-colors ${
+            dragging ? "border-accent bg-accent/10" : "border-border hover:border-accent hover:bg-accent/5"
+          }`}
+        >
+          <UploadCloud className={`w-10 h-10 transition-colors ${dragging ? "text-accent" : "text-muted-foreground"}`} />
+          <div className="text-center">
+            <p className="text-sm font-medium text-foreground">
+              {dragging ? "Soltá el archivo aquí" : "Arrastrá la planilla o hacé clic para buscarla"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">Imagen (JPG, PNG) o PDF</p>
+          </div>
+        </div>
+      )}
+      <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleFileChange(f); }} />
 
       {/* ── Planilla ── */}
       <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
