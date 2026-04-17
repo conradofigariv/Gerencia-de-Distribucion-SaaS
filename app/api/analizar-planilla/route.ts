@@ -97,26 +97,29 @@ export async function POST(req: NextRequest) {
       ],
     }];
 
-    // Only gemini-2.5-flash has free-tier quota (5 RPM). Retry up to 3x on 503.
+    // gemini-2.5-flash: 5 RPM free tier. gemma-3-4b: 30 RPM free tier (fallback).
+    const MODELS = ["gemini-2.5-flash", "gemma-3-4b-it"];
     let result;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        result = await ai.models.generateContent({ model: "gemini-2.5-flash", contents });
-        break;
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "";
-        const isOverload = msg.includes("503") || msg.includes("UNAVAILABLE");
-        if (isOverload && attempt < 3) {
-          await new Promise(r => setTimeout(r, attempt * 3000));
-          continue;
+    for (const model of MODELS) {
+      let attempted = false;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          result = await ai.models.generateContent({ model, contents });
+          attempted = true;
+          break;
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : "";
+          const isOverload = msg.includes("503") || msg.includes("UNAVAILABLE");
+          if (isOverload && attempt < 2) {
+            await new Promise(r => setTimeout(r, 3000));
+            continue;
+          }
+          break; // quota or other error → try next model
         }
-        if (msg.includes("429") || msg.includes("quota") || msg.includes("RESOURCE_EXHAUSTED")) {
-          throw new Error("Cuota de Gemini agotada. Intentá en unos minutos o activá billing en Google Cloud.");
-        }
-        throw e;
       }
+      if (attempted && result) break;
     }
-    if (!result) throw new Error("El servidor de Gemini está saturado, intentá en unos minutos.");
+    if (!result) throw new Error("Gemini no disponible ahora. Intentá en unos minutos.");
 
     const text  = result?.text ?? "";
     const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
