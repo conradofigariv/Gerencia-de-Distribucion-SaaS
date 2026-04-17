@@ -123,10 +123,17 @@ export function TransformadoresCargaSection() {
 
       const d = json.datos;
       // Merge into state — keep existing structure, overwrite with extracted values
-      if (d.terceros)   setTerceros(prev => mergeMap(prev, d.terceros, POT_13));
-      if (d.taller)     setTaller(prev => mergeTaller(prev, d.taller, POT_13));
-      if (d.autorizados) setAutorizados(prev => mergeMap(prev, d.autorizados, POT_13));
-      if (d.rel33)      setRel33(prev => mergeMap(prev, d.rel33, POT_33));
+      if (d.terceros)    setTerceros(prev => mergeMap(prev, d.terceros, POT_13));
+      if (d.taller)      setTaller(prev => mergeTaller(prev, d.taller, POT_13));
+      if (d.autorizados) setAutorizados(prev => {
+        const next = { ...prev };
+        for (const p of POT_13) {
+          const val = d.autorizados[p] ?? d.autorizados[String(p)];
+          if (typeof val === "number") next[p] = val;
+        }
+        return next;
+      });
+      if (d.rel33)       setRel33(prev => mergeMap(prev, d.rel33, POT_33));
       if (d.obs)        setObs(d.obs);
       if (d.pend)       setPend(d.pend);
 
