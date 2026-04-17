@@ -97,34 +97,21 @@ export async function POST(req: NextRequest) {
       ],
     }];
 
-    // gemini-2.5-flash: 5 RPM. gemma-3-4b-it / gemma-3-4b: 30 RPM fallbacks.
-    const MODELS = ["gemini-2.5-flash", "gemma-3-4b-it", "gemma-3-4b"];
-    const errors: string[] = [];
     let result;
-
-    for (const model of MODELS) {
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          result = await ai.models.generateContent({ model, contents });
-          break;
-        } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : String(e);
-          const isOverload = msg.includes("503") || msg.includes("UNAVAILABLE");
-          if (isOverload && attempt < 2) {
-            await new Promise(r => setTimeout(r, 3000));
-            continue;
-          }
-          errors.push(`[${model}] ${msg.slice(0, 120)}`);
-          break;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        result = await ai.models.generateContent({ model: "gemini-2.5-flash", contents });
+        break;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if ((msg.includes("503") || msg.includes("UNAVAILABLE")) && attempt < 3) {
+          await new Promise(r => setTimeout(r, attempt * 3000));
+          continue;
         }
+        throw e;
       }
-      if (result) break;
     }
-
-    if (!result) {
-      console.error("All models failed:\n" + errors.join("\n"));
-      throw new Error("No se pudo analizar. Errores:\n" + errors.map(e => `• ${e}`).join("\n"));
-    }
+    if (!result) throw new Error("Gemini no disponible, intentá en unos minutos.");
 
     const text  = result?.text ?? "";
     const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
