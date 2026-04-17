@@ -1,12 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk";
-import type { ImageBlockParam, Base64PDFSource } from "@anthropic-ai/sdk/resources/messages";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest, NextResponse } from "next/server";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-const SYSTEM_PROMPT = `Eres un asistente experto en extracción de datos de planillas de transformadores eléctricos.
-Cuando recibas una imagen o PDF de una planilla "RESERVA DE TRANSFORMADORES DE DISTRIBUCIÓN",
-extrae todos los valores numéricos y devuelve ÚNICAMENTE un JSON válido, sin texto adicional, con exactamente esta estructura:
+const PROMPT = `Analiza esta planilla de reserva de transformadores y extrae todos los datos numéricos.
+Devuelve ÚNICAMENTE un JSON válido, sin texto adicional ni markdown, con exactamente esta estructura:
 
 {
   "terceros": {
@@ -65,18 +61,18 @@ extrae todos los valores numéricos y devuelve ÚNICAMENTE un JSON válido, sin 
 }
 
 Reglas:
-- "t" = columna T (trifásico), "m" = columna M (monofásico), "ct" = columna "CON TANQUE"
-- "tipo" en taller = "RURAL" si corresponde, o "" si está vacío
-- "tN"/"mN" = trafos nuevos T/M en relación 33kV; "tR"/"mR" = reparados T/M
-- "autorizados" = columna "Autorizados Pendiente de Retiro" del resumen
-- Todos los valores faltantes o ilegibles = 0
-- "obs" y "pend" = texto de las secciones Observaciones y Pendientes
-- Devuelve SOLO el JSON, sin markdown, sin explicaciones`;
+- Tabla izquierda "NUEVOS Y REPARADOS POR TERCEROS": columnas T, M, CON TANQUE → campos t, m, ct
+- Tabla central "REPARADOS POR TALLER": columna TIPO (RURAL o vacío), T, M, CON TANQUE → tipo, t, m, ct
+- Tabla derecha resumen: columna "Autorizados Pendiente de Retiro" → autorizados
+- Tabla inferior izquierda "RELACIÓN 33/0,4 KV": TRAFOS NUEVOS T/M → tN/mN; TRAFOS REPARADOS T/M → tR/mR
+- Sección OBSERVACIONES → obs; sección PENDIENTES → pend
+- Valores en blanco o ilegibles = 0
+- Devuelve SOLO el JSON puro, sin bloques de código`;
 
 export async function POST(req: NextRequest) {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!process.env.GEMINI_API_KEY) {
     return NextResponse.json(
-      { error: "ANTHROPIC_API_KEY no configurada en .env.local" },
+      { error: "GEMINI_API_KEY no configurada en .env.local" },
       { status: 500 }
     );
   }
@@ -88,47 +84,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No se recibió ningún archivo" }, { status: 400 });
     }
 
-    const bytes   = await file.arrayBuffer();
-    const base64  = Buffer.from(bytes).toString("base64");
-    const isPdf   = file.type === "application/pdf";
+    const bytes  = await file.arrayBuffer();
+    const base64 = Buffer.from(bytes).toString("base64");
 
-    // Build content block depending on file type
-    const VALID_IMG = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
-    type ValidImg = (typeof VALID_IMG)[number];
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-    const fileBlock = isPdf
-      ? ({
-          type:   "document",
-          source: { type: "base64", media_type: "application/pdf", data: base64 } as Base64PDFSource,
-        } as const)
-      : ({
-          type:   "image",
-          source: {
-            type:       "base64",
-            media_type: (VALID_IMG.includes(file.type as ValidImg) ? file.type : "image/jpeg") as ValidImg,
-            data:       base64,
-          },
-        } satisfies ImageBlockParam);
+    const result = await model.generateContent([
+      { inlineData: { data: base64, mimeType: file.type } },
+      PROMPT,
+    ]);
 
-    const response = await client.messages.create({
-      model:      "claude-opus-4-7",
-      max_tokens: 2048,
-      system:     SYSTEM_PROMPT,
-      messages: [{
-        role: "user",
-        content: [
-          fileBlock,
-          { type: "text", text: "Extrae todos los datos de esta planilla y devuelve el JSON." },
-        ],
-      }],
-    });
-
-    const text = response.content
-      .filter(b => b.type === "text")
-      .map(b => (b as { type: "text"; text: string }).text)
-      .join("");
-
-    // Strip possible markdown code fences
+    const text  = result.response.text();
     const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
     const datos = JSON.parse(clean);
 
