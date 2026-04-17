@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { NextRequest, NextResponse } from "next/server";
 
 const PROMPT = `Analiza esta planilla de reserva de transformadores y extrae todos los datos numéricos.
@@ -87,15 +87,20 @@ export async function POST(req: NextRequest) {
     const bytes  = await file.arrayBuffer();
     const base64 = Buffer.from(bytes).toString("base64");
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-    const result = await model.generateContent([
-      { inlineData: { data: base64, mimeType: file.type } },
-      PROMPT,
-    ]);
+    const result = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{
+        role: "user",
+        parts: [
+          { inlineData: { data: base64, mimeType: file.type } },
+          { text: PROMPT },
+        ],
+      }],
+    });
 
-    const text  = result.response.text();
+    const text  = result.text ?? "";
     const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
     const datos = JSON.parse(clean);
 
