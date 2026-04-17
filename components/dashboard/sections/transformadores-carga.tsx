@@ -3,7 +3,7 @@
 import React, { useState, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
-import { UploadCloud, FileText, X, Loader2, CheckCircle2 } from "lucide-react";
+import { UploadCloud, FileText, X, Loader2, CheckCircle2, Sparkles } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -19,6 +19,28 @@ interface Rel33Row  { tN: number; mN: number; tR: number; mR: number }
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const sum = (r: TrafoRow) => r.t + r.m + r.ct;
+
+// Merge extracted data (keyed by string) back into state (keyed by number)
+function mergeMap<T>(prev: Record<number, T>, extracted: Record<string, T>, keys: number[]): Record<number, T> {
+  const next = { ...prev };
+  for (const p of keys) {
+    const val = extracted[p] ?? extracted[String(p)];
+    if (val !== undefined) next[p] = { ...prev[p], ...val } as T;
+  }
+  return next;
+}
+function mergeTaller(
+  prev: Record<number, TallerRow>,
+  extracted: Record<string, Partial<TallerRow>>,
+  keys: number[]
+): Record<number, TallerRow> {
+  const next = { ...prev };
+  for (const p of keys) {
+    const val = extracted[p] ?? extracted[String(p)];
+    if (val !== undefined) next[p] = { ...prev[p], ...val };
+  }
+  return next;
+}
 
 function init13Trafo()  { return Object.fromEntries(POT_13.map(p => [p, { t: 0, m: 0, ct: 0  }])) as Record<number, TrafoRow>; }
 function init13Taller() { return Object.fromEntries(POT_13.map(p => [p, { tipo: "", t: 0, m: 0, ct: 0 }])) as Record<number, TallerRow>; }
@@ -79,7 +101,41 @@ export function TransformadoresCargaSection() {
   const [obs, setObs]               = useState("");
   const [pend, setPend]             = useState("");
   const [saving, setSaving]         = useState(false);
+  const [analyzing, setAnalyzing]   = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // ── File selection + auto-analyze ───────────────────────────────────────────
+
+  const handleFileChange = async (file: File) => {
+    setArchivo(file);
+    await analyzeFile(file);
+  };
+
+  const analyzeFile = async (file: File) => {
+    setAnalyzing(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/analizar-planilla", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Error al analizar");
+
+      const d = json.datos;
+      // Merge into state — keep existing structure, overwrite with extracted values
+      if (d.terceros)   setTerceros(prev => mergeMap(prev, d.terceros, POT_13));
+      if (d.taller)     setTaller(prev => mergeTaller(prev, d.taller, POT_13));
+      if (d.autorizados) setAutorizados(prev => mergeMap(prev, d.autorizados, POT_13));
+      if (d.rel33)      setRel33(prev => mergeMap(prev, d.rel33, POT_33));
+      if (d.obs)        setObs(d.obs);
+      if (d.pend)       setPend(d.pend);
+
+      toast.success("Planilla analizada y datos cargados automáticamente");
+    } catch (err: unknown) {
+      toast.error((err as Error).message ?? "No se pudo analizar el archivo");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   // ── Updaters ────────────────────────────────────────────────────────────────
 
@@ -151,12 +207,28 @@ export function TransformadoresCargaSection() {
         <div className="flex-1 min-w-[200px]">
           <label className="block text-xs font-medium text-muted-foreground mb-1">Archivo de referencia (imagen / PDF)</label>
           {archivo ? (
-            <div className="flex items-center gap-2 h-8 px-2.5 rounded-lg bg-secondary border border-border">
-              <FileText className="w-4 h-4 text-accent shrink-0" />
-              <span className="truncate flex-1 text-xs text-foreground">{archivo.name}</span>
-              <button onClick={() => { setArchivo(null); if (fileRef.current) fileRef.current.value = ""; }}>
-                <X className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
-              </button>
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2 h-8 px-2.5 rounded-lg bg-secondary border border-border">
+                {analyzing
+                  ? <Loader2 className="w-4 h-4 text-accent shrink-0 animate-spin" />
+                  : <FileText className="w-4 h-4 text-accent shrink-0" />
+                }
+                <span className="truncate flex-1 text-xs text-foreground">{archivo.name}</span>
+                {analyzing
+                  ? <span className="text-[10px] text-accent whitespace-nowrap">Analizando…</span>
+                  : <button onClick={() => { setArchivo(null); if (fileRef.current) fileRef.current.value = ""; }}>
+                      <X className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+                    </button>
+                }
+              </div>
+              {!analyzing && (
+                <button
+                  onClick={() => analyzeFile(archivo)}
+                  className="flex items-center gap-1.5 text-[10px] text-accent hover:underline"
+                >
+                  <Sparkles className="w-3 h-3" /> Volver a analizar con IA
+                </button>
+              )}
             </div>
           ) : (
             <button onClick={() => fileRef.current?.click()}
@@ -165,7 +237,7 @@ export function TransformadoresCargaSection() {
             </button>
           )}
           <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden"
-            onChange={e => setArchivo(e.target.files?.[0] ?? null)} />
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFileChange(f); }} />
         </div>
       </div>
 
