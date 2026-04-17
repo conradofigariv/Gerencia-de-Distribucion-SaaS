@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-    const result = await ai.models.generateContent({
+    const payload = {
       model: "gemini-2.5-flash",
       contents: [{
         role: "user",
@@ -98,9 +98,25 @@ export async function POST(req: NextRequest) {
           { text: PROMPT },
         ],
       }],
-    });
+    };
 
-    const text  = result.text ?? "";
+    // Retry up to 3 times on 503 overload
+    let result;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        result = await ai.models.generateContent(payload);
+        break;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "";
+        if (attempt < 3 && (msg.includes("503") || msg.includes("UNAVAILABLE"))) {
+          await new Promise(r => setTimeout(r, attempt * 2000));
+        } else {
+          throw e;
+        }
+      }
+    }
+
+    const text  = result?.text ?? "";
     const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
     const datos = JSON.parse(clean);
 
