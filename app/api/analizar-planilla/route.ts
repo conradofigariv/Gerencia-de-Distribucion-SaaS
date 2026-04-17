@@ -89,32 +89,39 @@ export async function POST(req: NextRequest) {
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-    const payload = {
-      model: "gemini-2.5-flash",
-      contents: [{
-        role: "user",
-        parts: [
-          { inlineData: { data: base64, mimeType: file.type } },
-          { text: PROMPT },
-        ],
-      }],
-    };
+    const contents = [{
+      role: "user",
+      parts: [
+        { inlineData: { data: base64, mimeType: file.type } },
+        { text: PROMPT },
+      ],
+    }];
 
-    // Retry up to 3 times on 503 overload
+    const MODELS = [
+      "gemini-2.5-flash",
+      "gemini-2.5-pro",
+      "gemini-2.0-flash",
+      "gemini-2.0-flash-lite",
+    ];
+
     let result;
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    let lastError: Error | null = null;
+
+    for (const model of MODELS) {
       try {
-        result = await ai.models.generateContent(payload);
+        result = await ai.models.generateContent({ model, contents });
         break;
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "";
-        if (attempt < 3 && (msg.includes("503") || msg.includes("UNAVAILABLE"))) {
-          await new Promise(r => setTimeout(r, attempt * 2000));
-        } else {
-          throw e;
+        lastError = e instanceof Error ? e : new Error(msg);
+        if (msg.includes("503") || msg.includes("UNAVAILABLE") || msg.includes("429")) {
+          continue; // try next model
         }
+        throw e; // non-overload error — stop immediately
       }
     }
+
+    if (!result) throw lastError ?? new Error("Todos los modelos están saturados, intentá en unos minutos");
 
     const text  = result?.text ?? "";
     const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
