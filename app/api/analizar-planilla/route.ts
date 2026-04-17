@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 
 const PROMPT = `Analiza esta planilla de reserva de transformadores y extrae todos los datos numéricos.
@@ -70,9 +70,9 @@ Reglas:
 - Devuelve SOLO el JSON puro, sin bloques de código`;
 
 export async function POST(req: NextRequest) {
-  if (!process.env.GEMINI_API_KEY) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
-      { error: "GEMINI_API_KEY no configurada en .env.local" },
+      { error: "ANTHROPIC_API_KEY no configurada en .env.local" },
       { status: 500 }
     );
   }
@@ -84,36 +84,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No se recibió ningún archivo" }, { status: 400 });
     }
 
-    const bytes  = await file.arrayBuffer();
+    const bytes = await file.arrayBuffer();
     const base64 = Buffer.from(bytes).toString("base64");
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-    const contents = [{
-      role: "user",
-      parts: [
-        { inlineData: { data: base64, mimeType: file.type } },
-        { text: PROMPT },
-      ],
-    }];
-
-    let result;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        result = await ai.models.generateContent({ model: "gemini-2.5-flash", contents });
-        break;
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        if ((msg.includes("503") || msg.includes("UNAVAILABLE")) && attempt < 3) {
-          await new Promise(r => setTimeout(r, attempt * 3000));
-          continue;
-        }
-        throw e;
-      }
+    // Claude API only supports images, not PDFs
+    const validImageTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    if (!validImageTypes.includes(file.type)) {
+      return NextResponse.json(
+        { error: "Solo se aceptan imágenes (JPG, PNG, GIF, WEBP). Los PDFs deben convertirse a imagen primero." },
+        { status: 400 }
+      );
     }
-    if (!result) throw new Error("Gemini no disponible, intentá en unos minutos.");
+    const mediaType = file.type as "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 
-    const text  = result?.text ?? "";
+    const client = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
+
+    const response = await client.messages.create({
+      model: "claude-opus-4-7",
+      max_tokens: 2048,
+      messages: [{
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: mediaType,
+              data: base64,
+            },
+          },
+          {
+            type: "text",
+            text: PROMPT,
+          },
+        ],
+      }],
+    });
+
+    const text = response.content
+      .filter(b => b.type === "text")
+      .map(b => (b as { type: "text"; text: string }).text)
+      .join("");
+
     const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
     const datos = JSON.parse(clean);
 
