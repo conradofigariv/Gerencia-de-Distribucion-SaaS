@@ -97,31 +97,26 @@ export async function POST(req: NextRequest) {
       ],
     }];
 
-    const MODELS = [
-      "gemini-2.5-flash",
-      "gemini-2.5-pro",
-      "gemini-2.0-flash",
-      "gemini-2.0-flash-lite",
-    ];
-
+    // Only gemini-2.5-flash has free-tier quota (5 RPM). Retry up to 3x on 503.
     let result;
-    let lastError: Error | null = null;
-
-    for (const model of MODELS) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        result = await ai.models.generateContent({ model, contents });
+        result = await ai.models.generateContent({ model: "gemini-2.5-flash", contents });
         break;
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "";
-        lastError = e instanceof Error ? e : new Error(msg);
-        if (msg.includes("503") || msg.includes("UNAVAILABLE") || msg.includes("429")) {
-          continue; // try next model
+        const isOverload = msg.includes("503") || msg.includes("UNAVAILABLE");
+        if (isOverload && attempt < 3) {
+          await new Promise(r => setTimeout(r, attempt * 3000));
+          continue;
         }
-        throw e; // non-overload error — stop immediately
+        if (msg.includes("429") || msg.includes("quota") || msg.includes("RESOURCE_EXHAUSTED")) {
+          throw new Error("Cuota de Gemini agotada. Intentá en unos minutos o activá billing en Google Cloud.");
+        }
+        throw e;
       }
     }
-
-    if (!result) throw lastError ?? new Error("Todos los modelos están saturados, intentá en unos minutos");
+    if (!result) throw new Error("El servidor de Gemini está saturado, intentá en unos minutos.");
 
     const text  = result?.text ?? "";
     const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
