@@ -162,7 +162,7 @@ function NodeHandles({ color }: { color: string }) {
 
 function NodeContent({ d, color, days }: { d: PasoData; color: string; days: string | null }) {
   return (<>
-    <p className="text-[11px] font-semibold leading-tight" style={{ color }}>{d.label}</p>
+    <p className="text-[11px] font-semibold leading-tight text-center w-full" style={{ color }}>{d.label}</p>
     {d.responsables && d.responsables.length > 0 && (
       <div className="mt-0.5 flex items-center gap-1">
         <Users className="w-2.5 h-2.5 shrink-0" style={{ color }}/>
