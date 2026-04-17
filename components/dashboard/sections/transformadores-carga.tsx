@@ -1,83 +1,134 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
-import {
-  UploadCloud, X, ImagePlus, Loader2, CheckCircle2, FileImage,
-} from "lucide-react";
+import { UploadCloud, FileText, X, Loader2, CheckCircle2 } from "lucide-react";
 
-interface TransformadorRow {
-  id:         string;
-  numero:     string;
-  tipo:       string;
-  potencia:   string;
-  tension:    string;
-  estado:     string;
-  ubicacion:  string;
-  imagen_url: string | null;
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const POT_13 = [5, 10, 16, 25, 50, 63, 80, 100, 125, 160, 200, 250, 315, 500, 630, 800, 1000];
+const POT_33 = [25, 63, 160, 315, 500, 630];
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface TrafoRow  { t: number; m: number; ct: number }          // ct = con tanque
+interface TallerRow { tipo: string; t: number; m: number; ct: number }
+interface Rel33Row  { tN: number; mN: number; tR: number; mR: number }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const sum = (r: TrafoRow) => r.t + r.m + r.ct;
+
+function init13Trafo()  { return Object.fromEntries(POT_13.map(p => [p, { t: 0, m: 0, ct: 0  }])) as Record<number, TrafoRow>; }
+function init13Taller() { return Object.fromEntries(POT_13.map(p => [p, { tipo: "", t: 0, m: 0, ct: 0 }])) as Record<number, TallerRow>; }
+function init13Auto()   { return Object.fromEntries(POT_13.map(p => [p, 0])) as Record<number, number>; }
+function init33()       { return Object.fromEntries(POT_33.map(p => [p, { tN: 0, mN: 0, tR: 0, mR: 0 }])) as Record<number, Rel33Row>; }
+
+// ─── Micro-components ─────────────────────────────────────────────────────────
+
+function NI({ val, onChange }: { val: number; onChange: (v: number) => void }) {
+  return (
+    <input
+      type="number" min={0}
+      value={val === 0 ? "" : val}
+      placeholder="—"
+      onChange={e => onChange(Math.max(0, parseInt(e.target.value) || 0))}
+      className="w-11 h-6 text-center rounded border border-border bg-background text-xs text-foreground focus:outline-none focus:border-accent transition-colors"
+    />
+  );
 }
 
+function TH({ c, rs, cs, children }: { c?: string; rs?: number; cs?: number; children: React.ReactNode }) {
+  return (
+    <th rowSpan={rs} colSpan={cs}
+      className={`px-1 py-1.5 text-[9px] font-bold text-muted-foreground border border-border bg-secondary/60 uppercase tracking-wide leading-tight ${c ?? ""}`}>
+      {children}
+    </th>
+  );
+}
+
+function TD({ c, children }: { c?: string; children: React.ReactNode }) {
+  return (
+    <td className={`px-1 py-[3px] text-xs border border-border text-center ${c ?? ""}`}>
+      {children}
+    </td>
+  );
+}
+
+function TotalRow({ label, span, values }: { label: string; span?: number; values: (string | number | React.ReactNode)[] }) {
+  return (
+    <tr className="bg-secondary/60 font-bold">
+      <td colSpan={span ?? 1} className="px-1 py-1 border border-border text-[10px] font-bold text-foreground text-center">{label}</td>
+      {values.map((v, i) => (
+        <td key={i} className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{v || "—"}</td>
+      ))}
+    </tr>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export function TransformadoresCargaSection() {
-  const [form, setForm] = useState<Omit<TransformadorRow, "id" | "imagen_url">>({
-    numero:   "",
-    tipo:     "",
-    potencia: "",
-    tension:  "",
-    estado:   "Disponible",
-    ubicacion:"",
-  });
-  const [imageFile, setImageFile]   = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [fecha, setFecha]           = useState(() => new Date().toISOString().split("T")[0]);
+  const [archivo, setArchivo]       = useState<File | null>(null);
+  const [terceros, setTerceros]     = useState<Record<number, TrafoRow>>(init13Trafo);
+  const [taller, setTaller]         = useState<Record<number, TallerRow>>(init13Taller);
+  const [autorizados, setAutorizados] = useState<Record<number, number>>(init13Auto);
+  const [rel33, setRel33]           = useState<Record<number, Rel33Row>>(init33);
+  const [obs, setObs]               = useState("");
+  const [pend, setPend]             = useState("");
   const [saving, setSaving]         = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast.error("Solo se permiten imágenes");
-      return;
-    }
-    setImageFile(file);
-    const reader = new FileReader();
-    reader.onloadend = () => setImagePreview(reader.result as string);
-    reader.readAsDataURL(file);
-  };
+  // ── Updaters ────────────────────────────────────────────────────────────────
 
-  const clearImage = () => {
-    setImageFile(null);
-    setImagePreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
+  const setT = (p: number, f: keyof TrafoRow, v: number) =>
+    setTerceros(prev => ({ ...prev, [p]: { ...prev[p], [f]: v } }));
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.numero.trim()) { toast.error("El número de transformador es requerido"); return; }
+  const setTAStr = (p: number, v: string) =>
+    setTaller(prev => ({ ...prev, [p]: { ...prev[p], tipo: v } }));
+
+  const setTANum = (p: number, f: keyof Omit<TallerRow, "tipo">, v: number) =>
+    setTaller(prev => ({ ...prev, [p]: { ...prev[p], [f]: v } }));
+
+  const setAuto = (p: number, v: number) =>
+    setAutorizados(prev => ({ ...prev, [p]: v }));
+
+  const setR = (p: number, f: keyof Rel33Row, v: number) =>
+    setRel33(prev => ({ ...prev, [p]: { ...prev[p], [f]: v } }));
+
+  // ── Computed totals ─────────────────────────────────────────────────────────
+
+  const totTerceros = POT_13.reduce((s, p) => s + sum(terceros[p]), 0);
+  const totTaller   = POT_13.reduce((s, p) => s + sum(taller[p]), 0);
+  const totGeneral  = totTerceros + totTaller;
+  const totAuto     = POT_13.reduce((s, p) => s + autorizados[p], 0);
+  const totDisp     = totGeneral - totAuto;
+  const tot33N      = POT_33.reduce((s, p) => s + rel33[p].tN + rel33[p].mN, 0);
+  const tot33R      = POT_33.reduce((s, p) => s + rel33[p].tR + rel33[p].mR, 0);
+
+  // ── Save ────────────────────────────────────────────────────────────────────
+
+  const handleSave = async () => {
     setSaving(true);
     try {
-      let imagen_url: string | null = null;
-
-      if (imageFile) {
-        const ext = imageFile.name.split(".").pop();
-        const path = `transformadores/${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage
+      let archivo_url: string | null = null;
+      if (archivo) {
+        const ext = archivo.name.split(".").pop();
+        const path = `planillas/${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage
           .from("imagenes")
-          .upload(path, imageFile, { upsert: true });
-        if (uploadError) throw uploadError;
-        const { data: urlData } = supabase.storage.from("imagenes").getPublicUrl(path);
-        imagen_url = urlData.publicUrl;
+          .upload(path, archivo, { upsert: true });
+        if (upErr) throw upErr;
+        archivo_url = supabase.storage.from("imagenes").getPublicUrl(path).data.publicUrl;
       }
-
+      const datos = { terceros, taller, autorizados, rel33, obs, pend };
       const { error } = await supabase
-        .from("transformadores")
-        .insert([{ ...form, imagen_url }]);
+        .from("planillas_reserva")
+        .insert([{ fecha, archivo_url, datos }]);
       if (error) throw error;
-
-      toast.success("Transformador registrado correctamente");
-      setForm({ numero: "", tipo: "", potencia: "", tension: "", estado: "Disponible", ubicacion: "" });
-      clearImage();
+      toast.success("Planilla guardada correctamente");
     } catch (err: unknown) {
       toast.error((err as Error).message ?? "Error al guardar");
     } finally {
@@ -85,150 +136,264 @@ export function TransformadoresCargaSection() {
     }
   };
 
-  return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-foreground mb-6">Registrar transformador</h2>
+  // ── Render ──────────────────────────────────────────────────────────────────
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Imagen */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Imagen del transformador
-            </label>
-            {imagePreview ? (
-              <div className="relative w-full h-52 rounded-lg overflow-hidden border border-border bg-secondary">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={imagePreview} alt="Preview" className="w-full h-full object-contain" />
-                <button
-                  type="button"
-                  onClick={clearImage}
-                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-background/80 border border-border flex items-center justify-center hover:bg-secondary transition-colors"
-                >
-                  <X className="w-4 h-4 text-foreground" />
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full h-40 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-2 text-muted-foreground hover:border-accent hover:text-accent transition-colors"
-              >
-                <ImagePlus className="w-8 h-8" />
-                <span className="text-sm">Haz clic para subir una imagen</span>
-                <span className="text-xs">PNG, JPG, WEBP</span>
+  return (
+    <div className="space-y-4">
+
+      {/* ── Header bar ── */}
+      <div className="bg-card border border-border rounded-xl px-5 py-3 shadow-sm flex flex-wrap gap-4 items-end">
+        <div>
+          <label className="block text-xs font-medium text-muted-foreground mb-1">Fecha</label>
+          <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
+            className="h-8 px-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:border-accent transition-colors" />
+        </div>
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-xs font-medium text-muted-foreground mb-1">Archivo de referencia (imagen / PDF)</label>
+          {archivo ? (
+            <div className="flex items-center gap-2 h-8 px-2.5 rounded-lg bg-secondary border border-border">
+              <FileText className="w-4 h-4 text-accent shrink-0" />
+              <span className="truncate flex-1 text-xs text-foreground">{archivo.name}</span>
+              <button onClick={() => { setArchivo(null); if (fileRef.current) fileRef.current.value = ""; }}>
+                <X className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
               </button>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleImageChange}
-            />
+            </div>
+          ) : (
+            <button onClick={() => fileRef.current?.click()}
+              className="flex items-center gap-2 h-8 px-3 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:border-accent hover:text-accent transition-colors w-full">
+              <UploadCloud className="w-4 h-4 shrink-0" /> Adjuntar archivo…
+            </button>
+          )}
+          <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden"
+            onChange={e => setArchivo(e.target.files?.[0] ?? null)} />
+        </div>
+      </div>
+
+      {/* ── Planilla ── */}
+      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+
+        {/* Title */}
+        <div className="border-b border-border bg-secondary/40 px-4 py-3 text-center">
+          <p className="text-xs font-bold text-foreground tracking-wide">
+            RESERVA DE TRANSFORMADORES DE DISTRIBUCIÓN (RELAC: 13,2/0,4 — 33/0,4 KV)
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            ÁREA TÉCNICA — DPTO. TRANSFORMADORES — GCIA. TRANSMISIÓN
+          </p>
+        </div>
+
+        <div className="p-4 space-y-5 overflow-x-auto">
+
+          {/* ── Row 1: Terceros + Taller + Resumen ── */}
+          <div className="flex gap-3 min-w-[800px]">
+
+            {/* Table A: Nuevos y Reparados por Terceros */}
+            <div className="flex-1">
+              <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
+                Nuevos y Reparados por Terceros
+              </p>
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <TH>Pot. KVA</TH>
+                    <TH>T</TH><TH>M</TH><TH c="leading-[1.1]">C/<br/>Tanque</TH>
+                    <TH>Total</TH>
+                  </tr>
+                </thead>
+                <tbody>
+                  {POT_13.map(p => {
+                    const r = terceros[p]; const tot = sum(r);
+                    return (
+                      <tr key={p} className={`hover:bg-secondary/20 transition-colors ${tot > 0 ? "bg-accent/5" : ""}`}>
+                        <TD c="font-semibold text-foreground">{p}</TD>
+                        <TD><NI val={r.t}  onChange={v => setT(p, "t",  v)} /></TD>
+                        <TD><NI val={r.m}  onChange={v => setT(p, "m",  v)} /></TD>
+                        <TD><NI val={r.ct} onChange={v => setT(p, "ct", v)} /></TD>
+                        <TD c={tot > 0 ? "font-bold text-accent" : "text-muted-foreground"}>
+                          {tot || "—"}
+                        </TD>
+                      </tr>
+                    );
+                  })}
+                  <TotalRow label="TOTAL" span={4} values={[totTerceros]} />
+                </tbody>
+              </table>
+            </div>
+
+            {/* Table B: Reparados por Taller */}
+            <div className="flex-1">
+              <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
+                Reparados por Taller de Transformadores
+              </p>
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <TH>Tipo</TH><TH>Pot. KVA</TH>
+                    <TH>T</TH><TH>M</TH><TH c="leading-[1.1]">C/<br/>Tanque</TH>
+                    <TH>Total</TH>
+                  </tr>
+                </thead>
+                <tbody>
+                  {POT_13.map(p => {
+                    const r = taller[p]; const tot = sum(r);
+                    return (
+                      <tr key={p} className={`hover:bg-secondary/20 transition-colors ${tot > 0 ? "bg-accent/5" : ""}`}>
+                        <TD>
+                          <select value={r.tipo} onChange={e => setTAStr(p, e.target.value)}
+                            className="w-14 h-6 rounded border border-border bg-background text-[9px] text-foreground focus:outline-none focus:border-accent transition-colors">
+                            <option value="">—</option>
+                            <option value="RURAL">RURAL</option>
+                          </select>
+                        </TD>
+                        <TD c="font-semibold text-foreground">{p}</TD>
+                        <TD><NI val={r.t}  onChange={v => setTANum(p, "t",  v)} /></TD>
+                        <TD><NI val={r.m}  onChange={v => setTANum(p, "m",  v)} /></TD>
+                        <TD><NI val={r.ct} onChange={v => setTANum(p, "ct", v)} /></TD>
+                        <TD c={tot > 0 ? "font-bold text-accent" : "text-muted-foreground"}>
+                          {tot || "—"}
+                        </TD>
+                      </tr>
+                    );
+                  })}
+                  <TotalRow label="TOTAL" span={5} values={[totTaller]} />
+                </tbody>
+              </table>
+            </div>
+
+            {/* Table C: Resumen */}
+            <div className="w-[210px] shrink-0">
+              <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
+                Total de Transformadores
+              </p>
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <TH>Tipo</TH>
+                    <TH c="leading-[1.1]">Total<br/>Trafos</TH>
+                    <TH c="leading-[1.1]">Autorizados<br/>p/Retiro</TH>
+                    <TH c="leading-[1.1]">Disponibles<br/>p/Retiro</TH>
+                  </tr>
+                </thead>
+                <tbody>
+                  {POT_13.map(p => {
+                    const tot  = sum(terceros[p]) + sum(taller[p]);
+                    const auto = autorizados[p];
+                    const disp = Math.max(0, tot - auto);
+                    return (
+                      <tr key={p} className="hover:bg-secondary/20 transition-colors">
+                        <TD c="text-[9px]">{taller[p].tipo || "—"}</TD>
+                        <TD c={tot > 0 ? "text-foreground font-semibold" : "text-muted-foreground"}>
+                          {tot || "—"}
+                        </TD>
+                        <TD>
+                          <NI val={auto} onChange={v => setAuto(p, v)} />
+                        </TD>
+                        <TD c={disp > 0 ? "text-green-400 font-bold" : "text-muted-foreground"}>
+                          {disp || "—"}
+                        </TD>
+                      </tr>
+                    );
+                  })}
+                  <tr className="bg-secondary/60 font-bold">
+                    <td className="px-1 py-1 border border-border text-[9px] font-bold text-foreground text-center">TOTAL</td>
+                    <td className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{totGeneral || "—"}</td>
+                    <td className="px-1 py-1 border border-border text-xs text-center text-amber-400 font-bold">{totAuto || "—"}</td>
+                    <td className="px-1 py-1 border border-border text-xs text-center text-green-400 font-bold">{totDisp || "—"}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          {/* Fields grid */}
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Número / ID" required>
-              <input
-                type="text"
-                value={form.numero}
-                onChange={e => setForm(f => ({ ...f, numero: e.target.value }))}
-                placeholder="Ej: TR-0042"
-                className={inputCls}
-              />
-            </Field>
+          {/* ── Row 2: Relación 33 + Observaciones + Pendientes ── */}
+          <div className="flex gap-5 min-w-[800px]">
 
-            <Field label="Tipo">
-              <input
-                type="text"
-                value={form.tipo}
-                onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}
-                placeholder="Ej: Monofásico"
-                className={inputCls}
-              />
-            </Field>
+            {/* Table D: Relación 33/0,4 kV */}
+            <div className="w-[300px] shrink-0">
+              <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
+                Relación 33/0,4 KV
+              </p>
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <TH rs={2}>Pot. KVA</TH>
+                    <TH cs={2}>Trafos Nuevos</TH>
+                    <TH cs={2}>Trafos Reparados</TH>
+                  </tr>
+                  <tr>
+                    <TH>T</TH><TH>M</TH>
+                    <TH>T</TH><TH>M</TH>
+                  </tr>
+                </thead>
+                <tbody>
+                  {POT_33.map(p => {
+                    const r = rel33[p];
+                    return (
+                      <tr key={p} className="hover:bg-secondary/20 transition-colors">
+                        <TD c="font-semibold text-foreground">{p}</TD>
+                        <TD><NI val={r.tN} onChange={v => setR(p, "tN", v)} /></TD>
+                        <TD><NI val={r.mN} onChange={v => setR(p, "mN", v)} /></TD>
+                        <TD><NI val={r.tR} onChange={v => setR(p, "tR", v)} /></TD>
+                        <TD><NI val={r.mR} onChange={v => setR(p, "mR", v)} /></TD>
+                      </tr>
+                    );
+                  })}
+                  <tr className="bg-secondary/60 font-bold">
+                    <td className="px-1 py-1 border border-border text-[9px] font-bold text-foreground text-center">TOTAL</td>
+                    <td colSpan={2} className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{tot33N || "—"}</td>
+                    <td colSpan={2} className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{tot33R || "—"}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
-            <Field label="Potencia (kVA)">
-              <input
-                type="text"
-                value={form.potencia}
-                onChange={e => setForm(f => ({ ...f, potencia: e.target.value }))}
-                placeholder="Ej: 250"
-                className={inputCls}
-              />
-            </Field>
-
-            <Field label="Tensión (kV)">
-              <input
-                type="text"
-                value={form.tension}
-                onChange={e => setForm(f => ({ ...f, tension: e.target.value }))}
-                placeholder="Ej: 13.2/0.4"
-                className={inputCls}
-              />
-            </Field>
-
-            <Field label="Estado">
-              <select
-                value={form.estado}
-                onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}
-                className={inputCls}
-              >
-                <option>Disponible</option>
-                <option>En servicio</option>
-                <option>En reparación</option>
-                <option>Baja</option>
-              </select>
-            </Field>
-
-            <Field label="Ubicación">
-              <input
-                type="text"
-                value={form.ubicacion}
-                onChange={e => setForm(f => ({ ...f, ubicacion: e.target.value }))}
-                placeholder="Ej: Depósito A — Estante 3"
-                className={inputCls}
-              />
-            </Field>
+            {/* Observaciones + Pendientes */}
+            <div className="flex-1 grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                  Observaciones (13,2/0,4 KV)
+                </p>
+                <textarea
+                  value={obs}
+                  onChange={e => setObs(e.target.value)}
+                  placeholder="Ingrese observaciones…"
+                  className="flex-1 min-h-[120px] rounded-lg bg-secondary border border-border px-2.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent resize-none transition-colors"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                  Pendientes de Entregas
+                </p>
+                <textarea
+                  value={pend}
+                  onChange={e => setPend(e.target.value)}
+                  placeholder="Ingrese pendientes…"
+                  className="flex-1 min-h-[120px] rounded-lg bg-secondary border border-border px-2.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent resize-none transition-colors"
+                />
+              </div>
+            </div>
           </div>
+        </div>
 
+        {/* Footer */}
+        <div className="border-t border-border px-5 py-3 flex items-center justify-between bg-secondary/20">
+          <div className="flex gap-4 text-xs text-muted-foreground">
+            <span>Total: <strong className="text-accent">{totGeneral}</strong></span>
+            <span>Autorizados: <strong className="text-amber-400">{totAuto}</strong></span>
+            <span>Disponibles: <strong className="text-green-400">{totDisp}</strong></span>
+          </div>
           <button
-            type="submit"
+            onClick={handleSave}
             disabled={saving}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-colors"
           >
-            {saving ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</>
-            ) : (
-              <><CheckCircle2 className="w-4 h-4" /> Registrar transformador</>
-            )}
+            {saving
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</>
+              : <><CheckCircle2 className="w-4 h-4" /> Guardar planilla</>
+            }
           </button>
-        </form>
-      </div>
-
-      {/* Hint card */}
-      <div className="flex items-start gap-3 p-4 rounded-xl bg-accent/10 border border-accent/20 text-sm text-muted-foreground">
-        <FileImage className="w-5 h-5 shrink-0 text-accent mt-0.5" />
-        <p>
-          La imagen se sube al storage de Supabase. Si no existe el bucket <code className="text-xs bg-secondary px-1 rounded">imagenes</code>, créalo desde el panel de Supabase antes de subir archivos.
-        </p>
+        </div>
       </div>
     </div>
   );
 }
-
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-medium text-foreground">
-        {label}{required && <span className="text-red-400 ml-0.5">*</span>}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-const inputCls =
-  "h-9 w-full rounded-lg bg-secondary border border-border px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all";
