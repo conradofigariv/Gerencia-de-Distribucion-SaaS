@@ -71,6 +71,8 @@ Reglas de lectura de columnas (MUY IMPORTANTE — leer en orden estricto de izqu
 - Tabla derecha "TOTAL DE TRANSFORMADORES": columna "Autorizados Pendiente de Retiro" → autorizados
 - Tabla inferior "RELACIÓN 33/0,4 KV": TRAFOS NUEVOS T/M → tN/mN; TRAFOS REPARADOS T/M → tR/mR
 - Sección OBSERVACIONES → obs; sección PENDIENTES → pend
+- REGLA DE DOMINIO: los transformadores de 5 KVA son SIEMPRE monofásicos → su valor va SIEMPRE en "m", nunca en "t"
+- Para leer cada fila: identificá la posición horizontal del valor respecto al encabezado de columna. Si el valor está más cercano al encabezado "M" que al "T", es monofásico.
 - Celda vacía o ilegible = 0
 - Devuelve SOLO el JSON puro, sin bloques de código`;
 
