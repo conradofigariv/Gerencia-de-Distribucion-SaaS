@@ -51,13 +51,27 @@ function init33()       { return Object.fromEntries(POT_33.map(p => [p, { tN: 0,
 
 function NI({ val, onChange }: { val: number; onChange: (v: number) => void }) {
   return (
-    <input
-      type="number" min={0}
-      value={val === 0 ? "" : val}
-      placeholder="—"
-      onChange={e => onChange(Math.max(0, parseInt(e.target.value) || 0))}
-      className="w-11 h-6 text-center rounded border border-border bg-background text-xs text-foreground focus:outline-none focus:border-accent transition-colors"
-    />
+    <div className="flex items-center gap-1 bg-background border border-border rounded">
+      <button
+        onClick={() => onChange(Math.max(0, val - 1))}
+        className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-card/50 transition-colors"
+      >
+        −
+      </button>
+      <input
+        type="number" min={0}
+        value={val === 0 ? "" : val}
+        placeholder="0"
+        onChange={e => onChange(Math.max(0, parseInt(e.target.value) || 0))}
+        className="w-10 px-1 py-1 text-center bg-transparent text-xs text-foreground focus:outline-none"
+      />
+      <button
+        onClick={() => onChange(val + 1)}
+        className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-card/50 transition-colors"
+      >
+        +
+      </button>
+    </div>
   );
 }
 
