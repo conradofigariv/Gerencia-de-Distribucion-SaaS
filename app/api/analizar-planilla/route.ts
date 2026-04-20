@@ -132,98 +132,6 @@ function parseExcelPlanilla(buffer: Buffer): Record<string, unknown> {
   return { terceros, taller, autorizados, rel33, obs, pend };
 }
 
-// ─── AI fallback (images / PDFs) ──────────────────────────────────────────────
-
-const AI_PROMPT = `Extract all numeric data from this transformer reservation planilla table.
-
-Tables in the image:
-1. "NUEVOS Y REPARADOS POR TERCEROS" (left) — columns in order: POTENCIA KVA | T | M | CON TANQUE | TOTAL
-2. "REPARADOS POR TALLER DE TRANSFORMADORES" (center) — columns: TIPO | POTENCIA KVA | T | M | CON TANQUE | TOTAL
-3. "TOTAL DE TRANSFORMADORES" (right) — read "Autorizados Pendiente de Retiro" column
-4. "RELACIÓN 33/0,4 KV" (bottom left) — TRAFOS NUEVOS (T, M) and TRAFOS REPARADOS (T, M)
-
-Column reading rules:
-- T = first numeric column after KVA
-- M = second numeric column after KVA (to the RIGHT of T)
-- CON TANQUE = third numeric column
-- A blank/empty cell = 0. Do NOT shift a value left to fill an empty column.
-
-Return ONLY valid JSON, no markdown, no extra text:
-
-{
-  "terceros": {
-    "5":{"t":0,"m":0,"ct":0},"10":{"t":0,"m":0,"ct":0},"16":{"t":0,"m":0,"ct":0},
-    "25":{"t":0,"m":0,"ct":0},"50":{"t":0,"m":0,"ct":0},"63":{"t":0,"m":0,"ct":0},
-    "80":{"t":0,"m":0,"ct":0},"100":{"t":0,"m":0,"ct":0},"125":{"t":0,"m":0,"ct":0},
-    "160":{"t":0,"m":0,"ct":0},"200":{"t":0,"m":0,"ct":0},"250":{"t":0,"m":0,"ct":0},
-    "315":{"t":0,"m":0,"ct":0},"500":{"t":0,"m":0,"ct":0},"630":{"t":0,"m":0,"ct":0},
-    "800":{"t":0,"m":0,"ct":0},"1000":{"t":0,"m":0,"ct":0}
-  },
-  "taller": {
-    "5":{"tipo":"","t":0,"m":0,"ct":0},"10":{"tipo":"","t":0,"m":0,"ct":0},
-    "16":{"tipo":"","t":0,"m":0,"ct":0},"25":{"tipo":"","t":0,"m":0,"ct":0},
-    "50":{"tipo":"","t":0,"m":0,"ct":0},"63":{"tipo":"","t":0,"m":0,"ct":0},
-    "80":{"tipo":"","t":0,"m":0,"ct":0},"100":{"tipo":"","t":0,"m":0,"ct":0},
-    "125":{"tipo":"","t":0,"m":0,"ct":0},"160":{"tipo":"","t":0,"m":0,"ct":0},
-    "200":{"tipo":"","t":0,"m":0,"ct":0},"250":{"tipo":"","t":0,"m":0,"ct":0},
-    "315":{"tipo":"","t":0,"m":0,"ct":0},"500":{"tipo":"","t":0,"m":0,"ct":0},
-    "630":{"tipo":"","t":0,"m":0,"ct":0},"800":{"tipo":"","t":0,"m":0,"ct":0},
-    "1000":{"tipo":"","t":0,"m":0,"ct":0}
-  },
-  "autorizados":{"5":0,"10":0,"16":0,"25":0,"50":0,"63":0,"80":0,"100":0,"125":0,"160":0,"200":0,"250":0,"315":0,"500":0,"630":0,"800":0,"1000":0},
-  "rel33":{
-    "25":{"tN":0,"mN":0,"tR":0,"mR":0},"63":{"tN":0,"mN":0,"tR":0,"mR":0},
-    "160":{"tN":0,"mN":0,"tR":0,"mR":0},"315":{"tN":0,"mN":0,"tR":0,"mR":0},
-    "500":{"tN":0,"mN":0,"tR":0,"mR":0},"630":{"tN":0,"mN":0,"tR":0,"mR":0}
-  },
-  "obs":"","pend":""
-}
-
-OBSERVACIONES section → obs; PENDIENTES DE ENTREGAS section → pend`;
-
-const MODELS = [
-  "qwen/qwen2.5-vl-72b-instruct",
-  "google/gemini-2.5-flash",
-];
-
-async function analyzeWithAI(dataUrl: string): Promise<Record<string, unknown>> {
-  const errors: string[] = [];
-  for (const model of MODELS) {
-    try {
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "http://localhost:3000",
-          "X-Title": "Gerencia Distribucion SaaS",
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 8000,
-          messages: [{
-            role: "user",
-            content: [
-              { type: "text", text: AI_PROMPT },
-              { type: "image_url", image_url: { url: dataUrl } },
-            ],
-          }],
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) { errors.push(`[${model}] ${JSON.stringify(json.error ?? json).slice(0, 120)}`); continue; }
-      const text = json.choices?.[0]?.message?.content ?? "";
-      if (!text) continue;
-      const start = text.indexOf("{"), end = text.lastIndexOf("}");
-      if (start === -1 || end === -1) continue;
-      return JSON.parse(text.slice(start, end + 1));
-    } catch (e: unknown) {
-      errors.push(`[${model}] ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-  throw new Error("No se pudo analizar. Errores:\n" + errors.map(e => `• ${e}`).join("\n"));
-}
-
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -238,17 +146,14 @@ export async function POST(req: NextRequest) {
 
     const bytes = await file.arrayBuffer();
 
-    if (isExcel) {
-      const datos = parseExcelPlanilla(Buffer.from(bytes));
-      return NextResponse.json({ datos });
+    if (!isExcel) {
+      return NextResponse.json(
+        { error: "Por favor subí un archivo Excel (.xlsx o .xls). Las imágenes y PDFs no están soportadas." },
+        { status: 400 }
+      );
     }
 
-    if (!process.env.OPENROUTER_API_KEY) {
-      return NextResponse.json({ error: "OPENROUTER_API_KEY no configurada en .env.local" }, { status: 500 });
-    }
-    const base64  = Buffer.from(bytes).toString("base64");
-    const dataUrl = `data:${file.type};base64,${base64}`;
-    const datos   = await analyzeWithAI(dataUrl);
+    const datos = parseExcelPlanilla(Buffer.from(bytes));
     return NextResponse.json({ datos });
 
   } catch (err: unknown) {

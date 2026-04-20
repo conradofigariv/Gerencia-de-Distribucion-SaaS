@@ -137,7 +137,7 @@ export function TransformadoresCargaSection() {
       if (d.obs)        setObs(d.obs);
       if (d.pend)       setPend(d.pend);
 
-      toast.success("Planilla analizada y datos cargados automáticamente");
+      toast.success("Excel cargado y datos procesados");
     } catch (err: unknown) {
       toast.error((err as Error).message ?? "No se pudo analizar el archivo");
     } finally {
@@ -214,13 +214,13 @@ export function TransformadoresCargaSection() {
           }
           <span className="flex-1 text-sm text-foreground truncate">{archivo.name}</span>
           {analyzing
-            ? <span className="text-xs text-accent whitespace-nowrap">Analizando con IA…</span>
+            ? <span className="text-xs text-accent whitespace-nowrap">Procesando…</span>
             : <>
                 <button
                   onClick={() => analyzeFile(archivo)}
                   className="flex items-center gap-1.5 text-xs text-accent hover:underline whitespace-nowrap"
                 >
-                  <Sparkles className="w-3.5 h-3.5" /> Volver a analizar
+                  <Sparkles className="w-3.5 h-3.5" /> Procesar de nuevo
                 </button>
                 <button onClick={() => { setArchivo(null); if (fileRef.current) fileRef.current.value = ""; }}
                   className="ml-1 text-muted-foreground hover:text-foreground transition-colors">
@@ -247,13 +247,13 @@ export function TransformadoresCargaSection() {
           <UploadCloud className={`w-10 h-10 transition-colors ${dragging ? "text-accent" : "text-muted-foreground"}`} />
           <div className="text-center">
             <p className="text-sm font-medium text-foreground">
-              {dragging ? "Soltá el archivo aquí" : "Arrastrá la planilla o hacé clic para buscarla"}
+              {dragging ? "Soltá el Excel aquí" : "Arrastrá el Excel o hacé clic para seleccionarlo"}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">Imagen (JPG, PNG) o PDF</p>
+            <p className="text-xs text-muted-foreground mt-1">Archivo Excel (.xlsx)</p>
           </div>
         </div>
       )}
-      <input ref={fileRef} type="file" accept="image/*,.pdf,.xlsx,.xls" className="hidden"
+      <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
         onChange={e => { const f = e.target.files?.[0]; if (f) handleFileChange(f); }} />
 
       {/* ── Planilla ── */}
