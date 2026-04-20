@@ -1,20 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PROMPT = `Eres un extractor de datos de tablas. Analizá esta planilla de reserva de transformadores.
+const SYSTEM = `Eres un extractor de tablas de imágenes. Tu metodología es:
+1. Identificar visualmente la posición horizontal de cada encabezado de columna.
+2. Para cada celda con valor, trazar una línea vertical hacia arriba y confirmar bajo qué encabezado cae.
+3. Nunca asumir que el primer valor de una fila va en la primera columna — verificar siempre la alineación.
+4. Una celda vacía es 0.`;
 
-METODOLOGÍA OBLIGATORIA para cada fila de cada tabla:
-1. Identificá los encabezados de columna y su posición horizontal exacta en píxeles.
-2. Para cada número visible en la fila, trazá una línea vertical hacia arriba y determiná a qué encabezado corresponde.
-3. VALIDACIÓN: T + M debe ser igual al valor de la columna TOTAL visible en esa fila. Si no coincide, revisá la asignación.
-4. Solo si la celda está visiblemente vacía, asignale 0.
+const PROMPT = `Analizá esta planilla de reserva de transformadores en dos pasos.
 
-ESTRUCTURA DE CADA TABLA:
-- "NUEVOS Y REPARADOS POR TERCEROS": columnas → POTENCIA KVA | T | M | CON TANQUE | TOTAL
-- "REPARADOS POR TALLER": columnas → TIPO | POTENCIA KVA | T | M | CON TANQUE | TOTAL
-- "TOTAL DE TRANSFORMADORES": usá la columna "Autorizados Pendiente de Retiro" para autorizados
-- "RELACIÓN 33/0,4 KV": TRAFOS NUEVOS (T=tN, M=mN) | TRAFOS REPARADOS (T=tR, M=mR)
+PASO 1 — ESCANEO POR COLUMNA (escribilo antes del JSON):
+Para la tabla "NUEVOS Y REPARADOS POR TERCEROS", listá:
+- Columna T: qué filas (KVA) tienen valor no-cero y cuál es ese valor
+- Columna M: qué filas (KVA) tienen valor no-cero y cuál es ese valor
+- Columna CON TANQUE: qué filas (KVA) tienen valor no-cero y cuál es ese valor
 
-Devuelve ÚNICAMENTE un JSON válido, sin texto adicional ni markdown, con exactamente esta estructura:
+Repetí el mismo escaneo para "REPARADOS POR TALLER DE TRANSFORMADORES".
+
+PASO 2 — JSON:
+Usando el escaneo anterior, completá el siguiente JSON (escribilo al final, precedido por la línea "###JSON###"):
 
 {
   "terceros": {
@@ -72,8 +75,9 @@ Devuelve ÚNICAMENTE un JSON válido, sin texto adicional ni markdown, con exact
   "pend": ""
 }
 
-Sección OBSERVACIONES → obs; sección PENDIENTES DE ENTREGAS → pend
-Devuelve SOLO el JSON puro, sin bloques de código`;
+Tabla "TOTAL DE TRANSFORMADORES": columna "Autorizados Pendiente de Retiro" → autorizados
+Tabla "RELACIÓN 33/0,4 KV": TRAFOS NUEVOS T/M → tN/mN; TRAFOS REPARADOS T/M → tR/mR
+Sección OBSERVACIONES → obs; sección PENDIENTES DE ENTREGAS → pend`;
 
 const MODELS = ["google/gemini-2.5-flash"];
 
@@ -92,8 +96,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No se recibió ningún archivo" }, { status: 400 });
     }
 
-    const bytes  = await file.arrayBuffer();
-    const base64 = Buffer.from(bytes).toString("base64");
+    const bytes   = await file.arrayBuffer();
+    const base64  = Buffer.from(bytes).toString("base64");
     const dataUrl = `data:${file.type};base64,${base64}`;
 
     const errors: string[] = [];
@@ -112,13 +116,16 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             model,
             max_tokens: 8000,
-            messages: [{
-              role: "user",
-              content: [
-                { type: "image_url", image_url: { url: dataUrl } },
-                { type: "text", text: PROMPT },
-              ],
-            }],
+            messages: [
+              { role: "system", content: SYSTEM },
+              {
+                role: "user",
+                content: [
+                  { type: "image_url", image_url: { url: dataUrl } },
+                  { type: "text", text: PROMPT },
+                ],
+              },
+            ],
           }),
         });
 
@@ -142,8 +149,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-    const datos = JSON.parse(clean);
+    // Extract JSON after ###JSON### marker, or fall back to last {...} block
+    const markerIdx = text.lastIndexOf("###JSON###");
+    const jsonStr = markerIdx !== -1 ? text.slice(markerIdx + 10) : text;
+    const start = jsonStr.indexOf("{");
+    const end   = jsonStr.lastIndexOf("}");
+    if (start === -1 || end === -1) {
+      return NextResponse.json({ error: "No se encontró JSON en la respuesta del modelo" }, { status: 500 });
+    }
+    const datos = JSON.parse(jsonStr.slice(start, end + 1));
 
     return NextResponse.json({ datos });
   } catch (err: unknown) {
