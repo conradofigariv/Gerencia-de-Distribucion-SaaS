@@ -1,23 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const SYSTEM = `Eres un extractor de tablas de imágenes. Tu metodología es:
-1. Identificar visualmente la posición horizontal de cada encabezado de columna.
-2. Para cada celda con valor, trazar una línea vertical hacia arriba y confirmar bajo qué encabezado cae.
-3. Nunca asumir que el primer valor de una fila va en la primera columna — verificar siempre la alineación.
-4. Una celda vacía es 0.`;
+const PROMPT = `Extract all numeric data from this transformer reservation planilla table.
 
-const PROMPT = `Analizá esta planilla de reserva de transformadores en dos pasos.
+Tables in the image:
+1. "NUEVOS Y REPARADOS POR TERCEROS" (left) — columns in order: POTENCIA KVA | T | M | CON TANQUE | TOTAL
+2. "REPARADOS POR TALLER DE TRANSFORMADORES" (center) — columns: TIPO | POTENCIA KVA | T | M | CON TANQUE | TOTAL
+3. "TOTAL DE TRANSFORMADORES" (right) — read "Autorizados Pendiente de Retiro" column
+4. "RELACIÓN 33/0,4 KV" (bottom left) — TRAFOS NUEVOS (T, M) and TRAFOS REPARADOS (T, M)
 
-PASO 1 — ESCANEO POR COLUMNA (escribilo antes del JSON):
-Para la tabla "NUEVOS Y REPARADOS POR TERCEROS", listá:
-- Columna T: qué filas (KVA) tienen valor no-cero y cuál es ese valor
-- Columna M: qué filas (KVA) tienen valor no-cero y cuál es ese valor
-- Columna CON TANQUE: qué filas (KVA) tienen valor no-cero y cuál es ese valor
+Column reading rules:
+- T = first numeric column after KVA
+- M = second numeric column after KVA (to the RIGHT of T)
+- CON TANQUE = third numeric column
+- A blank/empty cell = 0. Do NOT shift a value left to fill an empty column.
 
-Repetí el mismo escaneo para "REPARADOS POR TALLER DE TRANSFORMADORES".
-
-PASO 2 — JSON:
-Usando el escaneo anterior, completá el siguiente JSON (escribilo al final, precedido por la línea "###JSON###"):
+Return ONLY valid JSON, no markdown, no extra text:
 
 {
   "terceros": {
@@ -75,11 +72,14 @@ Usando el escaneo anterior, completá el siguiente JSON (escribilo al final, pre
   "pend": ""
 }
 
-Tabla "TOTAL DE TRANSFORMADORES": columna "Autorizados Pendiente de Retiro" → autorizados
-Tabla "RELACIÓN 33/0,4 KV": TRAFOS NUEVOS T/M → tN/mN; TRAFOS REPARADOS T/M → tR/mR
-Sección OBSERVACIONES → obs; sección PENDIENTES DE ENTREGAS → pend`;
+OBSERVACIONES section → obs field
+PENDIENTES DE ENTREGAS section → pend field`;
 
-const MODELS = ["google/gemini-2.5-flash"];
+// Qwen2.5-VL is trained for document/table understanding; Gemini as fallback
+const MODELS = [
+  "qwen/qwen2.5-vl-72b-instruct",
+  "google/gemini-2.5-flash",
+];
 
 export async function POST(req: NextRequest) {
   if (!process.env.OPENROUTER_API_KEY) {
@@ -116,22 +116,20 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             model,
             max_tokens: 8000,
-            messages: [
-              { role: "system", content: SYSTEM },
-              {
-                role: "user",
-                content: [
-                  { type: "image_url", image_url: { url: dataUrl } },
-                  { type: "text", text: PROMPT },
-                ],
-              },
-            ],
+            messages: [{
+              role: "user",
+              content: [
+                // Prompt before image so model knows what to look for first
+                { type: "text", text: PROMPT },
+                { type: "image_url", image_url: { url: dataUrl } },
+              ],
+            }],
           }),
         });
 
         const json = await res.json();
         if (!res.ok) {
-          errors.push(`[${model}] ${JSON.stringify(json.error ?? json).slice(0, 100)}`);
+          errors.push(`[${model}] ${JSON.stringify(json.error ?? json).slice(0, 120)}`);
           continue;
         }
 
@@ -149,15 +147,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Extract JSON after ###JSON### marker, or fall back to last {...} block
-    const markerIdx = text.lastIndexOf("###JSON###");
-    const jsonStr = markerIdx !== -1 ? text.slice(markerIdx + 10) : text;
-    const start = jsonStr.indexOf("{");
-    const end   = jsonStr.lastIndexOf("}");
+    const start = text.indexOf("{");
+    const end   = text.lastIndexOf("}");
     if (start === -1 || end === -1) {
-      return NextResponse.json({ error: "No se encontró JSON en la respuesta del modelo" }, { status: 500 });
+      return NextResponse.json({ error: "No se encontró JSON en la respuesta" }, { status: 500 });
     }
-    const datos = JSON.parse(jsonStr.slice(start, end + 1));
+    const datos = JSON.parse(text.slice(start, end + 1));
 
     return NextResponse.json({ datos });
   } catch (err: unknown) {
