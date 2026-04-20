@@ -253,7 +253,7 @@ export function TransformadoresCargaSection() {
           </div>
         </div>
       )}
-      <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden"
+      <input ref={fileRef} type="file" accept="image/*,.pdf,.xlsx,.xls" className="hidden"
         onChange={e => { const f = e.target.files?.[0]; if (f) handleFileChange(f); }} />
 
       {/* ── Planilla ── */}
