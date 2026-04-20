@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PROMPT = `Analiza esta planilla de reserva de transformadores y extrae todos los datos numéricos.
+const PROMPT = `Eres un extractor de datos de tablas. Analizá esta planilla de reserva de transformadores.
+
+METODOLOGÍA OBLIGATORIA para cada fila de cada tabla:
+1. Identificá los encabezados de columna y su posición horizontal exacta en píxeles.
+2. Para cada número visible en la fila, trazá una línea vertical hacia arriba y determiná a qué encabezado corresponde.
+3. VALIDACIÓN: T + M debe ser igual al valor de la columna TOTAL visible en esa fila. Si no coincide, revisá la asignación.
+4. Solo si la celda está visiblemente vacía, asignale 0.
+
+ESTRUCTURA DE CADA TABLA:
+- "NUEVOS Y REPARADOS POR TERCEROS": columnas → POTENCIA KVA | T | M | CON TANQUE | TOTAL
+- "REPARADOS POR TALLER": columnas → TIPO | POTENCIA KVA | T | M | CON TANQUE | TOTAL
+- "TOTAL DE TRANSFORMADORES": usá la columna "Autorizados Pendiente de Retiro" para autorizados
+- "RELACIÓN 33/0,4 KV": TRAFOS NUEVOS (T=tN, M=mN) | TRAFOS REPARADOS (T=tR, M=mR)
+
 Devuelve ÚNICAMENTE un JSON válido, sin texto adicional ni markdown, con exactamente esta estructura:
 
 {
@@ -59,20 +72,8 @@ Devuelve ÚNICAMENTE un JSON válido, sin texto adicional ni markdown, con exact
   "pend": ""
 }
 
-Reglas de lectura de columnas (MUY IMPORTANTE — leer en orden estricto de izquierda a derecha):
-- Tabla "NUEVOS Y REPARADOS POR TERCEROS": orden exacto de columnas → POTENCIA KVA | T (trifásico) | M (monofásico) | CON TANQUE | TOTAL
-  - t = valor de la columna T (segunda columna, TRIFÁSICO)
-  - m = valor de la columna M (tercera columna, MONOFÁSICO)
-  - ct = valor de la columna CON TANQUE (cuarta columna)
-  - NO confundir T con M: T está a la izquierda de M
-- Tabla "REPARADOS POR TALLER DE TRANSFORMADORES": orden → TIPO | POTENCIA KVA | T | M | CON TANQUE | TOTAL
-  - tipo = "RURAL" si dice RURAL, sino ""
-  - t, m, ct = ídem anterior
-- Tabla derecha "TOTAL DE TRANSFORMADORES": columna "Autorizados Pendiente de Retiro" → autorizados
-- Tabla inferior "RELACIÓN 33/0,4 KV": TRAFOS NUEVOS T/M → tN/mN; TRAFOS REPARADOS T/M → tR/mR
-- Sección OBSERVACIONES → obs; sección PENDIENTES → pend
-- Celda vacía o ilegible = 0
-- Devuelve SOLO el JSON puro, sin bloques de código`;
+Sección OBSERVACIONES → obs; sección PENDIENTES DE ENTREGAS → pend
+Devuelve SOLO el JSON puro, sin bloques de código`;
 
 const MODELS = ["google/gemini-2.5-flash"];
 
