@@ -104,43 +104,127 @@ export function TransformadoresTablaSection() {
                 </button>
 
                 {isExpanded && (
-                  <div className="border-t border-border px-4 py-4 bg-card/50 space-y-4 text-sm">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="font-medium text-foreground mb-2">NUEVOS Y REPARADOS POR TERCEROS</p>
-                        <div className="space-y-1 text-xs text-muted-foreground">
-                          {Object.entries(planilla.datos.terceros).map(([kva, row]) => {
-                            const total = row.t + row.m;
-                            if (total === 0) return null;
-                            return <div key={kva}>{kva} KVA: T={row.t} M={row.m} CT={row.ct}</div>;
-                          })}
-                        </div>
-                      </div>
-                      <div>
-                        <p className="font-medium text-foreground mb-2">REPARADOS POR TALLER</p>
-                        <div className="space-y-1 text-xs text-muted-foreground">
-                          {Object.entries(planilla.datos.taller).map(([kva, row]) => {
-                            const total = row.t + row.m;
-                            if (total === 0) return null;
-                            return <div key={kva}>{kva} KVA {row.tipo}: T={row.t} M={row.m} CT={row.ct}</div>;
-                          })}
-                        </div>
+                  <div className="border-t border-border px-4 py-4 bg-card/50 space-y-6 text-sm">
+                    {/* TERCEROS TABLE */}
+                    <div>
+                      <p className="font-bold text-foreground mb-3">NUEVOS Y REPARADOS POR TERCEROS</p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-card border border-border">
+                              <th className="border border-border px-2 py-1 text-left">KVA</th>
+                              <th className="border border-border px-2 py-1 text-center">T</th>
+                              <th className="border border-border px-2 py-1 text-center">M</th>
+                              <th className="border border-border px-2 py-1 text-center">CON TANQUE</th>
+                              <th className="border border-border px-2 py-1 text-center">TOTAL</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[5, 10, 16, 25, 50, 63, 80, 100, 125, 160, 200, 250, 315, 500, 630, 800, 1000].map(kva => {
+                              const row = planilla.datos.terceros[String(kva)] || { t: 0, m: 0, ct: 0 };
+                              const total = row.t + row.m;
+                              return (
+                                <tr key={kva} className="border border-border">
+                                  <td className="border border-border px-2 py-1">{kva}</td>
+                                  <td className="border border-border px-2 py-1 text-center">{row.t || "—"}</td>
+                                  <td className="border border-border px-2 py-1 text-center">{row.m || "—"}</td>
+                                  <td className="border border-border px-2 py-1 text-center">{row.ct || "—"}</td>
+                                  <td className="border border-border px-2 py-1 text-center font-medium">{total || "—"}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
 
-                    {planilla.datos.obs && (
-                      <div>
-                        <p className="font-medium text-foreground mb-1">Observaciones</p>
-                        <p className="text-xs text-muted-foreground whitespace-pre-wrap">{planilla.datos.obs}</p>
+                    {/* TALLER TABLE */}
+                    <div>
+                      <p className="font-bold text-foreground mb-3">REPARADOS POR TALLER DE TRANSFORMADORES</p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-card border border-border">
+                              <th className="border border-border px-2 py-1 text-left">KVA</th>
+                              <th className="border border-border px-2 py-1 text-center">TIPO</th>
+                              <th className="border border-border px-2 py-1 text-center">T</th>
+                              <th className="border border-border px-2 py-1 text-center">M</th>
+                              <th className="border border-border px-2 py-1 text-center">CON TANQUE</th>
+                              <th className="border border-border px-2 py-1 text-center">TOTAL</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[5, 10, 16, 25, 50, 63, 80, 100, 125, 160, 200, 250, 315, 500, 630, 800, 1000].map(kva => {
+                              const row = planilla.datos.taller[String(kva)] || { tipo: "", t: 0, m: 0, ct: 0 };
+                              const total = row.t + row.m;
+                              return (
+                                <tr key={kva} className="border border-border">
+                                  <td className="border border-border px-2 py-1">{kva}</td>
+                                  <td className="border border-border px-2 py-1 text-center text-xs">{row.tipo || "—"}</td>
+                                  <td className="border border-border px-2 py-1 text-center">{row.t || "—"}</td>
+                                  <td className="border border-border px-2 py-1 text-center">{row.m || "—"}</td>
+                                  <td className="border border-border px-2 py-1 text-center">{row.ct || "—"}</td>
+                                  <td className="border border-border px-2 py-1 text-center font-medium">{total || "—"}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
-                    )}
+                    </div>
 
-                    {planilla.datos.pend && (
-                      <div>
-                        <p className="font-medium text-foreground mb-1">Pendientes</p>
-                        <p className="text-xs text-muted-foreground whitespace-pre-wrap">{planilla.datos.pend}</p>
+                    {/* REL33 TABLE */}
+                    <div>
+                      <p className="font-bold text-foreground mb-3">RELACIÓN 33/0,4 KV</p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-card border border-border">
+                              <th className="border border-border px-2 py-1 text-left">KVA</th>
+                              <th className="border border-border px-2 py-1 text-center" colSpan={2}>TRAFOS NUEVOS</th>
+                              <th className="border border-border px-2 py-1 text-center" colSpan={2}>TRAFOS REPARADOS</th>
+                            </tr>
+                            <tr className="bg-card border border-border">
+                              <th className="border border-border px-2 py-1"></th>
+                              <th className="border border-border px-2 py-1 text-center">T</th>
+                              <th className="border border-border px-2 py-1 text-center">M</th>
+                              <th className="border border-border px-2 py-1 text-center">T</th>
+                              <th className="border border-border px-2 py-1 text-center">M</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[25, 63, 160, 315, 500, 630].map(kva => {
+                              const row = planilla.datos.rel33[String(kva)] || { tN: 0, mN: 0, tR: 0, mR: 0 };
+                              return (
+                                <tr key={kva} className="border border-border">
+                                  <td className="border border-border px-2 py-1">{kva}</td>
+                                  <td className="border border-border px-2 py-1 text-center">{row.tN || "—"}</td>
+                                  <td className="border border-border px-2 py-1 text-center">{row.mN || "—"}</td>
+                                  <td className="border border-border px-2 py-1 text-center">{row.tR || "—"}</td>
+                                  <td className="border border-border px-2 py-1 text-center">{row.mR || "—"}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
-                    )}
+                    </div>
+
+                    {/* OBS & PEND */}
+                    <div className="grid grid-cols-2 gap-4">
+                      {planilla.datos.obs && (
+                        <div>
+                          <p className="font-bold text-foreground mb-2">OBSERVACIONES</p>
+                          <p className="text-xs text-muted-foreground whitespace-pre-wrap">{planilla.datos.obs}</p>
+                        </div>
+                      )}
+                      {planilla.datos.pend && (
+                        <div>
+                          <p className="font-bold text-foreground mb-2">PENDIENTES</p>
+                          <p className="text-xs text-muted-foreground whitespace-pre-wrap">{planilla.datos.pend}</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
