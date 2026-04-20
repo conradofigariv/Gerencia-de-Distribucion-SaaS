@@ -59,13 +59,19 @@ Devuelve ÚNICAMENTE un JSON válido, sin texto adicional ni markdown, con exact
   "pend": ""
 }
 
-Reglas:
-- Tabla izquierda "NUEVOS Y REPARADOS POR TERCEROS": columnas T, M, CON TANQUE → campos t, m, ct
-- Tabla central "REPARADOS POR TALLER": columna TIPO (RURAL o vacío), T, M, CON TANQUE → tipo, t, m, ct
-- Tabla derecha resumen: columna "Autorizados Pendiente de Retiro" → autorizados
-- Tabla inferior izquierda "RELACIÓN 33/0,4 KV": TRAFOS NUEVOS T/M → tN/mN; TRAFOS REPARADOS T/M → tR/mR
+Reglas de lectura de columnas (MUY IMPORTANTE — leer en orden estricto de izquierda a derecha):
+- Tabla "NUEVOS Y REPARADOS POR TERCEROS": orden exacto de columnas → POTENCIA KVA | T (trifásico) | M (monofásico) | CON TANQUE | TOTAL
+  - t = valor de la columna T (segunda columna, TRIFÁSICO)
+  - m = valor de la columna M (tercera columna, MONOFÁSICO)
+  - ct = valor de la columna CON TANQUE (cuarta columna)
+  - NO confundir T con M: T está a la izquierda de M
+- Tabla "REPARADOS POR TALLER DE TRANSFORMADORES": orden → TIPO | POTENCIA KVA | T | M | CON TANQUE | TOTAL
+  - tipo = "RURAL" si dice RURAL, sino ""
+  - t, m, ct = ídem anterior
+- Tabla derecha "TOTAL DE TRANSFORMADORES": columna "Autorizados Pendiente de Retiro" → autorizados
+- Tabla inferior "RELACIÓN 33/0,4 KV": TRAFOS NUEVOS T/M → tN/mN; TRAFOS REPARADOS T/M → tR/mR
 - Sección OBSERVACIONES → obs; sección PENDIENTES → pend
-- Valores en blanco o ilegibles = 0
+- Celda vacía o ilegible = 0
 - Devuelve SOLO el JSON puro, sin bloques de código`;
 
 const MODELS = ["google/gemini-2.5-flash"];
