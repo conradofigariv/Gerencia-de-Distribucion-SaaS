@@ -68,13 +68,7 @@ Reglas:
 - Valores en blanco o ilegibles = 0
 - Devuelve SOLO el JSON puro, sin bloques de código`;
 
-// Free vision models on OpenRouter, in order of preference
-const MODELS = [
-  "google/gemini-2.0-flash-exp:free",
-  "meta-llama/llama-4-scout:free",
-  "qwen/qwen2.5-vl-72b-instruct:free",
-  "google/gemini-2.5-flash", // fallback pago si los gratis fallan
-];
+const MODELS = ["google/gemini-2.5-flash"];
 
 export async function POST(req: NextRequest) {
   if (!process.env.OPENROUTER_API_KEY) {
@@ -110,6 +104,7 @@ export async function POST(req: NextRequest) {
           },
           body: JSON.stringify({
             model,
+            max_tokens: 2000,
             messages: [{
               role: "user",
               content: [
