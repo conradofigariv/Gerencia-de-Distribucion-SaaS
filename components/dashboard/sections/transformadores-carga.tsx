@@ -177,20 +177,10 @@ export function TransformadoresCargaSection() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      let archivo_url: string | null = null;
-      if (archivo) {
-        const ext = archivo.name.split(".").pop();
-        const path = `planillas/${Date.now()}.${ext}`;
-        const { error: upErr } = await supabase.storage
-          .from("imagenes")
-          .upload(path, archivo, { upsert: true });
-        if (upErr) throw upErr;
-        archivo_url = supabase.storage.from("imagenes").getPublicUrl(path).data.publicUrl;
-      }
       const datos = { terceros, taller, autorizados, rel33, obs, pend };
       const { error } = await supabase
         .from("planillas_reserva")
-        .insert([{ fecha, archivo_url, datos }]);
+        .insert([{ fecha, datos }]);
       if (error) throw error;
       toast.success("Planilla guardada correctamente");
     } catch (err: unknown) {
