@@ -1,243 +1,162 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { toast } from "sonner";
-import { Loader2, RefreshCw, Search, ChevronDown, ChevronUp } from "lucide-react";
+import React, { useState } from "react";
 
-interface PlanillaRow {
-  id: number;
-  fecha: string;
-  datos: {
-    terceros: Record<string, { t: number; m: number; ct: number }>;
-    taller: Record<string, { t: number; m: number; ct: number }>;
-    autorizados: Record<string, number>;
-    rel33: Record<string, { tN: number; mN: number; tR: number; mR: number }>;
-    obs: string;
-    pend: string;
-  };
-  created_at: string;
+type FilterType = "Todos" | "Rural" | "Urbano" | "Con reparaciones";
+
+interface TrafoRow {
+  kva: number;
+  tipo: "Rural" | "Urbano";
+  t: number;
+  m: number;
+  ct: number;
 }
 
-export function TransformadoresTablaSection() {
-  const [rows, setRows] = useState<PlanillaRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+const DATA: TrafoRow[] = [
+  { kva: 5,    tipo: "Rural",  t: 0, m: 0, ct: 0 },
+  { kva: 10,   tipo: "Rural",  t: 0, m: 0, ct: 0 },
+  { kva: 16,   tipo: "Rural",  t: 0, m: 1, ct: 0 },
+  { kva: 25,   tipo: "Rural",  t: 2, m: 0, ct: 0 },
+  { kva: 50,   tipo: "Urbano", t: 0, m: 0, ct: 0 },
+  { kva: 63,   tipo: "Urbano", t: 4, m: 0, ct: 1 },
+  { kva: 80,   tipo: "Urbano", t: 0, m: 0, ct: 0 },
+  { kva: 100,  tipo: "Urbano", t: 0, m: 0, ct: 0 },
+  { kva: 125,  tipo: "Urbano", t: 0, m: 0, ct: 0 },
+  { kva: 160,  tipo: "Urbano", t: 5, m: 0, ct: 3 },
+  { kva: 200,  tipo: "Urbano", t: 0, m: 0, ct: 0 },
+  { kva: 250,  tipo: "Urbano", t: 7, m: 0, ct: 5 },
+  { kva: 315,  tipo: "Urbano", t: 0, m: 0, ct: 0 },
+  { kva: 500,  tipo: "Urbano", t: 0, m: 0, ct: 0 },
+  { kva: 630,  tipo: "Urbano", t: 7, m: 0, ct: 0 },
+  { kva: 800,  tipo: "Urbano", t: 8, m: 0, ct: 4 },
+  { kva: 1000, tipo: "Urbano", t: 2, m: 0, ct: 1 },
+];
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("planillas_reserva")
-      .select("*")
-      .order("fecha", { ascending: false });
-    if (error) {
-      toast.error(error.message);
-    } else {
-      setRows((data ?? []) as PlanillaRow[]);
-    }
-    setLoading(false);
-  }, []);
+const T_COLOR  = "#185FA5";
+const M_COLOR  = "#0F6E56";
+const CT_COLOR = "#854F0B";
+const DASH     = { color: "#9ca3af" };
+const RURAL    = { background: "#EAF3DE", color: "#27500A" };
+const URBANO   = { background: "#E6F1FB", color: "#0C447C" };
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+const FILTERS: FilterType[] = ["Todos", "Rural", "Urbano", "Con reparaciones"];
 
-  const computeTotals = (planilla: PlanillaRow) => {
-    const { terceros, taller, autorizados } = planilla.datos;
-    const totTerceros = Object.values(terceros).reduce((s, r) => s + r.t + r.m, 0);
-    const totTaller = Object.values(taller).reduce((s, r) => s + r.t + r.m, 0);
-    const totGeneral = totTerceros + totTaller;
-    const totAuto = Object.values(autorizados).reduce((s, v) => s + v, 0);
-    const totDisp = totGeneral - totAuto;
-    return { totGeneral, totTerceros, totTaller, totAuto, totDisp };
-  };
+export function TablaTransformadores() {
+  const [filter, setFilter] = useState<FilterType>("Todos");
 
-  const filtered = rows.filter(r => r.fecha.includes(search));
+  const filtered = DATA.filter(row => {
+    if (filter === "Rural")            return row.tipo === "Rural";
+    if (filter === "Urbano")           return row.tipo === "Urbano";
+    if (filter === "Con reparaciones") return row.t + row.m > 0;
+    return true;
+  });
+
+  const totalAll = DATA.reduce((s, r) => s + r.t + r.m, 0);
+  const totalT   = DATA.reduce((s, r) => s + r.t,       0);
+  const totalM   = DATA.reduce((s, r) => s + r.m,       0);
+  const totalCT  = DATA.reduce((s, r) => s + r.ct,      0);
+
+  const fT  = filtered.reduce((s, r) => s + r.t,       0);
+  const fM  = filtered.reduce((s, r) => s + r.m,       0);
+  const fCT = filtered.reduce((s, r) => s + r.ct,      0);
+  const fTot = filtered.reduce((s, r) => s + r.t + r.m, 0);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Search className="w-4 h-4 text-muted-foreground" />
-        <input
-          type="text"
-          placeholder="Buscar por fecha..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="flex-1 px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-        />
-        <button
-          onClick={fetchData}
-          disabled={loading}
-          className="p-2 rounded-lg bg-accent/10 border border-accent/20 hover:bg-accent/20 transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 text-accent ${loading ? "animate-spin" : ""}`} />
-        </button>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-4 gap-4">
+        {[
+          { label: "Total transformadores", value: totalAll, color: "text-foreground" },
+          { label: "Trifásicos (T)",         value: totalT,   color: "",  hex: T_COLOR  },
+          { label: "Monofásicos (M)",        value: totalM,   color: "",  hex: M_COLOR  },
+          { label: "Con tanque",             value: totalCT,  color: "",  hex: CT_COLOR },
+        ].map(card => (
+          <div key={card.label} className="bg-card border border-border rounded-xl p-5 space-y-1 shadow-sm">
+            <p className={`text-3xl font-bold ${card.color}`} style={card.hex ? { color: card.hex } : {}}>
+              {card.value}
+            </p>
+            <p className="text-xs text-muted-foreground">{card.label}</p>
+          </div>
+        ))}
       </div>
 
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="w-6 h-6 text-accent animate-spin" />
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground bg-card/30 rounded-lg">
-          <p>No hay planillas guardadas</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map(planilla => {
-            const totals = computeTotals(planilla);
-            const isExpanded = expandedId === planilla.id;
-            return (
-              <div key={planilla.id} className="border border-border rounded-xl bg-card overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                <button
-                  onClick={() => setExpandedId(isExpanded ? null : planilla.id)}
-                  className="w-full px-6 py-4 flex items-center gap-4 hover:bg-card/80 transition-colors group"
+      {/* Filter Pills */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {FILTERS.map(f => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-4 py-1.5 rounded-full text-xs font-medium border transition-all ${
+              filter === f
+                ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                : "bg-transparent text-muted-foreground border-border hover:border-blue-400 hover:text-foreground"
+            }`}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-5 text-xs flex-wrap">
+        <span className="font-semibold text-foreground">Leyenda:</span>
+        <span style={{ color: T_COLOR  }}>● Trifásico (T)</span>
+        <span style={{ color: M_COLOR  }}>● Monofásico (M)</span>
+        <span style={{ color: CT_COLOR }}>● Con tanque (C/T)</span>
+        <span className="px-2.5 py-0.5 rounded-full text-xs font-medium" style={RURAL}>Rural</span>
+        <span className="px-2.5 py-0.5 rounded-full text-xs font-medium" style={URBANO}>Urbano</span>
+      </div>
+
+      {/* Table */}
+      <div className="rounded-xl border border-border overflow-hidden shadow-sm">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border bg-card">
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-foreground">KVA</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-foreground">Tipo</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide" style={{ color: T_COLOR  }}>T</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide" style={{ color: M_COLOR  }}>M</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide" style={{ color: CT_COLOR }}>C/Tanque</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-foreground">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((row, idx) => {
+              const total = row.t + row.m;
+              return (
+                <tr
+                  key={row.kva}
+                  className={`border-b border-border/50 hover:bg-accent/5 transition-colors ${idx % 2 === 0 ? "" : "bg-card/30"}`}
                 >
-                  {isExpanded ? <ChevronUp className="w-5 h-5 text-accent flex-shrink-0" /> : <ChevronDown className="w-5 h-5 text-muted-foreground group-hover:text-accent flex-shrink-0 transition-colors" />}
-                  <div className="flex-1 text-left">
-                    <p className="font-semibold text-lg text-foreground">{planilla.fecha}</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      <span className="text-accent font-medium">{totals.totGeneral}</span> transformadores total
-                      {" | "}
-                      <span className="text-green-400">{totals.totDisp}</span> disponibles
-                      {" | "}
-                      <span className="text-blue-400">{totals.totTerceros}</span> terceros
-                      {" | "}
-                      <span className="text-amber-400">{totals.totTaller}</span> taller
-                    </p>
-                  </div>
-                  <span className="text-xs bg-accent/20 text-accent px-3 py-1 rounded-full font-medium flex-shrink-0">
-                    {new Date(planilla.created_at).toLocaleDateString("es-AR")}
-                  </span>
-                </button>
-
-                {isExpanded && (
-                  <div className="border-t border-border px-6 py-6 bg-background/50 space-y-8">
-                    {/* TERCEROS TABLE */}
-                    <div>
-                      <h3 className="text-sm font-bold text-foreground mb-4 uppercase tracking-wide">Nuevos y Reparados por Terceros</h3>
-                      <div className="overflow-x-auto rounded-lg border border-border">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="bg-accent/10 border-b border-border">
-                              <th className="px-4 py-3 text-left font-semibold text-foreground">KVA</th>
-                              <th className="px-4 py-3 text-center font-semibold text-blue-400">T</th>
-                              <th className="px-4 py-3 text-center font-semibold text-purple-400">M</th>
-                              <th className="px-4 py-3 text-center font-semibold text-amber-400">CON TANQUE</th>
-                              <th className="px-4 py-3 text-center font-semibold text-accent">TOTAL</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border">
-                            {[5, 10, 16, 25, 50, 63, 80, 100, 125, 160, 200, 250, 315, 500, 630, 800, 1000].map((kva, idx) => {
-                              const row = planilla.datos.terceros[String(kva)] || { t: 0, m: 0, ct: 0 };
-                              const total = row.t + row.m;
-                              return (
-                                <tr key={kva} className={idx % 2 === 0 ? "bg-card/30" : ""}>
-                                  <td className="px-4 py-2 font-medium text-foreground">{kva}</td>
-                                  <td className="px-4 py-2 text-center text-blue-400">{row.t || "—"}</td>
-                                  <td className="px-4 py-2 text-center text-purple-400">{row.m || "—"}</td>
-                                  <td className="px-4 py-2 text-center text-amber-400">{row.ct || "—"}</td>
-                                  <td className="px-4 py-2 text-center font-semibold text-accent">{total || "—"}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* TALLER TABLE */}
-                    <div>
-                      <h3 className="text-sm font-bold text-foreground mb-4 uppercase tracking-wide">Reparados por Taller de Transformadores</h3>
-                      <div className="overflow-x-auto rounded-lg border border-border">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="bg-accent/10 border-b border-border">
-                              <th className="px-4 py-3 text-left font-semibold text-foreground">KVA</th>
-                              <th className="px-4 py-3 text-center font-semibold text-foreground">TIPO</th>
-                              <th className="px-4 py-3 text-center font-semibold text-blue-400">T</th>
-                              <th className="px-4 py-3 text-center font-semibold text-purple-400">M</th>
-                              <th className="px-4 py-3 text-center font-semibold text-amber-400">CON TANQUE</th>
-                              <th className="px-4 py-3 text-center font-semibold text-accent">TOTAL</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border">
-                            {[5, 10, 16, 25, 50, 63, 80, 100, 125, 160, 200, 250, 315, 500, 630, 800, 1000].map((kva, idx) => {
-                              const row = planilla.datos.taller[String(kva)] || { tipo: "", t: 0, m: 0, ct: 0 };
-                              const total = row.t + row.m;
-                              return (
-                                <tr key={kva} className={idx % 2 === 0 ? "bg-card/30" : ""}>
-                                  <td className="px-4 py-2 font-medium text-foreground">{kva}</td>
-                                  <td className="px-4 py-2 text-center text-xs text-muted-foreground">{row.tipo || "—"}</td>
-                                  <td className="px-4 py-2 text-center text-blue-400">{row.t || "—"}</td>
-                                  <td className="px-4 py-2 text-center text-purple-400">{row.m || "—"}</td>
-                                  <td className="px-4 py-2 text-center text-amber-400">{row.ct || "—"}</td>
-                                  <td className="px-4 py-2 text-center font-semibold text-accent">{total || "—"}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* REL33 TABLE */}
-                    <div>
-                      <h3 className="text-sm font-bold text-foreground mb-4 uppercase tracking-wide">Relación 33/0,4 KV</h3>
-                      <div className="overflow-x-auto rounded-lg border border-border">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="bg-accent/10 border-b border-border">
-                              <th className="px-4 py-3 text-left font-semibold text-foreground" rowSpan={2}>KVA</th>
-                              <th className="px-4 py-3 text-center font-semibold text-green-400" colSpan={2}>TRAFOS NUEVOS</th>
-                              <th className="px-4 py-3 text-center font-semibold text-orange-400" colSpan={2}>TRAFOS REPARADOS</th>
-                            </tr>
-                            <tr className="bg-accent/5 border-b border-border">
-                              <th className="px-4 py-2 text-center font-semibold text-blue-400">T</th>
-                              <th className="px-4 py-2 text-center font-semibold text-purple-400">M</th>
-                              <th className="px-4 py-2 text-center font-semibold text-blue-400">T</th>
-                              <th className="px-4 py-2 text-center font-semibold text-purple-400">M</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border">
-                            {[25, 63, 160, 315, 500, 630].map((kva, idx) => {
-                              const row = planilla.datos.rel33[String(kva)] || { tN: 0, mN: 0, tR: 0, mR: 0 };
-                              return (
-                                <tr key={kva} className={idx % 2 === 0 ? "bg-card/30" : ""}>
-                                  <td className="px-4 py-2 font-medium text-foreground">{kva}</td>
-                                  <td className="px-4 py-2 text-center text-blue-400">{row.tN || "—"}</td>
-                                  <td className="px-4 py-2 text-center text-purple-400">{row.mN || "—"}</td>
-                                  <td className="px-4 py-2 text-center text-blue-400">{row.tR || "—"}</td>
-                                  <td className="px-4 py-2 text-center text-purple-400">{row.mR || "—"}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* OBS & PEND */}
-                    <div className="grid grid-cols-2 gap-6">
-                      {planilla.datos.obs && (
-                        <div className="p-4 bg-card/50 rounded-lg border border-border">
-                          <h4 className="text-xs font-bold text-foreground mb-3 uppercase tracking-wide">Observaciones</h4>
-                          <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">{planilla.datos.obs}</p>
-                        </div>
-                      )}
-                      {planilla.datos.pend && (
-                        <div className="p-4 bg-card/50 rounded-lg border border-border">
-                          <h4 className="text-xs font-bold text-foreground mb-3 uppercase tracking-wide">Pendientes</h4>
-                          <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">{planilla.datos.pend}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+                  <td className="px-4 py-2.5 font-semibold text-foreground">{row.kva}</td>
+                  <td className="px-4 py-2.5">
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-medium" style={row.tipo === "Rural" ? RURAL : URBANO}>
+                      {row.tipo}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-center font-medium" style={row.t  ? { color: T_COLOR  } : DASH}>{row.t  || "—"}</td>
+                  <td className="px-4 py-2.5 text-center font-medium" style={row.m  ? { color: M_COLOR  } : DASH}>{row.m  || "—"}</td>
+                  <td className="px-4 py-2.5 text-center font-medium" style={row.ct ? { color: CT_COLOR } : DASH}>{row.ct || "—"}</td>
+                  <td className="px-4 py-2.5 text-center font-bold text-foreground">{total || "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-border bg-card/60">
+              <td className="px-4 py-3 font-bold text-xs uppercase tracking-wide text-foreground" colSpan={2}>Total</td>
+              <td className="px-4 py-3 text-center font-bold" style={{ color: T_COLOR  }}>{fT  || "—"}</td>
+              <td className="px-4 py-3 text-center font-bold" style={{ color: M_COLOR  }}>{fM  || "—"}</td>
+              <td className="px-4 py-3 text-center font-bold" style={{ color: CT_COLOR }}>{fCT || "—"}</td>
+              <td className="px-4 py-3 text-center font-bold text-foreground">{fTot || "—"}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
   );
 }
+
+// backward-compat alias used in app/page.tsx
+export { TablaTransformadores as TransformadoresTablaSection };
