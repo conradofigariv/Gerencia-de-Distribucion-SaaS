@@ -70,10 +70,10 @@ Reglas:
 
 // Free vision models on OpenRouter, in order of preference
 const MODELS = [
-  "google/gemini-2.5-flash",
   "google/gemini-2.0-flash-exp:free",
   "meta-llama/llama-4-scout:free",
   "qwen/qwen2.5-vl-72b-instruct:free",
+  "google/gemini-2.5-flash", // fallback pago si los gratis fallan
 ];
 
 export async function POST(req: NextRequest) {
