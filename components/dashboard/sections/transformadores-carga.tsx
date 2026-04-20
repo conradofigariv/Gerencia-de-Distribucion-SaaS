@@ -18,7 +18,7 @@ interface Rel33Row  { tN: number; mN: number; tR: number; mR: number }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const sum = (r: TrafoRow) => r.t + r.m + r.ct;
+const sum = (r: TrafoRow) => r.t + r.m; // ct = subconjunto de t/m, no suma al total
 
 // Merge extracted data (keyed by string) back into state (keyed by number)
 function mergeMap<T>(prev: Record<number, T>, extracted: Record<string, T>, keys: number[]): Record<number, T> {
