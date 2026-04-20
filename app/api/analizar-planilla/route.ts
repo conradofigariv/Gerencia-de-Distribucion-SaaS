@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 
 const PROMPT = `Analiza esta planilla de reserva de transformadores y extrae todos los datos numéricos.
@@ -69,10 +68,18 @@ Reglas:
 - Valores en blanco o ilegibles = 0
 - Devuelve SOLO el JSON puro, sin bloques de código`;
 
+// Free vision models on OpenRouter, in order of preference
+const MODELS = [
+  "google/gemini-2.5-flash",
+  "google/gemini-2.0-flash-exp:free",
+  "meta-llama/llama-4-scout:free",
+  "qwen/qwen2.5-vl-72b-instruct:free",
+];
+
 export async function POST(req: NextRequest) {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!process.env.OPENROUTER_API_KEY) {
     return NextResponse.json(
-      { error: "ANTHROPIC_API_KEY no configurada en .env.local" },
+      { error: "OPENROUTER_API_KEY no configurada en .env.local" },
       { status: 500 }
     );
   }
@@ -84,49 +91,54 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No se recibió ningún archivo" }, { status: 400 });
     }
 
-    const bytes = await file.arrayBuffer();
+    const bytes  = await file.arrayBuffer();
     const base64 = Buffer.from(bytes).toString("base64");
+    const dataUrl = `data:${file.type};base64,${base64}`;
 
-    // Claude API only supports images, not PDFs
-    const validImageTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
-    if (!validImageTypes.includes(file.type)) {
+    const errors: string[] = [];
+    let text = "";
+
+    for (const model of MODELS) {
+      try {
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "http://localhost:3000",
+            "X-Title": "Gerencia Distribucion SaaS",
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{
+              role: "user",
+              content: [
+                { type: "image_url", image_url: { url: dataUrl } },
+                { type: "text", text: PROMPT },
+              ],
+            }],
+          }),
+        });
+
+        const json = await res.json();
+        if (!res.ok) {
+          errors.push(`[${model}] ${JSON.stringify(json.error ?? json).slice(0, 100)}`);
+          continue;
+        }
+
+        text = json.choices?.[0]?.message?.content ?? "";
+        if (text) break;
+      } catch (e: unknown) {
+        errors.push(`[${model}] ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    if (!text) {
       return NextResponse.json(
-        { error: "Solo se aceptan imágenes (JPG, PNG, GIF, WEBP). Los PDFs deben convertirse a imagen primero." },
-        { status: 400 }
+        { error: "No se pudo analizar. Errores:\n" + errors.map(e => `• ${e}`).join("\n") },
+        { status: 500 }
       );
     }
-    const mediaType = file.type as "image/jpeg" | "image/png" | "image/gif" | "image/webp";
-
-    const client = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
-
-    const response = await client.messages.create({
-      model: "claude-opus-4-7",
-      max_tokens: 2048,
-      messages: [{
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: mediaType,
-              data: base64,
-            },
-          },
-          {
-            type: "text",
-            text: PROMPT,
-          },
-        ],
-      }],
-    });
-
-    const text = response.content
-      .filter(b => b.type === "text")
-      .map(b => (b as { type: "text"; text: string }).text)
-      .join("");
 
     const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
     const datos = JSON.parse(clean);
