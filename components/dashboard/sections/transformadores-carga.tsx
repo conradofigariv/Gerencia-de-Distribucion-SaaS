@@ -12,8 +12,8 @@ const POT_33 = [25, 63, 160, 315, 500, 630];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface TrafoRow  { t: number; m: number; ct: number }          // ct = con tanque
-interface TallerRow { tipo: string; t: number; m: number; ct: number }
+interface TrafoRow  { t: number; m: number; ct: number }
+interface TallerRow { t: number; m: number; ct: number }
 interface Rel33Row  { tN: number; mN: number; tR: number; mR: number }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -31,19 +31,23 @@ function mergeMap<T>(prev: Record<number, T>, extracted: Record<string, T>, keys
 }
 function mergeTaller(
   prev: Record<number, TallerRow>,
-  extracted: Record<string, Partial<TallerRow>>,
+  extracted: Record<string, Partial<TallerRow & { tipo?: string }>>,
   keys: number[]
 ): Record<number, TallerRow> {
   const next = { ...prev };
   for (const p of keys) {
     const val = extracted[p] ?? extracted[String(p)];
-    if (val !== undefined) next[p] = { ...prev[p], ...val };
+    if (val !== undefined) {
+      const { tipo: _tipo, ...rest } = val as TallerRow & { tipo?: string };
+      next[p] = { ...prev[p], ...rest };
+    }
   }
   return next;
 }
 
 function init13Trafo()  { return Object.fromEntries(POT_13.map(p => [p, { t: 0, m: 0, ct: 0  }])) as Record<number, TrafoRow>; }
-function init13Taller() { return Object.fromEntries(POT_13.map(p => [p, { tipo: "", t: 0, m: 0, ct: 0 }])) as Record<number, TallerRow>; }
+function init13Taller() { return Object.fromEntries(POT_13.map(p => [p, { t: 0, m: 0, ct: 0 }])) as Record<number, TallerRow>; }
+function init13Total() { return Object.fromEntries(POT_13.map(p => [p, 0])) as Record<number, number>; }
 function init13Auto()   { return Object.fromEntries(POT_13.map(p => [p, 0])) as Record<number, number>; }
 function init33()       { return Object.fromEntries(POT_33.map(p => [p, { tN: 0, mN: 0, tR: 0, mR: 0 }])) as Record<number, Rel33Row>; }
 
@@ -112,6 +116,7 @@ export function TransformadoresCargaSection() {
   const [terceros, setTerceros]     = useState<Record<number, TrafoRow>>(init13Trafo);
   const [taller, setTaller]         = useState<Record<number, TallerRow>>(init13Taller);
   const [autorizados, setAutorizados] = useState<Record<number, number>>(init13Auto);
+  const [totales, setTotales]       = useState<Record<number, number>>(init13Total);
   const [rel33, setRel33]           = useState<Record<number, Rel33Row>>(init33);
   const [obs, setObs]               = useState("");
   const [pend, setPend]             = useState("");
@@ -149,6 +154,20 @@ export function TransformadoresCargaSection() {
         }
         return next;
       });
+      // Totales: compute from extracted terceros + taller
+      if (d.terceros || d.taller) {
+        setTotales(prev => {
+          const next = { ...prev };
+          for (const p of POT_13) {
+            const t3 = d.terceros?.[p] ?? d.terceros?.[String(p)];
+            const ta = d.taller?.[p]   ?? d.taller?.[String(p)];
+            const t3sum = t3 ? (Number(t3.t ?? 0) + Number(t3.m ?? 0)) : 0;
+            const tasum = ta ? (Number(ta.t ?? 0) + Number(ta.m ?? 0)) : 0;
+            if (t3sum + tasum > 0) next[p] = t3sum + tasum;
+          }
+          return next;
+        });
+      }
       if (d.rel33)       setRel33(prev => mergeMap(prev, d.rel33, POT_33));
       if (d.obs)        setObs(d.obs);
       if (d.pend)       setPend(d.pend);
@@ -166,11 +185,11 @@ export function TransformadoresCargaSection() {
   const setT = (p: number, f: keyof TrafoRow, v: number) =>
     setTerceros(prev => ({ ...prev, [p]: { ...prev[p], [f]: v } }));
 
-  const setTAStr = (p: number, v: string) =>
-    setTaller(prev => ({ ...prev, [p]: { ...prev[p], tipo: v } }));
-
-  const setTANum = (p: number, f: keyof Omit<TallerRow, "tipo">, v: number) =>
+  const setTANum = (p: number, f: keyof TallerRow, v: number) =>
     setTaller(prev => ({ ...prev, [p]: { ...prev[p], [f]: v } }));
+
+  const setTot = (p: number, v: number) =>
+    setTotales(prev => ({ ...prev, [p]: v }));
 
   const setAuto = (p: number, v: number) =>
     setAutorizados(prev => ({ ...prev, [p]: v }));
@@ -180,9 +199,7 @@ export function TransformadoresCargaSection() {
 
   // ── Computed totals ─────────────────────────────────────────────────────────
 
-  const totTerceros = POT_13.reduce((s, p) => s + sum(terceros[p]), 0);
-  const totTaller   = POT_13.reduce((s, p) => s + sum(taller[p]), 0);
-  const totGeneral  = totTerceros + totTaller;
+  const totGeneral  = POT_13.reduce((s, p) => s + totales[p], 0);
   const totAuto     = POT_13.reduce((s, p) => s + autorizados[p], 0);
   const totDisp     = totGeneral - totAuto;
   const tot33N      = POT_33.reduce((s, p) => s + rel33[p].tN + rel33[p].mN, 0);
@@ -193,7 +210,7 @@ export function TransformadoresCargaSection() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const datos = { terceros, taller, autorizados, rel33, obs, pend };
+      const datos = { terceros, taller, totales, autorizados, rel33, obs, pend };
       const { error } = await supabase
         .from("planillas_reserva")
         .insert([{ fecha, datos }]);
@@ -308,7 +325,7 @@ export function TransformadoresCargaSection() {
                       </tr>
                     );
                   })}
-                  <TotalRow label="TOTAL" span={4} values={[totTerceros]} />
+                  <TotalRow label="TOTAL" span={4} values={[POT_13.reduce((s,p)=>s+sum(terceros[p]),0)]} />
                 </tbody>
               </table>
             </div>
@@ -331,13 +348,7 @@ export function TransformadoresCargaSection() {
                     const r = taller[p]; const tot = sum(r);
                     return (
                       <tr key={p} className={`hover:bg-blue-600/10 transition-colors ${tot > 0 ? "bg-blue-600/5" : ""}`}>
-                        <TD>
-                          <select value={r.tipo} onChange={e => setTAStr(p, e.target.value)}
-                            className="w-14 h-6 rounded border border-slate-700 bg-slate-900 text-[9px] text-slate-200 focus:outline-none focus:border-blue-400 transition-colors">
-                            <option value="">—</option>
-                            <option value="RURAL">RURAL</option>
-                          </select>
-                        </TD>
+                        <TD c="text-[9px] text-slate-400">RURAL</TD>
                         <TD c="font-semibold text-foreground">{p}</TD>
                         <TD><NI val={r.t}  onChange={v => setTANum(p, "t",  v)} /></TD>
                         <TD><NI val={r.m}  onChange={v => setTANum(p, "m",  v)} /></TD>
@@ -348,7 +359,7 @@ export function TransformadoresCargaSection() {
                       </tr>
                     );
                   })}
-                  <TotalRow label="TOTAL" span={5} values={[totTaller]} />
+                  <TotalRow label="TOTAL" span={5} values={[POT_13.reduce((s,p)=>s+sum(taller[p]),0)]} />
                 </tbody>
               </table>
             </div>
@@ -369,18 +380,14 @@ export function TransformadoresCargaSection() {
                 </thead>
                 <tbody>
                   {POT_13.map(p => {
-                    const tot  = sum(terceros[p]) + sum(taller[p]);
+                    const tot  = totales[p];
                     const auto = autorizados[p];
                     const disp = Math.max(0, tot - auto);
                     return (
                       <tr key={p} className="hover:bg-slate-700/30 transition-colors">
-                        <TD c="text-[9px]">{taller[p].tipo || "—"}</TD>
-                        <TD c={tot > 0 ? "text-foreground font-semibold" : "text-muted-foreground"}>
-                          {tot || "—"}
-                        </TD>
-                        <TD>
-                          <NI val={auto} onChange={v => setAuto(p, v)} />
-                        </TD>
+                        <TD c="text-[9px] text-slate-400">RURAL</TD>
+                        <TD><NI val={tot} onChange={v => setTot(p, v)} /></TD>
+                        <TD><NI val={auto} onChange={v => setAuto(p, v)} /></TD>
                         <TD c={disp > 0 ? "text-green-400 font-bold" : "text-muted-foreground"}>
                           {disp || "—"}
                         </TD>
