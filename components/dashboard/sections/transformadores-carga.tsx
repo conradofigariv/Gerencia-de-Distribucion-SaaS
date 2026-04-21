@@ -51,10 +51,10 @@ function init33()       { return Object.fromEntries(POT_33.map(p => [p, { tN: 0,
 
 function NI({ val, onChange }: { val: number; onChange: (v: number) => void }) {
   return (
-    <div className="flex items-center gap-1 bg-background border border-border rounded">
+    <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 rounded">
       <button
         onClick={() => onChange(Math.max(0, val - 1))}
-        className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-card/50 transition-colors"
+        className="px-2 py-1 text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors"
       >
         −
       </button>
@@ -63,11 +63,11 @@ function NI({ val, onChange }: { val: number; onChange: (v: number) => void }) {
         value={val === 0 ? "" : val}
         placeholder="0"
         onChange={e => onChange(Math.max(0, parseInt(e.target.value) || 0))}
-        className="w-10 px-1 py-1 text-center bg-transparent text-xs text-foreground focus:outline-none"
+        className="w-10 px-1 py-1 text-center bg-transparent text-xs text-slate-200 focus:outline-none"
       />
       <button
         onClick={() => onChange(val + 1)}
-        className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-card/50 transition-colors"
+        className="px-2 py-1 text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors"
       >
         +
       </button>
@@ -78,7 +78,7 @@ function NI({ val, onChange }: { val: number; onChange: (v: number) => void }) {
 function TH({ c, rs, cs, children }: { c?: string; rs?: number; cs?: number; children: React.ReactNode }) {
   return (
     <th rowSpan={rs} colSpan={cs}
-      className={`px-1 py-1.5 text-[9px] font-bold text-muted-foreground border border-border bg-secondary/60 uppercase tracking-wide leading-tight ${c ?? ""}`}>
+      className={`px-1 py-1.5 text-[9px] font-bold text-slate-300 border border-slate-700 bg-slate-700/50 uppercase tracking-wide leading-tight ${c ?? ""}`}>
       {children}
     </th>
   );
@@ -86,7 +86,7 @@ function TH({ c, rs, cs, children }: { c?: string; rs?: number; cs?: number; chi
 
 function TD({ c, children }: { c?: string; children: React.ReactNode }) {
   return (
-    <td className={`px-1 py-[3px] text-xs border border-border text-center ${c ?? ""}`}>
+    <td className={`px-1 py-[3px] text-xs border border-slate-700 text-center text-slate-300 ${c ?? ""}`}>
       {children}
     </td>
   );
@@ -94,10 +94,10 @@ function TD({ c, children }: { c?: string; children: React.ReactNode }) {
 
 function TotalRow({ label, span, values }: { label: string; span?: number; values: (string | number | React.ReactNode)[] }) {
   return (
-    <tr className="bg-secondary/60 font-bold">
-      <td colSpan={span ?? 1} className="px-1 py-1 border border-border text-[10px] font-bold text-foreground text-center">{label}</td>
+    <tr className="bg-slate-700/50 font-bold">
+      <td colSpan={span ?? 1} className="px-1 py-1 border border-slate-700 text-[10px] font-bold text-slate-300 text-center">{label}</td>
       {values.map((v, i) => (
-        <td key={i} className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{v || "—"}</td>
+        <td key={i} className="px-1 py-1 border border-slate-700 text-xs text-center text-blue-400 font-bold">{v || "—"}</td>
       ))}
     </tr>
   );
@@ -211,7 +211,7 @@ export function TransformadoresCargaSection() {
 
       {/* ── Drop zone ── */}
       {archivo ? (
-        <div className="bg-card border border-border rounded-xl px-5 py-3 shadow-sm flex items-center gap-3">
+        <div className="bg-slate-800/30 border border-slate-700 rounded-xl px-5 py-3 shadow-sm flex items-center gap-3">
           {analyzing
             ? <Loader2 className="w-5 h-5 text-accent shrink-0 animate-spin" />
             : <FileText className="w-5 h-5 text-accent shrink-0" />
@@ -261,14 +261,14 @@ export function TransformadoresCargaSection() {
         onChange={e => { const f = e.target.files?.[0]; if (f) handleFileChange(f); }} />
 
       {/* ── Planilla ── */}
-      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-slate-800/30 border border-slate-700 rounded-xl shadow-sm overflow-hidden">
 
         {/* Title */}
-        <div className="border-b border-border bg-secondary/40 px-4 py-3 text-center">
-          <p className="text-xs font-bold text-foreground tracking-wide">
+        <div className="border-b border-slate-700 bg-slate-700/30 px-4 py-3 text-center">
+          <p className="text-xs font-bold text-slate-300 tracking-wide">
             RESERVA DE TRANSFORMADORES DE DISTRIBUCIÓN (RELAC: 13,2/0,4 — 33/0,4 KV)
           </p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
+          <p className="text-[11px] text-slate-400 mt-0.5">
             ÁREA TÉCNICA — DPTO. TRANSFORMADORES — GCIA. TRANSMISIÓN
           </p>
         </div>
@@ -280,7 +280,7 @@ export function TransformadoresCargaSection() {
 
             {/* Table A: Nuevos y Reparados por Terceros */}
             <div className="flex-1">
-              <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
+              <p className="text-[9px] font-bold text-center text-slate-300 mb-1 uppercase tracking-wider">
                 Nuevos y Reparados por Terceros
               </p>
               <table className="w-full border-collapse">
@@ -295,7 +295,7 @@ export function TransformadoresCargaSection() {
                   {POT_13.map(p => {
                     const r = terceros[p]; const tot = sum(r);
                     return (
-                      <tr key={p} className={`hover:bg-secondary/20 transition-colors ${tot > 0 ? "bg-accent/5" : ""}`}>
+                      <tr key={p} className={`hover:bg-blue-600/10 transition-colors ${tot > 0 ? "bg-blue-600/5" : ""}`}>
                         <TD c="font-semibold text-foreground">{p}</TD>
                         <TD><NI val={r.t}  onChange={v => setT(p, "t",  v)} /></TD>
                         <TD><NI val={r.m}  onChange={v => setT(p, "m",  v)} /></TD>
@@ -313,7 +313,7 @@ export function TransformadoresCargaSection() {
 
             {/* Table B: Reparados por Taller */}
             <div className="flex-1">
-              <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
+              <p className="text-[9px] font-bold text-center text-slate-300 mb-1 uppercase tracking-wider">
                 Reparados por Taller de Transformadores
               </p>
               <table className="w-full border-collapse">
@@ -328,10 +328,10 @@ export function TransformadoresCargaSection() {
                   {POT_13.map(p => {
                     const r = taller[p]; const tot = sum(r);
                     return (
-                      <tr key={p} className={`hover:bg-secondary/20 transition-colors ${tot > 0 ? "bg-accent/5" : ""}`}>
+                      <tr key={p} className={`hover:bg-blue-600/10 transition-colors ${tot > 0 ? "bg-blue-600/5" : ""}`}>
                         <TD>
                           <select value={r.tipo} onChange={e => setTAStr(p, e.target.value)}
-                            className="w-14 h-6 rounded border border-border bg-background text-[9px] text-foreground focus:outline-none focus:border-accent transition-colors">
+                            className="w-14 h-6 rounded border border-slate-700 bg-slate-900 text-[9px] text-slate-200 focus:outline-none focus:border-blue-400 transition-colors">
                             <option value="">—</option>
                             <option value="RURAL">RURAL</option>
                           </select>
@@ -353,7 +353,7 @@ export function TransformadoresCargaSection() {
 
             {/* Table C: Resumen */}
             <div className="w-[210px] shrink-0">
-              <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
+              <p className="text-[9px] font-bold text-center text-slate-300 mb-1 uppercase tracking-wider">
                 Total de Transformadores
               </p>
               <table className="w-full border-collapse">
@@ -371,7 +371,7 @@ export function TransformadoresCargaSection() {
                     const auto = autorizados[p];
                     const disp = Math.max(0, tot - auto);
                     return (
-                      <tr key={p} className="hover:bg-secondary/20 transition-colors">
+                      <tr key={p} className="hover:bg-slate-700/30 transition-colors">
                         <TD c="text-[9px]">{taller[p].tipo || "—"}</TD>
                         <TD c={tot > 0 ? "text-foreground font-semibold" : "text-muted-foreground"}>
                           {tot || "—"}
@@ -385,7 +385,7 @@ export function TransformadoresCargaSection() {
                       </tr>
                     );
                   })}
-                  <tr className="bg-secondary/60 font-bold">
+                  <tr className="bg-slate-700/50 font-bold">
                     <td className="px-1 py-1 border border-border text-[9px] font-bold text-foreground text-center">TOTAL</td>
                     <td className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{totGeneral || "—"}</td>
                     <td className="px-1 py-1 border border-border text-xs text-center text-amber-400 font-bold">{totAuto || "—"}</td>
@@ -401,7 +401,7 @@ export function TransformadoresCargaSection() {
 
             {/* Table D: Relación 33/0,4 kV */}
             <div className="w-[300px] shrink-0">
-              <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
+              <p className="text-[9px] font-bold text-center text-slate-300 mb-1 uppercase tracking-wider">
                 Relación 33/0,4 KV
               </p>
               <table className="w-full border-collapse">
@@ -420,7 +420,7 @@ export function TransformadoresCargaSection() {
                   {POT_33.map(p => {
                     const r = rel33[p];
                     return (
-                      <tr key={p} className="hover:bg-secondary/20 transition-colors">
+                      <tr key={p} className="hover:bg-slate-700/30 transition-colors">
                         <TD c="font-semibold text-foreground">{p}</TD>
                         <TD><NI val={r.tN} onChange={v => setR(p, "tN", v)} /></TD>
                         <TD><NI val={r.mN} onChange={v => setR(p, "mN", v)} /></TD>
@@ -429,7 +429,7 @@ export function TransformadoresCargaSection() {
                       </tr>
                     );
                   })}
-                  <tr className="bg-secondary/60 font-bold">
+                  <tr className="bg-slate-700/50 font-bold">
                     <td className="px-1 py-1 border border-border text-[9px] font-bold text-foreground text-center">TOTAL</td>
                     <td colSpan={2} className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{tot33N || "—"}</td>
                     <td colSpan={2} className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{tot33R || "—"}</td>
@@ -441,25 +441,25 @@ export function TransformadoresCargaSection() {
             {/* Observaciones + Pendientes */}
             <div className="flex-1 grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5">
-                <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                <p className="text-[9px] font-bold text-slate-300 uppercase tracking-wider">
                   Observaciones (13,2/0,4 KV)
                 </p>
                 <textarea
                   value={obs}
                   onChange={e => setObs(e.target.value)}
                   placeholder="Ingrese observaciones…"
-                  className="flex-1 min-h-[120px] rounded-lg bg-secondary border border-border px-2.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent resize-none transition-colors"
+                  className="flex-1 min-h-[120px] rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-xs text-slate-200 placeholder:text-slate-400 focus:outline-none focus:border-blue-400 resize-none transition-colors"
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                <p className="text-[9px] font-bold text-slate-300 uppercase tracking-wider">
                   Pendientes de Entregas
                 </p>
                 <textarea
                   value={pend}
                   onChange={e => setPend(e.target.value)}
                   placeholder="Ingrese pendientes…"
-                  className="flex-1 min-h-[120px] rounded-lg bg-secondary border border-border px-2.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent resize-none transition-colors"
+                  className="flex-1 min-h-[120px] rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-xs text-slate-200 placeholder:text-slate-400 focus:outline-none focus:border-blue-400 resize-none transition-colors"
                 />
               </div>
             </div>
@@ -467,9 +467,9 @@ export function TransformadoresCargaSection() {
         </div>
 
         {/* Footer */}
-        <div className="border-t border-border px-5 py-3 flex items-center justify-between bg-secondary/20">
-          <div className="flex gap-4 text-xs text-muted-foreground">
-            <span>Total: <strong className="text-accent">{totGeneral}</strong></span>
+        <div className="border-t border-slate-700 px-5 py-3 flex items-center justify-between bg-slate-700/30">
+          <div className="flex gap-4 text-xs text-slate-300">
+            <span>Total: <strong className="text-blue-400">{totGeneral}</strong></span>
             <span>Autorizados: <strong className="text-amber-400">{totAuto}</strong></span>
             <span>Disponibles: <strong className="text-green-400">{totDisp}</strong></span>
           </div>

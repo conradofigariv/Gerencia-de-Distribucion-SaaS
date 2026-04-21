@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, Search, ChevronDown } from "lucide-react";
+import { Loader2, RefreshCw, Search, ChevronDown, Trash2 } from "lucide-react";
 
 const KVA_ROWS = [5, 10, 16, 25, 50, 63, 80, 100, 125, 160, 200, 250, 315, 500, 630, 800, 1000];
 const REL33_ROWS = [25, 63, 160, 315, 500, 630];
@@ -65,6 +65,25 @@ export function TransformadoresTablaSection() {
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const deleteRecord = async (id: number) => {
+    if (!confirm("¿Está seguro de que desea eliminar este informe de reservas?")) {
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from("planillas_reserva")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      toast.success("Informe eliminado correctamente");
+      setRows(prev => prev.filter(r => r.id !== id));
+    } catch (err) {
+      toast.error((err as Error).message || "Error al eliminar");
+    }
   };
 
   const availableYears = [...new Set(rows.map(r => r.fecha.slice(0, 4)))].sort((a, b) => b.localeCompare(a));
@@ -156,12 +175,12 @@ export function TransformadoresTablaSection() {
         return (
           <div key={planilla.id} className="space-y-4">
             {/* Planilla Header */}
-            <button
-              onClick={() => setExpandedId(isExpanded ? null : planilla.id)}
-              className="w-full bg-slate-800/40 rounded-xl shadow-sm border border-slate-700 p-6 hover:bg-slate-800/60 transition-colors text-left"
-            >
+            <div className="bg-slate-800/40 rounded-xl shadow-sm border border-slate-700 p-6 hover:bg-slate-800/60 transition-colors">
               <div className="flex items-center justify-between">
-                <div>
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : planilla.id)}
+                  className="flex-1 text-left hover:opacity-80 transition-opacity"
+                >
                   <h2 className="text-xl font-bold text-foreground">Informe de Reservas — {planilla.fecha}</h2>
                   <p className="text-sm text-muted-foreground mt-1">
                     <span className="font-semibold text-blue-400">{totals.totGeneral}</span> total
@@ -172,10 +191,19 @@ export function TransformadoresTablaSection() {
                     {" | "}
                     <span className="font-semibold text-amber-400">{totals.totTaller}</span> taller
                   </p>
+                </button>
+                <div className="flex items-center gap-2 ml-4">
+                  <button
+                    onClick={() => deleteRecord(planilla.id)}
+                    className="p-2 rounded-lg text-red-400 hover:bg-red-500/20 transition-colors"
+                    title="Eliminar informe"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                  <ChevronDown className={`w-6 h-6 text-muted-foreground transition-transform cursor-pointer ${isExpanded ? "rotate-180" : ""}`} />
                 </div>
-                <ChevronDown className={`w-6 h-6 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
               </div>
-            </button>
+            </div>
 
             {isExpanded && (
               <>
