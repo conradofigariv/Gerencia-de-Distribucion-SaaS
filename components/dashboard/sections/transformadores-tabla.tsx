@@ -27,6 +27,8 @@ export function TransformadoresTablaSection() {
   const [rows, setRows] = useState<PlanillaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [filterYear, setFilterYear] = useState("");
+  const [filterMonth, setFilterMonth] = useState("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [expandedSections, setExpandedSections] = useState({
     nuevos: true,
@@ -65,7 +67,24 @@ export function TransformadoresTablaSection() {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const filtered = rows.filter(r => r.fecha.includes(search));
+  const availableYears = [...new Set(rows.map(r => r.fecha.slice(0, 4)))].sort((a, b) => b.localeCompare(a));
+
+  const MONTHS = [
+    { value: "01", label: "Enero" }, { value: "02", label: "Febrero" },
+    { value: "03", label: "Marzo" }, { value: "04", label: "Abril" },
+    { value: "05", label: "Mayo"  }, { value: "06", label: "Junio"  },
+    { value: "07", label: "Julio" }, { value: "08", label: "Agosto" },
+    { value: "09", label: "Septiembre" }, { value: "10", label: "Octubre" },
+    { value: "11", label: "Noviembre"  }, { value: "12", label: "Diciembre" },
+  ];
+
+  const filtered = rows.filter(r => {
+    const [year, month] = r.fecha.split("-");
+    if (filterYear  && year  !== filterYear)  return false;
+    if (filterMonth && month !== filterMonth) return false;
+    if (search      && !r.fecha.includes(search)) return false;
+    return true;
+  });
 
   if (loading) {
     return (
@@ -75,34 +94,60 @@ export function TransformadoresTablaSection() {
     );
   }
 
-  if (filtered.length === 0) {
-    return (
-      <div className="text-center py-12 text-muted-foreground bg-card/30 rounded-lg">
-        No hay planillas guardadas
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      {/* Search Bar */}
-      <div className="flex items-center gap-2">
-        <Search className="w-4 h-4 text-muted-foreground" />
+      {/* Filters */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Search className="w-4 h-4 text-muted-foreground shrink-0" />
+        <select
+          value={filterYear}
+          onChange={e => setFilterYear(e.target.value)}
+          className="px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+        >
+          <option value="">Todos los años</option>
+          {availableYears.map(y => (
+            <option key={y} value={y}>{y}</option>
+          ))}
+        </select>
+        <select
+          value={filterMonth}
+          onChange={e => setFilterMonth(e.target.value)}
+          className="px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+        >
+          <option value="">Todos los meses</option>
+          {MONTHS.map(m => (
+            <option key={m.value} value={m.value}>{m.label}</option>
+          ))}
+        </select>
         <input
           type="text"
-          placeholder="Buscar por fecha..."
+          placeholder="Buscar fecha exacta (ej: 2026-04-20)..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="flex-1 px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          className="flex-1 min-w-[200px] px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent"
         />
+        {(filterYear || filterMonth || search) && (
+          <button
+            onClick={() => { setFilterYear(""); setFilterMonth(""); setSearch(""); }}
+            className="px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary border border-border transition-colors"
+          >
+            Limpiar
+          </button>
+        )}
         <button
           onClick={fetchData}
           disabled={loading}
-          className="p-2 rounded-lg bg-accent/10 border border-accent/20 hover:bg-accent/20 transition-colors disabled:opacity-50"
+          className="p-2 rounded-lg bg-accent/10 border border-accent/20 hover:bg-accent/20 transition-colors disabled:opacity-50 shrink-0"
         >
           <RefreshCw className={`w-4 h-4 text-accent ${loading ? "animate-spin" : ""}`} />
         </button>
       </div>
+
+      {filtered.length === 0 && (
+        <div className="text-center py-12 text-muted-foreground bg-card/30 rounded-lg">
+          {rows.length === 0 ? "No hay planillas guardadas" : "No hay resultados para este filtro"}
+        </div>
+      )}
 
       {filtered.map((planilla) => {
         const totals = computeTotals(planilla);
