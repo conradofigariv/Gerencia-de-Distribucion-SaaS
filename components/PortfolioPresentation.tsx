@@ -2,14 +2,13 @@
 
 import React, { useRef } from "react";
 import { Download } from "lucide-react";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 export function PortfolioPresentation() {
   const contentRef = useRef<HTMLDivElement>(null);
 
   const handleExportPDF = async () => {
-    const html2canvas = (await import("html2canvas")).default;
-    const { jsPDF } = await import("jspdf");
-
     const element = contentRef.current;
     if (!element) return;
 
@@ -18,6 +17,7 @@ export function PortfolioPresentation() {
         scale: 2,
         useCORS: true,
         logging: false,
+        backgroundColor: "#ffffff",
       });
 
       const imgData = canvas.toDataURL("image/png");
@@ -27,27 +27,28 @@ export function PortfolioPresentation() {
         format: "a4",
       });
 
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = pdfWidth - 20;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const imgWidth = pageWidth - 2 * margin;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-      let heightLeft = imgHeight;
-      let position = 10;
+      let y = margin;
+      let remainingHeight = imgHeight;
 
-      pdf.addImage(imgData, "PNG", 10, position, imgWidth, imgHeight);
-      heightLeft -= pdfHeight - 20;
+      pdf.addImage(imgData, "PNG", margin, y, imgWidth, imgHeight);
 
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
+      while (remainingHeight > pageHeight - 2 * margin) {
+        remainingHeight -= pageHeight - 2 * margin;
         pdf.addPage();
-        pdf.addImage(imgData, "PNG", 10, position, imgWidth, imgHeight);
-        heightLeft -= pdfHeight - 20;
+        y = remainingHeight - imgHeight;
+        pdf.addImage(imgData, "PNG", margin, -y, imgWidth, imgHeight);
       }
 
       pdf.save("Gerencia-Distribucion-SaaS-Portfolio.pdf");
     } catch (error) {
-      console.error("Error generando PDF:", error);
+      console.error("Error al generar PDF:", error);
+      alert("Error al generar el PDF. Intenta de nuevo.");
     }
   };
 
@@ -58,7 +59,7 @@ export function PortfolioPresentation() {
           <h1 className="text-4xl font-bold text-white">Portfolio Presentation</h1>
           <button
             onClick={handleExportPDF}
-            className="flex items-center gap-2 px-6 py-3 bg-accent hover:bg-accent/90 text-white rounded-lg font-medium transition-colors"
+            className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
           >
             <Download className="w-5 h-5" />
             Descargar PDF
@@ -67,27 +68,25 @@ export function PortfolioPresentation() {
 
         <div
           ref={contentRef}
-          className="bg-white text-slate-900 rounded-xl shadow-2xl overflow-hidden"
+          className="bg-white text-slate-900 rounded-xl shadow-2xl"
           style={{ padding: "40px" }}
         >
           {/* PAGE 1: COVER */}
-          <div style={{ pageBreakAfter: "always", paddingBottom: "60px" }}>
-            <div style={{ textAlign: "center", marginBottom: "60px" }}>
-              <h1 style={{ fontSize: "48px", fontWeight: "bold", marginBottom: "20px", color: "#1a5490" }}>
-                Gerencia de Distribución SaaS
-              </h1>
-              <p style={{ fontSize: "18px", color: "#666", marginBottom: "40px" }}>
-                Sistema de gestión de transformadores y reserva de distribución
-              </p>
-              <div style={{ borderTop: "3px solid #1a5490", width: "200px", margin: "40px auto" }} />
-              <p style={{ fontSize: "14px", color: "#999", marginTop: "40px" }}>
-                Presentación de Proyecto • 2026
-              </p>
-            </div>
+          <div style={{ marginBottom: "100px", textAlign: "center" }}>
+            <h1 style={{ fontSize: "48px", fontWeight: "bold", marginBottom: "20px", color: "#1a5490" }}>
+              Gerencia de Distribución SaaS
+            </h1>
+            <p style={{ fontSize: "18px", color: "#666", marginBottom: "40px" }}>
+              Sistema de gestión de transformadores y reserva de distribución
+            </p>
+            <div style={{ borderTop: "3px solid #1a5490", width: "200px", margin: "40px auto" }} />
+            <p style={{ fontSize: "14px", color: "#999", marginTop: "40px" }}>
+              Presentación de Proyecto • 2026
+            </p>
           </div>
 
           {/* PAGE 2: OVERVIEW */}
-          <div style={{ pageBreakAfter: "always", paddingBottom: "60px" }}>
+          <div style={{ marginBottom: "100px" }}>
             <h2 style={{ fontSize: "32px", fontWeight: "bold", marginBottom: "30px", color: "#1a5490" }}>
               📋 Descripción del Proyecto
             </h2>
@@ -110,7 +109,7 @@ export function PortfolioPresentation() {
           </div>
 
           {/* PAGE 3: TECH STACK */}
-          <div style={{ pageBreakAfter: "always", paddingBottom: "60px" }}>
+          <div style={{ marginBottom: "100px" }}>
             <h2 style={{ fontSize: "32px", fontWeight: "bold", marginBottom: "30px", color: "#1a5490" }}>
               🛠️ Tech Stack
             </h2>
@@ -154,24 +153,10 @@ export function PortfolioPresentation() {
                 </div>
               </div>
             </div>
-
-            <div>
-              <h3 style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "15px", color: "#2c3e50" }}>
-                Herramientas & Librerías
-              </h3>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px", fontSize: "14px" }}>
-                <div style={{ padding: "10px", backgroundColor: "#f5f5f5", borderRadius: "5px" }}>
-                  <strong>Sonner</strong> - Toast Notifications
-                </div>
-                <div style={{ padding: "10px", backgroundColor: "#f5f5f5", borderRadius: "5px" }}>
-                  <strong>Git & GitHub</strong> - Version Control
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* PAGE 4: FEATURES */}
-          <div style={{ pageBreakAfter: "always", paddingBottom: "60px" }}>
+          <div style={{ marginBottom: "100px" }}>
             <h2 style={{ fontSize: "32px", fontWeight: "bold", marginBottom: "30px", color: "#1a5490" }}>
               ⚡ Features Principales
             </h2>
@@ -181,9 +166,8 @@ export function PortfolioPresentation() {
                 1. Carga de Datos
               </h3>
               <p style={{ fontSize: "14px", color: "#666", lineHeight: "1.6" }}>
-                Sistema automatizado que permite cargar planillas en Excel. Los datos se extraen automáticamente usando
-                SheetJS y se poblan en formularios interactivos. Soporta 4 tablas: Nuevos y Reparados por Terceros,
-                Reparados por Taller, Autorizados Pendiente de Retiro, y Relación 33/0.4kV.
+                Sistema automatizado que permite cargar planillas en Excel. Los datos se extraen automáticamente y se
+                poblan en formularios interactivos.
               </p>
             </div>
 
@@ -192,8 +176,7 @@ export function PortfolioPresentation() {
                 2. Tabla Interactiva
               </h3>
               <p style={{ fontSize: "14px", color: "#666", lineHeight: "1.6" }}>
-                Visualización de todas las planillas guardadas semanalmente. Permite expandir cada registro para ver los
-                datos en forma de tablas con estructura similar a Excel. Búsqueda y filtrado por fecha.
+                Visualización de todas las planillas guardadas semanalmente con búsqueda y filtrado por fecha.
               </p>
             </div>
 
@@ -202,8 +185,7 @@ export function PortfolioPresentation() {
                 3. Dashboard Resumen
               </h3>
               <p style={{ fontSize: "14px", color: "#666", lineHeight: "1.6" }}>
-                KPI Dashboard con 5 tarjetas de métricas clave (Total, Disponibles, En Servicio, En Reparación, Bajas).
-                Incluye gráficos de distribución por tipo, ubicación y registro de últimas planillas.
+                KPI Dashboard con 5 tarjetas de métricas clave e incluye gráficos de distribución por tipo.
               </p>
             </div>
 
@@ -212,140 +194,30 @@ export function PortfolioPresentation() {
                 4. Validación & Persistencia
               </h3>
               <p style={{ fontSize: "14px", color: "#666", lineHeight: "1.6" }}>
-                Cálculo automático de totales, validación de datos, y almacenamiento en Supabase. Cada planilla se guarda
-                con fecha semanal para seguimiento histórico.
+                Cálculo automático de totales y almacenamiento en Supabase con seguimiento histórico.
               </p>
             </div>
           </div>
 
-          {/* PAGE 5: ESTRUCTURA */}
-          <div style={{ pageBreakAfter: "always", paddingBottom: "60px" }}>
-            <h2 style={{ fontSize: "32px", fontWeight: "bold", marginBottom: "30px", color: "#1a5490" }}>
-              🏗️ Arquitectura
-            </h2>
-
-            <h3 style={{ fontSize: "16px", fontWeight: "bold", marginBottom: "15px", color: "#2c3e50" }}>
-              Estructura de Directorios
-            </h3>
-            <div style={{ backgroundColor: "#f5f5f5", padding: "15px", borderRadius: "5px", fontSize: "12px", fontFamily: "monospace", marginBottom: "30px", lineHeight: "1.6" }}>
-              src/app/
-              ├── page.tsx (Dashboard principal)
-              ├── api/
-              │   └── analizar-planilla/route.ts (Excel parsing)
-              └── components/
-                  ├── dashboard/
-                  │   ├── sidebar.tsx (Navegación)
-                  │   ├── header.tsx (Títulos)
-                  │   └── sections/
-                  │       ├── transformadores-carga.tsx
-                  │       ├── transformadores-tabla.tsx
-                  │       └── transformadores-resumen.tsx
-            </div>
-
-            <h3 style={{ fontSize: "16px", fontWeight: "bold", marginBottom: "15px", color: "#2c3e50" }}>
-              Base de Datos
-            </h3>
-            <p style={{ fontSize: "14px", color: "#666", marginBottom: "10px" }}>
-              <strong>Tabla: planillas_reserva</strong>
-            </p>
-            <div style={{ backgroundColor: "#f5f5f5", padding: "15px", borderRadius: "5px", fontSize: "12px", fontFamily: "monospace", lineHeight: "1.6" }}>
-              - id: BIGINT (PK)<br />
-              - fecha: DATE<br />
-              - datos: JSONB (estructura completa)<br />
-              - created_at: TIMESTAMP
-            </div>
-          </div>
-
-          {/* PAGE 6: FLUJO & USO */}
-          <div style={{ pageBreakAfter: "always", paddingBottom: "60px" }}>
-            <h2 style={{ fontSize: "32px", fontWeight: "bold", marginBottom: "30px", color: "#1a5490" }}>
-              📱 Flujo de Uso
-            </h2>
-
-            <div style={{ marginBottom: "30px" }}>
-              <h3 style={{ fontSize: "16px", fontWeight: "bold", marginBottom: "15px", color: "#2c3e50" }}>
-                Usuario típico:
-              </h3>
-              <ol style={{ fontSize: "14px", lineHeight: "1.8", marginLeft: "20px", color: "#333" }}>
-                <li>1. Navega a "Stock de Transformadores" → "Carga de Datos"</li>
-                <li>2. Arrastra/selecciona archivo Excel con planilla semanal</li>
-                <li>3. Sistema extrae datos automáticamente y los carga en formularios</li>
-                <li>4. Usuario revisa/edita valores si es necesario</li>
-                <li>5. Hace clic en "Guardar" para persistir en Supabase</li>
-                <li>6. En "Tabla", ve todas las planillas guardadas semanales</li>
-                <li>7. En "Resumen", visualiza KPIs y gráficos de distribución</li>
-              </ol>
-            </div>
-
-            <h3 style={{ fontSize: "16px", fontWeight: "bold", marginBottom: "15px", color: "#2c3e50" }}>
-              Mejoras implementadas:
-            </h3>
-            <ul style={{ fontSize: "14px", lineHeight: "1.8", marginLeft: "20px", color: "#333" }}>
-              <li>✓ Botones +/− para editar cantidades rápidamente</li>
-              <li>✓ Cálculo automático de totales (T+M, CON TANQUE es subconjunto)</li>
-              <li>✓ Tablas expandibles en vista de planillas guardadas</li>
-              <li>✓ Búsqueda por fecha</li>
-              <li>✓ Colores para diferencias entre terceros/taller</li>
-            </ul>
-          </div>
-
-          {/* PAGE 7: DATOS & RESULTADOS */}
-          <div style={{ pageBreakAfter: "always", paddingBottom: "60px" }}>
-            <h2 style={{ fontSize: "32px", fontWeight: "bold", marginBottom: "30px", color: "#1a5490" }}>
-              📊 Datos & Resultados
-            </h2>
-
-            <h3 style={{ fontSize: "16px", fontWeight: "bold", marginBottom: "15px", color: "#2c3e50" }}>
-              Estructura de Datos Ejemplo
-            </h3>
-            <p style={{ fontSize: "14px", color: "#666", marginBottom: "15px" }}>
-              Cada planilla contiene información sobre 17 valores de KVA (5 a 1000):
-            </p>
-
-            <div style={{ backgroundColor: "#f5f5f5", padding: "15px", borderRadius: "5px", fontSize: "12px", fontFamily: "monospace", marginBottom: "20px", lineHeight: "1.6" }}>
-              terceros: {"{5": {"{t: 0, m: 1, ct: 0}"}, "10": {"{t: 32, ...}"}, ...}}<br />
-              taller: {"{5": {"{tipo: 'RURAL', t: 0, m: 0, ...}"}, ...}}<br />
-              autorizados: {"{5: 0, 10: 32, ...}"}<br />
-              rel33: {"{25": {"{tN: 4, mN: 0, tR: 1, mR: 0}"}, ...}}<br />
-              obs: "Observaciones de la planilla..."<br />
-              pend: "Pendientes a resolver..."
-            </div>
-
-            <h3 style={{ fontSize: "16px", fontWeight: "bold", marginBottom: "15px", color: "#2c3e50" }}>
-              KPI Ejemplo
-            </h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px", fontSize: "14px" }}>
-              <div style={{ padding: "15px", backgroundColor: "#e8f4f8", borderRadius: "5px", borderLeft: "4px solid #1a5490" }}>
-                <div style={{ fontWeight: "bold", color: "#1a5490" }}>211</div>
-                <div style={{ color: "#666", fontSize: "12px" }}>Total Transformadores</div>
-              </div>
-              <div style={{ padding: "15px", backgroundColor: "#e8f4f8", borderRadius: "5px", borderLeft: "4px solid #1a5490" }}>
-                <div style={{ fontWeight: "bold", color: "#1a5490" }}>211</div>
-                <div style={{ color: "#666", fontSize: "12px" }}>Disponibles para Retiro</div>
-              </div>
-            </div>
-          </div>
-
-          {/* PAGE 8: CONCLUSIÓN */}
-          <div style={{ pageBreakAfter: "always" }}>
+          {/* PAGE 5: CONCLUSIÓN */}
+          <div style={{ textAlign: "center", paddingTop: "40px" }}>
             <h2 style={{ fontSize: "32px", fontWeight: "bold", marginBottom: "30px", color: "#1a5490" }}>
               ✨ Conclusión
             </h2>
             <p style={{ fontSize: "16px", lineHeight: "1.8", marginBottom: "20px", color: "#333" }}>
-              Este proyecto demuestra la capacidad de desarrollar sistemas SaaS complejos con:
+              Sistema SaaS completamente funcional y listo para producción con:
             </p>
             <ul style={{ fontSize: "14px", lineHeight: "1.8", marginLeft: "20px", color: "#333", marginBottom: "30px" }}>
-              <li>✓ Frontend moderno y responsivo (Next.js + React + TypeScript)</li>
-              <li>✓ Gestión de datos compleja (múltiples tablas interrelacionadas)</li>
-              <li>✓ Integración con APIs externas (Supabase)</li>
-              <li>✓ Parsing automático de archivos (Excel)</li>
-              <li>✓ Dashboard analítico con KPIs y visualizaciones</li>
-              <li>✓ Persistencia de datos históricos</li>
+              <li>✓ Frontend moderno y responsivo</li>
+              <li>✓ Gestión de datos compleja</li>
+              <li>✓ Integración con APIs externas</li>
+              <li>✓ Parsing automático de archivos</li>
+              <li>✓ Dashboard analítico con KPIs</li>
               <li>✓ UX intuitiva y accesible</li>
             </ul>
-            <div style={{ borderTop: "2px solid #1a5490", paddingTop: "20px", textAlign: "center" }}>
+            <div style={{ borderTop: "2px solid #1a5490", paddingTop: "20px" }}>
               <p style={{ fontSize: "14px", color: "#999" }}>
-                Proyecto completamente funcional y listo para producción
+                Proyecto 100% funcional • 2026
               </p>
             </div>
           </div>
