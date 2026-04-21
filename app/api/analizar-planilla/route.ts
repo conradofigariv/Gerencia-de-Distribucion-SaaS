@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
+// pdf-parse is a CJS module; dynamic require avoids bundler issues
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const POT_13 = [5,10,16,25,50,63,80,100,125,160,200,250,315,500,630,800,1000];
 const POT_33 = [25,63,160,315,500,630];
@@ -34,7 +37,6 @@ function findCell(ws: XLSX.WorkSheet, text: string): { r: number; c: number } | 
   return null;
 }
 
-// Collect all non-empty string values in a rectangular area
 function textBlock(ws: XLSX.WorkSheet, r0: number, c0: number, rows = 10, cols = 10): string {
   const parts: string[] = [];
   for (let r = r0; r < r0 + rows; r++) {
@@ -54,27 +56,22 @@ function parseExcelPlanilla(buffer: Buffer): Record<string, unknown> {
   const ref = ws["!ref"];
   if (!ref) throw new Error("Hoja vacía");
 
-  // Find data start: first row where col A = 5 (KVA)
   const range = XLSX.utils.decode_range(ref);
   let dataRow = -1;
   for (let r = range.s.r; r <= range.s.r + 20; r++) {
     const cell = ws[XLSX.utils.encode_cell({ r, c: 0 })];
-    if (cell && Number(cell.v) === 5) { dataRow = r + 1; break; } // +1 = 1-indexed for cell addr
+    if (cell && Number(cell.v) === 5) { dataRow = r + 1; break; }
   }
   if (dataRow === -1) throw new Error("No se encontró la fila de datos (KVA=5). Verificá el formato del Excel.");
 
-  // Dynamically find AUTORIZADOS column (yellow header)
-  let autoCol = "N"; // default
+  let autoCol = "N";
   const autoPos = findCell(ws, "Autoriz");
   if (autoPos) autoCol = XLSX.utils.encode_col(autoPos.c);
 
-  // Dynamically find TIPO col for TALLER (between TERCEROS and TALLER sections)
-  // It's the first col with "TIPO" header in row before dataRow
-  let tipoTallerCol = "F"; // default
+  let tipoTallerCol = "F";
   const tipoPos = findCell(ws, "TIPO");
   if (tipoPos) tipoTallerCol = XLSX.utils.encode_col(tipoPos.c);
 
-  // Build terceros, taller, autorizados
   const terceros: Record<string, { t: number; m: number; ct: number }> = {};
   const taller:   Record<string, { tipo: string; t: number; m: number; ct: number }> = {};
   const autorizados: Record<string, number> = {};
@@ -82,21 +79,11 @@ function parseExcelPlanilla(buffer: Buffer): Record<string, unknown> {
   for (let i = 0; i < POT_13.length; i++) {
     const kva = POT_13[i];
     const row = dataRow + i;
-    terceros[String(kva)] = {
-      t:  n(ws, `B${row}`),
-      m:  n(ws, `C${row}`),
-      ct: n(ws, `D${row}`),
-    };
-    taller[String(kva)] = {
-      tipo: s(ws, `${tipoTallerCol}${row}`),
-      t:    n(ws, `H${row}`),
-      m:    n(ws, `I${row}`),
-      ct:   n(ws, `J${row}`),
-    };
+    terceros[String(kva)] = { t: n(ws, `B${row}`), m: n(ws, `C${row}`), ct: n(ws, `D${row}`) };
+    taller[String(kva)]   = { tipo: s(ws, `${tipoTallerCol}${row}`), t: n(ws, `H${row}`), m: n(ws, `I${row}`), ct: n(ws, `J${row}`) };
     autorizados[String(kva)] = n(ws, `${autoCol}${row}`);
   }
 
-  // REL33: find section header then scan rows for matching KVA values
   const rel33: Record<string, { tN: number; mN: number; tR: number; mR: number }> = {};
   const rel33Header = findCell(ws, "RELAC");
   if (rel33Header) {
@@ -118,16 +105,122 @@ function parseExcelPlanilla(buffer: Buffer): Record<string, unknown> {
     if (!rel33[String(kva)]) rel33[String(kva)] = { tN: 0, mN: 0, tR: 0, mR: 0 };
   }
 
-  // OBS and PEND: find headers then grab surrounding text
   let obs = "", pend = "";
   const obsPos  = findCell(ws, "OBSERVACIONES");
   const pendPos = findCell(ws, "PENDIENTES");
   if (obsPos)  obs  = textBlock(ws, obsPos.r,  obsPos.c,  8, 8);
   if (pendPos) pend = textBlock(ws, pendPos.r, pendPos.c, 8, 8);
-
-  // Strip the header words themselves from the extracted text
   obs  = obs.replace(/^OBSERVACIONES[^:]*[:]/i, "").trim();
   pend = pend.replace(/^PENDIENTES[^:]*[:]/i, "").trim();
+
+  return { terceros, taller, autorizados, rel33, obs, pend };
+}
+
+// ─── PDF parser ───────────────────────────────────────────────────────────────
+
+// Extracts all integers from a string (ignores the KVA prefix itself)
+function numsFromLine(line: string): number[] {
+  return (line.match(/\d+/g) ?? []).map(Number);
+}
+
+// Returns the word token (MONO/TRI/etc.) if present in a line, else ""
+function tipoFromLine(line: string): string {
+  const m = line.match(/\b(MONO|TRI|TRIFASICO|MONOFASICO)\b/i);
+  return m ? m[1].toUpperCase() : "";
+}
+
+async function parsePdfPlanilla(buffer: Buffer): Promise<Record<string, unknown>> {
+  const { text } = await pdfParse(buffer);
+
+  // Normalize: collapse multiple spaces, split into lines
+  const lines = text
+    .split("\n")
+    .map(l => l.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const terceros: Record<string, { t: number; m: number; ct: number }> = {};
+  const taller:   Record<string, { tipo: string; t: number; m: number; ct: number }> = {};
+  const autorizados: Record<string, number> = {};
+  const rel33: Record<string, { tN: number; mN: number; tR: number; mR: number }> = {};
+
+  // Determine where the REL33 section starts
+  let rel33StartIdx = lines.findIndex(l => /RELAC/i.test(l));
+  if (rel33StartIdx === -1) rel33StartIdx = lines.length;
+
+  // ── Main table (POT_13): lines before REL33 section ──────────────────────────
+  const mainLines = lines.slice(0, rel33StartIdx);
+
+  for (const kva of POT_13) {
+    // Find a line whose first token matches this KVA exactly
+    const line = mainLines.find(l => {
+      const firstToken = l.split(" ")[0];
+      return Number(firstToken) === kva;
+    });
+
+    if (line) {
+      const nums = numsFromLine(line); // first element is KVA itself
+      // Expected order: KVA, T_terceros, M_terceros, CT_terceros, [T_taller, M_taller, CT_taller,] autorizados
+      // If 8+ numbers: [0]=KVA, [1]=tT, [2]=mT, [3]=ctT, [4]=tTa, [5]=mTa, [6]=ctTa, [7]=auto
+      // If 5 numbers:  [0]=KVA, [1]=tT, [2]=mT, [3]=ctT, [4]=auto (taller cols merged/missing)
+      const tipo = tipoFromLine(line);
+      if (nums.length >= 8) {
+        terceros[String(kva)]    = { t: nums[1], m: nums[2], ct: nums[3] };
+        taller[String(kva)]      = { tipo, t: nums[4], m: nums[5], ct: nums[6] };
+        autorizados[String(kva)] = nums[7];
+      } else if (nums.length >= 5) {
+        terceros[String(kva)]    = { t: nums[1], m: nums[2], ct: nums[3] };
+        taller[String(kva)]      = { tipo, t: 0, m: 0, ct: 0 };
+        autorizados[String(kva)] = nums[4];
+      } else {
+        terceros[String(kva)]    = { t: nums[1] ?? 0, m: nums[2] ?? 0, ct: nums[3] ?? 0 };
+        taller[String(kva)]      = { tipo, t: 0, m: 0, ct: 0 };
+        autorizados[String(kva)] = 0;
+      }
+    } else {
+      terceros[String(kva)]    = { t: 0, m: 0, ct: 0 };
+      taller[String(kva)]      = { tipo: "", t: 0, m: 0, ct: 0 };
+      autorizados[String(kva)] = 0;
+    }
+  }
+
+  // ── REL33 section: lines after the RELAC header ───────────────────────────────
+  const rel33Lines = lines.slice(rel33StartIdx);
+
+  for (const kva of POT_33) {
+    const line = rel33Lines.find(l => {
+      const firstToken = l.split(" ")[0];
+      return Number(firstToken) === kva;
+    });
+
+    if (line) {
+      const nums = numsFromLine(line);
+      // Expected: KVA, tN, mN, tR, mR
+      rel33[String(kva)] = {
+        tN: nums[1] ?? 0,
+        mN: nums[2] ?? 0,
+        tR: nums[3] ?? 0,
+        mR: nums[4] ?? 0,
+      };
+    } else {
+      rel33[String(kva)] = { tN: 0, mN: 0, tR: 0, mR: 0 };
+    }
+  }
+
+  // ── OBS and PEND: find headers and grab following text ─────────────────────────
+  let obs = "", pend = "";
+
+  const obsIdx  = lines.findIndex(l => /OBSERVACIONES/i.test(l));
+  const pendIdx = lines.findIndex(l => /PENDIENTES/i.test(l));
+
+  if (obsIdx !== -1) {
+    const end = pendIdx > obsIdx ? pendIdx : Math.min(obsIdx + 10, lines.length);
+    obs = lines.slice(obsIdx, end).join(" ").replace(/^OBSERVACIONES[^:]*[:]/i, "").trim();
+  }
+  if (pendIdx !== -1) {
+    pend = lines.slice(pendIdx, Math.min(pendIdx + 10, lines.length))
+      .join(" ")
+      .replace(/^PENDIENTES[^:]*[:]/i, "").trim();
+  }
 
   return { terceros, taller, autorizados, rel33, obs, pend };
 }
@@ -140,20 +233,26 @@ export async function POST(req: NextRequest) {
     const file = formData.get("file") as File | null;
     if (!file) return NextResponse.json({ error: "No se recibió ningún archivo" }, { status: 400 });
 
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+
+    const isPdf = file.name.toLowerCase().endsWith(".pdf") ||
+      file.type === "application/pdf";
     const isExcel = file.name.endsWith(".xlsx") || file.name.endsWith(".xls") ||
       file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
       file.type === "application/vnd.ms-excel";
 
-    const bytes = await file.arrayBuffer();
-
-    if (!isExcel) {
+    if (!isExcel && !isPdf) {
       return NextResponse.json(
-        { error: "Por favor subí un archivo Excel (.xlsx o .xls). Las imágenes y PDFs no están soportadas." },
+        { error: "Formato no soportado. Subí un archivo Excel (.xlsx / .xls) o PDF (.pdf)." },
         { status: 400 }
       );
     }
 
-    const datos = parseExcelPlanilla(Buffer.from(bytes));
+    const datos = isPdf
+      ? await parsePdfPlanilla(buffer)
+      : parseExcelPlanilla(buffer);
+
     return NextResponse.json({ datos });
 
   } catch (err: unknown) {
