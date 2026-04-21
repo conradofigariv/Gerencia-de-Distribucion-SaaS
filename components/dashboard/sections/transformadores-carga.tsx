@@ -9,6 +9,7 @@ import { UploadCloud, FileText, X, Loader2, CheckCircle2, Sparkles } from "lucid
 
 const POT_13 = [5, 10, 16, 25, 50, 63, 80, 100, 125, 160, 200, 250, 315, 500, 630, 800, 1000];
 const POT_33 = [25, 63, 160, 315, 500, 630];
+const RURAL_KVA = new Set([5, 10, 16, 25]);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,7 +56,7 @@ function init33()       { return Object.fromEntries(POT_33.map(p => [p, { tN: 0,
 
 function NI({ val, onChange }: { val: number; onChange: (v: number) => void }) {
   return (
-    <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 rounded">
+    <div className="flex items-center justify-center gap-1 mx-auto bg-slate-900 border border-slate-700 rounded w-fit">
       <button
         onClick={() => onChange(Math.max(0, val - 1))}
         className="px-2 py-1 text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors"
@@ -348,7 +349,9 @@ export function TransformadoresCargaSection() {
                     const r = taller[p]; const tot = sum(r);
                     return (
                       <tr key={p} className={`hover:bg-blue-600/10 transition-colors ${tot > 0 ? "bg-blue-600/5" : ""}`}>
-                        <TD c="text-[9px] text-slate-400">RURAL</TD>
+                        {RURAL_KVA.has(p)
+                          ? <TD c="text-[9px] text-slate-400">RURAL</TD>
+                          : <td className="px-0.5 py-1 text-[10px] text-center text-slate-300" />}
                         <TD c="font-semibold text-foreground">{p}</TD>
                         <TD><NI val={r.t}  onChange={v => setTANum(p, "t",  v)} /></TD>
                         <TD><NI val={r.m}  onChange={v => setTANum(p, "m",  v)} /></TD>
@@ -385,7 +388,9 @@ export function TransformadoresCargaSection() {
                     const disp = Math.max(0, tot - auto);
                     return (
                       <tr key={p} className="hover:bg-slate-700/30 transition-colors">
-                        <TD c="text-[9px] text-slate-400">RURAL</TD>
+                        {RURAL_KVA.has(p)
+                          ? <TD c="text-[9px] text-slate-400">RURAL</TD>
+                          : <td className="px-0.5 py-1 text-[10px] text-center text-slate-300" />}
                         <TD><NI val={tot} onChange={v => setTot(p, v)} /></TD>
                         <TD><NI val={auto} onChange={v => setAuto(p, v)} /></TD>
                         <TD c={disp > 0 ? "text-green-400 font-bold" : "text-muted-foreground"}>
