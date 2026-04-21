@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Link from "next/link";
 import { cn } from "@/lib/utils";
 import type { Section } from "@/app/page";
 import {
@@ -303,15 +302,8 @@ export function Sidebar({
         })}
       </nav>
 
-      {/* Settings & Collapse */}
-      <div className="p-3 border-t border-sidebar-border space-y-2">
-        <Link
-          href="/settings"
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all duration-200"
-        >
-          <Settings className="w-5 h-5 shrink-0" />
-          {!collapsed && <span>Configuración</span>}
-        </Link>
+      {/* Collapse button */}
+      <div className="p-3 border-t border-sidebar-border">
         <button
           onClick={() => onCollapsedChange(!collapsed)}
           className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all duration-200"
