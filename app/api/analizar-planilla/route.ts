@@ -115,113 +115,71 @@ function parseExcelPlanilla(buffer: Buffer): Record<string, unknown> {
 
 // ─── PDF parser ───────────────────────────────────────────────────────────────
 
-// Extracts all integers from a string (ignores the KVA prefix itself)
-function numsFromLine(line: string): number[] {
-  return (line.match(/\d+/g) ?? []).map(Number);
-}
-
-// Returns the word token (MONO/TRI/etc.) if present in a line, else ""
-function tipoFromLine(line: string): string {
-  const m = line.match(/\b(MONO|TRI|TRIFASICO|MONOFASICO)\b/i);
-  return m ? m[1].toUpperCase() : "";
-}
+const EMPTY_PLANILLA = (): Record<string, unknown> => ({
+  terceros:    Object.fromEntries(POT_13.map(k => [k, { t: 0, m: 0, ct: 0 }])),
+  taller:      Object.fromEntries(POT_13.map(k => [k, { tipo: "", t: 0, m: 0, ct: 0 }])),
+  autorizados: Object.fromEntries(POT_13.map(k => [k, 0])),
+  rel33:       Object.fromEntries(POT_33.map(k => [k, { tN: 0, mN: 0, tR: 0, mR: 0 }])),
+  obs: "", pend: "",
+});
 
 async function parsePdfPlanilla(buffer: Buffer): Promise<Record<string, unknown>> {
   const { extractText, getDocumentProxy } = await import("unpdf");
   const pdf = await getDocumentProxy(new Uint8Array(buffer));
   const { text } = await extractText(pdf, { mergePages: true });
 
-  // Normalize: collapse multiple spaces, split into lines
-  const lines = text
-    .split("\n")
-    .map(l => l.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY no configurada");
 
-  const terceros: Record<string, { t: number; m: number; ct: number }> = {};
-  const taller:   Record<string, { tipo: string; t: number; m: number; ct: number }> = {};
-  const autorizados: Record<string, number> = {};
-  const rel33: Record<string, { tN: number; mN: number; tR: number; mR: number }> = {};
+  const prompt = `Sos un extractor de datos de planillas de transformadores eléctricos argentinas.
+Del siguiente texto extraído de un PDF, devolvé ÚNICAMENTE un JSON válido con esta estructura exacta:
 
-  // Determine where the REL33 section starts
-  let rel33StartIdx = lines.findIndex(l => /RELAC/i.test(l));
-  if (rel33StartIdx === -1) rel33StartIdx = lines.length;
+{
+  "terceros": { "5":{"t":0,"m":0,"ct":0}, "10":{"t":0,"m":0,"ct":0}, "16":{"t":0,"m":0,"ct":0}, "25":{"t":0,"m":0,"ct":0}, "50":{"t":0,"m":0,"ct":0}, "63":{"t":0,"m":0,"ct":0}, "80":{"t":0,"m":0,"ct":0}, "100":{"t":0,"m":0,"ct":0}, "125":{"t":0,"m":0,"ct":0}, "160":{"t":0,"m":0,"ct":0}, "200":{"t":0,"m":0,"ct":0}, "250":{"t":0,"m":0,"ct":0}, "315":{"t":0,"m":0,"ct":0}, "500":{"t":0,"m":0,"ct":0}, "630":{"t":0,"m":0,"ct":0}, "800":{"t":0,"m":0,"ct":0}, "1000":{"t":0,"m":0,"ct":0} },
+  "taller": { "5":{"tipo":"","t":0,"m":0,"ct":0}, "10":{"tipo":"","t":0,"m":0,"ct":0}, "16":{"tipo":"","t":0,"m":0,"ct":0}, "25":{"tipo":"","t":0,"m":0,"ct":0}, "50":{"tipo":"","t":0,"m":0,"ct":0}, "63":{"tipo":"","t":0,"m":0,"ct":0}, "80":{"tipo":"","t":0,"m":0,"ct":0}, "100":{"tipo":"","t":0,"m":0,"ct":0}, "125":{"tipo":"","t":0,"m":0,"ct":0}, "160":{"tipo":"","t":0,"m":0,"ct":0}, "200":{"tipo":"","t":0,"m":0,"ct":0}, "250":{"tipo":"","t":0,"m":0,"ct":0}, "315":{"tipo":"","t":0,"m":0,"ct":0}, "500":{"tipo":"","t":0,"m":0,"ct":0}, "630":{"tipo":"","t":0,"m":0,"ct":0}, "800":{"tipo":"","t":0,"m":0,"ct":0}, "1000":{"tipo":"","t":0,"m":0,"ct":0} },
+  "autorizados": { "5":0,"10":0,"16":0,"25":0,"50":0,"63":0,"80":0,"100":0,"125":0,"160":0,"200":0,"250":0,"315":0,"500":0,"630":0,"800":0,"1000":0 },
+  "rel33": { "25":{"tN":0,"mN":0,"tR":0,"mR":0}, "63":{"tN":0,"mN":0,"tR":0,"mR":0}, "160":{"tN":0,"mN":0,"tR":0,"mR":0}, "315":{"tN":0,"mN":0,"tR":0,"mR":0}, "500":{"tN":0,"mN":0,"tR":0,"mR":0}, "630":{"tN":0,"mN":0,"tR":0,"mR":0} },
+  "obs": "",
+  "pend": ""
+}
 
-  // ── Main table (POT_13): lines before REL33 section ──────────────────────────
-  const mainLines = lines.slice(0, rel33StartIdx);
+Reglas:
+- terceros: sección "NUEVOS Y REPARADOS POR TERCEROS". t=nuevos, m=reparados, ct=C/T tanque.
+- taller: sección "REPARADOS POR TALLER". tipo=RURAL/SUBEST/SUBESTACION/etc, t=nuevos, m=reparados, ct=C/T tanque.
+- autorizados: columna "AUTORIZADOS" de la sección "TOTAL DE TRANSFORMADORES".
+- rel33: sección "RELACION 33/0.4 KV". tN=trafo nuevo, mN=motor nuevo, tR=trafo reparado, mR=motor reparado.
+- obs: contenido de OBSERVACIONES (sin el encabezado).
+- pend: contenido de PENDIENTES DE ENTREGA (sin el encabezado).
+- Todos los valores numéricos son enteros >= 0. Solo devolvé el JSON, sin texto extra.
 
-  for (const kva of POT_13) {
-    // Find a line whose first token matches this KVA exactly
-    const line = mainLines.find(l => {
-      const firstToken = l.split(" ")[0];
-      return Number(firstToken) === kva;
-    });
+TEXTO DEL PDF:
+${text.slice(0, 8000)}`;
 
-    if (line) {
-      const nums = numsFromLine(line); // first element is KVA itself
-      // Expected order: KVA, T_terceros, M_terceros, CT_terceros, [T_taller, M_taller, CT_taller,] autorizados
-      // If 8+ numbers: [0]=KVA, [1]=tT, [2]=mT, [3]=ctT, [4]=tTa, [5]=mTa, [6]=ctTa, [7]=auto
-      // If 5 numbers:  [0]=KVA, [1]=tT, [2]=mT, [3]=ctT, [4]=auto (taller cols merged/missing)
-      const tipo = tipoFromLine(line);
-      if (nums.length >= 8) {
-        terceros[String(kva)]    = { t: nums[1], m: nums[2], ct: nums[3] };
-        taller[String(kva)]      = { tipo, t: nums[4], m: nums[5], ct: nums[6] };
-        autorizados[String(kva)] = nums[7];
-      } else if (nums.length >= 5) {
-        terceros[String(kva)]    = { t: nums[1], m: nums[2], ct: nums[3] };
-        taller[String(kva)]      = { tipo, t: 0, m: 0, ct: 0 };
-        autorizados[String(kva)] = nums[4];
-      } else {
-        terceros[String(kva)]    = { t: nums[1] ?? 0, m: nums[2] ?? 0, ct: nums[3] ?? 0 };
-        taller[String(kva)]      = { tipo, t: 0, m: 0, ct: 0 };
-        autorizados[String(kva)] = 0;
-      }
-    } else {
-      terceros[String(kva)]    = { t: 0, m: 0, ct: 0 };
-      taller[String(kva)]      = { tipo: "", t: 0, m: 0, ct: 0 };
-      autorizados[String(kva)] = 0;
-    }
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-flash-1.5",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0,
+    }),
+  });
+
+  if (!res.ok) throw new Error(`OpenRouter error: ${res.status}`);
+  const json = await res.json();
+  const raw = json.choices?.[0]?.message?.content ?? "";
+
+  // Strip markdown code fences if present
+  const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+
+  try {
+    return JSON.parse(cleaned) as Record<string, unknown>;
+  } catch {
+    throw new Error("La IA no devolvió JSON válido. Intentá con el archivo Excel.");
   }
-
-  // ── REL33 section: lines after the RELAC header ───────────────────────────────
-  const rel33Lines = lines.slice(rel33StartIdx);
-
-  for (const kva of POT_33) {
-    const line = rel33Lines.find(l => {
-      const firstToken = l.split(" ")[0];
-      return Number(firstToken) === kva;
-    });
-
-    if (line) {
-      const nums = numsFromLine(line);
-      // Expected: KVA, tN, mN, tR, mR
-      rel33[String(kva)] = {
-        tN: nums[1] ?? 0,
-        mN: nums[2] ?? 0,
-        tR: nums[3] ?? 0,
-        mR: nums[4] ?? 0,
-      };
-    } else {
-      rel33[String(kva)] = { tN: 0, mN: 0, tR: 0, mR: 0 };
-    }
-  }
-
-  // ── OBS and PEND: find headers and grab following text ─────────────────────────
-  let obs = "", pend = "";
-
-  const obsIdx  = lines.findIndex(l => /OBSERVACIONES/i.test(l));
-  const pendIdx = lines.findIndex(l => /PENDIENTES/i.test(l));
-
-  if (obsIdx !== -1) {
-    const end = pendIdx > obsIdx ? pendIdx : Math.min(obsIdx + 10, lines.length);
-    obs = lines.slice(obsIdx, end).join(" ").replace(/^OBSERVACIONES[^:]*[:]/i, "").trim();
-  }
-  if (pendIdx !== -1) {
-    pend = lines.slice(pendIdx, Math.min(pendIdx + 10, lines.length))
-      .join(" ")
-      .replace(/^PENDIENTES[^:]*[:]/i, "").trim();
-  }
-
-  return { terceros, taller, autorizados, rel33, obs, pend };
 }
 
 // ─── Route handler ────────────────────────────────────────────────────────────
