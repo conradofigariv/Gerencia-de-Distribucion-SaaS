@@ -131,7 +131,9 @@ export function TransformadoresCargaSection() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch("/api/analizar-planilla", { method: "POST", body: fd });
+      const isPdf = file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf";
+      const endpoint = isPdf ? "/api/analizar-pdf" : "/api/analizar-planilla";
+      const res = await fetch(endpoint, { method: "POST", body: fd });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Error al analizar");
 
@@ -151,7 +153,7 @@ export function TransformadoresCargaSection() {
       if (d.obs)        setObs(d.obs);
       if (d.pend)       setPend(d.pend);
 
-      toast.success("Excel cargado y datos procesados");
+      toast.success("Planilla cargada y datos procesados");
     } catch (err: unknown) {
       toast.error((err as Error).message ?? "No se pudo analizar el archivo");
     } finally {

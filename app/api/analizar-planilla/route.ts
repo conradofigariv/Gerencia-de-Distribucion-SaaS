@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 const POT_13 = [5,10,16,25,50,63,80,100,125,160,200,250,315,500,630,800,1000];
 const POT_33 = [25,63,160,315,500,630];
 
@@ -113,76 +111,7 @@ function parseExcelPlanilla(buffer: Buffer): Record<string, unknown> {
   return { terceros, taller, autorizados, rel33, obs, pend };
 }
 
-// ─── PDF parser ───────────────────────────────────────────────────────────────
-
-const EMPTY_PLANILLA = (): Record<string, unknown> => ({
-  terceros:    Object.fromEntries(POT_13.map(k => [k, { t: 0, m: 0, ct: 0 }])),
-  taller:      Object.fromEntries(POT_13.map(k => [k, { tipo: "", t: 0, m: 0, ct: 0 }])),
-  autorizados: Object.fromEntries(POT_13.map(k => [k, 0])),
-  rel33:       Object.fromEntries(POT_33.map(k => [k, { tN: 0, mN: 0, tR: 0, mR: 0 }])),
-  obs: "", pend: "",
-});
-
-async function parsePdfPlanilla(buffer: Buffer): Promise<Record<string, unknown>> {
-  const { extractText, getDocumentProxy } = await import("unpdf");
-  const pdf = await getDocumentProxy(new Uint8Array(buffer));
-  const { text } = await extractText(pdf, { mergePages: true });
-
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY no configurada");
-
-  const prompt = `Sos un extractor de datos de planillas de transformadores eléctricos argentinas.
-Del siguiente texto extraído de un PDF, devolvé ÚNICAMENTE un JSON válido con esta estructura exacta:
-
-{
-  "terceros": { "5":{"t":0,"m":0,"ct":0}, "10":{"t":0,"m":0,"ct":0}, "16":{"t":0,"m":0,"ct":0}, "25":{"t":0,"m":0,"ct":0}, "50":{"t":0,"m":0,"ct":0}, "63":{"t":0,"m":0,"ct":0}, "80":{"t":0,"m":0,"ct":0}, "100":{"t":0,"m":0,"ct":0}, "125":{"t":0,"m":0,"ct":0}, "160":{"t":0,"m":0,"ct":0}, "200":{"t":0,"m":0,"ct":0}, "250":{"t":0,"m":0,"ct":0}, "315":{"t":0,"m":0,"ct":0}, "500":{"t":0,"m":0,"ct":0}, "630":{"t":0,"m":0,"ct":0}, "800":{"t":0,"m":0,"ct":0}, "1000":{"t":0,"m":0,"ct":0} },
-  "taller": { "5":{"tipo":"","t":0,"m":0,"ct":0}, "10":{"tipo":"","t":0,"m":0,"ct":0}, "16":{"tipo":"","t":0,"m":0,"ct":0}, "25":{"tipo":"","t":0,"m":0,"ct":0}, "50":{"tipo":"","t":0,"m":0,"ct":0}, "63":{"tipo":"","t":0,"m":0,"ct":0}, "80":{"tipo":"","t":0,"m":0,"ct":0}, "100":{"tipo":"","t":0,"m":0,"ct":0}, "125":{"tipo":"","t":0,"m":0,"ct":0}, "160":{"tipo":"","t":0,"m":0,"ct":0}, "200":{"tipo":"","t":0,"m":0,"ct":0}, "250":{"tipo":"","t":0,"m":0,"ct":0}, "315":{"tipo":"","t":0,"m":0,"ct":0}, "500":{"tipo":"","t":0,"m":0,"ct":0}, "630":{"tipo":"","t":0,"m":0,"ct":0}, "800":{"tipo":"","t":0,"m":0,"ct":0}, "1000":{"tipo":"","t":0,"m":0,"ct":0} },
-  "autorizados": { "5":0,"10":0,"16":0,"25":0,"50":0,"63":0,"80":0,"100":0,"125":0,"160":0,"200":0,"250":0,"315":0,"500":0,"630":0,"800":0,"1000":0 },
-  "rel33": { "25":{"tN":0,"mN":0,"tR":0,"mR":0}, "63":{"tN":0,"mN":0,"tR":0,"mR":0}, "160":{"tN":0,"mN":0,"tR":0,"mR":0}, "315":{"tN":0,"mN":0,"tR":0,"mR":0}, "500":{"tN":0,"mN":0,"tR":0,"mR":0}, "630":{"tN":0,"mN":0,"tR":0,"mR":0} },
-  "obs": "",
-  "pend": ""
-}
-
-Reglas:
-- terceros: sección "NUEVOS Y REPARADOS POR TERCEROS". t=nuevos, m=reparados, ct=C/T tanque.
-- taller: sección "REPARADOS POR TALLER". tipo=RURAL/SUBEST/SUBESTACION/etc, t=nuevos, m=reparados, ct=C/T tanque.
-- autorizados: columna "AUTORIZADOS" de la sección "TOTAL DE TRANSFORMADORES".
-- rel33: sección "RELACION 33/0.4 KV". tN=trafo nuevo, mN=motor nuevo, tR=trafo reparado, mR=motor reparado.
-- obs: contenido de OBSERVACIONES (sin el encabezado).
-- pend: contenido de PENDIENTES DE ENTREGA (sin el encabezado).
-- Todos los valores numéricos son enteros >= 0. Solo devolvé el JSON, sin texto extra.
-
-TEXTO DEL PDF:
-${text.slice(0, 8000)}`;
-
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-flash-1.5",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0,
-    }),
-  });
-
-  if (!res.ok) throw new Error(`OpenRouter error: ${res.status}`);
-  const json = await res.json();
-  const raw = json.choices?.[0]?.message?.content ?? "";
-
-  // Strip markdown code fences if present
-  const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
-
-  try {
-    return JSON.parse(cleaned) as Record<string, unknown>;
-  } catch {
-    throw new Error("La IA no devolvió JSON válido. Intentá con el archivo Excel.");
-  }
-}
-
-// ─── Route handler ────────────────────────────────────────────────────────────
+// ─── Route handler (Excel only) ───────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   try {
@@ -190,26 +119,16 @@ export async function POST(req: NextRequest) {
     const file = formData.get("file") as File | null;
     if (!file) return NextResponse.json({ error: "No se recibió ningún archivo" }, { status: 400 });
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
-    const isPdf = file.name.toLowerCase().endsWith(".pdf") ||
-      file.type === "application/pdf";
-    const isExcel = file.name.endsWith(".xlsx") || file.name.endsWith(".xls") ||
-      file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-      file.type === "application/vnd.ms-excel";
-
-    if (!isExcel && !isPdf) {
+    const isPdf = file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf";
+    if (isPdf) {
       return NextResponse.json(
-        { error: "Formato no soportado. Subí un archivo Excel (.xlsx / .xls) o PDF (.pdf)." },
+        { error: "Los PDFs se procesan en /api/analizar-pdf" },
         { status: 400 }
       );
     }
 
-    const datos = isPdf
-      ? await parsePdfPlanilla(buffer)
-      : parseExcelPlanilla(buffer);
-
+    const bytes = await file.arrayBuffer();
+    const datos = parseExcelPlanilla(Buffer.from(bytes));
     return NextResponse.json({ datos });
 
   } catch (err: unknown) {
