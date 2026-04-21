@@ -127,9 +127,9 @@ function tipoFromLine(line: string): string {
 }
 
 async function parsePdfPlanilla(buffer: Buffer): Promise<Record<string, unknown>> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
-  const { text } = await pdfParse(buffer);
+  const { extractText, getDocumentProxy } = await import("unpdf");
+  const pdf = await getDocumentProxy(new Uint8Array(buffer));
+  const { text } = await extractText(pdf, { mergePages: true });
 
   // Normalize: collapse multiple spaces, split into lines
   const lines = text
