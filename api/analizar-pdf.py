@@ -260,7 +260,7 @@ class handler(BaseHTTPRequestHandler):
                 keep_blank_values=True,
             )
 
-            file_item = fs.get("file")
+            file_item = fs["file"] if "file" in fs else None
             if file_item is None:
                 self._json({"error": "No se recibió ningún archivo"}, 400)
                 return
