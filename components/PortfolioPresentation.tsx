@@ -7,19 +7,48 @@ export function PortfolioPresentation() {
   const contentRef = useRef<HTMLDivElement>(null);
 
   const handleExportPDF = async () => {
-    const html2pdf = (await import("html2pdf.js")).default;
+    const html2canvas = (await import("html2canvas")).default;
+    const { jsPDF } = await import("jspdf");
+
     const element = contentRef.current;
     if (!element) return;
 
-    const opt = {
-      margin: [10, 10, 10, 10],
-      filename: "Gerencia-Distribucion-SaaS-Portfolio.pdf",
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { orientation: "portrait", unit: "mm", format: "a4" },
-    };
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
 
-    html2pdf().set(opt).from(element).save();
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pdfWidth - 20;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = 10;
+
+      pdf.addImage(imgData, "PNG", 10, position, imgWidth, imgHeight);
+      heightLeft -= pdfHeight - 20;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 10, position, imgWidth, imgHeight);
+        heightLeft -= pdfHeight - 20;
+      }
+
+      pdf.save("Gerencia-Distribucion-SaaS-Portfolio.pdf");
+    } catch (error) {
+      console.error("Error generando PDF:", error);
+    }
   };
 
   return (
