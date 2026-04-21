@@ -270,9 +270,10 @@ export function TransformadoresTablaSection() {
                         <table className="w-full">
                           <thead className="bg-slate-700/50 border-b border-slate-700">
                             <tr>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">TOTAL</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">Autorizados Pend. Retiro</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">Disponible Retiro</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">TIPO</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">TOTAL DE TRANSFORMADORES</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">Autorizados Pendiente de Retiro</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">Disponibles para Retiro</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-700/50">
@@ -284,6 +285,7 @@ export function TransformadoresTablaSection() {
                               const disp = total - auto;
                               return (
                                 <tr key={kva} className="hover:bg-purple-600/10 transition-colors">
+                                  <td className="px-4 py-2.5 text-sm text-center text-slate-300">{kva}</td>
                                   <td className="px-4 py-2.5 text-sm text-center font-semibold text-purple-400">{total || ""}</td>
                                   <td className="px-4 py-2.5 text-sm text-center font-semibold text-amber-400">{auto || ""}</td>
                                   <td className="px-4 py-2.5 text-sm text-center text-slate-300">{disp || ""}</td>
@@ -293,9 +295,10 @@ export function TransformadoresTablaSection() {
                           </tbody>
                           <tfoot className="bg-slate-700/50 border-t-2 border-slate-700">
                             <tr>
-                              <td className="px-4 py-3 text-sm font-bold text-slate-900 text-center">{totals.totGeneral}</td>
-                              <td className="px-4 py-3 text-sm font-bold text-slate-900 text-center bg-yellow-50">{totals.totAuto || ""}</td>
-                              <td className="px-4 py-3 text-sm font-bold text-slate-900 text-center">{totals.totDisp}</td>
+                              <td className="px-4 py-3 text-sm font-bold text-slate-300 text-center">TOTAL</td>
+                              <td className="px-4 py-3 text-sm font-bold text-purple-300 text-center">{totals.totGeneral}</td>
+                              <td className="px-4 py-3 text-sm font-bold text-amber-300 text-center">Tot. Disp.</td>
+                              <td className="px-4 py-3 text-sm font-bold text-slate-300 text-center">{totals.totDisp}</td>
                             </tr>
                           </tfoot>
                         </table>
