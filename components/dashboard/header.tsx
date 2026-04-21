@@ -3,13 +3,10 @@
 import { cn } from "@/lib/utils";
 import type { Section } from "@/app/page";
 import { Bell, Search, Calendar } from "lucide-react";
-import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import type { User } from "@supabase/supabase-js";
+import { useState } from "react";
 
 interface HeaderProps {
   activeSection: Section;
-  user: User;
 }
 
 const sectionTitles: Record<Section, string> = {
@@ -21,36 +18,18 @@ const sectionTitles: Record<Section, string> = {
   forecasting: "Forecasting",
   reports: "Reports",
   settings: "Settings",
-  "servicios-resumen":       "Control de servicios — Resumen",
-  "servicios-tabla":         "Control de servicios — Lista de seguimiento",
-  "servicios-planillas":     "Carga de datos",
-  "servicios-carga":         "Control de servicios — Crear seguimiento",
-  "sic-diagrama":            "Proceso SIC - SIGA — Diagrama de flujo",
-  "transformadores-carga":   "Stock de Transformadores — Carga de datos",
-  "transformadores-tabla":   "Stock de Transformadores — Tabla",
-  "transformadores-resumen": "Stock de Transformadores — Resumen",
+  "servicios-resumen":        "Control de servicios — Resumen",
+  "servicios-tabla":          "Control de servicios — Lista de seguimiento",
+  "servicios-planillas":      "Carga de datos",
+  "servicios-carga":          "Control de servicios — Crear seguimiento",
+  "sic-diagrama":             "Proceso SIC - SIGA",
+  "transformadores-carga":    "Stock de Transformadores — Carga de datos",
+  "transformadores-tabla":    "Stock de Transformadores — Informe de Reservas",
+  "transformadores-resumen":  "Stock de Transformadores — Resumen",
 };
 
-export function Header({ activeSection, user }: HeaderProps) {
+export function Header({ activeSection }: HeaderProps) {
   const [searchFocused, setSearchFocused] = useState(false);
-  const [initials, setInitials] = useState(user.email?.[0]?.toUpperCase() ?? "U");
-
-  useEffect(() => {
-    supabase
-      .from("profiles")
-      .select("nombre, apellido")
-      .eq("id", user.id)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          const i = [data.nombre, data.apellido]
-            .map((s: string | null) => (s ?? "").trim()[0] ?? "")
-            .join("")
-            .toUpperCase();
-          if (i) setInitials(i);
-        }
-      });
-  }, [user.id]);
 
   return (
     <header className="h-16 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-30 flex items-center justify-between px-6">
@@ -91,7 +70,7 @@ export function Header({ activeSection, user }: HeaderProps) {
         {/* User avatar */}
         <button className="w-9 h-9 rounded-lg overflow-hidden bg-secondary ring-2 ring-transparent hover:ring-accent/50 transition-all duration-200">
           <div className="w-full h-full bg-gradient-to-br from-accent/80 to-chart-1 flex items-center justify-center text-xs font-semibold text-accent-foreground">
-            {initials}
+            JD
           </div>
         </button>
       </div>

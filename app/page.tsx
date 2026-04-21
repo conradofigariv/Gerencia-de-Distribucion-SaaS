@@ -82,16 +82,16 @@ export default function Dashboard() {
       case "team":               return <TeamSection />;
       case "forecasting":        return <ForecastingSection />;
       case "reports":            return <ReportsSection />;
-      case "settings":           return <SettingsSection user={user} />;
-      case "servicios-resumen":  return <ServiciosResumenSection />;
-      case "servicios-tabla":    return <ServiciosTablaSection />;
-      case "servicios-carga":    return <ServiciosCargaSection />;
-      case "servicios-planillas":return <ServiciosPlanillasSection />;
-      case "sic-diagrama":              return <SicDiagramaSection />;
-      case "transformadores-carga":    return <TransformadoresCargaSection />;
-      case "transformadores-tabla":    return <TransformadoresTablaSection />;
-      case "transformadores-resumen":  return <TransformadoresResumenSection />;
-      default:                         return <OverviewSection />;
+      case "settings":               return <SettingsSection user={user} />;
+      case "servicios-resumen":      return <ServiciosResumenSection />;
+      case "servicios-tabla":        return <ServiciosTablaSection />;
+      case "servicios-carga":        return <ServiciosCargaSection />;
+      case "servicios-planillas":    return <ServiciosPlanillasSection />;
+      case "sic-diagrama":           return <SicDiagramaSection />;
+      case "transformadores-carga":  return <TransformadoresCargaSection />;
+      case "transformadores-tabla":  return <TransformadoresTablaSection />;
+      case "transformadores-resumen": return <TransformadoresResumenSection />;
+      default:                       return <OverviewSection />;
     }
   };
 
