@@ -1,48 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import { FileText, LogOut, User } from "lucide-react";
 import { useRouter } from "next/navigation";
-
-interface UserProfile {
-  email?: string;
-  user_metadata?: {
-    full_name?: string;
-  };
-}
+import { supabase } from "@/lib/supabaseClient";
 
 export default function SettingsPage() {
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push("/");
-        return;
-      }
-      setUser(user as unknown as UserProfile);
-      setLoading(false);
-    };
-    checkAuth();
-  }, [router]);
-
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push("/");
+    try {
+      await supabase.auth.signOut();
+      router.push("/");
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
   };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-muted-foreground">Cargando...</div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -57,7 +30,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Usuario autenticado</p>
-              <p className="font-semibold text-foreground">{user?.email}</p>
+              <p className="font-semibold text-foreground">Mi Cuenta</p>
             </div>
           </div>
         </div>
