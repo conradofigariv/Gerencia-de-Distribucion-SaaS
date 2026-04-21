@@ -78,7 +78,7 @@ function NI({ val, onChange }: { val: number; onChange: (v: number) => void }) {
 function TH({ c, rs, cs, children }: { c?: string; rs?: number; cs?: number; children: React.ReactNode }) {
   return (
     <th rowSpan={rs} colSpan={cs}
-      className={`px-1 py-1.5 text-[9px] font-bold text-slate-300 border border-slate-700 bg-slate-700/50 uppercase tracking-wide leading-tight ${c ?? ""}`}>
+      className={`px-0.5 py-1 text-[8px] font-bold text-slate-300 border border-slate-700 bg-slate-700/50 uppercase tracking-wide leading-tight ${c ?? ""}`}>
       {children}
     </th>
   );
@@ -86,7 +86,7 @@ function TH({ c, rs, cs, children }: { c?: string; rs?: number; cs?: number; chi
 
 function TD({ c, children }: { c?: string; children: React.ReactNode }) {
   return (
-    <td className={`px-1 py-[3px] text-xs border border-slate-700 text-center text-slate-300 ${c ?? ""}`}>
+    <td className={`px-0.5 py-1 text-[10px] border border-slate-700 text-center text-slate-300 ${c ?? ""}`}>
       {children}
     </td>
   );
@@ -273,10 +273,10 @@ export function TransformadoresCargaSection() {
           </p>
         </div>
 
-        <div className="p-4 space-y-5 overflow-x-auto">
+        <div className="p-4 space-y-5">
 
           {/* ── Row 1: Terceros + Taller + Resumen ── */}
-          <div className="flex gap-3 min-w-[800px]">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
 
             {/* Table A: Nuevos y Reparados por Terceros */}
             <div className="flex-1">
@@ -352,7 +352,7 @@ export function TransformadoresCargaSection() {
             </div>
 
             {/* Table C: Resumen */}
-            <div className="w-[210px] shrink-0">
+            <div>
               <p className="text-[9px] font-bold text-center text-slate-300 mb-1 uppercase tracking-wider">
                 Total de Transformadores
               </p>
@@ -397,10 +397,10 @@ export function TransformadoresCargaSection() {
           </div>
 
           {/* ── Row 2: Relación 33 + Observaciones + Pendientes ── */}
-          <div className="flex gap-5 min-w-[800px]">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
 
             {/* Table D: Relación 33/0,4 kV */}
-            <div className="w-[300px] shrink-0">
+            <div>
               <p className="text-[9px] font-bold text-center text-slate-300 mb-1 uppercase tracking-wider">
                 Relación 33/0,4 KV
               </p>
@@ -439,7 +439,7 @@ export function TransformadoresCargaSection() {
             </div>
 
             {/* Observaciones + Pendientes */}
-            <div className="flex-1 grid grid-cols-2 gap-4">
+            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5">
                 <p className="text-[9px] font-bold text-slate-300 uppercase tracking-wider">
                   Observaciones (13,2/0,4 KV)
