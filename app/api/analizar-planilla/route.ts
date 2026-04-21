@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
-// pdf-parse is a CJS module; dynamic require avoids bundler issues
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -130,6 +127,8 @@ function tipoFromLine(line: string): string {
 }
 
 async function parsePdfPlanilla(buffer: Buffer): Promise<Record<string, unknown>> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
   const { text } = await pdfParse(buffer);
 
   // Normalize: collapse multiple spaces, split into lines

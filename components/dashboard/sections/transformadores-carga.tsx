@@ -251,13 +251,13 @@ export function TransformadoresCargaSection() {
           <UploadCloud className={`w-10 h-10 transition-colors ${dragging ? "text-accent" : "text-muted-foreground"}`} />
           <div className="text-center">
             <p className="text-sm font-medium text-foreground">
-              {dragging ? "Soltá el Excel aquí" : "Arrastrá el Excel o hacé clic para seleccionarlo"}
+              {dragging ? "Soltá el archivo aquí" : "Arrastrá el archivo o hacé clic para seleccionarlo"}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">Archivo Excel (.xlsx)</p>
+            <p className="text-xs text-muted-foreground mt-1">Excel (.xlsx) o PDF (.pdf)</p>
           </div>
         </div>
       )}
-      <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
+      <input ref={fileRef} type="file" accept=".xlsx,.xls,.pdf" className="hidden"
         onChange={e => { const f = e.target.files?.[0]; if (f) handleFileChange(f); }} />
 
       {/* ── Planilla ── */}
