@@ -18,6 +18,10 @@ import { ServiciosResumenSection } from "@/components/dashboard/sections/servici
 import { ServiciosTablaSection } from "@/components/dashboard/sections/servicios-tabla";
 import { ServiciosCargaSection } from "@/components/dashboard/sections/servicios-carga";
 import { ServiciosPlanillasSection } from "@/components/dashboard/sections/servicios-planillas";
+import { SicDiagramaSection } from "@/components/dashboard/sections/sic-diagrama";
+import { TransformadoresCargaSection } from "@/components/dashboard/sections/transformadores-carga";
+import { TransformadoresTablaSection } from "@/components/dashboard/sections/transformadores-tabla";
+import { TransformadoresResumenSection } from "@/components/dashboard/sections/transformadores-resumen";
 
 export type Section =
   | "overview"
@@ -31,7 +35,11 @@ export type Section =
   | "servicios-resumen"
   | "servicios-tabla"
   | "servicios-carga"
-  | "servicios-planillas";
+  | "servicios-planillas"
+  | "sic-diagrama"
+  | "transformadores-carga"
+  | "transformadores-tabla"
+  | "transformadores-resumen";
 
 export default function Dashboard() {
   const [user, setUser]                     = useState<User | null>(null);
@@ -75,11 +83,15 @@ export default function Dashboard() {
       case "forecasting":        return <ForecastingSection />;
       case "reports":            return <ReportsSection />;
       case "settings":           return <SettingsSection user={user} />;
-      case "servicios-resumen":  return <ServiciosResumenSection />;
-      case "servicios-tabla":    return <ServiciosTablaSection />;
-      case "servicios-carga":    return <ServiciosCargaSection />;
-      case "servicios-planillas":return <ServiciosPlanillasSection />;
-      default:                   return <OverviewSection />;
+      case "servicios-resumen":      return <ServiciosResumenSection />;
+      case "servicios-tabla":        return <ServiciosTablaSection />;
+      case "servicios-carga":        return <ServiciosCargaSection />;
+      case "servicios-planillas":    return <ServiciosPlanillasSection />;
+      case "sic-diagrama":           return <SicDiagramaSection />;
+      case "transformadores-carga":  return <TransformadoresCargaSection />;
+      case "transformadores-tabla":  return <TransformadoresTablaSection />;
+      case "transformadores-resumen": return <TransformadoresResumenSection />;
+      default:                       return <OverviewSection />;
     }
   };
 

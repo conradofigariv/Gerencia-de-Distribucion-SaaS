@@ -18,10 +18,14 @@ const sectionTitles: Record<Section, string> = {
   forecasting: "Forecasting",
   reports: "Reports",
   settings: "Settings",
-  "servicios-resumen":   "Control de servicios — Resumen",
-  "servicios-tabla":     "Control de servicios — Lista de seguimiento",
-  "servicios-planillas": "Carga de datos",
-  "servicios-carga":     "Control de servicios — Crear seguimiento",
+  "servicios-resumen":        "Control de servicios — Resumen",
+  "servicios-tabla":          "Control de servicios — Lista de seguimiento",
+  "servicios-planillas":      "Carga de datos",
+  "servicios-carga":          "Control de servicios — Crear seguimiento",
+  "sic-diagrama":             "Proceso SIC - SIGA",
+  "transformadores-carga":    "Stock de Transformadores — Carga de datos",
+  "transformadores-tabla":    "Stock de Transformadores — Informe de Reservas",
+  "transformadores-resumen":  "Stock de Transformadores — Resumen",
 };
 
 export function Header({ activeSection }: HeaderProps) {
