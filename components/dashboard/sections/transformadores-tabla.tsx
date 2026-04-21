@@ -166,10 +166,10 @@ export function TransformadoresTablaSection() {
                         <table className="w-full">
                           <thead className="bg-slate-700/50 border-b border-slate-700">
                             <tr>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">POTENCIA kVA</th>
-                              <th className="px-3 py-3 text-center text-xs font-semibold text-slate-300">T</th>
-                              <th className="px-3 py-3 text-center text-xs font-semibold text-slate-300">M</th>
-                              <th className="px-3 py-3 text-center text-xs font-semibold text-slate-300">Con tanque</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">POTENCIA KVA</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">T</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">M</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">Con tanque</th>
                               <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">TOTAL</th>
                               <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">TIPO DE USO</th>
                             </tr>
@@ -181,9 +181,9 @@ export function TransformadoresTablaSection() {
                               return (
                                 <tr key={kva} className="hover:bg-blue-600/10 transition-colors">
                                   <td className="px-4 py-2.5 text-sm font-medium text-center text-foreground">{kva}</td>
-                                  <td className="px-3 py-2.5 text-sm text-center text-slate-300">{r.t || ""}</td>
-                                  <td className="px-3 py-2.5 text-sm text-center text-slate-300">{r.m || ""}</td>
-                                  <td className="px-3 py-2.5 text-sm text-center text-slate-300">{r.ct || ""}</td>
+                                  <td className="px-4 py-2.5 text-sm text-center text-slate-300">{r.t || ""}</td>
+                                  <td className="px-4 py-2.5 text-sm text-center text-slate-300">{r.m || ""}</td>
+                                  <td className="px-4 py-2.5 text-sm text-center text-slate-300">{r.ct || ""}</td>
                                   <td className="px-4 py-2.5 text-sm text-center font-semibold text-blue-400">{tot || ""}</td>
                                   <td className="px-4 py-2.5 text-sm text-center text-slate-400">{r.tipo ?? ""}</td>
                                 </tr>
@@ -218,10 +218,10 @@ export function TransformadoresTablaSection() {
                         <table className="w-full">
                           <thead className="bg-slate-700/50 border-b border-slate-700">
                             <tr>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">POTENCIA kVA</th>
-                              <th className="px-3 py-3 text-center text-xs font-semibold text-slate-300">T</th>
-                              <th className="px-3 py-3 text-center text-xs font-semibold text-slate-300">M</th>
-                              <th className="px-3 py-3 text-center text-xs font-semibold text-slate-300">Con tanque</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">POTENCIA KVA</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">T</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">M</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">Con tanque</th>
                               <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">TOTAL</th>
                               <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">TIPO DE USO</th>
                             </tr>
@@ -270,7 +270,7 @@ export function TransformadoresTablaSection() {
                         <table className="w-full">
                           <thead className="bg-slate-700/50 border-b border-slate-700">
                             <tr>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">TIPO</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">POTENCIA KVA</th>
                               <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">TOTAL DE TRANSFORMADORES</th>
                               <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">Autorizados Pendiente de Retiro</th>
                               <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">Disponibles para Retiro</th>
