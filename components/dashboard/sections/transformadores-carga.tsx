@@ -63,13 +63,7 @@ function NI({ val, onChange }: { val: number; onChange: (v: number) => void }) {
       >
         −
       </button>
-      <input
-        type="number" min={0}
-        value={val === 0 ? "" : val}
-        placeholder="0"
-        onChange={e => onChange(Math.max(0, parseInt(e.target.value) || 0))}
-        className="w-10 px-1 py-1 text-center bg-transparent text-xs text-slate-200 focus:outline-none"
-      />
+      <span className="w-7 text-center text-xs text-slate-200 select-none">{val || "0"}</span>
       <button
         onClick={() => onChange(val + 1)}
         className="px-2 py-1 text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors"
