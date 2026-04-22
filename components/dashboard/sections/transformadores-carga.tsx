@@ -496,10 +496,19 @@ export function TransformadoresCargaSection() {
 
         {/* Footer */}
         <div className="border-t border-slate-700 px-5 py-3 flex items-center justify-between bg-slate-700/30">
-          <div className="flex gap-4 text-xs text-slate-300">
+          <div className="flex items-center gap-4 text-xs text-slate-300">
             <span>Total: <strong className="text-blue-400">{totGeneral}</strong></span>
             <span>Autorizados: <strong className="text-amber-400">{totAuto}</strong></span>
             <span>Disponibles: <strong className="text-green-400">{totDisp}</strong></span>
+            <span className="flex items-center gap-1.5">
+              Fecha:
+              <input
+                type="date"
+                value={fecha}
+                onChange={e => setFecha(e.target.value)}
+                className="bg-slate-900 border border-slate-600 rounded px-1.5 py-0.5 text-xs text-slate-200 focus:outline-none focus:border-blue-400"
+              />
+            </span>
           </div>
           <button
             onClick={handleSave}
