@@ -223,9 +223,12 @@ def _extract_obs_pend(page):
     if pend_y is None: pend_y = obs_y
 
     def clean(region, keyword):
-        lines = [l.strip() for l in (region.extract_text() or "").split("\n") if l.strip()]
-        start = 1 if lines and keyword in lines[0].upper() else 0
-        return "\n".join(lines[start:])[:1000]
+        text = region.extract_text() or ""
+        # Strip the section header up to and including its colon
+        # Handles both "PENDIENTES DE ENTREGAS :" and "PENDIENTESDEENTREGAS:" (no spaces)
+        text = re.sub(r'(?i)^' + keyword + r'[^\n:]*:\s*', '', text.strip())
+        lines = [l.strip() for l in text.split("\n") if l.strip()]
+        return "\n".join(lines)[:1000]
 
     obs  = clean(page.crop((obs_x,  obs_y,  pend_x, h)), "OBSERVACI")
     pend = clean(page.crop((pend_x, pend_y, w,      h)), "PENDIENTE")
