@@ -200,46 +200,51 @@ def parse_combined(table, terceros, taller, autorizados):
 
 def _extract_obs_pend(page):
     """
-    Locate OBSERVACIONES and PENDIENTES headers by their word positions
-    in the bottom half of the page, then crop + extract each region.
-    This avoids regex collisions with table column headers like
-    'AUTORIZADOS PENDIENTE de Retiro'.
+    Locate OBSERVACIONES and PENDIENTES DE ENTREGAS by scanning word positions
+    in the bottom portion of the page, then crop each column independently.
+    Requires 'PENDIENTES' to be followed by 'ENTREGA' nearby (avoids matching
+    the table column header 'PENDIENTE de Retiro').
     """
     w, h = page.width, page.height
-    bottom_y = h * 0.50          # only look in the bottom half
+    bottom_y = h * 0.50
     words = page.extract_words() or []
 
     obs_word  = None
     pend_word = None
 
-    for word in words:
+    for i, word in enumerate(words):
         if word["top"] < bottom_y:
             continue
         upper = word["text"].upper()
+
         if "OBSERVACI" in upper and obs_word is None:
             obs_word = word
-        # Match "PENDIENTES" but NOT "PENDIENTE" as part of "PENDIENTE DE RETIRO"
-        # The section header reads "PENDIENTES DE ENTREGAS"
+
         if upper.startswith("PENDIENTE") and pend_word is None:
-            pend_word = word
+            # Only accept if followed within 5 words by "ENTREGA"
+            context = " ".join(ww["text"] for ww in words[i : i + 6]).upper()
+            if "ENTREGA" in context:
+                pend_word = word
 
     obs, pend = "", ""
 
     if obs_word:
         x0 = obs_word["x0"]
         y0 = obs_word["top"]
-        x1 = pend_word["x0"] if pend_word and pend_word["x0"] > x0 else w
+        # Right boundary: pend column start (or 65 % fallback)
+        x1 = pend_word["x0"] if (pend_word and pend_word["x0"] > x0 + 10) else w * 0.65
         region = page.crop((x0, y0, x1, h))
-        lines = [l.strip() for l in (region.extract_text() or "").split("\n") if l.strip()]
-        # Drop the header line itself
-        start = 1 if lines and "OBSERVACI" in lines[0].upper() else 0
-        obs = "\n".join(lines[start:])[:1000]
+        lines  = [l.strip() for l in (region.extract_text() or "").split("\n") if l.strip()]
+        start  = 1 if lines and "OBSERVACI" in lines[0].upper() else 0
+        obs    = "\n".join(lines[start:])[:1000]
 
     if pend_word:
-        region = page.crop((pend_word["x0"], pend_word["top"], w, h))
-        lines = [l.strip() for l in (region.extract_text() or "").split("\n") if l.strip()]
-        start = 1 if lines and "PENDIENTE" in lines[0].upper() else 0
-        pend = "\n".join(lines[start:])[:1000]
+        x0     = pend_word["x0"]
+        y0     = pend_word["top"]
+        region = page.crop((x0, y0, w, h))
+        lines  = [l.strip() for l in (region.extract_text() or "").split("\n") if l.strip()]
+        start  = 1 if lines and "PENDIENTE" in lines[0].upper() else 0
+        pend   = "\n".join(lines[start:])[:1000]
 
     return obs, pend
 
