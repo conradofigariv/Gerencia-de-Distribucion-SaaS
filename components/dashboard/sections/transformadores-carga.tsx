@@ -104,8 +104,24 @@ function TotalRow({ label, span, values }: { label: string; span?: number; value
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+function extractDateFromFilename(name: string): string {
+  // DD-MM-YYYY or DD/MM/YYYY
+  let m = name.match(/(\d{2})[-/](\d{2})[-/](\d{4})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  // YYYY-MM-DD or YYYY/MM/DD
+  m = name.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  // DDMMYYYY (8 digits, day first)
+  m = name.match(/(?<!\d)(\d{2})(\d{2})(\d{4})(?!\d)/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  // YYYYMMDD
+  m = name.match(/(?<!\d)(\d{4})(\d{2})(\d{2})(?!\d)/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return new Date().toISOString().split("T")[0];
+}
+
 export function TransformadoresCargaSection() {
-  const fecha                       = new Date().toISOString().split("T")[0];
+  const [fecha, setFecha]           = useState<string>(new Date().toISOString().split("T")[0]);
   const [archivo, setArchivo]       = useState<File | null>(null);
   const [dragging, setDragging]     = useState(false);
   const [terceros, setTerceros]     = useState<Record<number, TrafoRow>>(init13Trafo);
@@ -123,6 +139,7 @@ export function TransformadoresCargaSection() {
 
   const handleFileChange = async (file: File) => {
     setArchivo(file);
+    setFecha(extractDateFromFilename(file.name));
     await analyzeFile(file);
   };
 
