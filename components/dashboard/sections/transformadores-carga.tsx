@@ -414,7 +414,7 @@ export function TransformadoresCargaSection() {
 
           {/* ── Row 2: Relación 33 + Observaciones + Pendientes ── */}
           <div className="overflow-x-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 min-w-[560px]">
+          <div className="grid grid-cols-1 md:grid-cols-[440px_1fr] gap-5 min-w-[900px]">
 
             {/* Table D: Relación 33/0,4 kV */}
             <div>
@@ -456,7 +456,7 @@ export function TransformadoresCargaSection() {
             </div>
 
             {/* Observaciones + Pendientes */}
-            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5">
                 <p className="text-[9px] font-bold text-slate-300 uppercase tracking-wider">
                   Observaciones (13,2/0,4 KV)
