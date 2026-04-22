@@ -296,10 +296,11 @@ export function TransformadoresCargaSection() {
         <div className="p-4 space-y-5">
 
           {/* ── Row 1: Terceros + Taller + Resumen ── */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="overflow-x-auto">
+          <div className="grid grid-cols-3 gap-3 min-w-[680px]">
 
             {/* Table A: Nuevos y Reparados por Terceros */}
-            <div className="flex-1">
+            <div className="min-w-0">
               <p className="text-[9px] font-bold text-center text-slate-300 mb-1 uppercase tracking-wider">
                 Nuevos y Reparados por Terceros
               </p>
@@ -332,7 +333,7 @@ export function TransformadoresCargaSection() {
             </div>
 
             {/* Table B: Reparados por Taller */}
-            <div className="flex-1">
+            <div className="min-w-0">
               <p className="text-[9px] font-bold text-center text-slate-300 mb-1 uppercase tracking-wider">
                 Reparados por Taller de Transformadores
               </p>
@@ -409,9 +410,11 @@ export function TransformadoresCargaSection() {
               </table>
             </div>
           </div>
+          </div>
 
           {/* ── Row 2: Relación 33 + Observaciones + Pendientes ── */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="overflow-x-auto">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 min-w-[560px]">
 
             {/* Table D: Relación 33/0,4 kV */}
             <div>
@@ -477,6 +480,7 @@ export function TransformadoresCargaSection() {
                 />
               </div>
             </div>
+          </div>
           </div>
         </div>
 
