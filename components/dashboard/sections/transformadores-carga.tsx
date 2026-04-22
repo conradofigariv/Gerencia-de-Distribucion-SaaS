@@ -123,8 +123,15 @@ function extractDateFromFilename(name: string): string {
   return new Date().toISOString().split("T")[0];
 }
 
+function extractDepositoFromFilename(name: string): string {
+  // Everything after the date and a separator (–, -, space) until .pdf
+  const m = name.match(/\d{2}[-/]\d{2}[-/]\d{2,4}\s*[–\-]\s*(.+?)(?:\.[^.]+)?$/i);
+  return m ? m[1].trim() : "";
+}
+
 export function TransformadoresCargaSection() {
   const [fecha, setFecha]           = useState<string>(new Date().toISOString().split("T")[0]);
+  const [deposito, setDeposito]     = useState<string>("");
   const [archivo, setArchivo]       = useState<File | null>(null);
   const [dragging, setDragging]     = useState(false);
   const [terceros, setTerceros]     = useState<Record<number, TrafoRow>>(init13Trafo);
@@ -143,6 +150,7 @@ export function TransformadoresCargaSection() {
   const handleFileChange = async (file: File) => {
     setArchivo(file);
     setFecha(extractDateFromFilename(file.name));
+    setDeposito(extractDepositoFromFilename(file.name));
     await analyzeFile(file);
   };
 
@@ -225,7 +233,7 @@ export function TransformadoresCargaSection() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const datos = { terceros, taller, totales, autorizados, rel33, obs, pend };
+      const datos = { terceros, taller, totales, autorizados, rel33, obs, pend, deposito };
       const { error } = await supabase
         .from("planillas_reserva")
         .insert([{ fecha, datos }]);
