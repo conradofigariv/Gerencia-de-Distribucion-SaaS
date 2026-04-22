@@ -181,7 +181,7 @@ export function TransformadoresTablaSection() {
                   onClick={() => setExpandedId(isExpanded ? null : planilla.id)}
                   className="flex-1 text-left hover:opacity-80 transition-opacity"
                 >
-                  <h2 className="text-xl font-bold text-foreground">Informe de Reservas — {planilla.fecha}</h2>
+                  <h2 className="text-xl font-bold text-foreground">Informe de Reservas — {planilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}</h2>
                   <p className="text-sm text-muted-foreground mt-1">
                     <span className="font-semibold text-blue-400">{totals.totGeneral}</span> total
                     {" | "}
