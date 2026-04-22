@@ -6,7 +6,7 @@ import pdfplumber
 from http.server import BaseHTTPRequestHandler
 
 POT_13 = [5, 10, 16, 25, 50, 63, 80, 100, 125, 160, 200, 250, 315, 500, 630, 800, 1000]
-POT_33 = [25, 63, 160, 315, 500, 630]
+POT_33 = [25, 63, 160, 250, 315, 500, 630]
 POT_13_SET = set(POT_13)
 POT_33_SET = set(POT_33)
 
@@ -196,6 +196,54 @@ def parse_combined(table, terceros, taller, autorizados):
                 autorizados[str(kva_ta)] = to_int(row[auto_col])
 
 
+# ─── OBS / PEND extraction via bounding boxes ────────────────────────────────
+
+def _extract_obs_pend(page):
+    """
+    Locate OBSERVACIONES and PENDIENTES headers by their word positions
+    in the bottom half of the page, then crop + extract each region.
+    This avoids regex collisions with table column headers like
+    'AUTORIZADOS PENDIENTE de Retiro'.
+    """
+    w, h = page.width, page.height
+    bottom_y = h * 0.50          # only look in the bottom half
+    words = page.extract_words() or []
+
+    obs_word  = None
+    pend_word = None
+
+    for word in words:
+        if word["top"] < bottom_y:
+            continue
+        upper = word["text"].upper()
+        if "OBSERVACI" in upper and obs_word is None:
+            obs_word = word
+        # Match "PENDIENTES" but NOT "PENDIENTE" as part of "PENDIENTE DE RETIRO"
+        # The section header reads "PENDIENTES DE ENTREGAS"
+        if upper.startswith("PENDIENTE") and pend_word is None:
+            pend_word = word
+
+    obs, pend = "", ""
+
+    if obs_word:
+        x0 = obs_word["x0"]
+        y0 = obs_word["top"]
+        x1 = pend_word["x0"] if pend_word and pend_word["x0"] > x0 else w
+        region = page.crop((x0, y0, x1, h))
+        lines = [l.strip() for l in (region.extract_text() or "").split("\n") if l.strip()]
+        # Drop the header line itself
+        start = 1 if lines and "OBSERVACI" in lines[0].upper() else 0
+        obs = "\n".join(lines[start:])[:1000]
+
+    if pend_word:
+        region = page.crop((pend_word["x0"], pend_word["top"], w, h))
+        lines = [l.strip() for l in (region.extract_text() or "").split("\n") if l.strip()]
+        start = 1 if lines and "PENDIENTE" in lines[0].upper() else 0
+        pend = "\n".join(lines[start:])[:1000]
+
+    return obs, pend
+
+
 # ─── Main parser ──────────────────────────────────────────────────────────────
 
 def parse_planilla(pdf_bytes):
@@ -207,10 +255,10 @@ def parse_planilla(pdf_bytes):
 
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         all_tables = []
-        all_text   = ""
         for page in pdf.pages:
             all_tables.extend(page.extract_tables() or [])
-            all_text += (page.extract_text() or "") + "\n"
+            if not obs and not pend:
+                obs, pend = _extract_obs_pend(page)
 
     for table in all_tables:
         if not table or len(table) < 2:
@@ -233,12 +281,6 @@ def parse_planilla(pdf_bytes):
             parse_taller(table, taller, autorizados)
         elif has_auto:
             parse_autorizados(table, autorizados)
-
-    # OBS and PEND from raw text
-    obs_m  = re.search(r"OBSERVACIONES[^\n]*\n(.*?)(?=PENDIENTES|$)", all_text, re.I | re.DOTALL)
-    pend_m = re.search(r"PENDIENTES[^\n]*\n(.*?)$",                  all_text, re.I | re.DOTALL)
-    if obs_m:  obs  = obs_m.group(1).strip()[:1000]
-    if pend_m: pend = pend_m.group(1).strip()[:1000]
 
     return {"terceros": terceros, "taller": taller, "autorizados": autorizados,
             "rel33": rel33, "obs": obs, "pend": pend}
