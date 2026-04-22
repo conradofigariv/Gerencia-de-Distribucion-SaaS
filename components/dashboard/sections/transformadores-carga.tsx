@@ -187,7 +187,7 @@ export function TransformadoresCargaSection() {
       if (d.obs)        setObs(d.obs);
       if (d.pend)       setPend(d.pend);
 
-      toast.success("Planilla cargada y datos procesados");
+      toast.success("Planilla cargada y datos procesados", { duration: 1000 });
     } catch (err: unknown) {
       toast.error((err as Error).message ?? "No se pudo analizar el archivo");
     } finally {
@@ -230,7 +230,7 @@ export function TransformadoresCargaSection() {
         .from("planillas_reserva")
         .insert([{ fecha, datos }]);
       if (error) throw error;
-      toast.success("Planilla guardada correctamente");
+      toast.success("Planilla guardada correctamente", { duration: 1000 });
     } catch (err: unknown) {
       toast.error((err as Error).message ?? "Error al guardar");
     } finally {
