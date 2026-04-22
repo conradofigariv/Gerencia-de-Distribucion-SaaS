@@ -199,52 +199,36 @@ def parse_combined(table, terceros, taller, autorizados):
 # ─── OBS / PEND extraction via bounding boxes ────────────────────────────────
 
 def _extract_obs_pend(page):
-    """
-    Locate OBSERVACIONES and PENDIENTES DE ENTREGAS by scanning word positions
-    in the bottom portion of the page, then crop each column independently.
-    Requires 'PENDIENTES' to be followed by 'ENTREGA' nearby (avoids matching
-    the table column header 'PENDIENTE de Retiro').
-    """
     w, h = page.width, page.height
-    bottom_y = h * 0.50
-    words = page.extract_words() or []
 
-    obs_word  = None
-    pend_word = None
+    # Words in the bottom 55 % of the page
+    bottom_words = [wd for wd in (page.extract_words() or []) if wd["top"] >= h * 0.45]
 
-    for i, word in enumerate(words):
-        if word["top"] < bottom_y:
-            continue
-        upper = word["text"].upper()
+    obs_x = obs_y = pend_x = pend_y = None
 
-        if "OBSERVACI" in upper and obs_word is None:
-            obs_word = word
+    for i, wd in enumerate(bottom_words):
+        upper = wd["text"].upper()
 
-        if upper.startswith("PENDIENTE") and pend_word is None:
-            # Only accept if followed within 5 words by "ENTREGA"
-            context = " ".join(ww["text"] for ww in words[i : i + 6]).upper()
-            if "ENTREGA" in context:
-                pend_word = word
+        if "OBSERVACI" in upper and obs_x is None:
+            obs_x, obs_y = wd["x0"], wd["top"]
 
-    obs, pend = "", ""
+        # PENDIENTE in the right half of the page → section header, not table column
+        if upper.startswith("PENDIENTE") and pend_x is None and wd["x0"] > w * 0.50:
+            pend_x, pend_y = wd["x0"], wd["top"]
 
-    if obs_word:
-        x0 = obs_word["x0"]
-        y0 = obs_word["top"]
-        # Right boundary: pend column start (or 65 % fallback)
-        x1 = pend_word["x0"] if (pend_word and pend_word["x0"] > x0 + 10) else w * 0.65
-        region = page.crop((x0, y0, x1, h))
-        lines  = [l.strip() for l in (region.extract_text() or "").split("\n") if l.strip()]
-        start  = 1 if lines and "OBSERVACI" in lines[0].upper() else 0
-        obs    = "\n".join(lines[start:])[:1000]
+    # Percentage fallbacks for fixed planilla layout
+    if obs_x  is None: obs_x  = w * 0.33
+    if obs_y  is None: obs_y  = h * 0.55
+    if pend_x is None: pend_x = w * 0.65
+    if pend_y is None: pend_y = obs_y
 
-    if pend_word:
-        x0     = pend_word["x0"]
-        y0     = pend_word["top"]
-        region = page.crop((x0, y0, w, h))
-        lines  = [l.strip() for l in (region.extract_text() or "").split("\n") if l.strip()]
-        start  = 1 if lines and "PENDIENTE" in lines[0].upper() else 0
-        pend   = "\n".join(lines[start:])[:1000]
+    def clean(region, keyword):
+        lines = [l.strip() for l in (region.extract_text() or "").split("\n") if l.strip()]
+        start = 1 if lines and keyword in lines[0].upper() else 0
+        return "\n".join(lines[start:])[:1000]
+
+    obs  = clean(page.crop((obs_x,  obs_y,  pend_x, h)), "OBSERVACI")
+    pend = clean(page.crop((pend_x, pend_y, w,      h)), "PENDIENTE")
 
     return obs, pend
 
