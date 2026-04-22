@@ -297,7 +297,7 @@ export function TransformadoresCargaSection() {
 
           {/* ── Row 1: Terceros + Taller + Resumen ── */}
           <div className="overflow-x-auto">
-          <div className="grid grid-cols-3 gap-3 min-w-[680px]">
+          <div className="grid grid-cols-3 gap-3 min-w-[1080px]">
 
             {/* Table A: Nuevos y Reparados por Terceros */}
             <div className="min-w-0">
