@@ -19,6 +19,7 @@ interface PlanillaRow {
     rel33: Record<string, { tN: number; mN: number; tR: number; mR: number }>;
     obs: string;
     pend: string;
+    deposito?: string;
   };
   created_at: string;
 }
@@ -181,7 +182,10 @@ export function TransformadoresTablaSection() {
                   onClick={() => setExpandedId(isExpanded ? null : planilla.id)}
                   className="flex-1 text-left hover:opacity-80 transition-opacity"
                 >
-                  <h2 className="text-xl font-bold text-foreground">Informe de Reservas — {planilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}</h2>
+                  <h2 className="text-xl font-bold text-foreground">
+                    Informe de Reservas — {planilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
+                    {planilla.datos.deposito && <span className="text-slate-400 font-normal"> — {planilla.datos.deposito}</span>}
+                  </h2>
                   <p className="text-sm text-muted-foreground mt-1">
                     <span className="font-semibold text-blue-400">{totals.totGeneral}</span> total
                     {" | "}
