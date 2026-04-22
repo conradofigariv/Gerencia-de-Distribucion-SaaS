@@ -105,12 +105,15 @@ function TotalRow({ label, span, values }: { label: string; span?: number; value
 // ─── Main component ───────────────────────────────────────────────────────────
 
 function extractDateFromFilename(name: string): string {
-  // DD-MM-YYYY or DD/MM/YYYY
+  // DD-MM-YYYY or DD/MM/YYYY (4-digit year)
   let m = name.match(/(\d{2})[-/](\d{2})[-/](\d{4})/);
   if (m) return `${m[3]}-${m[2]}-${m[1]}`;
   // YYYY-MM-DD or YYYY/MM/DD
   m = name.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  // DD-MM-YY or DD/MM/YY (2-digit year → 20YY)
+  m = name.match(/(\d{2})[-/](\d{2})[-/](\d{2})(?!\d)/);
+  if (m) return `20${m[3]}-${m[2]}-${m[1]}`;
   // DDMMYYYY (8 digits, day first)
   m = name.match(/(?<!\d)(\d{2})(\d{2})(\d{4})(?!\d)/);
   if (m) return `${m[3]}-${m[2]}-${m[1]}`;
