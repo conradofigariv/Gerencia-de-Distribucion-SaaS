@@ -4,6 +4,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, LabelList, ResponsiveContainer,
+} from "recharts";
+import {
   Zap, CheckCircle2, Wrench, XCircle, RefreshCw, Loader2,
 } from "lucide-react";
 
@@ -177,6 +180,29 @@ export function TransformadoresResumenSection() {
   const latestPlanilla = planillas[0];
   const currentStock   = latestPlanilla ? s13(latestPlanilla) + s33(latestPlanilla) : 0;
   const gaugeRatio     = avgAll > 0 ? (currentStock / avgAll) * 100 : 0;
+
+  // ── Variación neta mensual ────────────────────────────────────────────────
+
+  const MES_SHORT = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+
+  const variacionData = (() => {
+    // Group by YYYY-MM, sum stockNeto across zones
+    const byMonth: Record<string, number> = {};
+    for (const p of planillas) {
+      const key = p.fecha.slice(0, 7);
+      const neto = s13(p) + s33(p) - POT_13.reduce((s, k) => s + (p.datos.autorizados?.[String(k)] ?? 0), 0);
+      byMonth[key] = (byMonth[key] ?? 0) + neto;
+    }
+    const sorted = Object.keys(byMonth).sort();
+    return sorted.map((key, i) => {
+      const [y, m] = key.split("-");
+      const prev = i > 0 ? byMonth[sorted[i - 1]] : byMonth[key];
+      return {
+        mes: `${MES_SHORT[Number(m) - 1]} ${y}`,
+        variacion: byMonth[key] - prev,
+      };
+    });
+  })();
 
   // ── KPI computation ───────────────────────────────────────────────────────
 
@@ -359,6 +385,36 @@ export function TransformadoresResumenSection() {
             </p>
           )}
         </div>
+      </div>
+
+      {/* ── Gráfico de Variación Neta ── */}
+      <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <p className="text-sm font-semibold text-foreground">Gráfico de Variación Neta</p>
+        <p className="text-xs text-blue-400 mb-4">Stock neto en comparación con el mes anterior</p>
+        {variacionData.length < 2 ? (
+          <p className="text-sm text-muted-foreground">Se necesitan al menos 2 planillas para calcular la variación.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={320}>
+            <BarChart data={variacionData} margin={{ top: 24, right: 16, left: 0, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+              <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} label={{ value: "Variación neta", angle: -90, position: "insideLeft", offset: 10, style: { fontSize: 11, fill: "#64748b" } }} />
+              <Tooltip
+                contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+                labelStyle={{ color: "#94a3b8" }}
+                itemStyle={{ color: "#f1f5f9" }}
+                formatter={(v: number) => [v, "Variación"]}
+              />
+              <Bar dataKey="variacion" radius={[3, 3, 0, 0]} maxBarSize={48}>
+                <LabelList dataKey="variacion" position="top" style={{ fontSize: 10, fill: "#94a3b8" }}
+                  formatter={(v: number) => v === 0 ? "-" : v} />
+                {variacionData.map((d, i) => (
+                  <Cell key={i} fill={d.variacion >= 0 ? "#16a34a" : "#dc2626"} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       {/* Existing inventory KPIs */}
