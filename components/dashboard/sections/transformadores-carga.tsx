@@ -306,6 +306,13 @@ export function TransformadoresCargaSection() {
       <input ref={fileRef} type="file" accept=".xlsx,.xls,.pdf" className="hidden"
         onChange={e => { const f = e.target.files?.[0]; if (f) handleFileChange(f); }} />
 
+      {fechaDuplicada && (
+        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/40 rounded-xl px-4 py-2.5 text-sm text-amber-300">
+          <span>⚠</span>
+          <span>Ya existe un informe guardado para esta fecha. Si guardás, se va a crear un duplicado.</span>
+        </div>
+      )}
+
       {/* ── Planilla ── */}
       <div className="bg-slate-800/30 border border-slate-700 rounded-xl shadow-sm overflow-hidden">
 
@@ -524,9 +531,6 @@ export function TransformadoresCargaSection() {
                 onChange={e => setFecha(e.target.value)}
                 className="bg-slate-900 border border-slate-600 rounded px-1.5 py-0.5 text-xs text-slate-200 focus:outline-none focus:border-blue-400"
               />
-              {fechaDuplicada && (
-                <span className="text-amber-400 font-semibold">⚠ Ya existe un informe para esta fecha</span>
-              )}
             </span>
           </div>
           <button
