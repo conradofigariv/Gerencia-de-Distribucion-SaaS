@@ -117,7 +117,7 @@ function GaugeChart({ ratio }: { ratio: number }) {
   ];
 
   return (
-    <svg viewBox="0 0 300 215" className="w-full max-w-xs mx-auto">
+    <svg viewBox="0 0 300 225" className="w-full max-w-xs mx-auto">
       <path d={arc(cx, cy, r, START, START + SWEEP)} fill="none" stroke="#1e293b" strokeWidth={sw} />
       {zones.map(z => (
         <path key={z.from} d={arc(cx, cy, r, angleFor(z.from), angleFor(z.to))} fill="none" stroke={z.color} strokeWidth={sw} />
@@ -128,8 +128,8 @@ function GaugeChart({ ratio }: { ratio: number }) {
       })}
       <line x1={cx} y1={cy} x2={tip.x} y2={tip.y} stroke="#f1f5f9" strokeWidth={3} strokeLinecap="round" />
       <circle cx={cx} cy={cy} r={6} fill="#f1f5f9" />
-      <text x={cx} y={cy + 18} textAnchor="middle" fontSize={26} fontWeight="bold" fill="#f1f5f9">{ratio.toFixed(2)}%</text>
-      <text x={cx} y={cy + 34} textAnchor="middle" fontSize={8} fill="#64748b">Stock mes actual / promedio histórico</text>
+      <text x={cx} y={cy + 52} textAnchor="middle" fontSize={26} fontWeight="bold" fill="#f1f5f9">{ratio.toFixed(2)}%</text>
+      <text x={cx} y={cy + 67} textAnchor="middle" fontSize={8} fill="#64748b">Stock mes actual / promedio histórico</text>
     </svg>
   );
 }
@@ -267,37 +267,6 @@ export function TransformadoresResumenSection() {
         </button>
       </div>
 
-      {/* ── Promedios + Gauge ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* 3 KPI cards */}
-        <div className="space-y-4">
-          {[
-            { label: "STOCK REAL PROMEDIO",  value: avgAll },
-            { label: "PROMEDIO DE 13,2/0,4", value: avg13  },
-            { label: "PROMEDIO DE 33/0,4",   value: avg33  },
-          ].map(k => (
-            <div key={k.label} className="bg-card border border-border rounded-xl px-5 py-4 shadow-sm">
-              <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase mb-1">{k.label}</p>
-              <p className="text-4xl font-bold text-foreground">{k.value.toFixed(1)}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Gauge */}
-        <div className="bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col">
-          <p className="text-sm font-semibold text-foreground mb-2">Salud del Inventario</p>
-          <div className="flex-1 flex items-center justify-center">
-            <GaugeChart ratio={gaugeRatio} />
-          </div>
-          {latestPlanilla && (
-            <p className="text-[11px] text-muted-foreground text-center mt-1">
-              Planilla actual: {latestPlanilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
-              {latestPlanilla.datos.deposito ? ` — ${latestPlanilla.datos.deposito}` : ""}
-            </p>
-          )}
-        </div>
-      </div>
-
       {/* ── Filters + Reserve KPIs ── */}
       <div className="bg-card border border-border rounded-xl p-4 shadow-sm space-y-4">
 
@@ -363,6 +332,34 @@ export function TransformadoresResumenSection() {
             {current.datos.deposito ? ` — ${current.datos.deposito}` : ""}
           </p>
         )}
+      </div>
+
+      {/* ── Promedios + Gauge ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="space-y-4">
+          {[
+            { label: "STOCK REAL PROMEDIO",  value: avgAll },
+            { label: "PROMEDIO DE 13,2/0,4", value: avg13  },
+            { label: "PROMEDIO DE 33/0,4",   value: avg33  },
+          ].map(k => (
+            <div key={k.label} className="bg-card border border-border rounded-xl px-5 py-4 shadow-sm">
+              <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase mb-1">{k.label}</p>
+              <p className="text-4xl font-bold text-foreground">{k.value.toFixed(1)}</p>
+            </div>
+          ))}
+        </div>
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col">
+          <p className="text-sm font-semibold text-foreground mb-2">Salud del Inventario</p>
+          <div className="flex-1 flex items-center justify-center">
+            <GaugeChart ratio={gaugeRatio} />
+          </div>
+          {latestPlanilla && (
+            <p className="text-[11px] text-muted-foreground text-center mt-1">
+              Planilla actual: {latestPlanilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
+              {latestPlanilla.datos.deposito ? ` — ${latestPlanilla.datos.deposito}` : ""}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Existing inventory KPIs */}
