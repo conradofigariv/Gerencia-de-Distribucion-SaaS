@@ -84,6 +84,56 @@ function computePendientes(p: PlanillaReserva, kvas: number[], relacion: string)
 
 const SEL = "px-2.5 py-1.5 rounded-lg bg-card border border-border text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-accent";
 
+// ── Gauge helpers ─────────────────────────────────────────────────────────────
+
+function polar(cx: number, cy: number, r: number, deg: number) {
+  const rad = (deg * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+function arc(cx: number, cy: number, r: number, a1: number, a2: number) {
+  const s = polar(cx, cy, r, a1), e = polar(cx, cy, r, a2);
+  return `M ${s.x.toFixed(1)} ${s.y.toFixed(1)} A ${r} ${r} 0 ${a2 - a1 > 180 ? 1 : 0} 1 ${e.x.toFixed(1)} ${e.y.toFixed(1)}`;
+}
+
+function GaugeChart({ ratio }: { ratio: number }) {
+  const cx = 150, cy = 150, r = 108, sw = 28;
+  const START = 135, SWEEP = 270, MAX = 150;
+  const angleFor = (p: number) => START + (p / MAX) * SWEEP;
+  const clamped = Math.min(Math.max(ratio, 0), MAX);
+  const tip = polar(cx, cy, r - 14, angleFor(clamped));
+
+  const zones = [
+    { from: 0, to: 90, color: "#ef4444" },
+    { from: 90, to: 100, color: "#22c55e" },
+    { from: 100, to: 150, color: "#eab308" },
+  ];
+
+  const tickLabels = [
+    { pct: 0, text: "0%", anchor: "end" as const },
+    { pct: 50, text: "50%", anchor: "end" as const },
+    { pct: 100, text: "100%", anchor: "start" as const },
+    { pct: 150, text: "150%", anchor: "start" as const },
+  ];
+
+  return (
+    <svg viewBox="0 0 300 215" className="w-full max-w-xs mx-auto">
+      <path d={arc(cx, cy, r, START, START + SWEEP)} fill="none" stroke="#1e293b" strokeWidth={sw} />
+      {zones.map(z => (
+        <path key={z.from} d={arc(cx, cy, r, angleFor(z.from), angleFor(z.to))} fill="none" stroke={z.color} strokeWidth={sw} />
+      ))}
+      {tickLabels.map(l => {
+        const pos = polar(cx, cy, r + 20, angleFor(l.pct));
+        return <text key={l.pct} x={pos.x} y={pos.y + 3} textAnchor={l.anchor} fontSize={9} fill="#64748b">{l.text}</text>;
+      })}
+      <line x1={cx} y1={cy} x2={tip.x} y2={tip.y} stroke="#f1f5f9" strokeWidth={3} strokeLinecap="round" />
+      <circle cx={cx} cy={cy} r={6} fill="#f1f5f9" />
+      <text x={cx} y={cy + 18} textAnchor="middle" fontSize={26} fontWeight="bold" fill="#f1f5f9">{ratio.toFixed(2)}%</text>
+      <text x={cx} y={cy + 34} textAnchor="middle" fontSize={8} fill="#64748b">Stock mes actual / promedio histórico</text>
+    </svg>
+  );
+}
+
 export function TransformadoresResumenSection() {
   const [rows, setRows]           = useState<Transformador[]>([]);
   const [planillas, setPlanillas] = useState<PlanillaReserva[]>([]);
@@ -111,6 +161,23 @@ export function TransformadoresResumenSection() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ── Promedio / Gauge ─────────────────────────────────────────────────────
+
+  const s13 = (p: PlanillaReserva) => POT_13.reduce((s, k) => s + (p.datos.totales?.[String(k)] ?? 0), 0);
+  const s33 = (p: PlanillaReserva) => POT_33.reduce((s, k) => { const r = p.datos.rel33?.[String(k)]; return s + (r ? r.tN + r.mN + r.tR + r.mR : 0); }, 0);
+
+  const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+
+  const all13  = planillas.map(s13);
+  const all33  = planillas.map(s33);
+  const avgAll = avg(planillas.map((p, i) => all13[i] + all33[i]));
+  const avg13  = avg(all13);
+  const avg33  = avg(all33);
+
+  const latestPlanilla = planillas[0];
+  const currentStock   = latestPlanilla ? s13(latestPlanilla) + s33(latestPlanilla) : 0;
+  const gaugeRatio     = avgAll > 0 ? (currentStock / avgAll) * 100 : 0;
 
   // ── KPI computation ───────────────────────────────────────────────────────
 
@@ -198,6 +265,37 @@ export function TransformadoresResumenSection() {
           <RefreshCw className="w-4 h-4" />
           Actualizar
         </button>
+      </div>
+
+      {/* ── Promedios + Gauge ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* 3 KPI cards */}
+        <div className="space-y-4">
+          {[
+            { label: "STOCK REAL PROMEDIO",  value: avgAll },
+            { label: "PROMEDIO DE 13,2/0,4", value: avg13  },
+            { label: "PROMEDIO DE 33/0,4",   value: avg33  },
+          ].map(k => (
+            <div key={k.label} className="bg-card border border-border rounded-xl px-5 py-4 shadow-sm">
+              <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase mb-1">{k.label}</p>
+              <p className="text-4xl font-bold text-foreground">{k.value.toFixed(1)}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Gauge */}
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col">
+          <p className="text-sm font-semibold text-foreground mb-2">Salud del Inventario</p>
+          <div className="flex-1 flex items-center justify-center">
+            <GaugeChart ratio={gaugeRatio} />
+          </div>
+          {latestPlanilla && (
+            <p className="text-[11px] text-muted-foreground text-center mt-1">
+              Planilla actual: {latestPlanilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
+              {latestPlanilla.datos.deposito ? ` — ${latestPlanilla.datos.deposito}` : ""}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* ── Filters + Reserve KPIs ── */}
