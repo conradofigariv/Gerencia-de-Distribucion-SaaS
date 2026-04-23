@@ -28,7 +28,7 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-6 duration-500">
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-8">
