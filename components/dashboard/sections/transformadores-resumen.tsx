@@ -87,6 +87,29 @@ function computePendientes(p: PlanillaReserva, kvas: number[], relacion: string)
 
 const SEL = "px-2.5 py-1.5 rounded-lg bg-card border border-border text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-accent";
 
+// ── Custom bar label (negative bars get label below) ─────────────────────────
+
+function VariacionLabel(props: { x?: string | number; y?: string | number; width?: string | number; height?: string | number; value?: string | number }) {
+  const x      = Number(props.x      ?? 0);
+  const y      = Number(props.y      ?? 0);
+  const width  = Number(props.width  ?? 0);
+  const height = Number(props.height ?? 0);
+  const value  = Number(props.value  ?? 0);
+  if (!value) return null;
+  const isNeg = value < 0;
+  return (
+    <text
+      x={x + width / 2}
+      y={isNeg ? y + Math.abs(height) + 13 : y - 5}
+      textAnchor="middle"
+      fontSize={10}
+      fill="#94a3b8"
+    >
+      {value}
+    </text>
+  );
+}
+
 // ── Gauge helpers ─────────────────────────────────────────────────────────────
 
 function polar(cx: number, cy: number, r: number, deg: number) {
@@ -141,6 +164,8 @@ export function TransformadoresResumenSection() {
   const [rows, setRows]           = useState<Transformador[]>([]);
   const [planillas, setPlanillas] = useState<PlanillaReserva[]>([]);
   const [loading, setLoading]     = useState(true);
+
+  const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null);
 
   // Filters
   const [filterAno,      setFilterAno]      = useState("");
@@ -405,22 +430,39 @@ export function TransformadoresResumenSection() {
           <p className="text-sm text-muted-foreground">Se necesitan al menos 2 planillas para calcular la variación.</p>
         ) : (
           <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={variacionData} margin={{ top: 24, right: 16, left: 0, bottom: 8 }}>
+            <BarChart data={variacionData} margin={{ top: 28, right: 16, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
               <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} label={{ value: "Variación neta", angle: -90, position: "insideLeft", offset: 10, style: { fontSize: 11, fill: "#64748b" } }} />
               <Tooltip
+                cursor={false}
                 contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
                 labelStyle={{ color: "#94a3b8" }}
                 itemStyle={{ color: "#f1f5f9" }}
                 formatter={(v: number) => [v, "Variación"]}
               />
-              <Bar dataKey="variacion" radius={[3, 3, 0, 0]} maxBarSize={48}>
-                <LabelList dataKey="variacion" position="top" style={{ fontSize: 10, fill: "#94a3b8" }}
-                  formatter={(v: number) => v === 0 ? "-" : v} />
-                {variacionData.map((d, i) => (
-                  <Cell key={i} fill={d.variacion >= 0 ? "#16a34a" : "#dc2626"} />
-                ))}
+              <Bar
+                dataKey="variacion"
+                radius={[3, 3, 0, 0]}
+                maxBarSize={48}
+                activeBar={false}
+                onMouseEnter={(_: unknown, index: number) => setActiveBarIndex(index)}
+                onMouseLeave={() => setActiveBarIndex(null)}
+              >
+                <LabelList dataKey="variacion" content={VariacionLabel} />
+                {variacionData.map((d, i) => {
+                  const baseColor = d.variacion >= 0 ? "#16a34a" : "#dc2626";
+                  const isActive  = activeBarIndex === i;
+                  const isDimmed  = activeBarIndex !== null && !isActive;
+                  return (
+                    <Cell
+                      key={i}
+                      fill={baseColor}
+                      fillOpacity={isDimmed ? 0.35 : 1}
+                      style={isActive ? { filter: "brightness(1.45)" } : undefined}
+                    />
+                  );
+                })}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
