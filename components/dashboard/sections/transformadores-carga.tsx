@@ -143,14 +143,18 @@ export function TransformadoresCargaSection() {
   const [pend, setPend]             = useState("");
   const [saving, setSaving]         = useState(false);
   const [analyzing, setAnalyzing]   = useState(false);
+  const [fechaDuplicada, setFechaDuplicada] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // ── File selection + auto-analyze ───────────────────────────────────────────
 
   const handleFileChange = async (file: File) => {
     setArchivo(file);
-    setFecha(extractDateFromFilename(file.name));
+    const f = extractDateFromFilename(file.name);
+    setFecha(f);
     setDeposito(extractDepositoFromFilename(file.name));
+    const { data } = await supabase.from("planillas_reserva").select("id").eq("fecha", f).limit(1);
+    setFechaDuplicada(!!(data && data.length > 0));
     await analyzeFile(file);
   };
 
@@ -516,6 +520,9 @@ export function TransformadoresCargaSection() {
                 onChange={e => setFecha(e.target.value)}
                 className="bg-slate-900 border border-slate-600 rounded px-1.5 py-0.5 text-xs text-slate-200 focus:outline-none focus:border-blue-400"
               />
+              {fechaDuplicada && (
+                <span className="text-amber-400 font-semibold">⚠ Ya existe un informe para esta fecha</span>
+              )}
             </span>
           </div>
           <button
