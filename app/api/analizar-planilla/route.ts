@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 
 const POT_13 = [5,10,16,25,50,63,80,100,125,160,200,250,315,500,630,800,1000];
-const POT_33 = [25,63,160,315,500,630];
+const POT_33 = [25,63,160,250,315,500,630];
 
 // ─── XLSX helpers ─────────────────────────────────────────────────────────────
 
