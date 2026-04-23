@@ -186,20 +186,30 @@ export function TransformadoresResumenSection() {
   const MES_SHORT = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 
   const variacionData = (() => {
-    // Group by YYYY-MM, sum stockNeto across zones
-    const byMonth: Record<string, number> = {};
+    const byMonth: Record<string, { bruto: number; auto: number; neto: number; zonas: string[] }> = {};
     for (const p of planillas) {
       const key = p.fecha.slice(0, 7);
-      const neto = s13(p) + s33(p) - POT_13.reduce((s, k) => s + (p.datos.autorizados?.[String(k)] ?? 0), 0);
-      byMonth[key] = (byMonth[key] ?? 0) + neto;
+      const bruto = s13(p) + s33(p);
+      const auto  = POT_13.reduce((s, k) => s + (p.datos.autorizados?.[String(k)] ?? 0), 0);
+      const neto  = bruto - auto;
+      const zona  = p.datos.deposito ?? "sin zona";
+      if (!byMonth[key]) byMonth[key] = { bruto: 0, auto: 0, neto: 0, zonas: [] };
+      byMonth[key].bruto += bruto;
+      byMonth[key].auto  += auto;
+      byMonth[key].neto  += neto;
+      byMonth[key].zonas.push(zona);
     }
     const sorted = Object.keys(byMonth).sort();
     return sorted.map((key, i) => {
       const [y, m] = key.split("-");
-      const prev = i > 0 ? byMonth[sorted[i - 1]] : byMonth[key];
+      const prev = i > 0 ? byMonth[sorted[i - 1]].neto : byMonth[key].neto;
       return {
         mes: `${MES_SHORT[Number(m) - 1]} ${y}`,
-        variacion: byMonth[key] - prev,
+        bruto: byMonth[key].bruto,
+        auto:  byMonth[key].auto,
+        neto:  byMonth[key].neto,
+        zonas: byMonth[key].zonas.join(", "),
+        variacion: byMonth[key].neto - prev,
       };
     });
   })();
@@ -416,6 +426,43 @@ export function TransformadoresResumenSection() {
           </ResponsiveContainer>
         )}
       </div>
+
+      {/* ── Tabla de verificación ── */}
+      {variacionData.length > 0 && (
+        <details className="bg-card border border-border rounded-xl shadow-sm">
+          <summary className="px-5 py-3 text-xs font-semibold text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">
+            Ver detalle del cálculo
+          </summary>
+          <div className="overflow-x-auto px-5 pb-4">
+            <table className="w-full text-xs mt-2">
+              <thead>
+                <tr className="border-b border-border text-muted-foreground">
+                  <th className="pb-2 text-left font-medium">Mes</th>
+                  <th className="pb-2 text-right font-medium">Stock Bruto</th>
+                  <th className="pb-2 text-right font-medium">Autorizados</th>
+                  <th className="pb-2 text-right font-medium">Stock Neto</th>
+                  <th className="pb-2 text-right font-medium">Variación</th>
+                  <th className="pb-2 text-left font-medium pl-4">Zonas incluidas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {variacionData.map((d, i) => (
+                  <tr key={i} className="border-b border-border/50 last:border-0">
+                    <td className="py-1.5 text-foreground font-medium">{d.mes}</td>
+                    <td className="py-1.5 text-right text-foreground">{d.bruto}</td>
+                    <td className="py-1.5 text-right text-amber-400">{d.auto}</td>
+                    <td className="py-1.5 text-right text-foreground">{d.neto}</td>
+                    <td className={`py-1.5 text-right font-semibold ${d.variacion > 0 ? "text-green-400" : d.variacion < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                      {i === 0 ? "—" : d.variacion > 0 ? `+${d.variacion}` : d.variacion}
+                    </td>
+                    <td className="py-1.5 text-muted-foreground pl-4">{d.zonas}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
 
       {/* Existing inventory KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
