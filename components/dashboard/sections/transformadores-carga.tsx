@@ -190,8 +190,8 @@ export function TransformadoresCargaSection() {
           for (const p of POT_13) {
             const t3 = d.terceros?.[p] ?? d.terceros?.[String(p)];
             const ta = d.taller?.[p]   ?? d.taller?.[String(p)];
-            const t3sum = t3 ? (Number(t3.t ?? 0) + Number(t3.m ?? 0) + Number(t3.ct ?? 0)) : 0;
-            const tasum = ta ? (Number(ta.t ?? 0) + Number(ta.m ?? 0) + Number(ta.ct ?? 0)) : 0;
+            const t3sum = t3 ? (Number(t3.t ?? 0) + Number(t3.m ?? 0)) : 0;
+            const tasum = ta ? (Number(ta.t ?? 0) + Number(ta.m ?? 0)) : 0;
             if (t3sum + tasum > 0) next[p] = t3sum + tasum;
           }
           return next;
