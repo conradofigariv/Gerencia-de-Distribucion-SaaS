@@ -8,6 +8,7 @@ import {
 } from "recharts";
 import {
   Zap, CheckCircle2, Wrench, XCircle, RefreshCw, Loader2, ChevronDown,
+  Bell, BellRing, Plus, Trash2, X,
 } from "lucide-react";
 
 const POT_13 = [5,10,16,25,50,63,80,100,125,160,200,250,315,500,630,800,1000];
@@ -84,6 +85,28 @@ function computePendientes(p: PlanillaReserva, kvas: number[], relacion: string)
   if (relacion === "33") return 0;
   return kvas.reduce((s, k) => s + (p.datos.autorizados?.[String(k)] ?? 0), 0);
 }
+
+// ── Alarm system ──────────────────────────────────────────────────────────────
+
+interface AlarmRule {
+  id:        string;
+  potencia:  string;
+  relacion:  string;
+  fases:     string;
+  zona:      string;
+  threshold: number;
+}
+
+const ALARM_KEY = "transformadores_alarms";
+
+function loadAlarms(): AlarmRule[] {
+  try { return JSON.parse(localStorage.getItem(ALARM_KEY) ?? "[]"); } catch { return []; }
+}
+function saveAlarms(rules: AlarmRule[]) {
+  localStorage.setItem(ALARM_KEY, JSON.stringify(rules));
+}
+
+// ── FilterSelect ──────────────────────────────────────────────────────────────
 
 function FilterSelect({ value, onChange, placeholder, options }: {
   value: string;
@@ -230,6 +253,22 @@ export function TransformadoresResumenSection() {
   const [filterFases,    setFilterFases]    = useState("");
   const [filterZona,     setFilterZona]     = useState("");
 
+  // Alarms
+  const [showAlarms, setShowAlarms]   = useState(false);
+  const [alarms, setAlarms]           = useState<AlarmRule[]>([]);
+  const [newAlarm, setNewAlarm]       = useState<Omit<AlarmRule, "id">>({ potencia: "", relacion: "", fases: "", zona: "", threshold: 5 });
+  const alarmsRef                     = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setAlarms(loadAlarms()); }, []);
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (alarmsRef.current && !alarmsRef.current.contains(e.target as Node)) setShowAlarms(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     const [{ data: trafos, error: e1 }, { data: plans, error: e2 }] = await Promise.all([
@@ -293,6 +332,48 @@ export function TransformadoresResumenSection() {
       };
     });
   })();
+
+  // ── Alarm evaluation ─────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!planillas.length || !alarms.length) return;
+    const latest = planillas[0];
+    for (const rule of alarms) {
+      const rKvas = rule.potencia
+        ? [Number(rule.potencia)]
+        : kvasFor(rule.relacion, rule.fases);
+      const rZona = rule.zona;
+      const relevantPlanillas = rZona
+        ? planillas.filter(p => (p.datos.deposito ?? "") === rZona)
+        : [latest];
+      const p = relevantPlanillas[0];
+      if (!p) continue;
+      const bruto = computeStockBruto(p, rKvas, rule.relacion);
+      const pend  = computePendientes(p, rKvas, rule.relacion);
+      const neto  = bruto - pend;
+      if (neto <= rule.threshold) {
+        const label = [rule.potencia && `${rule.potencia} kVA`, rule.relacion && `${rule.relacion === "33" ? "33/0,4" : "13,2/0,4"} kV`, rule.fases && (rule.fases === "mono" ? "Monofásico" : "Trifásico"), rule.zona].filter(Boolean).join(" · ") || "General";
+        toast.warning(`⚠ Stock bajo: ${label} — Neto: ${neto} (umbral: ${rule.threshold})`, { duration: 6000 });
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planillas, alarms]);
+
+  // ── Alarm helpers ─────────────────────────────────────────────────────────
+
+  function addAlarm() {
+    const rule: AlarmRule = { ...newAlarm, id: crypto.randomUUID() };
+    const updated = [...alarms, rule];
+    setAlarms(updated);
+    saveAlarms(updated);
+    setNewAlarm({ potencia: "", relacion: "", fases: "", zona: "", threshold: 5 });
+  }
+
+  function removeAlarm(id: string) {
+    const updated = alarms.filter(a => a.id !== id);
+    setAlarms(updated);
+    saveAlarms(updated);
+  }
 
   // ── KPI computation ───────────────────────────────────────────────────────
 
@@ -432,6 +513,98 @@ export function TransformadoresResumenSection() {
               Limpiar
             </button>
           )}
+
+          {/* Alarm button */}
+          <div ref={alarmsRef} className="relative ml-auto">
+            <button
+              onClick={() => setShowAlarms(v => !v)}
+              className={`flex items-center gap-2 pl-3 pr-3.5 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200 ${
+                alarms.length > 0
+                  ? "bg-amber-500/10 border-amber-500/40 text-amber-400 hover:bg-amber-500/15"
+                  : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
+              }`}
+            >
+              {alarms.length > 0 ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+              <span>Alarmas</span>
+              {alarms.length > 0 && (
+                <span className="w-5 h-5 rounded-full bg-amber-500 text-[10px] font-bold text-black flex items-center justify-center">
+                  {alarms.length}
+                </span>
+              )}
+            </button>
+
+            {showAlarms && (
+              <div className="absolute right-0 top-full mt-2 w-[420px] bg-card border border-border rounded-2xl shadow-2xl z-50 overflow-hidden">
+                {/* Panel header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                  <div className="flex items-center gap-2">
+                    <BellRing className="w-4 h-4 text-amber-400" />
+                    <span className="text-sm font-semibold text-foreground">Configurar alarmas de stock</span>
+                  </div>
+                  <button onClick={() => setShowAlarms(false)} className="text-muted-foreground hover:text-foreground transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Existing alarms */}
+                {alarms.length > 0 && (
+                  <div className="px-4 py-3 space-y-2 border-b border-border max-h-52 overflow-y-auto">
+                    {alarms.map(a => {
+                      const parts = [
+                        a.potencia && `${a.potencia} kVA`,
+                        a.relacion && (a.relacion === "33" ? "33/0,4 kV" : "13,2/0,4 kV"),
+                        a.fases && (a.fases === "mono" ? "Mono" : "Tri"),
+                        a.zona,
+                      ].filter(Boolean);
+                      return (
+                        <div key={a.id} className="flex items-center justify-between gap-2 bg-secondary/50 rounded-lg px-3 py-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-foreground truncate">
+                              {parts.length ? parts.join(" · ") : "Todos"}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">Umbral: stock neto ≤ {a.threshold}</p>
+                          </div>
+                          <button onClick={() => removeAlarm(a.id)} className="text-muted-foreground hover:text-red-400 transition-colors shrink-0">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* New alarm form */}
+                <div className="px-4 py-3 space-y-3">
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Nueva alarma</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <FilterSelect value={newAlarm.potencia} onChange={v => setNewAlarm(p => ({ ...p, potencia: v }))} placeholder="Potencia" options={(newAlarm.relacion === "33" ? POT_33 : POT_13).map(k => ({ value: String(k), label: `${k} kVA` }))} />
+                    <FilterSelect value={newAlarm.relacion} onChange={v => setNewAlarm(p => ({ ...p, relacion: v, potencia: "" }))} placeholder="Relación" options={[{ value: "13", label: "13,2/0,4 kV" }, { value: "33", label: "33/0,4 kV" }]} />
+                    <FilterSelect value={newAlarm.fases} onChange={v => setNewAlarm(p => ({ ...p, fases: v }))} placeholder="Fases" options={[{ value: "mono", label: "Monofásico" }, { value: "tri", label: "Trifásico" }]} />
+                    <FilterSelect value={newAlarm.zona} onChange={v => setNewAlarm(p => ({ ...p, zona: v }))} placeholder="Zona" options={availableZonas.map(z => ({ value: z, label: z }))} />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 flex-1 bg-secondary/50 border border-border rounded-xl px-3 py-2">
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">Stock neto ≤</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={newAlarm.threshold}
+                        onChange={e => setNewAlarm(p => ({ ...p, threshold: Number(e.target.value) }))}
+                        className="flex-1 bg-transparent text-sm font-semibold text-foreground focus:outline-none w-0 min-w-0"
+                      />
+                    </div>
+                    <button
+                      onClick={addAlarm}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-accent text-accent-foreground text-sm font-semibold hover:bg-accent/90 transition-colors shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Agregar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 4 KPI cards */}
