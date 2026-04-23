@@ -70,9 +70,9 @@ const navItems: NavItemDef[] = [
     label: "Stock de Transformadores",
     icon: Zap,
     children: [
-      { id: "transformadores-carga",   label: "Carga de datos", icon: ImagePlus },
+      { id: "transformadores-resumen", label: "Resumen",           icon: LayoutGrid },
+      { id: "transformadores-carga",   label: "Carga de datos",    icon: ImagePlus },
       { id: "transformadores-tabla",   label: "Informe de Reservas", icon: Table2 },
-      { id: "transformadores-resumen", label: "Resumen",        icon: LayoutGrid },
     ],
   },
   {
