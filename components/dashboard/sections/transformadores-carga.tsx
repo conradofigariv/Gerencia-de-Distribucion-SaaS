@@ -124,9 +124,7 @@ function extractDateFromFilename(name: string): string {
 }
 
 function extractDepositoFromFilename(name: string): string {
-  // Everything after the date and a separator (–, -, space) until .pdf
-  const m = name.match(/\d{2}[-/]\d{2}[-/]\d{2,4}\s*[–\-]\s*(.+?)(?:\.[^.]+)?$/i);
-  return m ? m[1].trim() : "";
+  return /ALTA\s*GRACIA\s*NORTE/i.test(name) ? "Alta Gracia Norte" : "Villa Revol";
 }
 
 export function TransformadoresCargaSection() {
