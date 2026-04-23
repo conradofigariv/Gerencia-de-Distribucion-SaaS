@@ -153,7 +153,6 @@ export function TransformadoresResumenSection() {
       supabase.from("transformadores").select("*"),
       supabase.from("planillas_reserva").select("id,fecha,datos").order("fecha", { ascending: false }),
     ]);
-    if (e1) toast.error(e1.message);
     if (e2) toast.error(e2.message);
     setRows(trafos ?? []);
     setPlanillas(plans ?? []);
