@@ -151,10 +151,12 @@ export function TransformadoresCargaSection() {
   const handleFileChange = async (file: File) => {
     setArchivo(file);
     const f = extractDateFromFilename(file.name);
+    const dep = extractDepositoFromFilename(file.name);
     setFecha(f);
-    setDeposito(extractDepositoFromFilename(file.name));
-    const { data } = await supabase.from("planillas_reserva").select("id").eq("fecha", f).limit(1);
-    setFechaDuplicada(!!(data && data.length > 0));
+    setDeposito(dep);
+    const { data } = await supabase.from("planillas_reserva").select("id, datos").eq("fecha", f);
+    const duplicate = (data ?? []).some(p => (p.datos?.deposito ?? "") === dep);
+    setFechaDuplicada(duplicate);
     await analyzeFile(file);
   };
 
