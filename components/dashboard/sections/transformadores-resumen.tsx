@@ -534,9 +534,9 @@ export function TransformadoresResumenSection() {
             </button>
 
             {showAlarms && (
-              <div className="absolute right-0 top-full mt-2 w-[420px] bg-card border border-border rounded-2xl shadow-2xl z-50 overflow-hidden">
+              <div className="absolute right-0 top-full mt-2 w-[420px] bg-card border border-border rounded-2xl shadow-2xl z-50">
                 {/* Panel header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-border rounded-t-2xl">
                   <div className="flex items-center gap-2">
                     <BellRing className="w-4 h-4 text-amber-400" />
                     <span className="text-sm font-semibold text-foreground">Configurar alarmas de stock</span>
@@ -574,7 +574,7 @@ export function TransformadoresResumenSection() {
                 )}
 
                 {/* New alarm form */}
-                <div className="px-4 py-3 space-y-3">
+                <div className="px-4 py-3 space-y-3 rounded-b-2xl">
                   <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Nueva alarma</p>
                   <div className="grid grid-cols-2 gap-2">
                     <FilterSelect value={newAlarm.potencia} onChange={v => setNewAlarm(p => ({ ...p, potencia: v }))} placeholder="Potencia" options={(newAlarm.relacion === "33" ? POT_33 : POT_13).map(k => ({ value: String(k), label: `${k} kVA` }))} />
