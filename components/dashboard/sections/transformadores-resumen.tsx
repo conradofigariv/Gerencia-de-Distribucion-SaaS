@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, LabelList, ResponsiveContainer,
 } from "recharts";
 import {
-  Zap, CheckCircle2, Wrench, XCircle, RefreshCw, Loader2,
+  Zap, CheckCircle2, Wrench, XCircle, RefreshCw, Loader2, ChevronDown,
 } from "lucide-react";
 
 const POT_13 = [5,10,16,25,50,63,80,100,125,160,200,250,315,500,630,800,1000];
@@ -85,7 +85,62 @@ function computePendientes(p: PlanillaReserva, kvas: number[], relacion: string)
   return kvas.reduce((s, k) => s + (p.datos.autorizados?.[String(k)] ?? 0), 0);
 }
 
-const SEL = "px-2.5 py-1.5 rounded-lg bg-card border border-border text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-accent";
+function FilterSelect({ value, onChange, placeholder, options }: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  options: { value: string; label: string }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
+  const current = options.find(o => o.value === value);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className={`flex items-center gap-2 pl-3.5 pr-3 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200 min-w-[110px] justify-between ${
+          value
+            ? "bg-accent/10 border-accent/40 text-accent hover:bg-accent/15"
+            : "bg-card border-border text-foreground hover:bg-secondary hover:border-border/80"
+        }`}
+      >
+        <span>{current?.label ?? placeholder}</span>
+        <ChevronDown className={`w-3.5 h-3.5 opacity-60 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-1.5 min-w-full bg-card border border-border rounded-xl shadow-2xl z-50 py-1 overflow-hidden">
+          <button
+            onClick={() => { onChange(""); setOpen(false); }}
+            className={`w-full text-left px-3.5 py-2 text-sm transition-colors ${!value ? "text-accent font-medium bg-accent/8" : "text-muted-foreground hover:text-foreground hover:bg-secondary"}`}
+          >
+            {placeholder}
+          </button>
+          <div className="h-px bg-border/50 mx-2 my-0.5" />
+          {options.map(o => (
+            <button
+              key={o.value}
+              onClick={() => { onChange(o.value); setOpen(false); }}
+              className={`w-full text-left px-3.5 py-2 text-sm transition-colors ${o.value === value ? "text-accent font-semibold bg-accent/8" : "text-foreground hover:bg-secondary"}`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Custom bar label (negative bars get label below) ─────────────────────────
 
@@ -332,44 +387,47 @@ export function TransformadoresResumenSection() {
 
         {/* Filters row */}
         <div className="flex flex-wrap items-center gap-2">
-          <select value={filterAno} onChange={e => setFilterAno(e.target.value)} className={SEL}>
-            <option value="">AÑO</option>
-            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-
-          <select value={filterMes} onChange={e => setFilterMes(e.target.value)} className={SEL}>
-            <option value="">Mes y Año</option>
-            {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-          </select>
-
-          <select value={filterPotencia} onChange={e => setFilterPotencia(e.target.value)} className={SEL}>
-            <option value="">Potencia</option>
-            {(filterRelacion === "33" ? POT_33 : POT_13).map(k => (
-              <option key={k} value={k}>{k} kVA</option>
-            ))}
-          </select>
-
-          <select value={filterRelacion} onChange={e => { setFilterRelacion(e.target.value); setFilterPotencia(""); }} className={SEL}>
-            <option value="">Relacion</option>
-            <option value="13">13,2/0,4 kV</option>
-            <option value="33">33/0,4 kV</option>
-          </select>
-
-          <select value={filterFases} onChange={e => setFilterFases(e.target.value)} className={SEL}>
-            <option value="">Cant. de Fases</option>
-            <option value="mono">Monofásico</option>
-            <option value="tri">Trifásico</option>
-          </select>
-
-          <select value={filterZona} onChange={e => setFilterZona(e.target.value)} className={SEL}>
-            <option value="">Zona</option>
-            {availableZonas.map(z => <option key={z} value={z}>{z}</option>)}
-          </select>
+          <FilterSelect
+            value={filterAno}
+            onChange={setFilterAno}
+            placeholder="Año"
+            options={availableYears.map(y => ({ value: y, label: y }))}
+          />
+          <FilterSelect
+            value={filterMes}
+            onChange={setFilterMes}
+            placeholder="Mes"
+            options={MONTHS.map(m => ({ value: m.value, label: m.label }))}
+          />
+          <FilterSelect
+            value={filterPotencia}
+            onChange={setFilterPotencia}
+            placeholder="Potencia"
+            options={(filterRelacion === "33" ? POT_33 : POT_13).map(k => ({ value: String(k), label: `${k} kVA` }))}
+          />
+          <FilterSelect
+            value={filterRelacion}
+            onChange={v => { setFilterRelacion(v); setFilterPotencia(""); }}
+            placeholder="Relación"
+            options={[{ value: "13", label: "13,2/0,4 kV" }, { value: "33", label: "33/0,4 kV" }]}
+          />
+          <FilterSelect
+            value={filterFases}
+            onChange={setFilterFases}
+            placeholder="Fases"
+            options={[{ value: "mono", label: "Monofásico" }, { value: "tri", label: "Trifásico" }]}
+          />
+          <FilterSelect
+            value={filterZona}
+            onChange={setFilterZona}
+            placeholder="Zona"
+            options={availableZonas.map(z => ({ value: z, label: z }))}
+          />
 
           {(filterAno || filterMes || filterPotencia || filterRelacion || filterFases || filterZona) && (
             <button
               onClick={() => { setFilterAno(""); setFilterMes(""); setFilterPotencia(""); setFilterRelacion(""); setFilterFases(""); setFilterZona(""); }}
-              className="px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-secondary border border-border transition-colors"
+              className="px-3.5 py-2.5 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-secondary border border-border transition-colors"
             >
               Limpiar
             </button>
