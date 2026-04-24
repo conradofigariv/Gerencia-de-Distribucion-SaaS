@@ -201,39 +201,92 @@ function arc(cx: number, cy: number, r: number, a1: number, a2: number) {
 }
 
 function GaugeChart({ ratio }: { ratio: number }) {
-  const cx = 150, cy = 150, r = 108, sw = 28;
+  const cx = 160, cy = 155, r = 115, sw = 20;
   const START = 135, SWEEP = 270, MAX = 150;
   const angleFor = (p: number) => START + (p / MAX) * SWEEP;
   const clamped = Math.min(Math.max(ratio, 0), MAX);
-  const tip = polar(cx, cy, r - 14, angleFor(clamped));
+  const tip  = polar(cx, cy, r - 8,  angleFor(clamped));
+  const back = polar(cx, cy, 22,     angleFor(clamped) + 180);
 
   const zones = [
-    { from: 0, to: 90, color: "#ef4444" },
-    { from: 90, to: 100, color: "#22c55e" },
+    { from: 0,   to: 90,  color: "#ef4444" },
+    { from: 90,  to: 100, color: "#22c55e" },
     { from: 100, to: 150, color: "#eab308" },
   ];
 
+  const valueColor = ratio < 90 ? "#ef4444" : ratio <= 100 ? "#22c55e" : "#eab308";
+
   const tickLabels = [
-    { pct: 0, text: "0%", anchor: "end" as const },
-    { pct: 50, text: "50%", anchor: "end" as const },
+    { pct: 0,   text: "0%",   anchor: "end"   as const },
+    { pct: 50,  text: "50%",  anchor: "end"   as const },
     { pct: 100, text: "100%", anchor: "start" as const },
     { pct: 150, text: "150%", anchor: "start" as const },
   ];
 
   return (
-    <svg viewBox="0 0 300 225" className="w-full max-w-xs mx-auto">
+    <svg viewBox="0 0 320 255" className="w-full max-w-sm mx-auto">
+      <defs>
+        <filter id="gaugeGlow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="4" result="blur" />
+          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+        <filter id="needleShadow" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000" floodOpacity="0.5" />
+        </filter>
+        <radialGradient id="hubGrad" cx="50%" cy="30%" r="70%">
+          <stop offset="0%" stopColor="#64748b" />
+          <stop offset="100%" stopColor="#0f172a" />
+        </radialGradient>
+      </defs>
+
+      {/* Outer glow ring */}
+      <path d={arc(cx, cy, r, START, START + SWEEP)} fill="none" stroke="#000" strokeWidth={sw + 10} opacity={0.4} />
+
+      {/* Background track */}
       <path d={arc(cx, cy, r, START, START + SWEEP)} fill="none" stroke="#1e293b" strokeWidth={sw} />
+
+      {/* Zone arcs */}
       {zones.map(z => (
-        <path key={z.from} d={arc(cx, cy, r, angleFor(z.from), angleFor(z.to))} fill="none" stroke={z.color} strokeWidth={sw} />
+        <path key={z.from} d={arc(cx, cy, r, angleFor(z.from), angleFor(z.to))} fill="none" stroke={z.color} strokeWidth={sw} opacity={0.9} />
       ))}
+
+      {/* Active progress glow on top of needle position */}
+      {clamped > 0 && (
+        <path d={arc(cx, cy, r, START, angleFor(clamped))} fill="none" stroke={valueColor} strokeWidth={6} opacity={0.35} filter="url(#gaugeGlow)" />
+      )}
+
+      {/* Tick marks */}
       {tickLabels.map(l => {
-        const pos = polar(cx, cy, r + 20, angleFor(l.pct));
-        return <text key={l.pct} x={pos.x} y={pos.y + 3} textAnchor={l.anchor} fontSize={9} fill="#64748b">{l.text}</text>;
+        const inner = polar(cx, cy, r - sw / 2 - 3, angleFor(l.pct));
+        const outer = polar(cx, cy, r + sw / 2 + 3, angleFor(l.pct));
+        return <line key={`t${l.pct}`} x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} stroke="#475569" strokeWidth={1.5} strokeLinecap="round" />;
       })}
-      <line x1={cx} y1={cy} x2={tip.x} y2={tip.y} stroke="#f1f5f9" strokeWidth={3} strokeLinecap="round" />
-      <circle cx={cx} cy={cy} r={6} fill="#f1f5f9" />
-      <text x={cx} y={cy + 52} textAnchor="middle" fontSize={26} fontWeight="bold" fill="#f1f5f9">{ratio.toFixed(2)}%</text>
-      <text x={cx} y={cy + 67} textAnchor="middle" fontSize={8} fill="#64748b">Stock mes actual / promedio histórico</text>
+
+      {/* Tick labels */}
+      {tickLabels.map(l => {
+        const pos = polar(cx, cy, r + sw / 2 + 16, angleFor(l.pct));
+        return <text key={l.pct} x={pos.x} y={pos.y + 4} textAnchor={l.anchor} fontSize={9} fill="#64748b">{l.text}</text>;
+      })}
+
+      {/* Needle shadow */}
+      <line x1={back.x} y1={back.y} x2={tip.x} y2={tip.y} stroke="#000" strokeWidth={6} strokeLinecap="round" opacity={0.35} />
+
+      {/* Needle */}
+      <line x1={back.x} y1={back.y} x2={tip.x} y2={tip.y} stroke="#f8fafc" strokeWidth={3.5} strokeLinecap="round" filter="url(#needleShadow)" />
+
+      {/* Center hub rings */}
+      <circle cx={cx} cy={cy} r={18} fill="#0f172a" />
+      <circle cx={cx} cy={cy} r={14} fill="url(#hubGrad)" />
+      <circle cx={cx} cy={cy} r={7}  fill="#1e293b" />
+      <circle cx={cx} cy={cy} r={4}  fill="#94a3b8" />
+
+      {/* Value */}
+      <text x={cx} y={cy + 48} textAnchor="middle" fontSize={32} fontWeight="bold" fill={valueColor} filter="url(#gaugeGlow)" letterSpacing="-0.5">
+        {ratio.toFixed(2)}%
+      </text>
+      <text x={cx} y={cy + 63} textAnchor="middle" fontSize={8} fill="#475569" letterSpacing="0.5">
+        STOCK ACTUAL / PROMEDIO HISTÓRICO
+      </text>
     </svg>
   );
 }
@@ -639,13 +692,17 @@ export function TransformadoresResumenSection() {
             </div>
           ))}
         </div>
-        <div className="bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col">
-          <p className="text-sm font-semibold text-foreground mb-2">Salud del Inventario</p>
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm flex flex-col">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />
+            <p className="text-sm font-semibold text-foreground tracking-wide">Salud del Inventario</p>
+          </div>
+          <p className="text-[10px] text-muted-foreground mb-3 ml-4">Relación stock actual vs. promedio histórico</p>
           <div className="flex-1 flex items-center justify-center">
             <GaugeChart ratio={gaugeRatio} />
           </div>
           {latestPlanilla && (
-            <p className="text-[11px] text-muted-foreground text-center mt-1">
+            <p className="text-[11px] text-muted-foreground text-center mt-2 border-t border-border pt-2">
               Planilla actual: {latestPlanilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
               {latestPlanilla.datos.deposito ? ` — ${latestPlanilla.datos.deposito}` : ""}
             </p>
