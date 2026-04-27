@@ -545,7 +545,16 @@ export function TransformadoresResumenSection() {
       supabase.from("transformadores").select("*"),
       supabase.from("planillas_reserva").select("id,fecha,datos").order("fecha", { ascending: false }),
     ]);
-    if (e2) toast.error(e2.message);
+
+    if (e1) { console.error("[transformadores]", e1); toast.error(`Transformadores: ${e1.message}`); }
+    if (e2) { console.error("[planillas_reserva]", e2); toast.error(`Planillas: ${e2.message}`); }
+
+    // RLS silently returns [] without error — detect and warn
+    if (!e2 && plans !== null && plans.length === 0) {
+      console.warn("[planillas_reserva] Query devolvió 0 filas. Verificar políticas RLS en Supabase (permitir lectura anónima).");
+      toast.warning("Sin datos de planillas. Si hay registros en Supabase, habilitar política RLS de lectura pública.", { duration: 8000 });
+    }
+
     setRows(trafos ?? []);
     setPlanillas(plans ?? []);
     setLoading(false);
