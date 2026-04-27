@@ -171,9 +171,11 @@ export function ServiciosPlanillasSection() {
       supabase.from("matriculas").select("*",          { count: "exact", head: true }),
       supabase.from("matriculas").select("updated_at").order("updated_at", { ascending: false }).limit(1),
     ]);
-    if (opCnt.error)  toast.error(`Error OP: ${opCnt.error.message}`);
-    if (qwCnt.error)  toast.error(`Error QW: ${qwCnt.error.message}`);
-    if (matCnt.error) toast.error(`Error MATRICULAS: ${matCnt.error.message}`);
+    const isMissing = (msg: string) =>
+      msg.includes("Invalid path") || msg.includes("does not exist") || msg.includes("Invalid api key");
+    if (opCnt.error  && !isMissing(opCnt.error.message))  toast.error(`Error OP: ${opCnt.error.message}`);
+    if (qwCnt.error  && !isMissing(qwCnt.error.message))  toast.error(`Error QW: ${qwCnt.error.message}`);
+    if (matCnt.error && !isMissing(matCnt.error.message)) toast.error(`Error MATRICULAS: ${matCnt.error.message}`);
     setStates({
       OP:         { count: opCnt.count  ?? 0, uploadedAt: (opTs.data  as {uploaded_at: string}[]|null)?.[0]?.uploaded_at  ?? null, loading: false, uploading: false },
       QW:         { count: qwCnt.count  ?? 0, uploadedAt: (qwTs.data  as {uploaded_at: string}[]|null)?.[0]?.uploaded_at  ?? null, loading: false, uploading: false },

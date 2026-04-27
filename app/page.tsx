@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { User } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { Header } from "@/components/dashboard/header";
 import { LoginPage } from "@/components/auth/login";
@@ -128,6 +128,19 @@ export default function Dashboard() {
         />
         <div className={`flex-1 flex flex-col transition-all duration-300 ease-out ${sidebarCollapsed ? "ml-[72px]" : "ml-[260px]"}`}>
           <Header activeSection={activeSection} bgEffect={bgEffect} onBgChange={handleBgChange} />
+          {!isSupabaseConfigured && (
+            <div className="mx-6 mt-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300 flex items-start gap-3">
+              <span className="mt-0.5 shrink-0 text-yellow-400">⚠</span>
+              <div>
+                <p className="font-semibold text-yellow-200">Supabase no configurado</p>
+                <p className="mt-0.5 text-yellow-300/80">
+                  Las variables de entorno <code className="bg-yellow-500/20 px-1 rounded">NEXT_PUBLIC_SUPABASE_URL</code> y{" "}
+                  <code className="bg-yellow-500/20 px-1 rounded">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> no están definidas.
+                  Configurarlas en Vercel → Settings → Environment Variables.
+                </p>
+              </div>
+            </div>
+          )}
           <main className="flex-1 p-6 overflow-auto">
             <div key={activeSection} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
               {renderSection()}

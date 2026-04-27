@@ -97,7 +97,11 @@ export function ServiciosTablaSection() {
           .select("*")
           .order("created_at", { ascending: true })
           .range(from, from + PAGE - 1);
-        if (error) { toast.error(`Error al cargar seguimiento: ${error.message}`); break; }
+        if (error) {
+          const isTableMissing = error.message.includes("Invalid path") || error.message.includes("does not exist") || error.message.includes("Invalid api key");
+          if (!isTableMissing) toast.error(`Error al cargar seguimiento: ${error.message}`);
+          break;
+        }
         if (!data?.length) break;
         all.push(...(data as DbRow[]));
         if (data.length < PAGE) break;
@@ -106,7 +110,7 @@ export function ServiciosTablaSection() {
       setRows(all);
       setSelected(new Set());
     } catch (err) {
-      toast.error(`Error al cargar seguimiento: ${err instanceof Error ? err.message : "Error desconocido"}`);
+      console.error("Error al cargar seguimiento:", err);
     }
     setLoading(false);
   }, []);
