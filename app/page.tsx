@@ -1,11 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { User } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabaseClient";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { Header } from "@/components/dashboard/header";
-import { LoginPage } from "@/components/auth/login";
 import { CanvasBackground } from "@/components/canvas-background";
 import type { BgEffect } from "@/components/canvas-background";
 import { OverviewSection } from "@/components/dashboard/sections/overview";
@@ -44,8 +41,6 @@ export type Section =
   | "transformadores-resumen";
 
 export default function Dashboard() {
-  const [user, setUser]                     = useState<User | null>(null);
-  const [loading, setLoading]               = useState(true);
   const [activeSection, setActiveSection]   = useState<Section>("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [bgEffect, setBgEffect]             = useState<BgEffect>("pipeline");
@@ -60,40 +55,6 @@ export default function Dashboard() {
     localStorage.setItem("bgEffect", v);
   }
 
-  useEffect(() => {
-    // Sesión inicial
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    // Escuchar cambios (login / logout)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // Pantalla de carga inicial
-  if (loading) {
-    return (
-      <>
-        <CanvasBackground effect={bgEffect} />
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="w-8 h-8 border-2 border-border border-t-accent rounded-full animate-spin" />
-        </div>
-      </>
-    );
-  }
-
-  if (!user) return (
-    <>
-      <CanvasBackground effect={bgEffect} />
-      <LoginPage />
-    </>
-  );
-
   const renderSection = () => {
     switch (activeSection) {
       case "overview":           return <OverviewSection />;
@@ -103,7 +64,7 @@ export default function Dashboard() {
       case "team":               return <TeamSection />;
       case "forecasting":        return <ForecastingSection />;
       case "reports":            return <ReportsSection />;
-      case "settings":               return <SettingsSection user={user} />;
+      case "settings":               return <SettingsSection user={null} />;
       case "servicios-resumen":      return <ServiciosResumenSection />;
       case "servicios-tabla":        return <ServiciosTablaSection />;
       case "servicios-carga":        return <ServiciosCargaSection />;
