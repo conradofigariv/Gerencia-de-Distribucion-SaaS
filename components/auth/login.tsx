@@ -20,7 +20,7 @@ export function LoginPage() {
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (authError) {
-      setError("Credenciales incorrectas. Verificá tu email y contraseña.");
+      setError(`Error: ${authError.message}`);
     }
     // Si tiene éxito, page.tsx detecta el cambio via onAuthStateChange automáticamente.
 
