@@ -541,22 +541,22 @@ export function TransformadoresResumenSection() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [{ data: trafos, error: e1 }, { data: plans, error: e2 }] = await Promise.all([
-      supabase.from("transformadores").select("*"),
-      supabase.from("planillas_reserva").select("id,fecha,datos").order("fecha", { ascending: false }),
-    ]);
 
-    if (e1) { console.error("[transformadores]", e1); toast.error(`Transformadores: ${e1.message}`); }
-    if (e2) { console.error("[planillas_reserva]", e2); toast.error(`Planillas: ${e2.message}`); }
+    const { data: plans, error: e2 } = await supabase
+      .from("planillas_reserva")
+      .select("id,fecha,datos")
+      .order("fecha", { ascending: false });
 
-    // RLS silently returns [] without error — detect and warn
-    if (!e2 && plans !== null && plans.length === 0) {
-      console.warn("[planillas_reserva] Query devolvió 0 filas. Verificar políticas RLS en Supabase (permitir lectura anónima).");
-      toast.warning("Sin datos de planillas. Si hay registros en Supabase, habilitar política RLS de lectura pública.", { duration: 8000 });
+    if (e2) {
+      console.error("[planillas_reserva]", e2);
+      toast.error(`Planillas: ${e2.message}`);
+    } else if (plans !== null && plans.length === 0) {
+      console.warn("[planillas_reserva] 0 filas — verificar RLS en Supabase.");
+      toast.warning("Sin datos de planillas. Verificar que RLS esté deshabilitado en la tabla planillas_reserva.", { duration: 8000 });
     }
 
-    setRows(trafos ?? []);
     setPlanillas(plans ?? []);
+    setRows([]);   // tabla transformadores no usada actualmente
     setLoading(false);
   }, []);
 
