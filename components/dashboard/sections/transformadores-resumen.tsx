@@ -71,19 +71,29 @@ function kvasFor(relacion: string, fases: string): number[] {
   return base;
 }
 
-function computeStockBruto(p: PlanillaReserva, kvas: number[], relacion: string): number {
-  if (relacion === "33") {
-    return kvas.reduce((s, k) => {
+function computeStockBruto(p: PlanillaReserva, kvas: number[], relacion: string, fases: string = ""): number {
+  let total = 0;
+  if (relacion === "" || relacion === "13") {
+    const kvas13 = kvas.filter(k => POT_13.includes(k));
+    total += kvas13.reduce((s, k) => s + (p.datos.totales?.[String(k)] ?? 0), 0);
+  }
+  if (relacion === "" || relacion === "33") {
+    const kvas33 = kvas.filter(k => POT_33.includes(k));
+    total += kvas33.reduce((s, k) => {
       const r = p.datos.rel33?.[String(k)];
-      return s + (r ? r.tN + r.mN + r.tR + r.mR : 0);
+      if (!r) return s;
+      if (fases === "mono") return s + r.mN + r.mR;
+      if (fases === "tri")  return s + r.tN + r.tR;
+      return s + r.tN + r.mN + r.tR + r.mR;
     }, 0);
   }
-  return kvas.reduce((s, k) => s + (p.datos.totales?.[String(k)] ?? 0), 0);
+  return total;
 }
 
 function computePendientes(p: PlanillaReserva, kvas: number[], relacion: string): number {
   if (relacion === "33") return 0;
-  return kvas.reduce((s, k) => s + (p.datos.autorizados?.[String(k)] ?? 0), 0);
+  const kvas13 = kvas.filter(k => POT_13.includes(k));
+  return kvas13.reduce((s, k) => s + (p.datos.autorizados?.[String(k)] ?? 0), 0);
 }
 
 // ── Alarm system ──────────────────────────────────────────────────────────────
@@ -620,14 +630,14 @@ export function TransformadoresResumenSection() {
     for (const rule of alarms) {
       const rKvas = rule.potencia
         ? [Number(rule.potencia)]
-        : kvasFor(rule.relacion, rule.fases);
+        : [...new Set([...kvasFor(rule.relacion || "13", rule.fases), ...POT_33])];
       const rZona = rule.zona;
       const relevantPlanillas = rZona
         ? planillas.filter(p => (p.datos.deposito ?? "") === rZona)
         : [latest];
       const p = relevantPlanillas[0];
       if (!p) continue;
-      const bruto = computeStockBruto(p, rKvas, rule.relacion);
+      const bruto = computeStockBruto(p, rKvas, rule.relacion, rule.fases);
       const pend  = computePendientes(p, rKvas, rule.relacion);
       const neto  = bruto - pend;
       if (neto <= rule.threshold) {
@@ -666,7 +676,7 @@ export function TransformadoresResumenSection() {
 
   const kvas = filterPotencia
     ? [Number(filterPotencia)]
-    : kvasFor(filterRelacion, filterFases);
+    : [...new Set([...kvasFor(filterRelacion || "13", filterFases), ...POT_33])];
 
   // Group by fecha and take the most recent period — summing across all zones
   const fechasUnicas = [...new Set(planillasFiltradas.map(p => p.fecha))].sort((a, b) => b.localeCompare(a));
@@ -686,11 +696,11 @@ export function TransformadoresResumenSection() {
     ? todasConZona.filter(p => p.fecha === prevFecha)
     : [];
 
-  const stockBruto    = planillasActuales.reduce((s, p) => s + computeStockBruto(p, kvas, filterRelacion), 0);
+  const stockBruto    = planillasActuales.reduce((s, p) => s + computeStockBruto(p, kvas, filterRelacion, filterFases), 0);
   const pendientes    = planillasActuales.reduce((s, p) => s + computePendientes(p, kvas, filterRelacion), 0);
   const stockNeto     = stockBruto - pendientes;
   const prevStockNeto = planillasAnteriores.length > 0
-    ? planillasAnteriores.reduce((s, p) => s + computeStockBruto(p, kvas, filterRelacion) - computePendientes(p, kvas, filterRelacion), 0)
+    ? planillasAnteriores.reduce((s, p) => s + computeStockBruto(p, kvas, filterRelacion, filterFases) - computePendientes(p, kvas, filterRelacion), 0)
     : null;
   const variacion     = prevStockNeto !== null ? stockNeto - prevStockNeto : 0;
 
