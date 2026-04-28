@@ -688,27 +688,43 @@ function SicDiagramaInner() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [responsables, setResponsables] = useState<Record<string,string[]>>({});
   const [loading, setLoading]   = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editingNode, setEditingNode] = useState<{ id: string; label: string; responsables: string[]; color: string } | null>(null);
   const [editingEdge, setEditingEdge] = useState<{ id: string; type: string; label: string } | null>(null);
   const [saved, setSaved]       = useState(true);
+  const [saving, setSaving]     = useState(false);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes({}));
   const [edges, setEdges, onEdgesChange] = useEdgesState(DEFAULT_EDGES);
 
-  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-
   // Load saved layout + responsables from Supabase
   useEffect(() => {
     (async () => {
+      try {
       const [layoutRes, respRes] = await Promise.all([
         supabase.from("sic_diagrama_layout").select("nodes,edges").eq("id","main").single(),
         supabase.from("sic_paso_responsables").select("paso_id,responsables"),
       ]);
 
+      if (layoutRes.error) {
+        const code = layoutRes.error.code ?? "";
+        const msg  = layoutRes.error.message ?? "";
+        if (code === "PGRST116") {
+          // No rows — diagram was never saved, show empty canvas
+        } else if (msg.includes("Invalid api key") || msg.includes("Invalid API key")) {
+          setLoadError("Supabase no está configurado. Verificá las variables de entorno NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+        } else {
+          setLoadError(`No se pudo cargar el diagrama guardado: ${msg}${code ? ` (${code})` : ""}`);
+        }
+        setLoading(false);
+        return;
+      }
+
       const respMap: Record<string,string[]> = {};
       respRes.data?.forEach(r => { respMap[r.paso_id] = r.responsables ?? []; });
       setResponsables(respMap);
 
+      console.log("[SIC load] data", layoutRes.data);
       if (layoutRes.data?.nodes) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const savedNodes: any[] = layoutRes.data.nodes;
@@ -717,6 +733,7 @@ function SicDiagramaInner() {
           return sv ? { ...n, position: sv.position, width: sv.width, height: sv.height, style: sv.style } : n;
         });
         const extra = savedNodes.filter((s: { id: string }) => !merged.find(n => n.id === s.id));
+        console.log("[SIC load] aplicando", { saved: savedNodes.length, merged: merged.length, extra: extra.length });
         setNodes([...merged, ...extra]);
         if (layoutRes.data.edges) setEdges(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -726,26 +743,47 @@ function SicDiagramaInner() {
           }))
         );
       } else {
+        console.log("[SIC load] sin nodos guardados");
         setNodes(buildNodes(respMap));
       }
       setLoading(false);
+      } catch (err) {
+        setLoadError(`Error inesperado: ${err instanceof Error ? err.message : String(err)}`);
+        setLoading(false);
+      }
     })();
   }, []);
 
-  // Auto-save whenever nodes or edges change (skip during initial load)
+  // Mark unsaved whenever nodes or edges change after initial load
+  const initialLoadDone = useRef(false);
   useEffect(() => {
     if (loading) return;
+    if (!initialLoadDone.current) { initialLoadDone.current = true; return; }
     setSaved(false);
-    clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      const payload = {
-        nodes: nodes.map(n => ({ id:n.id, position:n.position, width:n.width, height:n.height, style:n.style, type:n.type, data:n.data })),
-        edges,
-      };
-      await supabase.from("sic_diagrama_layout").upsert({ id:"main", ...payload, updated_at: new Date().toISOString() });
-      setSaved(true);
-    }, 1500);
   }, [nodes, edges, loading]);
+
+  const handleManualSave = useCallback(async () => {
+    setSaving(true);
+    const payload = {
+      nodes: nodes.map(n => ({ id:n.id, position:n.position, width:n.width, height:n.height, style:n.style, type:n.type, data:n.data })),
+      edges: edges.map(e => ({ id:e.id, source:e.source, target:e.target, sourceHandle:e.sourceHandle, targetHandle:e.targetHandle, type:e.type, label:e.label, labelStyle:e.labelStyle, labelBgStyle:e.labelBgStyle, labelBgPadding:e.labelBgPadding, style:e.style, data:e.data, markerEnd:e.markerEnd })),
+    };
+    console.log("[SIC save] enviando", { nodes: payload.nodes.length, edges: payload.edges.length });
+    const { data, error } = await supabase
+      .from("sic_diagrama_layout")
+      .upsert({ id:"main", ...payload, updated_at: new Date().toISOString() }, { onConflict: "id" })
+      .select();
+    setSaving(false);
+    if (error) {
+      console.error("[SIC save] error", error);
+      toast.error(`Error al guardar: ${error.message}${error.code ? ` (${error.code})` : ""}`);
+      setSaved(false);
+      return;
+    }
+    console.log("[SIC save] OK", data);
+    toast.success(`Guardado ${payload.nodes.length} objeto${payload.nodes.length === 1 ? "" : "s"}`);
+    setSaved(true);
+  }, [nodes, edges]);
 
   // Add edge on connect — keep it minimal; defaultEdgeOptions handles styling
   const onConnect = useCallback((connection: Connection) => {
@@ -817,10 +855,21 @@ function SicDiagramaInner() {
           <p className="text-sm text-muted-foreground mt-1">Proceso SIC - SIGA · doble clic en un objeto para editar su nombre</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className={cn("flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors",
-            saved ? "text-muted-foreground border-border" : "text-orange-400 border-orange-400/30 bg-orange-400/5")}>
-            {saved ? <><Check className="w-3 h-3"/>Guardado</> : <><Save className="w-3 h-3"/>Guardando...</>}
-          </div>
+          <button
+            onClick={handleManualSave}
+            disabled={saving || loading}
+            className={cn("flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50",
+              saved
+                ? "text-muted-foreground border-border hover:text-foreground hover:bg-secondary"
+                : "text-accent border-accent/40 bg-accent/10 hover:bg-accent/20"
+            )}>
+            {saving
+              ? <><Loader2 className="w-3 h-3 animate-spin"/>Guardando...</>
+              : saved
+              ? <><Check className="w-3 h-3"/>Guardado</>
+              : <><Save className="w-3 h-3"/>Guardar</>
+            }
+          </button>
           <button onClick={resetLayout} title="Restablecer layout"
             className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
             <RotateCcw className="w-3 h-3"/>Reset
@@ -847,7 +896,7 @@ function SicDiagramaInner() {
         {/* Canvas */}
         <div
           ref={containerRef}
-          className="flex-1 bg-card border border-border rounded-xl overflow-hidden"
+          className="flex-1 bg-card border border-border rounded-xl overflow-hidden relative"
           style={{
             height: 580,
             "--xy-edge-stroke": "#94a3b8",
@@ -867,6 +916,12 @@ function SicDiagramaInner() {
             <Loader2 className="w-4 h-4 animate-spin"/>Cargando...
           </div>
         ) : (
+          <>
+          {loadError && (
+            <div className="absolute top-3 left-3 right-3 z-10 bg-red-950/80 border border-red-700/60 rounded-lg px-4 py-2.5 text-xs text-red-300 backdrop-blur-sm">
+              <span className="font-semibold text-red-200">Error al cargar diagrama: </span>{loadError}
+            </div>
+          )}
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -891,6 +946,7 @@ function SicDiagramaInner() {
             <Background color="#6b7280" gap={24} size={1}/>
             <Controls showInteractive={false}/>
           </ReactFlow>
+          </>
         )}
         </div>
       </div>

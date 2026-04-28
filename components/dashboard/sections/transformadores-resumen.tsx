@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, LabelList,
-  ResponsiveContainer, PieChart, Pie, Legend,
+  ResponsiveContainer, PieChart, Pie, Legend, Sector,
 } from "recharts";
 import {
   Zap, CheckCircle2, Wrench, XCircle, RefreshCw, Loader2, ChevronDown,
@@ -269,7 +269,7 @@ function PromedioRow({ label, sub, value, maxVal, hue, idx = 0 }: {
   const chipBorder = `oklch(0.72 0.16 ${hue} / 0.22)`;
   const animated   = useCountUp(value, 1100, 250 + idx * 120);
   const barP       = useEnter(1000, 300 + idx * 120);
-  const pct        = Math.min(100, (value / (maxVal * 1.15 || 1)) * 100);
+  const pct        = Math.min(100, (value / (maxVal || 1)) * 100);
 
   return (
     <div style={{
@@ -519,12 +519,68 @@ function GaugeChart({ ratio }: { ratio: number }) {
   );
 }
 
+// ── Animated pie slice on hover ───────────────────────────────────────────────
+
+function renderActiveSlice(props: {
+  cx: number; cy: number; innerRadius: number; outerRadius: number;
+  startAngle: number; endAngle: number; fill: string;
+}) {
+  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props;
+  return (
+    <g>
+      <Sector cx={cx} cy={cy} innerRadius={innerRadius} outerRadius={outerRadius + 10}
+        startAngle={startAngle} endAngle={endAngle} fill={fill} opacity={0.95} />
+      <Sector cx={cx} cy={cy} innerRadius={outerRadius + 12} outerRadius={outerRadius + 15}
+        startAngle={startAngle} endAngle={endAngle} fill={fill} opacity={0.35} />
+    </g>
+  );
+}
+
+function HoverPie({ data, colors, formatter }: {
+  data: { name: string; value: number }[];
+  colors: string[];
+  formatter?: (v: number, n: string) => [number | string, string];
+}) {
+  const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined);
+  return (
+    <ResponsiveContainer width="100%" height={200}>
+      <PieChart>
+        <Pie
+          data={data}
+          dataKey="value"
+          nameKey="name"
+          cx="50%"
+          cy="50%"
+          outerRadius={72}
+          label={({ percent }: { percent: number }) => `${(percent * 100).toFixed(0)}%`}
+          labelLine={false}
+          activeIndex={activeIndex}
+          activeShape={renderActiveSlice as React.ComponentProps<typeof Pie>["activeShape"]}
+          onMouseEnter={(_: unknown, index: number) => setActiveIndex(index)}
+          onMouseLeave={() => setActiveIndex(undefined)}
+        >
+          {data.map((_, i) => (
+            <Cell key={i} fill={colors[i % colors.length]} />
+          ))}
+        </Pie>
+        <Tooltip
+          contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+          itemStyle={{ color: "#f1f5f9" }}
+          formatter={formatter}
+        />
+        <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
+      </PieChart>
+    </ResponsiveContainer>
+  );
+}
+
 export function TransformadoresResumenSection() {
   const [rows, setRows]           = useState<Transformador[]>([]);
   const [planillas, setPlanillas] = useState<PlanillaReserva[]>([]);
   const [loading, setLoading]     = useState(true);
 
   const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null);
+  const [visibleLines, setVisibleLines] = useState<Set<string>>(new Set(["neto", "neto13", "neto33"]));
 
   // Filters
   const [filterAno,      setFilterAno]      = useState("");
@@ -577,66 +633,63 @@ export function TransformadoresResumenSection() {
 
   const s13 = (p: PlanillaReserva) => POT_13.reduce((s, k) => s + (p.datos.totales?.[String(k)] ?? 0), 0);
   const s33 = (p: PlanillaReserva) => POT_33.reduce((s, k) => { const r = p.datos.rel33?.[String(k)]; return s + (r ? r.tN + r.mN + r.tR + r.mR : 0); }, 0);
+  const autoFor = (p: PlanillaReserva) => POT_13.reduce((s, k) => s + (p.datos.autorizados?.[String(k)] ?? 0), 0);
 
   const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
-  const all13  = planillas.map(s13);
-  const all33  = planillas.map(s33);
-  const avgAll = avg(planillas.map((p, i) => all13[i] + all33[i]));
-  const avg13  = avg(all13);
-  const avg33  = avg(all33);
-
-  const latestPlanilla = planillas[0];
-  const current13      = latestPlanilla ? s13(latestPlanilla) : 0;
-  const current33      = latestPlanilla ? s33(latestPlanilla) : 0;
-  const currentStock   = current13 + current33;
-  const gaugeRatio     = avgAll > 0 ? (currentStock / avgAll) * 100 : 0;
-
-  // ── Variación neta mensual ────────────────────────────────────────────────
-
+  // ── Shared monthly snapshot (last planilla per zone per month, zones summed) ─
   const MES_SHORT = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 
-  // Last planilla per (zone, month) → sum zones → monthly stock snapshot
-  const variacionData = (() => {
-    // For each (deposito, yearMonth), keep only the latest planilla by fecha
+  const monthlySnapshots = (() => {
     const byZoneMonth: Record<string, PlanillaReserva> = {};
     for (const p of planillas) {
       const key = `${p.datos.deposito ?? ""}::${p.fecha.slice(0, 7)}`;
       if (!byZoneMonth[key] || p.fecha > byZoneMonth[key].fecha) byZoneMonth[key] = p;
     }
-    // Aggregate per month
     const byMonth: Record<string, { bruto: number; auto: number; neto: number; neto13: number; neto33: number; zonas: Set<string> }> = {};
     for (const p of Object.values(byZoneMonth)) {
-      const key = p.fecha.slice(0, 7);
-      const bruto = s13(p) + s33(p);
-      const auto  = POT_13.reduce((s, k) => s + (p.datos.autorizados?.[String(k)] ?? 0), 0);
-      const neto  = bruto - auto;
-      const n13   = s13(p) - auto;
-      const n33   = s33(p);
+      const key  = p.fecha.slice(0, 7);
+      const auto = autoFor(p);
       if (!byMonth[key]) byMonth[key] = { bruto: 0, auto: 0, neto: 0, neto13: 0, neto33: 0, zonas: new Set() };
-      byMonth[key].bruto  += bruto;
+      byMonth[key].bruto  += s13(p) + s33(p);
       byMonth[key].auto   += auto;
-      byMonth[key].neto   += neto;
-      byMonth[key].neto13 += n13;
-      byMonth[key].neto33 += n33;
+      byMonth[key].neto   += s13(p) + s33(p) - auto;
+      byMonth[key].neto13 += s13(p) - auto;
+      byMonth[key].neto33 += s33(p);
       if (p.datos.deposito) byMonth[key].zonas.add(p.datos.deposito);
     }
-    const sorted = Object.keys(byMonth).sort();
-    return sorted.map((key, i) => {
-      const [y, m] = key.split("-");
-      const prev = i > 0 ? byMonth[sorted[i - 1]].neto : byMonth[key].neto;
-      return {
-        mes:      `${MES_SHORT[Number(m) - 1]} ${y.slice(2)}`,
-        bruto:    byMonth[key].bruto,
-        auto:     byMonth[key].auto,
-        neto:     byMonth[key].neto,
-        neto13:   byMonth[key].neto13,
-        neto33:   byMonth[key].neto33,
-        zonas:    [...byMonth[key].zonas].join(", "),
-        variacion: byMonth[key].neto - prev,
-      };
-    });
+    return byMonth;
   })();
+
+  const sortedMonths = Object.keys(monthlySnapshots).sort();
+  const latestMonth  = sortedMonths[sortedMonths.length - 1];
+
+  const current13    = latestMonth ? monthlySnapshots[latestMonth].neto13 : 0;
+  const current33    = latestMonth ? monthlySnapshots[latestMonth].neto33 : 0;
+  const currentStock = latestMonth ? monthlySnapshots[latestMonth].neto   : 0;
+
+  const avgAll = avg(sortedMonths.map(m => monthlySnapshots[m].neto));
+  const avg13  = avg(sortedMonths.map(m => monthlySnapshots[m].neto13));
+  const avg33  = avg(sortedMonths.map(m => monthlySnapshots[m].neto33));
+
+  const gaugeRatio = avgAll > 0 ? (currentStock / avgAll) * 100 : 0;
+
+  // ── Variación neta mensual (reuses monthlySnapshots) ─────────────────────
+
+  const variacionData = sortedMonths.map((key, i) => {
+    const [y, m] = key.split("-");
+    const prev   = i > 0 ? monthlySnapshots[sortedMonths[i - 1]].neto : monthlySnapshots[key].neto;
+    return {
+      mes:       `${MES_SHORT[Number(m) - 1]} ${y.slice(2)}`,
+      bruto:     monthlySnapshots[key].bruto,
+      auto:      monthlySnapshots[key].auto,
+      neto:      monthlySnapshots[key].neto,
+      neto13:    monthlySnapshots[key].neto13,
+      neto33:    monthlySnapshots[key].neto33,
+      zonas:     [...monthlySnapshots[key].zonas].join(", "),
+      variacion: monthlySnapshots[key].neto - prev,
+    };
+  });
 
 
   // ── Alarm evaluation ─────────────────────────────────────────────────────
@@ -735,8 +788,8 @@ export function TransformadoresResumenSection() {
     let terceros = 0, taller = 0;
     for (const p of planillasActuales) {
       for (const k of POT_13) {
-        terceros += (p.datos.terceros?.[String(k)]?.t ?? 0) + (p.datos.terceros?.[String(k)]?.m ?? 0) + (p.datos.terceros?.[String(k)]?.ct ?? 0);
-        taller   += (p.datos.taller?.[String(k)]?.t   ?? 0) + (p.datos.taller?.[String(k)]?.m   ?? 0) + (p.datos.taller?.[String(k)]?.ct  ?? 0);
+        terceros += (p.datos.terceros?.[String(k)]?.t ?? 0) + (p.datos.terceros?.[String(k)]?.m ?? 0);
+        taller   += (p.datos.taller?.[String(k)]?.t   ?? 0) + (p.datos.taller?.[String(k)]?.m   ?? 0);
       }
     }
     return [
@@ -1081,17 +1134,17 @@ export function TransformadoresResumenSection() {
             </span>
           </div>
           <div className="px-5 pb-5">
-            <PromedioRow label="Stock promedio histórico vs Stock Actual" sub={`Actual: ${currentStock} | Prom. hist.: ${Math.round(avgAll)}`}   value={currentStock} maxVal={Math.max(avgAll, currentStock) * 1.1 || 1} hue={265} idx={0} />
-            <PromedioRow label="13,2 / 0,4 kV"                          sub={`Actual: ${current13}     | Prom. hist.: ${Math.round(avg13)}`}    value={current13}    maxVal={Math.max(avgAll, currentStock) * 1.1 || 1} hue={230} idx={1} />
-            <PromedioRow label="33 / 0,4 kV"                            sub={`Actual: ${current33}     | Prom. hist.: ${Math.round(avg33)}`}    value={current33}    maxVal={Math.max(avgAll, currentStock) * 1.1 || 1} hue={305} idx={2} />
+            <PromedioRow label="Stock promedio histórico vs Stock Actual" sub={`Actual: ${currentStock} | Prom. hist.: ${Math.round(avgAll)}`}   value={currentStock} maxVal={avgAll  || 1} hue={265} idx={0} />
+            <PromedioRow label="13,2 / 0,4 kV"                          sub={`Actual: ${current13}     | Prom. hist.: ${Math.round(avg13)}`}    value={current13}    maxVal={avg13   || 1} hue={230} idx={1} />
+            <PromedioRow label="33 / 0,4 kV"                            sub={`Actual: ${current33}     | Prom. hist.: ${Math.round(avg33)}`}    value={current33}    maxVal={avg33   || 1} hue={305} idx={2} />
             <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, fontSize: 11, color: "oklch(0.45 0.020 265)" }}>
-              {latestPlanilla && (
+              {latestMonth && (
                 <span>
-                  Planilla · {latestPlanilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
+                  Planilla · {latestMonth.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
                 </span>
               )}
-              {latestPlanilla?.datos.deposito && (
-                <span>{latestPlanilla.datos.deposito}</span>
+              {latestMonth && monthlySnapshots[latestMonth]?.zonas.size > 0 && (
+                <span>{[...monthlySnapshots[latestMonth].zonas].join(" + ")}</span>
               )}
             </div>
           </div>
@@ -1212,8 +1265,42 @@ export function TransformadoresResumenSection() {
 
       {/* ── Evolución de Stock por Tensión ── */}
       <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-        <p className="text-sm font-semibold text-foreground">Evolución de Stock Mensual por Tensión</p>
-        <p className="text-xs text-muted-foreground mb-4">Stock neto al cierre de cada mes (última planilla por zona)</p>
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <p className="text-sm font-semibold text-foreground">Evolución de Stock Mensual por Tensión</p>
+            <p className="text-xs text-muted-foreground">Stock neto al cierre de cada mes (última planilla por zona)</p>
+          </div>
+          <div className="flex gap-1.5 flex-shrink-0">
+            {([
+              { key: "neto",   label: "Total",         color: "#6366f1" },
+              { key: "neto13", label: "13,2 / 0,4 kV", color: "#38bdf8" },
+              { key: "neto33", label: "33 / 0,4 kV",   color: "#a78bfa" },
+            ] as const).map(({ key, label, color }) => {
+              const active = visibleLines.has(key);
+              return (
+                <button
+                  key={key}
+                  onClick={() => setVisibleLines(prev => {
+                    const next = new Set(prev);
+                    if (next.has(key)) { if (next.size > 1) next.delete(key); }
+                    else next.add(key);
+                    return next;
+                  })}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all duration-150"
+                  style={{
+                    borderColor: active ? color : "transparent",
+                    background:  active ? `${color}22` : "transparent",
+                    color:       active ? color : "#64748b",
+                    opacity:     active ? 1 : 0.5,
+                  }}
+                >
+                  <span className="w-2 h-2 rounded-full" style={{ background: color }} />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         {variacionData.length < 2 ? (
           <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
         ) : (
@@ -1227,10 +1314,9 @@ export function TransformadoresResumenSection() {
                 labelStyle={{ color: "#94a3b8" }}
                 itemStyle={{ color: "#f1f5f9" }}
               />
-              <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-              <Line type="monotone" dataKey="neto"   name="Total"       stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-              <Line type="monotone" dataKey="neto13" name="13,2 / 0,4 kV" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-              <Line type="monotone" dataKey="neto33" name="33 / 0,4 kV"   stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              {visibleLines.has("neto")   && <Line type="monotone" dataKey="neto"   name="Total"         stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />}
+              {visibleLines.has("neto13") && <Line type="monotone" dataKey="neto13" name="13,2 / 0,4 kV" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />}
+              {visibleLines.has("neto33") && <Line type="monotone" dataKey="neto33" name="33 / 0,4 kV"   stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />}
             </LineChart>
           </ResponsiveContainer>
         )}
@@ -1246,17 +1332,11 @@ export function TransformadoresResumenSection() {
           {zonaPieData.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin datos.</p>
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie data={zonaPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={72} label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                  {zonaPieData.map((_, i) => (
-                    <Cell key={i} fill={["#6366f1","#38bdf8","#a78bfa","#34d399"][i % 4]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} formatter={(v: number, n: string) => [v, n]} />
-                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-              </PieChart>
-            </ResponsiveContainer>
+            <HoverPie
+              data={zonaPieData}
+              colors={["#6366f1","#38bdf8","#a78bfa","#34d399"]}
+              formatter={(v: number, n: string) => [v, n]}
+            />
           )}
         </div>
 
@@ -1267,16 +1347,7 @@ export function TransformadoresResumenSection() {
           {tercerosVsTaller13.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin datos.</p>
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie data={tercerosVsTaller13} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={72} label={({ percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                  <Cell fill="#38bdf8" />
-                  <Cell fill="#f59e0b" />
-                </Pie>
-                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-              </PieChart>
-            </ResponsiveContainer>
+            <HoverPie data={tercerosVsTaller13} colors={["#38bdf8","#f59e0b"]} />
           )}
         </div>
 
@@ -1287,16 +1358,7 @@ export function TransformadoresResumenSection() {
           {nuevosVsReparados33.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin datos.</p>
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie data={nuevosVsReparados33} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={72} label={({ percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                  <Cell fill="#34d399" />
-                  <Cell fill="#f59e0b" />
-                </Pie>
-                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-              </PieChart>
-            </ResponsiveContainer>
+            <HoverPie data={nuevosVsReparados33} colors={["#34d399","#f59e0b"]} />
           )}
         </div>
 
