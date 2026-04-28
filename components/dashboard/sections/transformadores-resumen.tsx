@@ -633,66 +633,63 @@ export function TransformadoresResumenSection() {
 
   const s13 = (p: PlanillaReserva) => POT_13.reduce((s, k) => s + (p.datos.totales?.[String(k)] ?? 0), 0);
   const s33 = (p: PlanillaReserva) => POT_33.reduce((s, k) => { const r = p.datos.rel33?.[String(k)]; return s + (r ? r.tN + r.mN + r.tR + r.mR : 0); }, 0);
+  const autoFor = (p: PlanillaReserva) => POT_13.reduce((s, k) => s + (p.datos.autorizados?.[String(k)] ?? 0), 0);
 
   const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
-  const all13  = planillas.map(s13);
-  const all33  = planillas.map(s33);
-  const avgAll = avg(planillas.map((p, i) => all13[i] + all33[i]));
-  const avg13  = avg(all13);
-  const avg33  = avg(all33);
-
-  const latestPlanilla = planillas[0];
-  const current13      = latestPlanilla ? s13(latestPlanilla) : 0;
-  const current33      = latestPlanilla ? s33(latestPlanilla) : 0;
-  const currentStock   = current13 + current33;
-  const gaugeRatio     = avgAll > 0 ? (currentStock / avgAll) * 100 : 0;
-
-  // ── Variación neta mensual ────────────────────────────────────────────────
-
+  // ── Shared monthly snapshot (last planilla per zone per month, zones summed) ─
   const MES_SHORT = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 
-  // Last planilla per (zone, month) → sum zones → monthly stock snapshot
-  const variacionData = (() => {
-    // For each (deposito, yearMonth), keep only the latest planilla by fecha
+  const monthlySnapshots = (() => {
     const byZoneMonth: Record<string, PlanillaReserva> = {};
     for (const p of planillas) {
       const key = `${p.datos.deposito ?? ""}::${p.fecha.slice(0, 7)}`;
       if (!byZoneMonth[key] || p.fecha > byZoneMonth[key].fecha) byZoneMonth[key] = p;
     }
-    // Aggregate per month
     const byMonth: Record<string, { bruto: number; auto: number; neto: number; neto13: number; neto33: number; zonas: Set<string> }> = {};
     for (const p of Object.values(byZoneMonth)) {
-      const key = p.fecha.slice(0, 7);
-      const bruto = s13(p) + s33(p);
-      const auto  = POT_13.reduce((s, k) => s + (p.datos.autorizados?.[String(k)] ?? 0), 0);
-      const neto  = bruto - auto;
-      const n13   = s13(p) - auto;
-      const n33   = s33(p);
+      const key  = p.fecha.slice(0, 7);
+      const auto = autoFor(p);
       if (!byMonth[key]) byMonth[key] = { bruto: 0, auto: 0, neto: 0, neto13: 0, neto33: 0, zonas: new Set() };
-      byMonth[key].bruto  += bruto;
+      byMonth[key].bruto  += s13(p) + s33(p);
       byMonth[key].auto   += auto;
-      byMonth[key].neto   += neto;
-      byMonth[key].neto13 += n13;
-      byMonth[key].neto33 += n33;
+      byMonth[key].neto   += s13(p) + s33(p) - auto;
+      byMonth[key].neto13 += s13(p) - auto;
+      byMonth[key].neto33 += s33(p);
       if (p.datos.deposito) byMonth[key].zonas.add(p.datos.deposito);
     }
-    const sorted = Object.keys(byMonth).sort();
-    return sorted.map((key, i) => {
-      const [y, m] = key.split("-");
-      const prev = i > 0 ? byMonth[sorted[i - 1]].neto : byMonth[key].neto;
-      return {
-        mes:      `${MES_SHORT[Number(m) - 1]} ${y.slice(2)}`,
-        bruto:    byMonth[key].bruto,
-        auto:     byMonth[key].auto,
-        neto:     byMonth[key].neto,
-        neto13:   byMonth[key].neto13,
-        neto33:   byMonth[key].neto33,
-        zonas:    [...byMonth[key].zonas].join(", "),
-        variacion: byMonth[key].neto - prev,
-      };
-    });
+    return byMonth;
   })();
+
+  const sortedMonths = Object.keys(monthlySnapshots).sort();
+  const latestMonth  = sortedMonths[sortedMonths.length - 1];
+
+  const current13    = latestMonth ? monthlySnapshots[latestMonth].neto13 : 0;
+  const current33    = latestMonth ? monthlySnapshots[latestMonth].neto33 : 0;
+  const currentStock = latestMonth ? monthlySnapshots[latestMonth].neto   : 0;
+
+  const avgAll = avg(sortedMonths.map(m => monthlySnapshots[m].neto));
+  const avg13  = avg(sortedMonths.map(m => monthlySnapshots[m].neto13));
+  const avg33  = avg(sortedMonths.map(m => monthlySnapshots[m].neto33));
+
+  const gaugeRatio = avgAll > 0 ? (currentStock / avgAll) * 100 : 0;
+
+  // ── Variación neta mensual (reuses monthlySnapshots) ─────────────────────
+
+  const variacionData = sortedMonths.map((key, i) => {
+    const [y, m] = key.split("-");
+    const prev   = i > 0 ? monthlySnapshots[sortedMonths[i - 1]].neto : monthlySnapshots[key].neto;
+    return {
+      mes:       `${MES_SHORT[Number(m) - 1]} ${y.slice(2)}`,
+      bruto:     monthlySnapshots[key].bruto,
+      auto:      monthlySnapshots[key].auto,
+      neto:      monthlySnapshots[key].neto,
+      neto13:    monthlySnapshots[key].neto13,
+      neto33:    monthlySnapshots[key].neto33,
+      zonas:     [...monthlySnapshots[key].zonas].join(", "),
+      variacion: monthlySnapshots[key].neto - prev,
+    };
+  });
 
 
   // ── Alarm evaluation ─────────────────────────────────────────────────────
@@ -1141,13 +1138,13 @@ export function TransformadoresResumenSection() {
             <PromedioRow label="13,2 / 0,4 kV"                          sub={`Actual: ${current13}     | Prom. hist.: ${Math.round(avg13)}`}    value={current13}    maxVal={Math.max(avgAll, currentStock) * 1.1 || 1} hue={230} idx={1} />
             <PromedioRow label="33 / 0,4 kV"                            sub={`Actual: ${current33}     | Prom. hist.: ${Math.round(avg33)}`}    value={current33}    maxVal={Math.max(avgAll, currentStock) * 1.1 || 1} hue={305} idx={2} />
             <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, fontSize: 11, color: "oklch(0.45 0.020 265)" }}>
-              {latestPlanilla && (
+              {latestMonth && (
                 <span>
-                  Planilla · {latestPlanilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
+                  Planilla · {latestMonth.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
                 </span>
               )}
-              {latestPlanilla?.datos.deposito && (
-                <span>{latestPlanilla.datos.deposito}</span>
+              {latestMonth && monthlySnapshots[latestMonth]?.zonas.size > 0 && (
+                <span>{[...monthlySnapshots[latestMonth].zonas].join(" + ")}</span>
               )}
             </div>
           </div>
