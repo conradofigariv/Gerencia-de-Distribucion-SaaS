@@ -269,7 +269,7 @@ function PromedioRow({ label, sub, value, maxVal, hue, idx = 0 }: {
   const chipBorder = `oklch(0.72 0.16 ${hue} / 0.22)`;
   const animated   = useCountUp(value, 1100, 250 + idx * 120);
   const barP       = useEnter(1000, 300 + idx * 120);
-  const pct        = Math.min(100, (value / (maxVal * 1.15 || 1)) * 100);
+  const pct        = Math.min(100, (value / (maxVal || 1)) * 100);
 
   return (
     <div style={{
@@ -1134,9 +1134,9 @@ export function TransformadoresResumenSection() {
             </span>
           </div>
           <div className="px-5 pb-5">
-            <PromedioRow label="Stock promedio histórico vs Stock Actual" sub={`Actual: ${currentStock} | Prom. hist.: ${Math.round(avgAll)}`}   value={currentStock} maxVal={Math.max(avgAll, currentStock) * 1.1 || 1} hue={265} idx={0} />
-            <PromedioRow label="13,2 / 0,4 kV"                          sub={`Actual: ${current13}     | Prom. hist.: ${Math.round(avg13)}`}    value={current13}    maxVal={Math.max(avg13,  current13)  * 1.1 || 1} hue={230} idx={1} />
-            <PromedioRow label="33 / 0,4 kV"                            sub={`Actual: ${current33}     | Prom. hist.: ${Math.round(avg33)}`}    value={current33}    maxVal={Math.max(avg33,  current33)  * 1.1 || 1} hue={305} idx={2} />
+            <PromedioRow label="Stock promedio histórico vs Stock Actual" sub={`Actual: ${currentStock} | Prom. hist.: ${Math.round(avgAll)}`}   value={currentStock} maxVal={avgAll  || 1} hue={265} idx={0} />
+            <PromedioRow label="13,2 / 0,4 kV"                          sub={`Actual: ${current13}     | Prom. hist.: ${Math.round(avg13)}`}    value={current13}    maxVal={avg13   || 1} hue={230} idx={1} />
+            <PromedioRow label="33 / 0,4 kV"                            sub={`Actual: ${current33}     | Prom. hist.: ${Math.round(avg33)}`}    value={current33}    maxVal={avg33   || 1} hue={305} idx={2} />
             <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, fontSize: 11, color: "oklch(0.45 0.020 265)" }}>
               {latestMonth && (
                 <span>

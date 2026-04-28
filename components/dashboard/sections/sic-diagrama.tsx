@@ -707,10 +707,16 @@ function SicDiagramaInner() {
         supabase.from("sic_paso_responsables").select("paso_id,responsables"),
       ]);
 
-      if (layoutRes.error && !["PGRST116","42P01"].includes(layoutRes.error.code ?? "") &&
-          !layoutRes.error.message?.includes("does not exist") &&
-          !layoutRes.error.message?.includes("Invalid api key")) {
-        setLoadError(`Error al cargar: ${layoutRes.error.message}`);
+      if (layoutRes.error) {
+        const code = layoutRes.error.code ?? "";
+        const msg  = layoutRes.error.message ?? "";
+        if (code === "PGRST116") {
+          // No rows — diagram was never saved, show empty canvas
+        } else if (msg.includes("Invalid api key") || msg.includes("Invalid API key")) {
+          setLoadError("Supabase no está configurado. Verificá las variables de entorno NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+        } else {
+          setLoadError(`No se pudo cargar el diagrama guardado: ${msg}${code ? ` (${code})` : ""}`);
+        }
         setLoading(false);
         return;
       }
@@ -861,7 +867,7 @@ function SicDiagramaInner() {
         {/* Canvas */}
         <div
           ref={containerRef}
-          className="flex-1 bg-card border border-border rounded-xl overflow-hidden"
+          className="flex-1 bg-card border border-border rounded-xl overflow-hidden relative"
           style={{
             height: 580,
             "--xy-edge-stroke": "#94a3b8",
@@ -880,12 +886,13 @@ function SicDiagramaInner() {
           <div className="flex items-center justify-center h-full gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin"/>Cargando...
           </div>
-        ) : loadError ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-sm text-muted-foreground p-8 text-center">
-            <span className="text-red-400 font-medium">{loadError}</span>
-            <span className="text-xs">Verificá que la tabla <code className="bg-slate-700 px-1 rounded">sic_diagrama_layout</code> exista en Supabase.</span>
-          </div>
         ) : (
+          <>
+          {loadError && (
+            <div className="absolute top-3 left-3 right-3 z-10 bg-red-950/80 border border-red-700/60 rounded-lg px-4 py-2.5 text-xs text-red-300 backdrop-blur-sm">
+              <span className="font-semibold text-red-200">Error al cargar diagrama: </span>{loadError}
+            </div>
+          )}
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -910,6 +917,7 @@ function SicDiagramaInner() {
             <Background color="#6b7280" gap={24} size={1}/>
             <Controls showInteractive={false}/>
           </ReactFlow>
+          </>
         )}
         </div>
       </div>
