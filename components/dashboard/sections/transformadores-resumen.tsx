@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, LabelList,
-  ResponsiveContainer, PieChart, Pie, Legend,
+  ResponsiveContainer, PieChart, Pie, Legend, Sector,
 } from "recharts";
 import {
   Zap, CheckCircle2, Wrench, XCircle, RefreshCw, Loader2, ChevronDown,
@@ -516,6 +516,59 @@ function GaugeChart({ ratio }: { ratio: number }) {
         ))}
       </g>
     </svg>
+  );
+}
+
+// ── Animated pie slice on hover ───────────────────────────────────────────────
+
+function renderActiveSlice(props: {
+  cx: number; cy: number; innerRadius: number; outerRadius: number;
+  startAngle: number; endAngle: number; fill: string;
+}) {
+  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props;
+  return (
+    <g>
+      <Sector cx={cx} cy={cy} innerRadius={innerRadius} outerRadius={outerRadius + 10}
+        startAngle={startAngle} endAngle={endAngle} fill={fill} opacity={0.95} />
+      <Sector cx={cx} cy={cy} innerRadius={outerRadius + 12} outerRadius={outerRadius + 15}
+        startAngle={startAngle} endAngle={endAngle} fill={fill} opacity={0.35} />
+    </g>
+  );
+}
+
+function HoverPie({ data, colors, formatter }: {
+  data: { name: string; value: number }[];
+  colors: string[];
+  formatter?: (v: number, n: string) => [number | string, string];
+}) {
+  const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined);
+  return (
+    <PieChart>
+      <Pie
+        data={data}
+        dataKey="value"
+        nameKey="name"
+        cx="50%"
+        cy="50%"
+        outerRadius={72}
+        label={({ percent }: { percent: number }) => `${(percent * 100).toFixed(0)}%`}
+        labelLine={false}
+        activeIndex={activeIndex}
+        activeShape={renderActiveSlice as React.ComponentProps<typeof Pie>["activeShape"]}
+        onMouseEnter={(_: unknown, index: number) => setActiveIndex(index)}
+        onMouseLeave={() => setActiveIndex(undefined)}
+      >
+        {data.map((_, i) => (
+          <Cell key={i} fill={colors[i % colors.length]} />
+        ))}
+      </Pie>
+      <Tooltip
+        contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+        itemStyle={{ color: "#f1f5f9" }}
+        formatter={formatter}
+      />
+      <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
+    </PieChart>
   );
 }
 
@@ -1218,20 +1271,19 @@ export function TransformadoresResumenSection() {
           <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
         ) : (
           <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={variacionData} margin={{ top: 8, right: 48, left: 0, bottom: 8 }}>
+            <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
               <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-              <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: "#a78bfa" }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
               <Tooltip
                 contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
                 labelStyle={{ color: "#94a3b8" }}
                 itemStyle={{ color: "#f1f5f9" }}
               />
               <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-              <Line yAxisId="left"  type="monotone" dataKey="neto"   name="Total"         stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-              <Line yAxisId="left"  type="monotone" dataKey="neto13" name="13,2 / 0,4 kV" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-              <Line yAxisId="right" type="monotone" dataKey="neto33" name="33 / 0,4 kV"   stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              <Line type="monotone" dataKey="neto"   name="Total"         stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              <Line type="monotone" dataKey="neto13" name="13,2 / 0,4 kV" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              <Line type="monotone" dataKey="neto33" name="33 / 0,4 kV"   stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
             </LineChart>
           </ResponsiveContainer>
         )}
@@ -1248,15 +1300,11 @@ export function TransformadoresResumenSection() {
             <p className="text-sm text-muted-foreground">Sin datos.</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie data={zonaPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={72} label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                  {zonaPieData.map((_, i) => (
-                    <Cell key={i} fill={["#6366f1","#38bdf8","#a78bfa","#34d399"][i % 4]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} itemStyle={{ color: "#f1f5f9" }} formatter={(v: number, n: string) => [v, n]} />
-                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-              </PieChart>
+              <HoverPie
+                data={zonaPieData}
+                colors={["#6366f1","#38bdf8","#a78bfa","#34d399"]}
+                formatter={(v: number, n: string) => [v, n]}
+              />
             </ResponsiveContainer>
           )}
         </div>
@@ -1269,14 +1317,7 @@ export function TransformadoresResumenSection() {
             <p className="text-sm text-muted-foreground">Sin datos.</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie data={tercerosVsTaller13} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={72} label={({ percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                  <Cell fill="#38bdf8" />
-                  <Cell fill="#f59e0b" />
-                </Pie>
-                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} itemStyle={{ color: "#f1f5f9" }} />
-                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-              </PieChart>
+              <HoverPie data={tercerosVsTaller13} colors={["#38bdf8","#f59e0b"]} />
             </ResponsiveContainer>
           )}
         </div>
@@ -1289,14 +1330,7 @@ export function TransformadoresResumenSection() {
             <p className="text-sm text-muted-foreground">Sin datos.</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie data={nuevosVsReparados33} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={72} label={({ percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                  <Cell fill="#34d399" />
-                  <Cell fill="#f59e0b" />
-                </Pie>
-                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} itemStyle={{ color: "#f1f5f9" }} />
-                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-              </PieChart>
+              <HoverPie data={nuevosVsReparados33} colors={["#34d399","#f59e0b"]} />
             </ResponsiveContainer>
           )}
         </div>
