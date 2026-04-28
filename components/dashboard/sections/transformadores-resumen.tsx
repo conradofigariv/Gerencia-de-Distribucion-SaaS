@@ -580,6 +580,7 @@ export function TransformadoresResumenSection() {
   const [loading, setLoading]     = useState(true);
 
   const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null);
+  const [visibleLines, setVisibleLines] = useState<Set<string>>(new Set(["neto", "neto13", "neto33"]));
 
   // Filters
   const [filterAno,      setFilterAno]      = useState("");
@@ -1267,8 +1268,42 @@ export function TransformadoresResumenSection() {
 
       {/* ── Evolución de Stock por Tensión ── */}
       <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-        <p className="text-sm font-semibold text-foreground">Evolución de Stock Mensual por Tensión</p>
-        <p className="text-xs text-muted-foreground mb-4">Stock neto al cierre de cada mes (última planilla por zona)</p>
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <p className="text-sm font-semibold text-foreground">Evolución de Stock Mensual por Tensión</p>
+            <p className="text-xs text-muted-foreground">Stock neto al cierre de cada mes (última planilla por zona)</p>
+          </div>
+          <div className="flex gap-1.5 flex-shrink-0">
+            {([
+              { key: "neto",   label: "Total",         color: "#6366f1" },
+              { key: "neto13", label: "13,2 / 0,4 kV", color: "#38bdf8" },
+              { key: "neto33", label: "33 / 0,4 kV",   color: "#a78bfa" },
+            ] as const).map(({ key, label, color }) => {
+              const active = visibleLines.has(key);
+              return (
+                <button
+                  key={key}
+                  onClick={() => setVisibleLines(prev => {
+                    const next = new Set(prev);
+                    if (next.has(key)) { if (next.size > 1) next.delete(key); }
+                    else next.add(key);
+                    return next;
+                  })}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all duration-150"
+                  style={{
+                    borderColor: active ? color : "transparent",
+                    background:  active ? `${color}22` : "transparent",
+                    color:       active ? color : "#64748b",
+                    opacity:     active ? 1 : 0.5,
+                  }}
+                >
+                  <span className="w-2 h-2 rounded-full" style={{ background: color }} />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         {variacionData.length < 2 ? (
           <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
         ) : (
@@ -1282,10 +1317,9 @@ export function TransformadoresResumenSection() {
                 labelStyle={{ color: "#94a3b8" }}
                 itemStyle={{ color: "#f1f5f9" }}
               />
-              <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-              <Line type="monotone" dataKey="neto"   name="Total"         stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-              <Line type="monotone" dataKey="neto13" name="13,2 / 0,4 kV" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-              <Line type="monotone" dataKey="neto33" name="33 / 0,4 kV"   stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              {visibleLines.has("neto")   && <Line type="monotone" dataKey="neto"   name="Total"         stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />}
+              {visibleLines.has("neto13") && <Line type="monotone" dataKey="neto13" name="13,2 / 0,4 kV" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />}
+              {visibleLines.has("neto33") && <Line type="monotone" dataKey="neto33" name="33 / 0,4 kV"   stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />}
             </LineChart>
           </ResponsiveContainer>
         )}
