@@ -688,6 +688,7 @@ function SicDiagramaInner() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [responsables, setResponsables] = useState<Record<string,string[]>>({});
   const [loading, setLoading]   = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editingNode, setEditingNode] = useState<{ id: string; label: string; responsables: string[]; color: string } | null>(null);
   const [editingEdge, setEditingEdge] = useState<{ id: string; type: string; label: string } | null>(null);
   const [saved, setSaved]       = useState(true);
@@ -700,10 +701,19 @@ function SicDiagramaInner() {
   // Load saved layout + responsables from Supabase
   useEffect(() => {
     (async () => {
+      try {
       const [layoutRes, respRes] = await Promise.all([
         supabase.from("sic_diagrama_layout").select("nodes,edges").eq("id","main").single(),
         supabase.from("sic_paso_responsables").select("paso_id,responsables"),
       ]);
+
+      if (layoutRes.error && !["PGRST116","42P01"].includes(layoutRes.error.code ?? "") &&
+          !layoutRes.error.message?.includes("does not exist") &&
+          !layoutRes.error.message?.includes("Invalid api key")) {
+        setLoadError(`Error al cargar: ${layoutRes.error.message}`);
+        setLoading(false);
+        return;
+      }
 
       const respMap: Record<string,string[]> = {};
       respRes.data?.forEach(r => { respMap[r.paso_id] = r.responsables ?? []; });
@@ -729,6 +739,10 @@ function SicDiagramaInner() {
         setNodes(buildNodes(respMap));
       }
       setLoading(false);
+      } catch (err) {
+        setLoadError(`Error inesperado: ${err instanceof Error ? err.message : String(err)}`);
+        setLoading(false);
+      }
     })();
   }, []);
 
@@ -865,6 +879,11 @@ function SicDiagramaInner() {
         {loading ? (
           <div className="flex items-center justify-center h-full gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin"/>Cargando...
+          </div>
+        ) : loadError ? (
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-sm text-muted-foreground p-8 text-center">
+            <span className="text-red-400 font-medium">{loadError}</span>
+            <span className="text-xs">Verificá que la tabla <code className="bg-slate-700 px-1 rounded">sic_diagrama_layout</code> exista en Supabase.</span>
           </div>
         ) : (
           <ReactFlow
