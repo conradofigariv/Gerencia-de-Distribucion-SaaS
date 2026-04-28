@@ -710,6 +710,53 @@ export function TransformadoresResumenSection() {
     ? `${(currentFecha as string).split("-").map((v: string, i: number) => i === 0 ? v.slice(2) : v).reverse().join("/")}${zonasFecha.length > 0 ? ` — ${zonasFecha.join(" + ")}` : ""}`
     : null;
 
+  // ── Stock disponible por KVA (chart data) ────────────────────────────────
+  const stockPorKva = (() => {
+    type Row = { kva: number; relacion: "13" | "33"; disponible: number; comprometido: number; label: string };
+    const map: Record<string, Row> = {};
+    const showFases = filterFases;
+    const onlyRel = filterRelacion;
+
+    for (const p of planillasActuales) {
+      if (onlyRel === "" || onlyRel === "13") {
+        for (const k of POT_13) {
+          if (filterPotencia && Number(filterPotencia) !== k) continue;
+          if (showFases === "mono" && !MONO_KVA.has(k)) continue;
+          if (showFases === "tri"  && !TRI_KVA.has(k))  continue;
+          const total = p.datos.totales?.[String(k)] ?? 0;
+          const auto  = p.datos.autorizados?.[String(k)] ?? 0;
+          const disp  = total - auto;
+          const key = `${k}-13`;
+          if (!map[key]) map[key] = { kva: k, relacion: "13", disponible: 0, comprometido: 0, label: "" };
+          map[key].disponible  += disp;
+          map[key].comprometido += auto;
+        }
+      }
+      if (onlyRel === "" || onlyRel === "33") {
+        for (const k of POT_33) {
+          if (filterPotencia && Number(filterPotencia) !== k) continue;
+          const r = p.datos.rel33?.[String(k)];
+          if (!r) continue;
+          let total = 0;
+          if (showFases === "mono")     total = r.mN + r.mR;
+          else if (showFases === "tri") total = r.tN + r.tR;
+          else                          total = r.tN + r.mN + r.tR + r.mR;
+          const key = `${k}-33`;
+          if (!map[key]) map[key] = { kva: k, relacion: "33", disponible: 0, comprometido: 0, label: "" };
+          map[key].disponible  += total;
+        }
+      }
+    }
+
+    return Object.values(map)
+      .filter(d => d.disponible !== 0 || d.comprometido !== 0)
+      .map(d => ({
+        ...d,
+        label: `${d.kva} kVA${onlyRel === "" ? ` · ${d.relacion === "33" ? "33" : "13,2"}` : ""}`,
+      }))
+      .sort((a, b) => b.disponible - a.disponible);
+  })();
+
 
   // ── Transformadores KPIs (existing) ──────────────────────────────────────
 
@@ -1105,6 +1152,60 @@ export function TransformadoresResumenSection() {
           </div>
         </details>
       )}
+
+      {/* ── Stock Disponible por KVA ── */}
+      <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <p className="text-sm font-semibold text-foreground">Stock Disponible por KVA</p>
+        <p className="text-xs text-muted-foreground mb-4">Unidades libres (sin comprometer) — planilla actual</p>
+        {stockPorKva.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Sin datos para la selección actual.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={Math.max(180, stockPorKva.length * 36)}>
+            <BarChart
+              data={stockPorKva}
+              layout="vertical"
+              margin={{ top: 0, right: 48, left: 0, bottom: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
+              <XAxis
+                type="number"
+                tick={{ fontSize: 11, fill: "#94a3b8" }}
+                axisLine={false}
+                tickLine={false}
+                allowDecimals={false}
+              />
+              <YAxis
+                type="category"
+                dataKey="label"
+                width={110}
+                tick={{ fontSize: 11, fill: "#94a3b8" }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <Tooltip
+                cursor={{ fill: "#1e293b" }}
+                contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+                labelStyle={{ color: "#94a3b8" }}
+                itemStyle={{ color: "#f1f5f9" }}
+                formatter={(v: number) => [v, "Disponibles"]}
+              />
+              <Bar dataKey="disponible" radius={[0, 4, 4, 0]} maxBarSize={26}>
+                {stockPorKva.map((d, i) => (
+                  <Cell
+                    key={i}
+                    fill={d.disponible <= 0 ? "#ef4444" : d.disponible <= 3 ? "#f59e0b" : "#3b82f6"}
+                  />
+                ))}
+                <LabelList
+                  dataKey="disponible"
+                  position="right"
+                  style={{ fontSize: 11, fill: "#94a3b8" }}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
 
       {/* Existing inventory KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
