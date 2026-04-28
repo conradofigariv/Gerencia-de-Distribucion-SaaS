@@ -696,7 +696,13 @@ function SicDiagramaInner() {
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes({}));
   const [edges, setEdges, onEdgesChange] = useEdgesState(DEFAULT_EDGES);
 
-  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const saveTimer       = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const latestNodes     = useRef(nodes);
+  const latestEdges     = useRef(edges);
+  const initialLoadDone = useRef(false);
+
+  useEffect(() => { latestNodes.current = nodes; }, [nodes]);
+  useEffect(() => { latestEdges.current = edges; }, [edges]);
 
   // Load saved layout + responsables from Supabase
   useEffect(() => {
@@ -755,12 +761,18 @@ function SicDiagramaInner() {
   // Auto-save whenever nodes or edges change (skip during initial load)
   useEffect(() => {
     if (loading) return;
+    // Skip the very first fire after load completes — that's not a user edit
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      return;
+    }
     setSaved(false);
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
+      // Always read latest values via refs to avoid stale closures
       const payload = {
-        nodes: nodes.map(n => ({ id:n.id, position:n.position, width:n.width, height:n.height, style:n.style, type:n.type, data:n.data })),
-        edges,
+        nodes: latestNodes.current.map(n => ({ id:n.id, position:n.position, width:n.width, height:n.height, style:n.style, type:n.type, data:n.data })),
+        edges: latestEdges.current,
       };
       await supabase.from("sic_diagrama_layout").upsert({ id:"main", ...payload, updated_at: new Date().toISOString() });
       setSaved(true);
