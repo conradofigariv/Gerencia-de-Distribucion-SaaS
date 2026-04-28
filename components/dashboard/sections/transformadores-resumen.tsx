@@ -4,11 +4,12 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, LabelList, ResponsiveContainer,
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, LabelList,
+  ResponsiveContainer, PieChart, Pie, Legend,
 } from "recharts";
 import {
   Zap, CheckCircle2, Wrench, XCircle, RefreshCw, Loader2, ChevronDown,
-  Bell, BellRing, Plus, Trash2, X,
+  Bell, BellRing, Plus, Trash2, X, Package, Activity, TrendingUp, TrendingDown, Clock,
 } from "lucide-react";
 
 const POT_13 = [5,10,16,25,50,63,80,100,125,160,200,250,315,500,630,800,1000];
@@ -198,6 +199,223 @@ function VariacionLabel(props: { x?: string | number; y?: string | number; width
   );
 }
 
+// ── Animation utilities ───────────────────────────────────────────────────────
+
+const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+function useCountUp(target: number, dur = 900, delay = 0) {
+  const [v, setV] = useState(0);
+  const fromRef   = useRef(0);
+  useEffect(() => {
+    let raf: number;
+    let to: ReturnType<typeof setTimeout>;
+    const from = fromRef.current;
+    const start = () => {
+      const t0 = performance.now();
+      const step = (now: number) => {
+        const p = Math.min(1, (now - t0) / dur);
+        setV(from + (target - from) * easeOutCubic(p));
+        if (p < 1) raf = requestAnimationFrame(step);
+        else fromRef.current = target;
+      };
+      raf = requestAnimationFrame(step);
+    };
+    to = setTimeout(start, delay);
+    return () => { clearTimeout(to); cancelAnimationFrame(raf); };
+  }, [target, dur, delay]);
+  return v;
+}
+
+function useEnter(dur = 600, delay = 0) {
+  const [p, setP] = useState(0);
+  useEffect(() => {
+    let raf: number;
+    let to: ReturnType<typeof setTimeout>;
+    to = setTimeout(() => {
+      const t0 = performance.now();
+      const step = (now: number) => {
+        const k = Math.min(1, (now - t0) / dur);
+        setP(k);
+        if (k < 1) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    }, delay);
+    return () => { clearTimeout(to); cancelAnimationFrame(raf); };
+  }, []);
+  return p;
+}
+
+function useInView(threshold = 0.15) {
+  const ref  = useRef<HTMLDivElement>(null);
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    if (!ref.current || seen) return;
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) { setSeen(true); io.disconnect(); }
+    }, { threshold });
+    io.observe(ref.current);
+    return () => io.disconnect();
+  }, [seen, threshold]);
+  return [ref, seen] as const;
+}
+
+// ── PromedioRow ───────────────────────────────────────────────────────────────
+
+function PromedioRow({ label, sub, value, maxVal, hue, idx = 0 }: {
+  label: string; sub: string; value: number; maxVal: number; hue: number; idx?: number;
+}) {
+  const chip       = `oklch(0.72 0.16 ${hue})`;
+  const chipSoft   = `oklch(0.72 0.16 ${hue} / 0.16)`;
+  const chipBorder = `oklch(0.72 0.16 ${hue} / 0.22)`;
+  const animated   = useCountUp(value, 1100, 250 + idx * 120);
+  const barP       = useEnter(1000, 300 + idx * 120);
+  const pct        = Math.min(100, (value / (maxVal * 1.15 || 1)) * 100);
+
+  return (
+    <div style={{
+      display: "grid", gridTemplateColumns: "40px 1fr auto",
+      gap: 14, alignItems: "center",
+      padding: "12px 0",
+      borderBottom: "1px solid rgba(255,255,255,0.07)",
+    }}>
+      <div style={{
+        width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+        background: chipSoft, color: chip,
+        display: "grid", placeItems: "center",
+        border: `1px solid ${chipBorder}`,
+      }}>
+        <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
+          <path d="M9 1.5 3.5 9h3.5L6 14.5 12.5 7H9V1.5Z"
+            stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"
+            fill="currentColor" fillOpacity=".12" />
+        </svg>
+      </div>
+
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "rgba(255,255,255,0.50)" }}>
+            {label}
+          </span>
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.30)" }}>· {sub}</span>
+        </div>
+        <div style={{ height: 4, background: "rgba(255,255,255,0.07)", borderRadius: 999, overflow: "hidden" }}>
+          <div style={{
+            width: `${pct * easeOutCubic(barP)}%`, height: "100%",
+            background: `linear-gradient(90deg, ${chip}, oklch(0.78 0.16 ${hue}))`,
+            borderRadius: 999,
+          }} />
+        </div>
+      </div>
+
+      <div style={{ textAlign: "right" }}>
+        <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-.02em", color: "#f1f5f9", fontVariantNumeric: "tabular-nums" }}>
+          {Math.round(animated)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── KpiStatCard ───────────────────────────────────────────────────────────────
+
+type KpiTone = "neutral" | "warn" | "pos" | "delta";
+
+const KPI_TONE: Record<KpiTone, { color: string; soft: string }> = {
+  neutral: { color: "oklch(0.72 0.16 265)",  soft: "oklch(0.72 0.16 265 / 0.14)"  },
+  warn:    { color: "oklch(0.80 0.15 85)",   soft: "oklch(0.80 0.15 85  / 0.14)"  },
+  pos:     { color: "oklch(0.74 0.16 152)",  soft: "oklch(0.74 0.16 152 / 0.14)"  },
+  delta:   { color: "oklch(0.74 0.16 152)",  soft: "oklch(0.74 0.16 152 / 0.14)"  },
+};
+
+function KpiStatCard({ label, value, tone, sub, showSign = false, idx = 0 }: {
+  label: string; value: number; tone: KpiTone; sub: string; showSign?: boolean; idx?: number;
+}) {
+  const animated   = useCountUp(Math.abs(value), 1100, 100 + idx * 80);
+  const isNeg      = value < 0;
+  const resolvedTone = tone === "delta"
+    ? (isNeg ? "warn" : "pos") as KpiTone
+    : tone;
+  const { color, soft } = KPI_TONE[resolvedTone];
+
+  const IconEl =
+    tone === "neutral"  ? Package       :
+    tone === "warn"     ? Clock         :
+    tone === "pos"      ? CheckCircle2  :
+    isNeg               ? TrendingDown  : TrendingUp;
+
+  const display = Math.round(animated).toLocaleString("es-AR");
+  const prefix  = showSign ? (isNeg ? "−" : "+") : (isNeg ? "−" : "");
+
+  return (
+    <div
+      style={{
+        background: "oklch(0.19 0.015 265)",
+        border: "1px solid oklch(0.30 0.020 265)",
+        borderRadius: 14,
+        padding: "18px 20px 20px",
+        display: "flex", flexDirection: "column", gap: 0,
+        position: "relative", overflow: "hidden",
+        transition: "transform .25s cubic-bezier(.2,.7,.2,1), border-color .25s, box-shadow .25s",
+        cursor: "default",
+      }}
+      onMouseEnter={e => {
+        const el = e.currentTarget as HTMLDivElement;
+        el.style.transform    = "translateY(-2px)";
+        el.style.borderColor  = color;
+        el.style.boxShadow    = `0 8px 28px -10px ${soft.replace("0.14", "0.35")}`;
+      }}
+      onMouseLeave={e => {
+        const el = e.currentTarget as HTMLDivElement;
+        el.style.transform   = "";
+        el.style.borderColor = "";
+        el.style.boxShadow   = "";
+      }}
+    >
+      {/* top row: label + icon */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: ".1em",
+          textTransform: "uppercase", color: "oklch(0.55 0.018 265)",
+        }}>
+          {label}
+        </span>
+        <div style={{
+          width: 30, height: 30, borderRadius: 8,
+          background: soft, color,
+          display: "grid", placeItems: "center",
+          flexShrink: 0,
+        }}>
+          <IconEl size={14} strokeWidth={2} />
+        </div>
+      </div>
+
+      {/* big number */}
+      <div style={{
+        fontSize: 38, fontWeight: 700, letterSpacing: "-.03em",
+        color, lineHeight: 1,
+        fontVariantNumeric: "tabular-nums",
+      }}>
+        {prefix}{display}
+      </div>
+
+      {/* sublabel */}
+      <div style={{
+        marginTop: 8, fontSize: 12,
+        color: "oklch(0.45 0.018 265)",
+      }}>
+        {sub}
+      </div>
+
+      {/* bottom accent strip */}
+      <div style={{
+        position: "absolute", bottom: 0, left: 0, right: 0, height: 2,
+        background: `linear-gradient(90deg, ${color}, transparent)`,
+        opacity: 0.5,
+      }} />
+    </div>
+  );
+}
+
 // ── Gauge helpers ─────────────────────────────────────────────────────────────
 
 function polar(cx: number, cy: number, r: number, deg: number) {
@@ -211,39 +429,92 @@ function arc(cx: number, cy: number, r: number, a1: number, a2: number) {
 }
 
 function GaugeChart({ ratio }: { ratio: number }) {
-  const cx = 150, cy = 150, r = 108, sw = 28;
-  const START = 135, SWEEP = 270, MAX = 150;
-  const angleFor = (p: number) => START + (p / MAX) * SWEEP;
-  const clamped = Math.min(Math.max(ratio, 0), MAX);
-  const tip = polar(cx, cy, r - 14, angleFor(clamped));
+  const animated = useCountUp(ratio, 1400, 300);
+  const cx = 140, cy = 128, r = 95;
+  const startA = -210, endA = 30, sweep = endA - startA;
+  const MAX = 150;
 
-  const zones = [
-    { from: 0, to: 90, color: "#ef4444" },
-    { from: 90, to: 100, color: "#22c55e" },
-    { from: 100, to: 150, color: "#eab308" },
-  ];
+  const polarG = (angDeg: number, radius = r) => {
+    const a = (angDeg * Math.PI) / 180;
+    return [cx + radius * Math.cos(a), cy + radius * Math.sin(a)] as [number, number];
+  };
+  const arcG = (from: number, to: number, radius = r) => {
+    const [x1, y1] = polarG(from, radius);
+    const [x2, y2] = polarG(to, radius);
+    const large = Math.abs(to - from) > 180 ? 1 : 0;
+    return `M${x1},${y1} A${radius},${radius} 0 ${large} 1 ${x2},${y2}`;
+  };
 
-  const tickLabels = [
-    { pct: 0, text: "0%", anchor: "end" as const },
-    { pct: 50, text: "50%", anchor: "end" as const },
-    { pct: 100, text: "100%", anchor: "start" as const },
-    { pct: 150, text: "150%", anchor: "start" as const },
-  ];
+  const clampedRatio = Math.min(Math.max(animated, 0), MAX);
+  const valAngle     = startA + (clampedRatio / MAX) * sweep;
+
+  // Three zones: 0-60% of scale = red, 60-80% = warn, 80-100% = green (mapped to 0-150%)
+  const seg1 = [startA, startA + sweep * (90  / MAX)];
+  const seg2 = [seg1[1], startA + sweep * (100 / MAX)];
+  const seg3 = [seg2[1], endA];
+
+  const [nx, ny] = polarG(valAngle, r - 14);
+
+  const status = ratio < 90
+    ? { label: "CRÍTICO",  color: "oklch(0.68 0.19 25)" }
+    : ratio <= 100
+    ? { label: "ÓPTIMO",   color: "oklch(0.74 0.16 152)" }
+    : { label: "EXCESO",   color: "oklch(0.80 0.15 85)" };
 
   return (
-    <svg viewBox="0 0 300 225" className="w-full max-w-xs mx-auto">
-      <path d={arc(cx, cy, r, START, START + SWEEP)} fill="none" stroke="#1e293b" strokeWidth={sw} />
-      {zones.map(z => (
-        <path key={z.from} d={arc(cx, cy, r, angleFor(z.from), angleFor(z.to))} fill="none" stroke={z.color} strokeWidth={sw} />
-      ))}
-      {tickLabels.map(l => {
-        const pos = polar(cx, cy, r + 20, angleFor(l.pct));
-        return <text key={l.pct} x={pos.x} y={pos.y + 3} textAnchor={l.anchor} fontSize={9} fill="#64748b">{l.text}</text>;
+    <svg viewBox="0 0 280 188" width="100%" style={{ display: "block", maxHeight: 220 }}>
+      {/* Track */}
+      <path d={arcG(startA, endA)} fill="none"
+        stroke="oklch(0.26 0.020 265)" strokeWidth="14" strokeLinecap="round" />
+      {/* Zones */}
+      <path d={arcG(seg1[0], seg1[1])} fill="none"
+        stroke="oklch(0.68 0.19 25)"  strokeWidth="14" strokeLinecap="round" opacity=".85" />
+      <path d={arcG(seg2[0], seg2[1])} fill="none"
+        stroke="oklch(0.74 0.16 152)" strokeWidth="14" opacity=".85" />
+      <path d={arcG(seg3[0], seg3[1])} fill="none"
+        stroke="oklch(0.80 0.15 85)"  strokeWidth="14" strokeLinecap="round" opacity=".85" />
+      {/* Tick marks */}
+      {Array.from({ length: 9 }).map((_, i) => {
+        const a  = startA + (i / 8) * sweep;
+        const [x1, y1] = polarG(a, r - 22);
+        const [x2, y2] = polarG(a, r - 28);
+        return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
+          stroke="oklch(0.45 0.020 265)" strokeWidth="1" />;
       })}
-      <line x1={cx} y1={cy} x2={tip.x} y2={tip.y} stroke="#f1f5f9" strokeWidth={3} strokeLinecap="round" />
-      <circle cx={cx} cy={cy} r={6} fill="#f1f5f9" />
-      <text x={cx} y={cy + 52} textAnchor="middle" fontSize={26} fontWeight="bold" fill="#f1f5f9">{ratio.toFixed(2)}%</text>
-      <text x={cx} y={cy + 67} textAnchor="middle" fontSize={8} fill="#64748b">Stock mes actual / promedio histórico</text>
+      {/* Needle */}
+      <path d={`M${cx},${cy} L${nx},${ny}`}
+        stroke="oklch(0.97 0.005 265)" strokeWidth="2.5" strokeLinecap="round"
+        style={{ filter: "drop-shadow(0 0 4px oklch(1 0 0 / .25))" }} />
+      {/* Center cap */}
+      <circle cx={cx} cy={cy} r={7}  fill="oklch(0.16 0.012 265)"
+        stroke="oklch(0.97 0.005 265)" strokeWidth="2" />
+      {/* Value */}
+      <text x={cx} y={cy + 36} textAnchor="middle"
+        fill="oklch(0.97 0.005 265)" fontFamily="Inter, system-ui, sans-serif"
+        fontWeight="600" fontSize="28" letterSpacing="-1"
+        style={{ fontVariantNumeric: "tabular-nums" }}>
+        {animated.toFixed(1)}%
+      </text>
+      {/* Status */}
+      <text x={cx} y={cy + 52} textAnchor="middle"
+        fill={status.color} fontFamily="Inter, system-ui, sans-serif"
+        fontSize="10" fontWeight="600" letterSpacing=".1em">
+        {status.label}
+      </text>
+      {/* Legend dots */}
+      <g transform={`translate(${cx - 85}, ${cy + 68})`}>
+        {[
+          { color: "oklch(0.68 0.19 25)",  label: "0–90% crítico" },
+          { color: "oklch(0.74 0.16 152)", label: "90–100% óptimo" },
+          { color: "oklch(0.80 0.15 85)",  label: "100%+ exceso" },
+        ].map((s, i) => (
+          <g key={i} transform={`translate(${i * 57}, 0)`}>
+            <rect x={0} y={-5} width={7} height={7} rx={2} fill={s.color} />
+            <text x={10} y={2} fontSize={8} fill="oklch(0.45 0.020 265)"
+              fontFamily="Inter, system-ui, sans-serif">{s.label}</text>
+          </g>
+        ))}
+      </g>
     </svg>
   );
 }
@@ -281,13 +552,22 @@ export function TransformadoresResumenSection() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [{ data: trafos, error: e1 }, { data: plans, error: e2 }] = await Promise.all([
-      supabase.from("transformadores").select("*"),
-      supabase.from("planillas_reserva").select("id,fecha,datos").order("fecha", { ascending: false }),
-    ]);
-    if (e2) toast.error(e2.message);
-    setRows(trafos ?? []);
+
+    const { data: plans, error: e2 } = await supabase
+      .from("planillas_reserva")
+      .select("id,fecha,datos")
+      .order("fecha", { ascending: false });
+
+    if (e2) {
+      console.error("[planillas_reserva]", e2);
+      toast.error(`Planillas: ${e2.message}`);
+    } else if (plans !== null && plans.length === 0) {
+      console.warn("[planillas_reserva] 0 filas — verificar RLS en Supabase.");
+      toast.warning("Sin datos de planillas. Verificar que RLS esté deshabilitado en la tabla planillas_reserva.", { duration: 8000 });
+    }
+
     setPlanillas(plans ?? []);
+    setRows([]);   // tabla transformadores no usada actualmente
     setLoading(false);
   }, []);
 
@@ -307,41 +587,57 @@ export function TransformadoresResumenSection() {
   const avg33  = avg(all33);
 
   const latestPlanilla = planillas[0];
-  const currentStock   = latestPlanilla ? s13(latestPlanilla) + s33(latestPlanilla) : 0;
+  const current13      = latestPlanilla ? s13(latestPlanilla) : 0;
+  const current33      = latestPlanilla ? s33(latestPlanilla) : 0;
+  const currentStock   = current13 + current33;
   const gaugeRatio     = avgAll > 0 ? (currentStock / avgAll) * 100 : 0;
 
   // ── Variación neta mensual ────────────────────────────────────────────────
 
   const MES_SHORT = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 
+  // Last planilla per (zone, month) → sum zones → monthly stock snapshot
   const variacionData = (() => {
-    const byMonth: Record<string, { bruto: number; auto: number; neto: number; zonas: string[] }> = {};
+    // For each (deposito, yearMonth), keep only the latest planilla by fecha
+    const byZoneMonth: Record<string, PlanillaReserva> = {};
     for (const p of planillas) {
+      const key = `${p.datos.deposito ?? ""}::${p.fecha.slice(0, 7)}`;
+      if (!byZoneMonth[key] || p.fecha > byZoneMonth[key].fecha) byZoneMonth[key] = p;
+    }
+    // Aggregate per month
+    const byMonth: Record<string, { bruto: number; auto: number; neto: number; neto13: number; neto33: number; zonas: Set<string> }> = {};
+    for (const p of Object.values(byZoneMonth)) {
       const key = p.fecha.slice(0, 7);
       const bruto = s13(p) + s33(p);
       const auto  = POT_13.reduce((s, k) => s + (p.datos.autorizados?.[String(k)] ?? 0), 0);
       const neto  = bruto - auto;
-      const zona  = p.datos.deposito ?? "sin zona";
-      if (!byMonth[key]) byMonth[key] = { bruto: 0, auto: 0, neto: 0, zonas: [] };
-      byMonth[key].bruto += bruto;
-      byMonth[key].auto  += auto;
-      byMonth[key].neto  += neto;
-      byMonth[key].zonas.push(zona);
+      const n13   = s13(p) - auto;
+      const n33   = s33(p);
+      if (!byMonth[key]) byMonth[key] = { bruto: 0, auto: 0, neto: 0, neto13: 0, neto33: 0, zonas: new Set() };
+      byMonth[key].bruto  += bruto;
+      byMonth[key].auto   += auto;
+      byMonth[key].neto   += neto;
+      byMonth[key].neto13 += n13;
+      byMonth[key].neto33 += n33;
+      if (p.datos.deposito) byMonth[key].zonas.add(p.datos.deposito);
     }
     const sorted = Object.keys(byMonth).sort();
     return sorted.map((key, i) => {
       const [y, m] = key.split("-");
       const prev = i > 0 ? byMonth[sorted[i - 1]].neto : byMonth[key].neto;
       return {
-        mes: `${MES_SHORT[Number(m) - 1]} ${y}`,
-        bruto: byMonth[key].bruto,
-        auto:  byMonth[key].auto,
-        neto:  byMonth[key].neto,
-        zonas: byMonth[key].zonas.join(", "),
+        mes:      `${MES_SHORT[Number(m) - 1]} ${y.slice(2)}`,
+        bruto:    byMonth[key].bruto,
+        auto:     byMonth[key].auto,
+        neto:     byMonth[key].neto,
+        neto13:   byMonth[key].neto13,
+        neto33:   byMonth[key].neto33,
+        zonas:    [...byMonth[key].zonas].join(", "),
         variacion: byMonth[key].neto - prev,
       };
     });
   })();
+
 
   // ── Alarm evaluation ─────────────────────────────────────────────────────
 
@@ -395,27 +691,129 @@ export function TransformadoresResumenSection() {
     return true;
   });
 
-  const current = planillasFiltradas[0];
-  const prev    = planillasFiltradas[1];
-
   const kvas = filterPotencia
     ? [Number(filterPotencia)]
     : [...new Set([...kvasFor(filterRelacion || "13", filterFases), ...POT_33])];
 
-  const stockBruto     = current ? computeStockBruto(current,  kvas, filterRelacion, filterFases) : 0;
-  const pendientes     = current ? computePendientes(current,  kvas, filterRelacion) : 0;
-  const stockNeto      = stockBruto - pendientes;
-  const prevStockNeto  = prev
-    ? computeStockBruto(prev, kvas, filterRelacion, filterFases) - computePendientes(prev, kvas, filterRelacion)
-    : null;
-  const variacion      = prevStockNeto !== null ? stockNeto - prevStockNeto : 0;
+  // Group by fecha and take the most recent period — summing across all zones
+  const fechasUnicas = [...new Set(planillasFiltradas.map(p => p.fecha))].sort((a, b) => b.localeCompare(a));
+  const currentFecha = fechasUnicas[0] ?? null;
+  const planillasActuales = currentFecha
+    ? planillasFiltradas.filter(p => p.fecha === currentFecha)
+    : [];
 
-  const kpis: KpiCard[] = [
-    { label: "STOCK BRUTO",           value: stockBruto, color: "text-foreground" },
-    { label: "PENDIENTES DE RETIRO",  value: pendientes, color: pendientes > 0 ? "text-red-400" : "text-red-400" },
-    { label: "STOCK NETO",            value: stockNeto,  color: "text-green-400" },
-    { label: "VARIACIÓN NETA MENSUAL",value: variacion,  color: variacion >= 0 ? "text-green-400" : "text-red-400" },
-  ];
+  // Previous period: first fecha strictly before currentFecha, from ALL planillas with zona filter only
+  const todasConZona = filterZona
+    ? planillas.filter(p => (p.datos.deposito ?? "") === filterZona)
+    : planillas;
+  const prevFecha = currentFecha
+    ? ([...new Set(todasConZona.map(p => p.fecha))] as string[]).sort((a, b) => b.localeCompare(a)).find(f => f < currentFecha) ?? null
+    : null;
+  const planillasAnteriores = prevFecha
+    ? todasConZona.filter(p => p.fecha === prevFecha)
+    : [];
+
+  const stockBruto    = planillasActuales.reduce((s, p) => s + computeStockBruto(p, kvas, filterRelacion, filterFases), 0);
+  const pendientes    = planillasActuales.reduce((s, p) => s + computePendientes(p, kvas, filterRelacion), 0);
+  const stockNeto     = stockBruto - pendientes;
+  const prevStockNeto = planillasAnteriores.length > 0
+    ? planillasAnteriores.reduce((s, p) => s + computeStockBruto(p, kvas, filterRelacion, filterFases) - computePendientes(p, kvas, filterRelacion), 0)
+    : null;
+  const variacion     = prevStockNeto !== null ? stockNeto - prevStockNeto : 0;
+
+  // ── Pie: zonas (stock actual) ────────────────────────────────────────────
+  const zonaPieData = (() => {
+    const byZone: Record<string, number> = {};
+    for (const p of planillasActuales) {
+      const z = p.datos.deposito ?? "Sin zona";
+      byZone[z] = (byZone[z] ?? 0) + s13(p) + s33(p);
+    }
+    return Object.entries(byZone).map(([name, value]) => ({ name, value }));
+  })();
+
+  const tercerosVsTaller13 = (() => {
+    let terceros = 0, taller = 0;
+    for (const p of planillasActuales) {
+      for (const k of POT_13) {
+        terceros += (p.datos.terceros?.[String(k)]?.t ?? 0) + (p.datos.terceros?.[String(k)]?.m ?? 0) + (p.datos.terceros?.[String(k)]?.ct ?? 0);
+        taller   += (p.datos.taller?.[String(k)]?.t   ?? 0) + (p.datos.taller?.[String(k)]?.m   ?? 0) + (p.datos.taller?.[String(k)]?.ct  ?? 0);
+      }
+    }
+    return [
+      { name: "Nuevos / por Terceros", value: terceros },
+      { name: "Reparados por Taller",  value: taller },
+    ].filter(d => d.value > 0);
+  })();
+
+  const nuevosVsReparados33 = (() => {
+    let nuevos = 0, reparados = 0;
+    for (const p of planillasActuales) {
+      for (const k of POT_33) {
+        const r = p.datos.rel33?.[String(k)];
+        if (!r) continue;
+        nuevos    += r.tN + r.mN;
+        reparados += r.tR + r.mR;
+      }
+    }
+    return [
+      { name: "Nuevos",    value: nuevos },
+      { name: "Reparados", value: reparados },
+    ].filter(d => d.value > 0);
+  })();
+
+  // Label for the planilla info footer
+  const zonasFecha = [...new Set(planillasActuales.map(p => p.datos.deposito).filter((z): z is string => !!z))];
+  const currentLabel = currentFecha
+    ? `${(currentFecha as string).split("-").map((v: string, i: number) => i === 0 ? v.slice(2) : v).reverse().join("/")}${zonasFecha.length > 0 ? ` — ${zonasFecha.join(" + ")}` : ""}`
+    : null;
+
+  // ── Stock disponible por KVA (chart data) ────────────────────────────────
+  const stockPorKva = (() => {
+    type Row = { kva: number; relacion: "13" | "33"; disponible: number; comprometido: number; label: string };
+    const map: Record<string, Row> = {};
+    const showFases = filterFases;
+    const onlyRel = filterRelacion;
+
+    for (const p of planillasActuales) {
+      if (onlyRel === "" || onlyRel === "13") {
+        for (const k of POT_13) {
+          if (filterPotencia && Number(filterPotencia) !== k) continue;
+          if (showFases === "mono" && !MONO_KVA.has(k)) continue;
+          if (showFases === "tri"  && !TRI_KVA.has(k))  continue;
+          const total = p.datos.totales?.[String(k)] ?? 0;
+          const auto  = p.datos.autorizados?.[String(k)] ?? 0;
+          const disp  = total - auto;
+          const key = `${k}-13`;
+          if (!map[key]) map[key] = { kva: k, relacion: "13", disponible: 0, comprometido: 0, label: "" };
+          map[key].disponible  += disp;
+          map[key].comprometido += auto;
+        }
+      }
+      if (onlyRel === "" || onlyRel === "33") {
+        for (const k of POT_33) {
+          if (filterPotencia && Number(filterPotencia) !== k) continue;
+          const r = p.datos.rel33?.[String(k)];
+          if (!r) continue;
+          let total = 0;
+          if (showFases === "mono")     total = r.mN + r.mR;
+          else if (showFases === "tri") total = r.tN + r.tR;
+          else                          total = r.tN + r.mN + r.tR + r.mR;
+          const key = `${k}-33`;
+          if (!map[key]) map[key] = { kva: k, relacion: "33", disponible: 0, comprometido: 0, label: "" };
+          map[key].disponible  += total;
+        }
+      }
+    }
+
+    return Object.values(map)
+      .filter(d => d.disponible !== 0 || d.comprometido !== 0)
+      .map(d => ({
+        ...d,
+        label: `${d.kva} kVA${onlyRel === "" ? ` · ${d.relacion === "33" ? "33" : "13,2"}` : ""}`,
+      }))
+      .sort((a, b) => b.disponible - a.disponible);
+  })();
+
 
   // ── Transformadores KPIs (existing) ──────────────────────────────────────
 
@@ -619,47 +1017,112 @@ export function TransformadoresResumenSection() {
 
         {/* 4 KPI cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {kpis.map(k => (
-            <div key={k.label} className="bg-slate-900/60 border border-slate-700 rounded-xl px-4 py-3 flex flex-col items-center gap-1 shadow-sm">
-              <span className="text-[10px] font-semibold tracking-widest text-slate-400 uppercase text-center">{k.label}</span>
-              <span className={`text-3xl font-bold ${k.color}`}>{k.value >= 0 ? k.value : k.value}</span>
-            </div>
-          ))}
+          <KpiStatCard
+            label="Stock Bruto"
+            value={stockBruto}
+            tone="neutral"
+            sub="Inventario total registrado"
+            idx={0}
+          />
+          <KpiStatCard
+            label="Pendientes de Retiro"
+            value={pendientes}
+            tone="warn"
+            sub="En cola de retiro"
+            idx={1}
+          />
+          <KpiStatCard
+            label="Stock Neto"
+            value={stockNeto}
+            tone="pos"
+            sub="Disponible neto"
+            idx={2}
+          />
+          <KpiStatCard
+            label="Variación Neta Mensual"
+            value={variacion}
+            tone="delta"
+            sub="vs. planilla anterior"
+            showSign
+            idx={3}
+          />
         </div>
 
-        {current && (
+        {currentLabel && (
           <p className="text-[11px] text-slate-500 text-right">
-            Planilla: {current.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
-            {current.datos.deposito ? ` — ${current.datos.deposito}` : ""}
+            Planilla: {currentLabel}
           </p>
         )}
       </div>
 
       {/* ── Promedios + Gauge ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="space-y-4">
-          {[
-            { label: "STOCK REAL PROMEDIO",  value: avgAll },
-            { label: "PROMEDIO DE 13,2/0,4", value: avg13  },
-            { label: "PROMEDIO DE 33/0,4",   value: avg33  },
-          ].map(k => (
-            <div key={k.label} className="bg-card border border-border rounded-xl px-5 py-4 shadow-sm">
-              <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase mb-1">{k.label}</p>
-              <p className="text-4xl font-bold text-foreground">{k.value.toFixed(1)}</p>
+
+        {/* Promedios por tensión */}
+        <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+          <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-0">
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "oklch(0.60 0.018 265)" }}>
+                Promedios por tensión
+              </p>
+              <p style={{ fontSize: 12, color: "oklch(0.45 0.020 265)", marginTop: 3 }}>
+                Stock real · promedio histórico
+              </p>
             </div>
-          ))}
+            <span style={{
+              display: "inline-flex", alignItems: "center", gap: 4,
+              padding: "2px 10px", borderRadius: 999,
+              background: "oklch(0.72 0.16 265 / 0.16)",
+              color: "oklch(0.72 0.16 265)",
+              border: "1px solid transparent",
+              fontSize: 11, fontWeight: 500,
+            }}>
+              Móvil 12m
+            </span>
+          </div>
+          <div className="px-5 pb-5">
+            <PromedioRow label="Stock promedio histórico vs Stock Actual" sub={`Actual: ${currentStock} | Prom. hist.: ${Math.round(avgAll)}`}   value={currentStock} maxVal={Math.max(avgAll, currentStock) * 1.1 || 1} hue={265} idx={0} />
+            <PromedioRow label="13,2 / 0,4 kV"                          sub={`Actual: ${current13}     | Prom. hist.: ${Math.round(avg13)}`}    value={current13}    maxVal={Math.max(avgAll, currentStock) * 1.1 || 1} hue={230} idx={1} />
+            <PromedioRow label="33 / 0,4 kV"                            sub={`Actual: ${current33}     | Prom. hist.: ${Math.round(avg33)}`}    value={current33}    maxVal={Math.max(avgAll, currentStock) * 1.1 || 1} hue={305} idx={2} />
+            <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, fontSize: 11, color: "oklch(0.45 0.020 265)" }}>
+              {latestPlanilla && (
+                <span>
+                  Planilla · {latestPlanilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
+                </span>
+              )}
+              {latestPlanilla?.datos.deposito && (
+                <span>{latestPlanilla.datos.deposito}</span>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col">
-          <p className="text-sm font-semibold text-foreground mb-2">Salud del Inventario</p>
+
+        {/* Gauge card */}
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm flex flex-col">
+          <div className="flex items-start justify-between gap-3 mb-1">
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "oklch(0.60 0.018 265)" }}>
+                Salud del inventario
+              </p>
+              <p style={{ fontSize: 12, color: "oklch(0.45 0.020 265)", marginTop: 3 }}>
+                Stock actual vs. promedio histórico
+              </p>
+            </div>
+            {gaugeRatio < 90 && (
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 4,
+                padding: "2px 10px", borderRadius: 999,
+                background: "oklch(0.68 0.19 25 / 0.18)",
+                color: "oklch(0.68 0.19 25)",
+                fontSize: 11, fontWeight: 500,
+              }}>
+                Bajo el umbral
+              </span>
+            )}
+          </div>
           <div className="flex-1 flex items-center justify-center">
             <GaugeChart ratio={gaugeRatio} />
           </div>
-          {latestPlanilla && (
-            <p className="text-[11px] text-muted-foreground text-center mt-1">
-              Planilla actual: {latestPlanilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
-              {latestPlanilla.datos.deposito ? ` — ${latestPlanilla.datos.deposito}` : ""}
-            </p>
-          )}
         </div>
       </div>
 
@@ -747,6 +1210,152 @@ export function TransformadoresResumenSection() {
         </details>
       )}
 
+      {/* ── Evolución de Stock por Tensión ── */}
+      <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <p className="text-sm font-semibold text-foreground">Evolución de Stock Mensual por Tensión</p>
+        <p className="text-xs text-muted-foreground mb-4">Stock neto al cierre de cada mes (última planilla por zona)</p>
+        {variacionData.length < 2 ? (
+          <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+              <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+              <Tooltip
+                contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+                labelStyle={{ color: "#94a3b8" }}
+                itemStyle={{ color: "#f1f5f9" }}
+              />
+              <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
+              <Line type="monotone" dataKey="neto"   name="Total"       stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              <Line type="monotone" dataKey="neto13" name="13,2 / 0,4 kV" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              <Line type="monotone" dataKey="neto33" name="33 / 0,4 kV"   stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* ── Pie charts ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        {/* Zonas */}
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <p className="text-sm font-semibold text-foreground mb-1">Stock por Zona</p>
+          <p className="text-xs text-muted-foreground mb-3">Distribución actual entre depósitos</p>
+          {zonaPieData.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sin datos.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={zonaPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={72} label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                  {zonaPieData.map((_, i) => (
+                    <Cell key={i} fill={["#6366f1","#38bdf8","#a78bfa","#34d399"][i % 4]} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} formatter={(v: number, n: string) => [v, n]} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Terceros vs Taller — 13.2 kV */}
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <p className="text-sm font-semibold text-foreground mb-1">Nuevos vs Reparados — 13,2 kV</p>
+          <p className="text-xs text-muted-foreground mb-3">Nuevos / terceros vs reparados por taller</p>
+          {tercerosVsTaller13.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sin datos.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={tercerosVsTaller13} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={72} label={({ percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                  <Cell fill="#38bdf8" />
+                  <Cell fill="#f59e0b" />
+                </Pie>
+                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Nuevos vs Reparados — 33 kV */}
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <p className="text-sm font-semibold text-foreground mb-1">Nuevos vs Reparados — 33 kV</p>
+          <p className="text-xs text-muted-foreground mb-3">Composición del stock 33 / 0,4 kV</p>
+          {nuevosVsReparados33.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sin datos.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={nuevosVsReparados33} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={72} label={({ percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                  <Cell fill="#34d399" />
+                  <Cell fill="#f59e0b" />
+                </Pie>
+                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+      </div>
+
+      {/* ── Stock Disponible por KVA ── */}
+      <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <p className="text-sm font-semibold text-foreground">Stock Disponible por KVA</p>
+        <p className="text-xs text-muted-foreground mb-4">Unidades libres (sin comprometer) — planilla actual</p>
+        {stockPorKva.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Sin datos para la selección actual.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={Math.max(180, stockPorKva.length * 36)}>
+            <BarChart
+              data={stockPorKva}
+              layout="vertical"
+              margin={{ top: 0, right: 48, left: 0, bottom: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
+              <XAxis
+                type="number"
+                tick={{ fontSize: 11, fill: "#94a3b8" }}
+                axisLine={false}
+                tickLine={false}
+                allowDecimals={false}
+              />
+              <YAxis
+                type="category"
+                dataKey="label"
+                width={110}
+                tick={{ fontSize: 11, fill: "#94a3b8" }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <Tooltip
+                cursor={{ fill: "#1e293b" }}
+                contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+                labelStyle={{ color: "#94a3b8" }}
+                itemStyle={{ color: "#f1f5f9" }}
+                formatter={(v: number) => [v, "Disponibles"]}
+              />
+              <Bar dataKey="disponible" radius={[0, 4, 4, 0]} maxBarSize={26}>
+                {stockPorKva.map((d, i) => (
+                  <Cell
+                    key={i}
+                    fill={d.disponible <= 0 ? "#ef4444" : d.disponible <= 3 ? "#f59e0b" : "#3b82f6"}
+                  />
+                ))}
+                <LabelList
+                  dataKey="disponible"
+                  position="right"
+                  style={{ fontSize: 11, fill: "#94a3b8" }}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
       {/* Existing inventory KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {existingKpis.map(kpi => {
@@ -807,41 +1416,174 @@ export function TransformadoresResumenSection() {
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-foreground mb-4">Últimos registros</h3>
-        {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No hay transformadores registrados.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-muted-foreground">
-                  <th className="pb-2 text-left font-medium">Número</th>
-                  <th className="pb-2 text-left font-medium">Tipo</th>
-                  <th className="pb-2 text-left font-medium">Potencia</th>
-                  <th className="pb-2 text-left font-medium">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.slice(0, 8).map(r => (
-                  <tr key={r.id} className="border-b border-border last:border-0">
-                    <td className="py-2 font-mono font-semibold text-foreground">{r.numero}</td>
-                    <td className="py-2 text-muted-foreground">{r.tipo ?? "—"}</td>
-                    <td className="py-2 text-muted-foreground">{r.potencia ? `${r.potencia} kVA` : "—"}</td>
-                    <td className="py-2">
-                      {r.estado ? (
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${ESTADO_BADGE[r.estado] ?? "bg-secondary text-muted-foreground"}`}>
-                          {r.estado}
-                        </span>
-                      ) : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* ── Última planilla cargada ── */}
+      {planillasActuales.length > 0 && planillasActuales.map(planilla => {
+        const KVA_ROWS = POT_13;
+        const REL33_ROWS = POT_33;
+        const totTerceros = KVA_ROWS.reduce((s, k) => {
+          const c = planilla.datos.terceros?.[String(k)];
+          return s + (c ? c.t + c.m + c.ct : 0);
+        }, 0);
+        const totTaller = KVA_ROWS.reduce((s, k) => {
+          const c = planilla.datos.taller?.[String(k)];
+          return s + (c ? c.t + c.m + c.ct : 0);
+        }, 0);
+        const totAuto = KVA_ROWS.reduce((s, k) => s + (planilla.datos.autorizados?.[String(k)] ?? 0), 0);
+        const totGeneral = s13(planilla) + s33(planilla);
+        const totDisp = totGeneral - totAuto;
+        return (
+          <div key={planilla.id} className="bg-slate-800/40 border border-slate-700 rounded-xl overflow-hidden shadow-sm">
+            <div className="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-foreground">
+                  Última Planilla — {planilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
+                  {planilla.datos.deposito && <span className="text-slate-400 font-normal"> — {planilla.datos.deposito}</span>}
+                </h3>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  <span className="font-semibold text-blue-400">{totGeneral}</span> total ·{" "}
+                  <span className="font-semibold text-green-400">{totDisp}</span> disponibles ·{" "}
+                  <span className="font-semibold text-cyan-400">{totTerceros}</span> terceros ·{" "}
+                  <span className="font-semibold text-amber-400">{totTaller}</span> taller
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-x divide-slate-700">
+              {/* Terceros */}
+              <div className="overflow-x-auto">
+                <div className="px-4 py-2 bg-blue-600/10 text-xs font-semibold text-blue-300 uppercase tracking-wide border-b border-slate-700">
+                  Nuevos y Reparados por Terceros
+                </div>
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-700/40 border-b border-slate-700">
+                    <tr>
+                      <th className="px-3 py-2 text-center text-slate-300">KVA</th>
+                      <th className="px-3 py-2 text-center text-slate-300">T</th>
+                      <th className="px-3 py-2 text-center text-slate-300">M</th>
+                      <th className="px-3 py-2 text-center text-slate-300">C/T</th>
+                      <th className="px-3 py-2 text-center text-slate-300">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {KVA_ROWS.map(k => {
+                      const c = planilla.datos.terceros?.[String(k)] ?? { t: 0, m: 0, ct: 0 };
+                      const tot = c.t + c.m + c.ct;
+                      return (
+                        <tr key={k} className="border-b border-slate-700/50 last:border-0">
+                          <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{c.t || "—"}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{c.m || "—"}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{c.ct || "—"}</td>
+                          <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {/* Taller */}
+              <div className="overflow-x-auto">
+                <div className="px-4 py-2 bg-amber-600/10 text-xs font-semibold text-amber-300 uppercase tracking-wide border-b border-slate-700">
+                  Reparados por Taller
+                </div>
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-700/40 border-b border-slate-700">
+                    <tr>
+                      <th className="px-3 py-2 text-center text-slate-300">KVA</th>
+                      <th className="px-3 py-2 text-center text-slate-300">T</th>
+                      <th className="px-3 py-2 text-center text-slate-300">M</th>
+                      <th className="px-3 py-2 text-center text-slate-300">C/T</th>
+                      <th className="px-3 py-2 text-center text-slate-300">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {KVA_ROWS.map(k => {
+                      const c = planilla.datos.taller?.[String(k)] ?? { t: 0, m: 0, ct: 0 };
+                      const tot = c.t + c.m + c.ct;
+                      return (
+                        <tr key={k} className="border-b border-slate-700/50 last:border-0">
+                          <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{c.t || "—"}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{c.m || "—"}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{c.ct || "—"}</td>
+                          <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {/* Totales + Relación 33 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-x divide-slate-700 border-t border-slate-700">
+              {/* Totales 13.2 */}
+              <div className="overflow-x-auto">
+                <div className="px-4 py-2 bg-green-600/10 text-xs font-semibold text-green-300 uppercase tracking-wide border-b border-slate-700">
+                  Total de Transformadores 13,2 kV
+                </div>
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-700/40 border-b border-slate-700">
+                    <tr>
+                      <th className="px-3 py-2 text-center text-slate-300">KVA</th>
+                      <th className="px-3 py-2 text-center text-slate-300">Total</th>
+                      <th className="px-3 py-2 text-center text-slate-300">Autorizados</th>
+                      <th className="px-3 py-2 text-center text-slate-300">Disponibles</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {KVA_ROWS.map(k => {
+                      const tot  = planilla.datos.totales?.[String(k)] ?? 0;
+                      const auto = planilla.datos.autorizados?.[String(k)] ?? 0;
+                      const disp = tot - auto;
+                      return (
+                        <tr key={k} className="border-b border-slate-700/50 last:border-0">
+                          <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
+                          <td className="px-3 py-1.5 text-center text-foreground">{tot || "—"}</td>
+                          <td className="px-3 py-1.5 text-center text-amber-400">{auto || "—"}</td>
+                          <td className={`px-3 py-1.5 text-center font-semibold ${disp < 0 ? "text-red-400" : "text-green-400"}`}>{disp}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {/* Relación 33 */}
+              <div className="overflow-x-auto">
+                <div className="px-4 py-2 bg-purple-600/10 text-xs font-semibold text-purple-300 uppercase tracking-wide border-b border-slate-700">
+                  Relación 33 / 0,4 kV
+                </div>
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-700/40 border-b border-slate-700">
+                    <tr>
+                      <th className="px-3 py-2 text-center text-slate-300">KVA</th>
+                      <th className="px-3 py-2 text-center text-slate-300">T Nuevo</th>
+                      <th className="px-3 py-2 text-center text-slate-300">M Nuevo</th>
+                      <th className="px-3 py-2 text-center text-slate-300">T Rep.</th>
+                      <th className="px-3 py-2 text-center text-slate-300">M Rep.</th>
+                      <th className="px-3 py-2 text-center text-slate-300">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {REL33_ROWS.map(k => {
+                      const r = planilla.datos.rel33?.[String(k)] ?? { tN: 0, mN: 0, tR: 0, mR: 0 };
+                      const tot = r.tN + r.mN + r.tR + r.mR;
+                      return (
+                        <tr key={k} className="border-b border-slate-700/50 last:border-0">
+                          <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{r.tN || "—"}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{r.mN || "—"}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{r.tR || "—"}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{r.mR || "—"}</td>
+                          <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot || "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+        );
+      })}
     </div>
   );
 }
