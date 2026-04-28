@@ -41,7 +41,7 @@ export type Section =
   | "transformadores-resumen";
 
 export default function Dashboard() {
-  const [activeSection, setActiveSection]   = useState<Section>("overview");
+  const [activeSection, setActiveSection]   = useState<Section>("servicios-planillas");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [bgEffect, setBgEffect]             = useState<BgEffect>("pipeline");
 

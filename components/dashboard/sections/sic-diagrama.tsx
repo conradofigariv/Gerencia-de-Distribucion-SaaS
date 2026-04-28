@@ -724,6 +724,7 @@ function SicDiagramaInner() {
       respRes.data?.forEach(r => { respMap[r.paso_id] = r.responsables ?? []; });
       setResponsables(respMap);
 
+      console.log("[SIC load] data", layoutRes.data);
       if (layoutRes.data?.nodes) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const savedNodes: any[] = layoutRes.data.nodes;
@@ -732,6 +733,7 @@ function SicDiagramaInner() {
           return sv ? { ...n, position: sv.position, width: sv.width, height: sv.height, style: sv.style } : n;
         });
         const extra = savedNodes.filter((s: { id: string }) => !merged.find(n => n.id === s.id));
+        console.log("[SIC load] aplicando", { saved: savedNodes.length, merged: merged.length, extra: extra.length });
         setNodes([...merged, ...extra]);
         if (layoutRes.data.edges) setEdges(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -741,6 +743,7 @@ function SicDiagramaInner() {
           }))
         );
       } else {
+        console.log("[SIC load] sin nodos guardados");
         setNodes(buildNodes(respMap));
       }
       setLoading(false);
@@ -761,13 +764,24 @@ function SicDiagramaInner() {
 
   const handleManualSave = useCallback(async () => {
     setSaving(true);
-    setSaved(false);
     const payload = {
       nodes: nodes.map(n => ({ id:n.id, position:n.position, width:n.width, height:n.height, style:n.style, type:n.type, data:n.data })),
-      edges,
+      edges: edges.map(e => ({ id:e.id, source:e.source, target:e.target, sourceHandle:e.sourceHandle, targetHandle:e.targetHandle, type:e.type, label:e.label, labelStyle:e.labelStyle, labelBgStyle:e.labelBgStyle, labelBgPadding:e.labelBgPadding, style:e.style, data:e.data, markerEnd:e.markerEnd })),
     };
-    await supabase.from("sic_diagrama_layout").upsert({ id:"main", ...payload, updated_at: new Date().toISOString() });
+    console.log("[SIC save] enviando", { nodes: payload.nodes.length, edges: payload.edges.length });
+    const { data, error } = await supabase
+      .from("sic_diagrama_layout")
+      .upsert({ id:"main", ...payload, updated_at: new Date().toISOString() }, { onConflict: "id" })
+      .select();
     setSaving(false);
+    if (error) {
+      console.error("[SIC save] error", error);
+      toast.error(`Error al guardar: ${error.message}${error.code ? ` (${error.code})` : ""}`);
+      setSaved(false);
+      return;
+    }
+    console.log("[SIC save] OK", data);
+    toast.success(`Guardado ${payload.nodes.length} objeto${payload.nodes.length === 1 ? "" : "s"}`);
     setSaved(true);
   }, [nodes, edges]);
 
