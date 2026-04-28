@@ -740,8 +740,8 @@ export function TransformadoresResumenSection() {
       }
     }
     return [
-      { name: "Nuevos/Rep. por Terceros", value: terceros },
-      { name: "Reparados por Taller",     value: taller },
+      { name: "Nuevos / por Terceros", value: terceros },
+      { name: "Reparados por Taller",  value: taller },
     ].filter(d => d.value > 0);
   })();
 
@@ -1262,8 +1262,8 @@ export function TransformadoresResumenSection() {
 
         {/* Terceros vs Taller — 13.2 kV */}
         <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-          <p className="text-sm font-semibold text-foreground mb-1">Origen del Stock — 13,2 kV</p>
-          <p className="text-xs text-muted-foreground mb-3">Terceros vs Taller propio</p>
+          <p className="text-sm font-semibold text-foreground mb-1">Nuevos vs Reparados — 13,2 kV</p>
+          <p className="text-xs text-muted-foreground mb-3">Nuevos / terceros vs reparados por taller</p>
           {tercerosVsTaller13.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin datos.</p>
           ) : (
