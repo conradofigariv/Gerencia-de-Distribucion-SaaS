@@ -735,8 +735,8 @@ export function TransformadoresResumenSection() {
     let terceros = 0, taller = 0;
     for (const p of planillasActuales) {
       for (const k of POT_13) {
-        terceros += (p.datos.terceros?.[String(k)]?.t ?? 0) + (p.datos.terceros?.[String(k)]?.m ?? 0) + (p.datos.terceros?.[String(k)]?.ct ?? 0);
-        taller   += (p.datos.taller?.[String(k)]?.t   ?? 0) + (p.datos.taller?.[String(k)]?.m   ?? 0) + (p.datos.taller?.[String(k)]?.ct  ?? 0);
+        terceros += (p.datos.terceros?.[String(k)]?.t ?? 0) + (p.datos.terceros?.[String(k)]?.m ?? 0);
+        taller   += (p.datos.taller?.[String(k)]?.t   ?? 0) + (p.datos.taller?.[String(k)]?.m   ?? 0);
       }
     }
     return [
@@ -1218,19 +1218,20 @@ export function TransformadoresResumenSection() {
           <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
         ) : (
           <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
+            <LineChart data={variacionData} margin={{ top: 8, right: 48, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
               <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+              <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: "#a78bfa" }} axisLine={false} tickLine={false} />
               <Tooltip
                 contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
                 labelStyle={{ color: "#94a3b8" }}
                 itemStyle={{ color: "#f1f5f9" }}
               />
               <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-              <Line type="monotone" dataKey="neto"   name="Total"       stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-              <Line type="monotone" dataKey="neto13" name="13,2 / 0,4 kV" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-              <Line type="monotone" dataKey="neto33" name="33 / 0,4 kV"   stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              <Line yAxisId="left"  type="monotone" dataKey="neto"   name="Total"         stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              <Line yAxisId="left"  type="monotone" dataKey="neto13" name="13,2 / 0,4 kV" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              <Line yAxisId="right" type="monotone" dataKey="neto33" name="33 / 0,4 kV"   stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
             </LineChart>
           </ResponsiveContainer>
         )}
@@ -1253,7 +1254,7 @@ export function TransformadoresResumenSection() {
                     <Cell key={i} fill={["#6366f1","#38bdf8","#a78bfa","#34d399"][i % 4]} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} formatter={(v: number, n: string) => [v, n]} />
+                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} itemStyle={{ color: "#f1f5f9" }} formatter={(v: number, n: string) => [v, n]} />
                 <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
               </PieChart>
             </ResponsiveContainer>
@@ -1273,7 +1274,7 @@ export function TransformadoresResumenSection() {
                   <Cell fill="#38bdf8" />
                   <Cell fill="#f59e0b" />
                 </Pie>
-                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} />
+                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} itemStyle={{ color: "#f1f5f9" }} />
                 <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
               </PieChart>
             </ResponsiveContainer>
@@ -1293,7 +1294,7 @@ export function TransformadoresResumenSection() {
                   <Cell fill="#34d399" />
                   <Cell fill="#f59e0b" />
                 </Pie>
-                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} />
+                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} itemStyle={{ color: "#f1f5f9" }} />
                 <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
               </PieChart>
             </ResponsiveContainer>
