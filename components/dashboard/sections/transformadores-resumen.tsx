@@ -4,7 +4,8 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, LabelList, ResponsiveContainer,
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, LabelList,
+  ResponsiveContainer, PieChart, Pie, Legend,
 } from "recharts";
 import {
   Zap, CheckCircle2, Wrench, XCircle, RefreshCw, Loader2, ChevronDown,
@@ -308,7 +309,7 @@ function PromedioRow({ label, sub, value, maxVal, hue, idx = 0 }: {
 
       <div style={{ textAlign: "right" }}>
         <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-.02em", color: "#f1f5f9", fontVariantNumeric: "tabular-nums" }}>
-          {animated.toFixed(1)}
+          {Math.round(animated)}
         </div>
       </div>
     </div>
@@ -586,41 +587,57 @@ export function TransformadoresResumenSection() {
   const avg33  = avg(all33);
 
   const latestPlanilla = planillas[0];
-  const currentStock   = latestPlanilla ? s13(latestPlanilla) + s33(latestPlanilla) : 0;
+  const current13      = latestPlanilla ? s13(latestPlanilla) : 0;
+  const current33      = latestPlanilla ? s33(latestPlanilla) : 0;
+  const currentStock   = current13 + current33;
   const gaugeRatio     = avgAll > 0 ? (currentStock / avgAll) * 100 : 0;
 
   // ── Variación neta mensual ────────────────────────────────────────────────
 
   const MES_SHORT = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 
+  // Last planilla per (zone, month) → sum zones → monthly stock snapshot
   const variacionData = (() => {
-    const byMonth: Record<string, { bruto: number; auto: number; neto: number; zonas: string[] }> = {};
+    // For each (deposito, yearMonth), keep only the latest planilla by fecha
+    const byZoneMonth: Record<string, PlanillaReserva> = {};
     for (const p of planillas) {
+      const key = `${p.datos.deposito ?? ""}::${p.fecha.slice(0, 7)}`;
+      if (!byZoneMonth[key] || p.fecha > byZoneMonth[key].fecha) byZoneMonth[key] = p;
+    }
+    // Aggregate per month
+    const byMonth: Record<string, { bruto: number; auto: number; neto: number; neto13: number; neto33: number; zonas: Set<string> }> = {};
+    for (const p of Object.values(byZoneMonth)) {
       const key = p.fecha.slice(0, 7);
       const bruto = s13(p) + s33(p);
       const auto  = POT_13.reduce((s, k) => s + (p.datos.autorizados?.[String(k)] ?? 0), 0);
       const neto  = bruto - auto;
-      const zona  = p.datos.deposito ?? "sin zona";
-      if (!byMonth[key]) byMonth[key] = { bruto: 0, auto: 0, neto: 0, zonas: [] };
-      byMonth[key].bruto += bruto;
-      byMonth[key].auto  += auto;
-      byMonth[key].neto  += neto;
-      byMonth[key].zonas.push(zona);
+      const n13   = s13(p) - auto;
+      const n33   = s33(p);
+      if (!byMonth[key]) byMonth[key] = { bruto: 0, auto: 0, neto: 0, neto13: 0, neto33: 0, zonas: new Set() };
+      byMonth[key].bruto  += bruto;
+      byMonth[key].auto   += auto;
+      byMonth[key].neto   += neto;
+      byMonth[key].neto13 += n13;
+      byMonth[key].neto33 += n33;
+      if (p.datos.deposito) byMonth[key].zonas.add(p.datos.deposito);
     }
     const sorted = Object.keys(byMonth).sort();
     return sorted.map((key, i) => {
       const [y, m] = key.split("-");
       const prev = i > 0 ? byMonth[sorted[i - 1]].neto : byMonth[key].neto;
       return {
-        mes: `${MES_SHORT[Number(m) - 1]} ${y}`,
-        bruto: byMonth[key].bruto,
-        auto:  byMonth[key].auto,
-        neto:  byMonth[key].neto,
-        zonas: byMonth[key].zonas.join(", "),
+        mes:      `${MES_SHORT[Number(m) - 1]} ${y.slice(2)}`,
+        bruto:    byMonth[key].bruto,
+        auto:     byMonth[key].auto,
+        neto:     byMonth[key].neto,
+        neto13:   byMonth[key].neto13,
+        neto33:   byMonth[key].neto33,
+        zonas:    [...byMonth[key].zonas].join(", "),
         variacion: byMonth[key].neto - prev,
       };
     });
   })();
+
 
   // ── Alarm evaluation ─────────────────────────────────────────────────────
 
@@ -703,6 +720,46 @@ export function TransformadoresResumenSection() {
     ? planillasAnteriores.reduce((s, p) => s + computeStockBruto(p, kvas, filterRelacion, filterFases) - computePendientes(p, kvas, filterRelacion), 0)
     : null;
   const variacion     = prevStockNeto !== null ? stockNeto - prevStockNeto : 0;
+
+  // ── Pie: zonas (stock actual) ────────────────────────────────────────────
+  const zonaPieData = (() => {
+    const byZone: Record<string, number> = {};
+    for (const p of planillasActuales) {
+      const z = p.datos.deposito ?? "Sin zona";
+      byZone[z] = (byZone[z] ?? 0) + s13(p) + s33(p);
+    }
+    return Object.entries(byZone).map(([name, value]) => ({ name, value }));
+  })();
+
+  const tercerosVsTaller13 = (() => {
+    let terceros = 0, taller = 0;
+    for (const p of planillasActuales) {
+      for (const k of POT_13) {
+        terceros += (p.datos.terceros?.[String(k)]?.t ?? 0) + (p.datos.terceros?.[String(k)]?.m ?? 0) + (p.datos.terceros?.[String(k)]?.ct ?? 0);
+        taller   += (p.datos.taller?.[String(k)]?.t   ?? 0) + (p.datos.taller?.[String(k)]?.m   ?? 0) + (p.datos.taller?.[String(k)]?.ct  ?? 0);
+      }
+    }
+    return [
+      { name: "Nuevos/Rep. por Terceros", value: terceros },
+      { name: "Reparados por Taller",     value: taller },
+    ].filter(d => d.value > 0);
+  })();
+
+  const nuevosVsReparados33 = (() => {
+    let nuevos = 0, reparados = 0;
+    for (const p of planillasActuales) {
+      for (const k of POT_33) {
+        const r = p.datos.rel33?.[String(k)];
+        if (!r) continue;
+        nuevos    += r.tN + r.mN;
+        reparados += r.tR + r.mR;
+      }
+    }
+    return [
+      { name: "Nuevos",    value: nuevos },
+      { name: "Reparados", value: reparados },
+    ].filter(d => d.value > 0);
+  })();
 
   // Label for the planilla info footer
   const zonasFecha = [...new Set(planillasActuales.map(p => p.datos.deposito).filter((z): z is string => !!z))];
@@ -1024,9 +1081,9 @@ export function TransformadoresResumenSection() {
             </span>
           </div>
           <div className="px-5 pb-5">
-            <PromedioRow label="Stock Real Promedio"  sub="Todas las tensiones" value={avgAll} maxVal={avgAll} hue={265} idx={0} />
-            <PromedioRow label="Promedio 13.2 / 0.4 kV" sub="Baja tensión"    value={avg13} maxVal={avgAll} hue={230} idx={1} />
-            <PromedioRow label="Promedio 33 / 0.4 kV"   sub="Alta tensión"    value={avg33} maxVal={avgAll} hue={305} idx={2} />
+            <PromedioRow label="Stock promedio histórico vs Stock Actual" sub={`Actual: ${currentStock} | Prom. hist.: ${Math.round(avgAll)}`}   value={currentStock} maxVal={Math.max(avgAll, currentStock) * 1.1 || 1} hue={265} idx={0} />
+            <PromedioRow label="13,2 / 0,4 kV"                          sub={`Actual: ${current13}     | Prom. hist.: ${Math.round(avg13)}`}    value={current13}    maxVal={Math.max(avgAll, currentStock) * 1.1 || 1} hue={230} idx={1} />
+            <PromedioRow label="33 / 0,4 kV"                            sub={`Actual: ${current33}     | Prom. hist.: ${Math.round(avg33)}`}    value={current33}    maxVal={Math.max(avgAll, currentStock) * 1.1 || 1} hue={305} idx={2} />
             <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, fontSize: 11, color: "oklch(0.45 0.020 265)" }}>
               {latestPlanilla && (
                 <span>
@@ -1153,6 +1210,98 @@ export function TransformadoresResumenSection() {
         </details>
       )}
 
+      {/* ── Evolución de Stock por Tensión ── */}
+      <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <p className="text-sm font-semibold text-foreground">Evolución de Stock Mensual por Tensión</p>
+        <p className="text-xs text-muted-foreground mb-4">Stock neto al cierre de cada mes (última planilla por zona)</p>
+        {variacionData.length < 2 ? (
+          <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+              <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+              <Tooltip
+                contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+                labelStyle={{ color: "#94a3b8" }}
+                itemStyle={{ color: "#f1f5f9" }}
+              />
+              <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
+              <Line type="monotone" dataKey="neto"   name="Total"       stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              <Line type="monotone" dataKey="neto13" name="13,2 / 0,4 kV" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              <Line type="monotone" dataKey="neto33" name="33 / 0,4 kV"   stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* ── Pie charts ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        {/* Zonas */}
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <p className="text-sm font-semibold text-foreground mb-1">Stock por Zona</p>
+          <p className="text-xs text-muted-foreground mb-3">Distribución actual entre depósitos</p>
+          {zonaPieData.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sin datos.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={zonaPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={72} label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                  {zonaPieData.map((_, i) => (
+                    <Cell key={i} fill={["#6366f1","#38bdf8","#a78bfa","#34d399"][i % 4]} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} formatter={(v: number, n: string) => [v, n]} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Terceros vs Taller — 13.2 kV */}
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <p className="text-sm font-semibold text-foreground mb-1">Origen del Stock — 13,2 kV</p>
+          <p className="text-xs text-muted-foreground mb-3">Terceros vs Taller propio</p>
+          {tercerosVsTaller13.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sin datos.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={tercerosVsTaller13} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={72} label={({ percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                  <Cell fill="#38bdf8" />
+                  <Cell fill="#f59e0b" />
+                </Pie>
+                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Nuevos vs Reparados — 33 kV */}
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <p className="text-sm font-semibold text-foreground mb-1">Nuevos vs Reparados — 33 kV</p>
+          <p className="text-xs text-muted-foreground mb-3">Composición del stock 33 / 0,4 kV</p>
+          {nuevosVsReparados33.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sin datos.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={nuevosVsReparados33} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={72} label={({ percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                  <Cell fill="#34d399" />
+                  <Cell fill="#f59e0b" />
+                </Pie>
+                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+      </div>
+
       {/* ── Stock Disponible por KVA ── */}
       <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
         <p className="text-sm font-semibold text-foreground">Stock Disponible por KVA</p>
@@ -1267,41 +1416,179 @@ export function TransformadoresResumenSection() {
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-foreground mb-4">Últimos registros</h3>
-        {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No hay transformadores registrados.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-muted-foreground">
-                  <th className="pb-2 text-left font-medium">Número</th>
-                  <th className="pb-2 text-left font-medium">Tipo</th>
-                  <th className="pb-2 text-left font-medium">Potencia</th>
-                  <th className="pb-2 text-left font-medium">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.slice(0, 8).map(r => (
-                  <tr key={r.id} className="border-b border-border last:border-0">
-                    <td className="py-2 font-mono font-semibold text-foreground">{r.numero}</td>
-                    <td className="py-2 text-muted-foreground">{r.tipo ?? "—"}</td>
-                    <td className="py-2 text-muted-foreground">{r.potencia ? `${r.potencia} kVA` : "—"}</td>
-                    <td className="py-2">
-                      {r.estado ? (
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${ESTADO_BADGE[r.estado] ?? "bg-secondary text-muted-foreground"}`}>
-                          {r.estado}
-                        </span>
-                      ) : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* ── Última planilla cargada ── */}
+      {planillasActuales.length > 0 && planillasActuales.map(planilla => {
+        const KVA_ROWS = POT_13;
+        const REL33_ROWS = POT_33;
+        const totTerceros = KVA_ROWS.reduce((s, k) => {
+          const c = planilla.datos.terceros?.[String(k)];
+          return s + (c ? c.t + c.m + c.ct : 0);
+        }, 0);
+        const totTaller = KVA_ROWS.reduce((s, k) => {
+          const c = planilla.datos.taller?.[String(k)];
+          return s + (c ? c.t + c.m + c.ct : 0);
+        }, 0);
+        const totAuto = KVA_ROWS.reduce((s, k) => s + (planilla.datos.autorizados?.[String(k)] ?? 0), 0);
+        const totGeneral = s13(planilla) + s33(planilla);
+        const totDisp = totGeneral - totAuto;
+        return (
+          <div key={planilla.id} className="bg-slate-800/40 border border-slate-700 rounded-xl overflow-hidden shadow-sm">
+            <div className="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-foreground">
+                  Última Planilla — {planilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
+                  {planilla.datos.deposito && <span className="text-slate-400 font-normal"> — {planilla.datos.deposito}</span>}
+                </h3>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  <span className="font-semibold text-blue-400">{totGeneral}</span> total ·{" "}
+                  <span className="font-semibold text-green-400">{totDisp}</span> disponibles ·{" "}
+                  <span className="font-semibold text-cyan-400">{totTerceros}</span> terceros ·{" "}
+                  <span className="font-semibold text-amber-400">{totTaller}</span> taller
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-x divide-slate-700">
+              {/* Terceros */}
+              <div className="overflow-x-auto">
+                <div className="px-4 py-2 bg-blue-600/10 text-xs font-semibold text-blue-300 uppercase tracking-wide border-b border-slate-700">
+                  Nuevos y Reparados por Terceros
+                </div>
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-700/40 border-b border-slate-700">
+                    <tr>
+                      <th className="px-3 py-2 text-center text-slate-300">KVA</th>
+                      <th className="px-3 py-2 text-center text-slate-300">T</th>
+                      <th className="px-3 py-2 text-center text-slate-300">M</th>
+                      <th className="px-3 py-2 text-center text-slate-300">C/T</th>
+                      <th className="px-3 py-2 text-center text-slate-300">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {KVA_ROWS.map(k => {
+                      const c = planilla.datos.terceros?.[String(k)] ?? { t: 0, m: 0, ct: 0 };
+                      const tot = c.t + c.m + c.ct;
+                      if (tot === 0) return null;
+                      return (
+                        <tr key={k} className="border-b border-slate-700/50 last:border-0">
+                          <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{c.t || "—"}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{c.m || "—"}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{c.ct || "—"}</td>
+                          <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {/* Taller */}
+              <div className="overflow-x-auto">
+                <div className="px-4 py-2 bg-amber-600/10 text-xs font-semibold text-amber-300 uppercase tracking-wide border-b border-slate-700">
+                  Reparados por Taller
+                </div>
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-700/40 border-b border-slate-700">
+                    <tr>
+                      <th className="px-3 py-2 text-center text-slate-300">KVA</th>
+                      <th className="px-3 py-2 text-center text-slate-300">T</th>
+                      <th className="px-3 py-2 text-center text-slate-300">M</th>
+                      <th className="px-3 py-2 text-center text-slate-300">C/T</th>
+                      <th className="px-3 py-2 text-center text-slate-300">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {KVA_ROWS.map(k => {
+                      const c = planilla.datos.taller?.[String(k)] ?? { t: 0, m: 0, ct: 0 };
+                      const tot = c.t + c.m + c.ct;
+                      if (tot === 0) return null;
+                      return (
+                        <tr key={k} className="border-b border-slate-700/50 last:border-0">
+                          <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{c.t || "—"}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{c.m || "—"}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{c.ct || "—"}</td>
+                          <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {/* Totales + Relación 33 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-x divide-slate-700 border-t border-slate-700">
+              {/* Totales 13.2 */}
+              <div className="overflow-x-auto">
+                <div className="px-4 py-2 bg-green-600/10 text-xs font-semibold text-green-300 uppercase tracking-wide border-b border-slate-700">
+                  Total de Transformadores 13,2 kV
+                </div>
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-700/40 border-b border-slate-700">
+                    <tr>
+                      <th className="px-3 py-2 text-center text-slate-300">KVA</th>
+                      <th className="px-3 py-2 text-center text-slate-300">Total</th>
+                      <th className="px-3 py-2 text-center text-slate-300">Autorizados</th>
+                      <th className="px-3 py-2 text-center text-slate-300">Disponibles</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {KVA_ROWS.map(k => {
+                      const tot  = planilla.datos.totales?.[String(k)] ?? 0;
+                      const auto = planilla.datos.autorizados?.[String(k)] ?? 0;
+                      const disp = tot - auto;
+                      if (tot === 0 && auto === 0) return null;
+                      return (
+                        <tr key={k} className="border-b border-slate-700/50 last:border-0">
+                          <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
+                          <td className="px-3 py-1.5 text-center text-foreground">{tot || "—"}</td>
+                          <td className="px-3 py-1.5 text-center text-amber-400">{auto || "—"}</td>
+                          <td className={`px-3 py-1.5 text-center font-semibold ${disp < 0 ? "text-red-400" : "text-green-400"}`}>{disp}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {/* Relación 33 */}
+              <div className="overflow-x-auto">
+                <div className="px-4 py-2 bg-purple-600/10 text-xs font-semibold text-purple-300 uppercase tracking-wide border-b border-slate-700">
+                  Relación 33 / 0,4 kV
+                </div>
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-700/40 border-b border-slate-700">
+                    <tr>
+                      <th className="px-3 py-2 text-center text-slate-300">KVA</th>
+                      <th className="px-3 py-2 text-center text-slate-300">T Nuevo</th>
+                      <th className="px-3 py-2 text-center text-slate-300">M Nuevo</th>
+                      <th className="px-3 py-2 text-center text-slate-300">T Rep.</th>
+                      <th className="px-3 py-2 text-center text-slate-300">M Rep.</th>
+                      <th className="px-3 py-2 text-center text-slate-300">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {REL33_ROWS.map(k => {
+                      const r = planilla.datos.rel33?.[String(k)];
+                      if (!r) return null;
+                      const tot = r.tN + r.mN + r.tR + r.mR;
+                      if (tot === 0) return null;
+                      return (
+                        <tr key={k} className="border-b border-slate-700/50 last:border-0">
+                          <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{r.tN || "—"}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{r.mN || "—"}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{r.tR || "—"}</td>
+                          <td className="px-3 py-1.5 text-center text-slate-300">{r.mR || "—"}</td>
+                          <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+        );
+      })}
     </div>
   );
 }
