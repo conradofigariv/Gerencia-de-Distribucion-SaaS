@@ -543,32 +543,34 @@ function HoverPie({ data, colors, formatter }: {
 }) {
   const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined);
   return (
-    <PieChart>
-      <Pie
-        data={data}
-        dataKey="value"
-        nameKey="name"
-        cx="50%"
-        cy="50%"
-        outerRadius={72}
-        label={({ percent }: { percent: number }) => `${(percent * 100).toFixed(0)}%`}
-        labelLine={false}
-        activeIndex={activeIndex}
-        activeShape={renderActiveSlice as React.ComponentProps<typeof Pie>["activeShape"]}
-        onMouseEnter={(_: unknown, index: number) => setActiveIndex(index)}
-        onMouseLeave={() => setActiveIndex(undefined)}
-      >
-        {data.map((_, i) => (
-          <Cell key={i} fill={colors[i % colors.length]} />
-        ))}
-      </Pie>
-      <Tooltip
-        contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-        itemStyle={{ color: "#f1f5f9" }}
-        formatter={formatter}
-      />
-      <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-    </PieChart>
+    <ResponsiveContainer width="100%" height={200}>
+      <PieChart>
+        <Pie
+          data={data}
+          dataKey="value"
+          nameKey="name"
+          cx="50%"
+          cy="50%"
+          outerRadius={72}
+          label={({ percent }: { percent: number }) => `${(percent * 100).toFixed(0)}%`}
+          labelLine={false}
+          activeIndex={activeIndex}
+          activeShape={renderActiveSlice as React.ComponentProps<typeof Pie>["activeShape"]}
+          onMouseEnter={(_: unknown, index: number) => setActiveIndex(index)}
+          onMouseLeave={() => setActiveIndex(undefined)}
+        >
+          {data.map((_, i) => (
+            <Cell key={i} fill={colors[i % colors.length]} />
+          ))}
+        </Pie>
+        <Tooltip
+          contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+          itemStyle={{ color: "#f1f5f9" }}
+          formatter={formatter}
+        />
+        <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
+      </PieChart>
+    </ResponsiveContainer>
   );
 }
 
@@ -1299,13 +1301,11 @@ export function TransformadoresResumenSection() {
           {zonaPieData.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin datos.</p>
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <HoverPie
-                data={zonaPieData}
-                colors={["#6366f1","#38bdf8","#a78bfa","#34d399"]}
-                formatter={(v: number, n: string) => [v, n]}
-              />
-            </ResponsiveContainer>
+            <HoverPie
+              data={zonaPieData}
+              colors={["#6366f1","#38bdf8","#a78bfa","#34d399"]}
+              formatter={(v: number, n: string) => [v, n]}
+            />
           )}
         </div>
 
@@ -1316,9 +1316,7 @@ export function TransformadoresResumenSection() {
           {tercerosVsTaller13.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin datos.</p>
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <HoverPie data={tercerosVsTaller13} colors={["#38bdf8","#f59e0b"]} />
-            </ResponsiveContainer>
+            <HoverPie data={tercerosVsTaller13} colors={["#38bdf8","#f59e0b"]} />
           )}
         </div>
 
@@ -1329,9 +1327,7 @@ export function TransformadoresResumenSection() {
           {nuevosVsReparados33.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin datos.</p>
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <HoverPie data={nuevosVsReparados33} colors={["#34d399","#f59e0b"]} />
-            </ResponsiveContainer>
+            <HoverPie data={nuevosVsReparados33} colors={["#34d399","#f59e0b"]} />
           )}
         </div>
 
