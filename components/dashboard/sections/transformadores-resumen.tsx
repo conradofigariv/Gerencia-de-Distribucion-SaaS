@@ -1467,7 +1467,6 @@ export function TransformadoresResumenSection() {
                     {KVA_ROWS.map(k => {
                       const c = planilla.datos.terceros?.[String(k)] ?? { t: 0, m: 0, ct: 0 };
                       const tot = c.t + c.m + c.ct;
-                      if (tot === 0) return null;
                       return (
                         <tr key={k} className="border-b border-slate-700/50 last:border-0">
                           <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
@@ -1500,7 +1499,6 @@ export function TransformadoresResumenSection() {
                     {KVA_ROWS.map(k => {
                       const c = planilla.datos.taller?.[String(k)] ?? { t: 0, m: 0, ct: 0 };
                       const tot = c.t + c.m + c.ct;
-                      if (tot === 0) return null;
                       return (
                         <tr key={k} className="border-b border-slate-700/50 last:border-0">
                           <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
@@ -1536,7 +1534,6 @@ export function TransformadoresResumenSection() {
                       const tot  = planilla.datos.totales?.[String(k)] ?? 0;
                       const auto = planilla.datos.autorizados?.[String(k)] ?? 0;
                       const disp = tot - auto;
-                      if (tot === 0 && auto === 0) return null;
                       return (
                         <tr key={k} className="border-b border-slate-700/50 last:border-0">
                           <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
@@ -1567,10 +1564,8 @@ export function TransformadoresResumenSection() {
                   </thead>
                   <tbody>
                     {REL33_ROWS.map(k => {
-                      const r = planilla.datos.rel33?.[String(k)];
-                      if (!r) return null;
+                      const r = planilla.datos.rel33?.[String(k)] ?? { tN: 0, mN: 0, tR: 0, mR: 0 };
                       const tot = r.tN + r.mN + r.tR + r.mR;
-                      if (tot === 0) return null;
                       return (
                         <tr key={k} className="border-b border-slate-700/50 last:border-0">
                           <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
@@ -1578,7 +1573,7 @@ export function TransformadoresResumenSection() {
                           <td className="px-3 py-1.5 text-center text-slate-300">{r.mN || "—"}</td>
                           <td className="px-3 py-1.5 text-center text-slate-300">{r.tR || "—"}</td>
                           <td className="px-3 py-1.5 text-center text-slate-300">{r.mR || "—"}</td>
-                          <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot}</td>
+                          <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot || "—"}</td>
                         </tr>
                       );
                     })}
