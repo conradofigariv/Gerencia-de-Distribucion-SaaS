@@ -692,17 +692,10 @@ function SicDiagramaInner() {
   const [editingNode, setEditingNode] = useState<{ id: string; label: string; responsables: string[]; color: string } | null>(null);
   const [editingEdge, setEditingEdge] = useState<{ id: string; type: string; label: string } | null>(null);
   const [saved, setSaved]       = useState(true);
+  const [saving, setSaving]     = useState(false);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes({}));
   const [edges, setEdges, onEdgesChange] = useEdgesState(DEFAULT_EDGES);
-
-  const saveTimer       = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const latestNodes     = useRef(nodes);
-  const latestEdges     = useRef(edges);
-  const initialLoadDone = useRef(false);
-
-  useEffect(() => { latestNodes.current = nodes; }, [nodes]);
-  useEffect(() => { latestEdges.current = edges; }, [edges]);
 
   // Load saved layout + responsables from Supabase
   useEffect(() => {
@@ -758,26 +751,25 @@ function SicDiagramaInner() {
     })();
   }, []);
 
-  // Auto-save whenever nodes or edges change (skip during initial load)
+  // Mark unsaved whenever nodes or edges change after initial load
+  const initialLoadDone = useRef(false);
   useEffect(() => {
     if (loading) return;
-    // Skip the very first fire after load completes — that's not a user edit
-    if (!initialLoadDone.current) {
-      initialLoadDone.current = true;
-      return;
-    }
+    if (!initialLoadDone.current) { initialLoadDone.current = true; return; }
     setSaved(false);
-    clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      // Always read latest values via refs to avoid stale closures
-      const payload = {
-        nodes: latestNodes.current.map(n => ({ id:n.id, position:n.position, width:n.width, height:n.height, style:n.style, type:n.type, data:n.data })),
-        edges: latestEdges.current,
-      };
-      await supabase.from("sic_diagrama_layout").upsert({ id:"main", ...payload, updated_at: new Date().toISOString() });
-      setSaved(true);
-    }, 1500);
   }, [nodes, edges, loading]);
+
+  const handleManualSave = useCallback(async () => {
+    setSaving(true);
+    setSaved(false);
+    const payload = {
+      nodes: nodes.map(n => ({ id:n.id, position:n.position, width:n.width, height:n.height, style:n.style, type:n.type, data:n.data })),
+      edges,
+    };
+    await supabase.from("sic_diagrama_layout").upsert({ id:"main", ...payload, updated_at: new Date().toISOString() });
+    setSaving(false);
+    setSaved(true);
+  }, [nodes, edges]);
 
   // Add edge on connect — keep it minimal; defaultEdgeOptions handles styling
   const onConnect = useCallback((connection: Connection) => {
@@ -849,10 +841,21 @@ function SicDiagramaInner() {
           <p className="text-sm text-muted-foreground mt-1">Proceso SIC - SIGA · doble clic en un objeto para editar su nombre</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className={cn("flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors",
-            saved ? "text-muted-foreground border-border" : "text-orange-400 border-orange-400/30 bg-orange-400/5")}>
-            {saved ? <><Check className="w-3 h-3"/>Guardado</> : <><Save className="w-3 h-3"/>Guardando...</>}
-          </div>
+          <button
+            onClick={handleManualSave}
+            disabled={saving || loading}
+            className={cn("flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50",
+              saved
+                ? "text-muted-foreground border-border hover:text-foreground hover:bg-secondary"
+                : "text-accent border-accent/40 bg-accent/10 hover:bg-accent/20"
+            )}>
+            {saving
+              ? <><Loader2 className="w-3 h-3 animate-spin"/>Guardando...</>
+              : saved
+              ? <><Check className="w-3 h-3"/>Guardado</>
+              : <><Save className="w-3 h-3"/>Guardar</>
+            }
+          </button>
           <button onClick={resetLayout} title="Restablecer layout"
             className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
             <RotateCcw className="w-3 h-3"/>Reset
