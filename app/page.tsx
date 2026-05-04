@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import type { User } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabaseClient";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { Header } from "@/components/dashboard/header";
 import { CanvasBackground } from "@/components/canvas-background";
@@ -21,29 +23,34 @@ import { SicDiagramaSection } from "@/components/dashboard/sections/sic-diagrama
 import { TransformadoresCargaSection } from "@/components/dashboard/sections/transformadores-carga";
 import { TransformadoresTablaSection } from "@/components/dashboard/sections/transformadores-tabla";
 import { TransformadoresResumenSection } from "@/components/dashboard/sections/transformadores-resumen";
+import { LoginPage } from "@/components/auth/login";
+import { Loader2 } from "lucide-react";
 
 export type Section =
-  | "overview"
-  | "pipeline"
-  | "deals"
-  | "customers"
-  | "team"
-  | "forecasting"
-  | "reports"
-  | "settings"
-  | "servicios-resumen"
-  | "servicios-tabla"
-  | "servicios-carga"
-  | "servicios-planillas"
+  | "overview" | "pipeline" | "deals" | "customers" | "team"
+  | "forecasting" | "reports" | "settings"
+  | "servicios-resumen" | "servicios-tabla" | "servicios-carga" | "servicios-planillas"
   | "sic-diagrama"
-  | "transformadores-carga"
-  | "transformadores-tabla"
-  | "transformadores-resumen";
+  | "transformadores-carga" | "transformadores-tabla" | "transformadores-resumen";
 
 export default function Dashboard() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [activeSection, setActiveSection]   = useState<Section>("servicios-planillas");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [bgEffect, setBgEffect]             = useState<BgEffect>("pipeline");
+
+  // Auth state
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     const stored = localStorage.getItem("bgEffect") as BgEffect | null;
@@ -55,6 +62,18 @@ export default function Dashboard() {
     localStorage.setItem("bgEffect", v);
   }
 
+  // Loading splash
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Not logged in
+  if (!user) return <><CanvasBackground effect="pipeline" /><LoginPage /></>;
+
   const renderSection = () => {
     switch (activeSection) {
       case "overview":           return <OverviewSection />;
@@ -64,7 +83,7 @@ export default function Dashboard() {
       case "team":               return <TeamSection />;
       case "forecasting":        return <ForecastingSection />;
       case "reports":            return <ReportsSection />;
-      case "settings":               return <SettingsSection user={null} />;
+      case "settings":               return <SettingsSection user={user} />;
       case "servicios-resumen":      return <ServiciosResumenSection />;
       case "servicios-tabla":        return <ServiciosTablaSection />;
       case "servicios-carga":        return <ServiciosCargaSection />;
