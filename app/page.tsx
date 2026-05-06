@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import { Sidebar } from "@/components/dashboard/sidebar";
@@ -19,12 +20,17 @@ import { ServiciosResumenSection } from "@/components/dashboard/sections/servici
 import { ServiciosTablaSection } from "@/components/dashboard/sections/servicios-tabla";
 import { ServiciosCargaSection } from "@/components/dashboard/sections/servicios-carga";
 import { ServiciosPlanillasSection } from "@/components/dashboard/sections/servicios-planillas";
-import { SicDiagramaSection } from "@/components/dashboard/sections/sic-diagrama";
 import { TransformadoresCargaSection } from "@/components/dashboard/sections/transformadores-carga";
 import { TransformadoresTablaSection } from "@/components/dashboard/sections/transformadores-tabla";
 import { TransformadoresResumenSection } from "@/components/dashboard/sections/transformadores-resumen";
 import { LoginPage } from "@/components/auth/login";
 import { Loader2 } from "lucide-react";
+
+// @xyflow/react uses browser-only APIs — disable SSR to prevent hydration crash
+const SicDiagramaSection = dynamic(
+  () => import("@/components/dashboard/sections/sic-diagrama").then(m => ({ default: m.SicDiagramaSection })),
+  { ssr: false, loading: () => <div className="flex items-center justify-center h-96 text-muted-foreground text-sm gap-2"><Loader2 className="w-4 h-4 animate-spin" />Cargando diagrama...</div> }
+);
 
 export type Section =
   | "overview" | "pipeline" | "deals" | "customers" | "team"
