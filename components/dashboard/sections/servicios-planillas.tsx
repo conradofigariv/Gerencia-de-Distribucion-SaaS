@@ -241,8 +241,8 @@ export function ServiciosPlanillasSection() {
       }
       setReminderFreq(freq);
       setReminderLastUpdate(lastUp);
-    } catch {
-      toast.error("No se pudieron cargar los recordatorios");
+    } catch (e) {
+      toast.error(`Error al cargar recordatorios: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setLoadingConfig(false);
     }
