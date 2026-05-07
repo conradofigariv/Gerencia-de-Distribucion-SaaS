@@ -728,11 +728,17 @@ function SicDiagramaInner() {
       if (layoutRes.data?.nodes) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const savedNodes: any[] = layoutRes.data.nodes;
+        const validPos = (p: unknown) => p != null && typeof (p as {x?:unknown}).x === "number" && typeof (p as {y?:unknown}).y === "number";
         const merged = buildNodes(respMap).map(n => {
           const sv = savedNodes.find((s: { id: string }) => s.id === n.id);
-          return sv ? { ...n, position: sv.position, width: sv.width, height: sv.height, style: sv.style } : n;
+          // Only use saved position if it's a valid {x,y} object
+          const pos = sv && validPos(sv.position) ? sv.position : n.position;
+          return sv ? { ...n, position: pos, width: sv.width, height: sv.height, style: sv.style } : n;
         });
-        const extra = savedNodes.filter((s: { id: string }) => !merged.find(n => n.id === s.id));
+        // Only include extra nodes that have a valid position
+        const extra = savedNodes
+          .filter((s: { id: string }) => !merged.find(n => n.id === s.id))
+          .filter((s: unknown) => validPos((s as {position?:unknown}).position));
         console.log("[SIC load] aplicando", { saved: savedNodes.length, merged: merged.length, extra: extra.length });
         setNodes([...merged, ...extra]);
         if (layoutRes.data.edges) setEdges(
