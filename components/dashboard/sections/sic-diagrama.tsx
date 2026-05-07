@@ -16,7 +16,7 @@ import "@xyflow/react/dist/style.css";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { X, Plus, Trash2, Check, Loader2, Users, Save, RotateCcw, Upload } from "lucide-react";
+import { X, Plus, Trash2, Check, Loader2, Users, Save, RotateCcw, Upload, ChevronLeft, ChevronRight } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -755,34 +755,47 @@ function parseSICText(text: string): SICRow[] {
     .sort((a, b) => a.sec - b.sec);
 }
 
+function getActionColor(accion: string): string {
+  switch (accion.toLowerCase()) {
+    case "ejecutar": return "#60a5fa";
+    case "aprobar":  return "#34d399";
+    case "reenviar": return "#f59e0b";
+    case "reserva":  return "#2dd4bf";
+    default:         return "#8a8fa6";
+  }
+}
+
+function findNodeForPerson(nodes: Node[], person: string): { id: string; label: string } | null {
+  for (const n of nodes) {
+    const d = n.data as PasoData | undefined;
+    if (d?.responsables?.includes(person)) {
+      return { id: n.id, label: d.label ?? "" };
+    }
+  }
+  return null;
+}
+
 // ─── SIC Import modal ─────────────────────────────────────────────────────────
 
-function SICImportModal({ nodes, onHighlight, onClose }: {
+function SICImportModal({ nodes, onImport, onClose }: {
   nodes: Node[];
-  onHighlight: (nodeId: string, highlight: SICHighlight) => void;
+  onImport: (rows: SICRow[], sicNumero: string) => void;
   onClose: () => void;
 }) {
   const [text, setText]     = useState("");
   const [sicNumero, setNum] = useState("");
-  const [result, setResult] = useState<{ row: SICRow; nodeId: string | null; nodeLabel: string | null } | null>(null);
+  const [parsed, setParsed] = useState<SICRow[] | null>(null);
   const [error, setError]   = useState("");
+
+  const lastRow   = parsed && parsed.length > 0 ? parsed[parsed.length - 1] : null;
+  const lastMatch = lastRow ? findNodeForPerson(nodes, lastRow.person) : null;
+  const found     = lastMatch != null;
 
   const parse = () => {
     try {
       const rows = parseSICText(text);
       if (!rows.length) { setError("No se encontraron pasos válidos. Verificá el formato."); return; }
-      const last = rows[rows.length - 1];
-      let nodeId: string | null = null;
-      let nodeLabel: string | null = null;
-      for (const n of nodes) {
-        const d = n.data as PasoData | undefined;
-        if (d?.responsables?.includes(last.person)) {
-          nodeId = n.id;
-          nodeLabel = d.label ?? null;
-          break;
-        }
-      }
-      setResult({ row: last, nodeId, nodeLabel });
+      setParsed(rows);
       setError("");
     } catch (e) {
       setError(`Error: ${e instanceof Error ? e.message : String(e)}`);
@@ -790,18 +803,10 @@ function SICImportModal({ nodes, onHighlight, onClose }: {
   };
 
   const confirm = () => {
-    if (!result?.nodeId) return;
-    onHighlight(result.nodeId, {
-      sicNumero: sicNumero.trim(),
-      sec:    result.row.sec,
-      fecha:  result.row.fecha,
-      nota:   result.row.nota,
-      person: result.row.person,
-    });
+    if (!parsed) return;
+    onImport(parsed, sicNumero.trim());
     onClose();
   };
-
-  const found = result?.nodeId != null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -814,7 +819,7 @@ function SICImportModal({ nodes, onHighlight, onClose }: {
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors"><X className="w-4 h-4"/></button>
         </div>
 
-        {!result ? (
+        {!parsed ? (
           <>
             <div className="space-y-1.5">
               <p className="text-xs text-muted-foreground font-medium">Número de SIC</p>
@@ -830,7 +835,7 @@ function SICImportModal({ nodes, onHighlight, onClose }: {
               <p className="text-xs text-muted-foreground font-medium">Texto de la tabla SIGA</p>
               <textarea
                 value={text}
-                onChange={e => { setText(e.target.value); setError(""); setResult(null); }}
+                onChange={e => { setText(e.target.value); setError(""); setParsed(null); }}
                 placeholder={"Realizado Por\t\tSec\tFecha\tRev\tAcción\tNota\nCalandri, Roman Oscar\t\t12\t15/04/2026 11:59:58\t\tReserva\t\n..."}
                 rows={7}
                 className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground/50 font-mono focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent resize-none"
@@ -855,57 +860,78 @@ function SICImportModal({ nodes, onHighlight, onClose }: {
             )}
 
             <div className="rounded-lg border p-4 space-y-2" style={{
-              borderColor: found ? "rgba(52,211,153,.3)" : "rgba(239,68,68,.3)",
-              background:  found ? "rgba(52,211,153,.05)" : "rgba(239,68,68,.05)",
+              borderColor: found ? "rgba(52,211,153,.3)" : "rgba(245,158,11,.3)",
+              background:  found ? "rgba(52,211,153,.05)" : "rgba(245,158,11,.05)",
             }}>
-              <span className="text-xs font-semibold" style={{ color: found ? "#34d399" : "#ef4444" }}>
-                {found ? "Nodo encontrado" : "Sin coincidencia"}
-              </span>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs mt-2">
-                <div>
-                  <p className="text-muted-foreground">Responsable</p>
-                  <p className="font-medium text-foreground mt-0.5">{result.row.person}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Sec.</p>
-                  <p className="font-medium text-foreground mt-0.5">{result.row.sec}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Fecha</p>
-                  <p className="font-medium text-foreground mt-0.5">{result.row.fecha.split(" ")[0]}</p>
-                </div>
-                {result.row.accion && (
-                  <div>
-                    <p className="text-muted-foreground">Acción</p>
-                    <p className="font-medium text-foreground mt-0.5">{result.row.accion}</p>
-                  </div>
-                )}
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold" style={{ color: found ? "#34d399" : "#f59e0b" }}>
+                  {found ? "Nodo encontrado en el último paso" : "Último paso sin nodo asignado"}
+                </span>
+                <span className="text-[10px] text-muted-foreground">{parsed.length} paso{parsed.length === 1 ? "" : "s"}</span>
               </div>
-              {result.row.nota && (
-                <p className="text-[10px] text-muted-foreground italic border-t border-border/50 pt-2">{result.row.nota}</p>
-              )}
-              {found && (
-                <p className="text-[10px] mt-1" style={{ color: "#34d399" }}>
-                  → Nodo: <span className="font-semibold">{result.nodeLabel}</span>
-                </p>
-              )}
-              {!found && (
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  Ningún nodo tiene <span className="font-medium text-foreground">{result.row.person}</span> como encargado.
-                </p>
+              {lastRow && (
+                <>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs mt-2">
+                    <div>
+                      <p className="text-muted-foreground">Responsable</p>
+                      <p className="font-medium text-foreground mt-0.5">{lastRow.person}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Sec.</p>
+                      <p className="font-medium text-foreground mt-0.5">{lastRow.sec}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Fecha</p>
+                      <p className="font-medium text-foreground mt-0.5">{lastRow.fecha.split(" ")[0]}</p>
+                    </div>
+                    {lastRow.accion && (
+                      <div>
+                        <p className="text-muted-foreground">Acción</p>
+                        <p className="font-medium mt-0.5" style={{ color: getActionColor(lastRow.accion) }}>{lastRow.accion}</p>
+                      </div>
+                    )}
+                  </div>
+                  {lastRow.nota && (
+                    <p className="text-[10px] text-muted-foreground italic border-t border-border/50 pt-2">{lastRow.nota}</p>
+                  )}
+                  {found && (
+                    <p className="text-[10px] mt-1" style={{ color: "#34d399" }}>
+                      → Nodo: <span className="font-semibold">{lastMatch!.label}</span>
+                    </p>
+                  )}
+                  {!found && (
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Ningún nodo tiene <span className="font-medium text-foreground">{lastRow.person}</span> como encargado. Se importará igual; usá los botones prev/next para revisar paso a paso.
+                    </p>
+                  )}
+                </>
               )}
             </div>
 
+            <div className="rounded-lg border border-border max-h-32 overflow-y-auto">
+              {parsed.map((row, i) => {
+                const c = getActionColor(row.accion);
+                const matched = findNodeForPerson(nodes, row.person) != null;
+                return (
+                  <div key={row.sec} className="grid grid-cols-[24px_1fr_60px_14px] items-center gap-2 px-2 py-1 border-b border-border/40 last:border-0 text-[11px]">
+                    <span className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0" style={{ background: hexToRgba(c, 0.15), color: c, border: `1px solid ${hexToRgba(c, 0.4)}` }}>{row.sec}</span>
+                    <span className="truncate text-muted-foreground">{row.person}</span>
+                    <span className="font-medium truncate" style={{ color: c }}>{row.accion}</span>
+                    <span title={matched ? "Match" : "Sin nodo"} className="text-[10px]" style={{ color: matched ? "#34d399" : "#64748b" }}>{matched ? "●" : "○"}</span>
+                  </div>
+                );
+              })}
+            </div>
+
             <div className="flex gap-2">
-              <button onClick={() => setResult(null)} className="flex-1 py-2 rounded-lg text-sm border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+              <button onClick={() => setParsed(null)} className="flex-1 py-2 rounded-lg text-sm border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
                 ← Editar texto
               </button>
               <button
                 onClick={confirm}
-                disabled={!found}
-                className="flex-1 py-2 rounded-lg text-sm bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-40 flex items-center justify-center gap-2 transition-colors"
+                className="flex-1 py-2 rounded-lg text-sm bg-accent text-accent-foreground hover:bg-accent/90 flex items-center justify-center gap-2 transition-colors"
               >
-                <Check className="w-3.5 h-3.5"/>Resaltar nodo
+                <Upload className="w-3.5 h-3.5"/>Importar SIC
               </button>
             </div>
           </>
@@ -928,6 +954,8 @@ function SicDiagramaInner() {
   const [saving, setSaving]       = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [sicNumero, setSicNumero] = useState<string>("");
+  const [sicSteps, setSicSteps] = useState<SICRow[]>([]);
+  const [sicStepIndex, setSicStepIndex] = useState<number>(0);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes({}));
   const [edges, setEdges, onEdgesChange] = useEdgesState(DEFAULT_EDGES);
@@ -937,7 +965,7 @@ function SicDiagramaInner() {
     (async () => {
       try {
         const [layoutRes] = await Promise.all([
-          supabase.from("sic_diagrama_layout").select("nodes,edges").eq("id", "main").single(),
+          supabase.from("sic_diagrama_layout").select("nodes,edges,sic_numero,sic_steps,sic_step_index").eq("id", "main").single(),
         ]);
 
         if (layoutRes.error) {
@@ -965,7 +993,10 @@ function SicDiagramaInner() {
             setEdges(layoutRes.data.edges.map((e: any) => ({ ...e })));
           }
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          if ((layoutRes.data as any).sic_numero) setSicNumero((layoutRes.data as any).sic_numero);
+          const ld = layoutRes.data as any;
+          if (ld.sic_numero) setSicNumero(ld.sic_numero);
+          if (Array.isArray(ld.sic_steps)) setSicSteps(ld.sic_steps as SICRow[]);
+          if (typeof ld.sic_step_index === "number") setSicStepIndex(ld.sic_step_index);
         }
         setLoading(false);
       } catch (err) {
@@ -991,7 +1022,14 @@ function SicDiagramaInner() {
     };
     const { error } = await supabase
       .from("sic_diagrama_layout")
-      .upsert({ id: "main", ...payload, sic_numero: sicNumero || null, updated_at: new Date().toISOString() }, { onConflict: "id" })
+      .upsert({
+        id: "main",
+        ...payload,
+        sic_numero:     sicNumero || null,
+        sic_steps:      sicSteps.length > 0 ? sicSteps : null,
+        sic_step_index: sicSteps.length > 0 ? sicStepIndex : null,
+        updated_at:     new Date().toISOString(),
+      }, { onConflict: "id" })
       .select();
     setSaving(false);
     if (error) {
@@ -1001,7 +1039,7 @@ function SicDiagramaInner() {
     }
     toast.success(`Guardado — ${payload.nodes.length} objeto${payload.nodes.length === 1 ? "" : "s"}`);
     setSaved(true);
-  }, [nodes, edges, sicNumero]);
+  }, [nodes, edges, sicNumero, sicSteps, sicStepIndex]);
 
   const onConnect = useCallback((connection: Connection) => {
     const srcNode  = nodes.find(n => n.id === connection.source);
@@ -1041,10 +1079,20 @@ function SicDiagramaInner() {
 
   const resetLayout = () => { setNodes([]); setEdges([]); };
 
-  const handleSICHighlight = useCallback((nodeId: string, highlight: SICHighlight) => {
+  const applyHighlightForStep = useCallback((rows: SICRow[], idx: number, numero: string) => {
+    const step = rows[idx];
     setNodes(ns => ns.map(n => {
       const d = n.data as PasoData;
-      if (n.id === nodeId) return { ...n, data: { ...d, highlighted: highlight } };
+      const matches = step && d.responsables?.includes(step.person);
+      if (matches) {
+        return { ...n, data: { ...d, highlighted: {
+          sicNumero: numero,
+          sec: step.sec,
+          fecha: step.fecha,
+          nota: step.nota,
+          person: step.person,
+        } } };
+      }
       if (d.highlighted) {
         const newData = { ...d };
         delete newData.highlighted;
@@ -1052,10 +1100,26 @@ function SicDiagramaInner() {
       }
       return n;
     }));
-    if (highlight.sicNumero) setSicNumero(highlight.sicNumero);
   }, [setNodes]);
 
-  const clearHighlight = useCallback(() => {
+  const handleSICImport = useCallback((rows: SICRow[], numero: string) => {
+    setSicSteps(rows);
+    const lastIdx = Math.max(0, rows.length - 1);
+    setSicStepIndex(lastIdx);
+    if (numero) setSicNumero(numero);
+    applyHighlightForStep(rows, lastIdx, numero || sicNumero);
+  }, [applyHighlightForStep, sicNumero]);
+
+  const goToStep = useCallback((idx: number) => {
+    if (idx < 0 || idx >= sicSteps.length) return;
+    setSicStepIndex(idx);
+    applyHighlightForStep(sicSteps, idx, sicNumero);
+  }, [sicSteps, sicNumero, applyHighlightForStep]);
+
+  const clearSIC = useCallback(() => {
+    setSicSteps([]);
+    setSicStepIndex(0);
+    setSicNumero("");
     setNodes(ns => ns.map(n => {
       const d = n.data as PasoData;
       if (!d.highlighted) return n;
@@ -1081,6 +1145,9 @@ function SicDiagramaInner() {
 
   const highlightedNode = nodes.find(n => (n.data as PasoData).highlighted != null);
   const hl = (highlightedNode?.data as PasoData | undefined)?.highlighted;
+  const currentStep = sicSteps[sicStepIndex];
+  const stepColor = currentStep ? getActionColor(currentStep.accion) : null;
+  const hasMatch = currentStep != null && highlightedNode != null;
 
   return (
     <div className="space-y-4">
@@ -1098,14 +1165,46 @@ function SicDiagramaInner() {
           <p className="text-sm text-muted-foreground mt-1">Proceso SIC – SIGA · doble clic para editar un objeto</p>
         </div>
         <div className="flex items-center gap-2">
-          {highlightedNode && (
-            <button
-              onClick={clearHighlight}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
-              style={{ borderColor: "rgba(239,68,68,.4)", color: "#ef4444", background: "rgba(239,68,68,.08)" }}
+          {sicSteps.length > 0 && (
+            <div
+              className="flex items-center gap-1 rounded-lg border px-1 py-0.5"
+              style={{
+                borderColor: stepColor ? hexToRgba(stepColor, 0.4) : "rgba(255,255,255,.10)",
+                background:  stepColor ? hexToRgba(stepColor, 0.08) : "transparent",
+              }}
             >
-              <X className="w-3 h-3"/>Limpiar resaltado
-            </button>
+              <button
+                onClick={() => goToStep(sicStepIndex - 1)}
+                disabled={sicStepIndex === 0}
+                title="Paso anterior"
+                className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              >
+                <ChevronLeft className="w-3.5 h-3.5"/>
+              </button>
+              <div className="flex flex-col items-center px-1.5 min-w-[58px]">
+                <span className="text-[9px] uppercase tracking-wider" style={{ color: stepColor ?? "#8a8fa6" }}>
+                  Sec {currentStep?.sec ?? "—"}
+                </span>
+                <span className="text-[10px] font-semibold leading-tight" style={{ color: hasMatch ? "#34d399" : "#8a8fa6" }}>
+                  {sicStepIndex + 1} / {sicSteps.length}
+                </span>
+              </div>
+              <button
+                onClick={() => goToStep(sicStepIndex + 1)}
+                disabled={sicStepIndex >= sicSteps.length - 1}
+                title="Paso siguiente"
+                className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              >
+                <ChevronRight className="w-3.5 h-3.5"/>
+              </button>
+              <button
+                onClick={clearSIC}
+                title="Limpiar SIC"
+                className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-secondary transition-colors"
+              >
+                <X className="w-3 h-3"/>
+              </button>
+            </div>
           )}
           <button
             onClick={() => setImportOpen(true)}
@@ -1134,18 +1233,36 @@ function SicDiagramaInner() {
 
       {/* Status bar */}
       <div className="bg-card border border-border rounded-xl px-5 py-3 grid grid-cols-2 sm:grid-cols-5 gap-4 text-xs">
-        {[
-          ["SIC",           sicNumero || "—"],
-          ["Estado actual", hl ? (highlightedNode?.data as PasoData).label : "—"],
-          ["Responsable",   hl?.person  ?? "—"],
-          ["Sec.",          hl ? String(hl.sec) : "—"],
-          ["Nota",          hl?.nota    || "—"],
-        ].map(([k, v]) => (
-          <div key={k}>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{k}</p>
-            <p className="font-medium text-foreground mt-0.5 truncate" title={v}>{v}</p>
-          </div>
-        ))}
+        <div>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">SIC</p>
+          <p className="font-medium text-foreground mt-0.5 truncate">{sicNumero || "—"}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Estado actual</p>
+          <p className="font-medium mt-0.5 truncate" style={{ color: hasMatch ? "#fff" : (stepColor ?? "#fff") }}>
+            {hasMatch
+              ? (highlightedNode?.data as PasoData).label
+              : currentStep
+                ? <span className="italic opacity-80">{currentStep.accion} (sin nodo asignado)</span>
+                : "—"}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Responsable</p>
+          <p className="font-medium text-foreground mt-0.5 truncate">{currentStep?.person ?? hl?.person ?? "—"}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Sec.</p>
+          <p className="font-medium mt-0.5" style={{ color: stepColor ?? undefined }}>
+            {currentStep ? String(currentStep.sec) : (hl ? String(hl.sec) : "—")}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Nota</p>
+          <p className="font-medium text-foreground mt-0.5 truncate" title={currentStep?.nota || hl?.nota || ""}>
+            {currentStep?.nota || hl?.nota || "—"}
+          </p>
+        </div>
       </div>
 
       {/* Diagram + sidebar */}
@@ -1281,7 +1398,7 @@ function SicDiagramaInner() {
       {importOpen && (
         <SICImportModal
           nodes={nodes}
-          onHighlight={handleSICHighlight}
+          onImport={handleSICImport}
           onClose={() => setImportOpen(false)}
         />
       )}
