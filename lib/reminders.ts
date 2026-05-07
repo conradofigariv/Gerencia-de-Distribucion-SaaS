@@ -15,12 +15,15 @@ export interface OverdueReminder extends ReminderConfig {
   days_overdue: number;
 }
 
+const sbErr = (e: { message?: string } | null) =>
+  new Error(e?.message ?? "Error desconocido de Supabase");
+
 export async function fetchReminders(keys: string[]): Promise<ReminderConfig[]> {
   const { data, error } = await supabase
     .from("section_reminders")
     .select("section_id, section_name, frequency_days, reminder_time, last_updated_at, enabled")
     .in("section_id", keys);
-  if (error) throw error;
+  if (error) throw sbErr(error);
   return (data ?? []) as ReminderConfig[];
 }
 
@@ -44,7 +47,7 @@ export async function upsertConfig(
       },
       { onConflict: "section_id" }
     );
-  if (error) throw error;
+  if (error) throw sbErr(error);
 }
 
 export async function markUpdated(key: string, name: string, userId: string): Promise<void> {
@@ -61,7 +64,7 @@ export async function markUpdated(key: string, name: string, userId: string): Pr
       },
       { onConflict: "section_id" }
     );
-  if (error) throw error;
+  if (error) throw sbErr(error);
 }
 
 const DAY_MS = 1000 * 60 * 60 * 24;
