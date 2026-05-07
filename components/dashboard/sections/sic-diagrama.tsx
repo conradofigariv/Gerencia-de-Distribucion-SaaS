@@ -803,13 +803,14 @@ function buildSICEdges(rows: SICRow[]): Edge[] {
 // ─── SIC Import modal ─────────────────────────────────────────────────────────
 
 function SICImportModal({ onImport, onClose }: {
-  onImport: (nodes: Node[], edges: Edge[], replace: boolean) => void;
+  onImport: (nodes: Node[], edges: Edge[], replace: boolean, sicNumero: string) => void;
   onClose: () => void;
 }) {
-  const [text, setText]       = useState("");
-  const [preview, setPreview] = useState<SICRow[] | null>(null);
-  const [replace, setReplace] = useState(true);
-  const [error, setError]     = useState("");
+  const [text, setText]           = useState("");
+  const [sicNumero, setSicNumero] = useState("");
+  const [preview, setPreview]     = useState<SICRow[] | null>(null);
+  const [replace, setReplace]     = useState(true);
+  const [error, setError]         = useState("");
 
   const parse = () => {
     try {
@@ -824,7 +825,7 @@ function SICImportModal({ onImport, onClose }: {
 
   const doImport = () => {
     if (!preview) return;
-    onImport(buildSICNodes(preview), buildSICEdges(preview), replace);
+    onImport(buildSICNodes(preview), buildSICEdges(preview), replace, sicNumero.trim());
     onClose();
   };
 
@@ -841,14 +842,26 @@ function SICImportModal({ onImport, onClose }: {
 
         {!preview ? (
           <>
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground font-medium">Número de SIC</p>
+              <input
+                autoFocus
+                value={sicNumero}
+                onChange={e => setSicNumero(e.target.value)}
+                placeholder="Ej: SIC-2026-0042"
+                className="w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground font-medium">Texto de la tabla SIGA</p>
             <textarea
-              autoFocus
               value={text}
               onChange={e => { setText(e.target.value); setError(""); }}
               placeholder={"Realizado Por\t\tSec\tFecha\tRev\tAcción\tNota\nCalandri, Roman Oscar\t\t12\t15/04/2026 11:59:58\t\tReserva\t\n..."}
               rows={7}
               className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground/50 font-mono focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent resize-none"
             />
+            </div>
             {error && <p className="text-xs text-destructive">{error}</p>}
             <button
               onClick={parse}
@@ -860,6 +873,12 @@ function SICImportModal({ onImport, onClose }: {
           </>
         ) : (
           <>
+            {sicNumero && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/8 border border-accent/20">
+                <span className="text-xs text-muted-foreground">SIC</span>
+                <span className="text-sm font-semibold text-accent">{sicNumero}</span>
+              </div>
+            )}
             <div className="rounded-lg border border-border overflow-hidden">
               <div className="grid grid-cols-[24px_72px_1fr_80px] px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground bg-secondary/50 gap-2">
                 <span>#</span><span>Acción</span><span>Responsable</span><span>Fecha</span>
@@ -924,9 +943,10 @@ function SicDiagramaInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editingNode, setEditingNode] = useState<{ id: string; label: string; responsables: string[]; color: string } | null>(null);
   const [editingEdge, setEditingEdge] = useState<{ id: string; type: string; label: string } | null>(null);
-  const [saved, setSaved]     = useState(true);
-  const [saving, setSaving]   = useState(false);
+  const [saved, setSaved]         = useState(true);
+  const [saving, setSaving]       = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [sicNumero, setSicNumero] = useState<string>("");
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes({}));
   const [edges, setEdges, onEdgesChange] = useEdgesState(DEFAULT_EDGES);
@@ -963,6 +983,8 @@ function SicDiagramaInner() {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             setEdges(layoutRes.data.edges.map((e: any) => ({ ...e })));
           }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if ((layoutRes.data as any).sic_numero) setSicNumero((layoutRes.data as any).sic_numero);
         }
         setLoading(false);
       } catch (err) {
@@ -988,7 +1010,7 @@ function SicDiagramaInner() {
     };
     const { error } = await supabase
       .from("sic_diagrama_layout")
-      .upsert({ id: "main", ...payload, updated_at: new Date().toISOString() }, { onConflict: "id" })
+      .upsert({ id: "main", ...payload, sic_numero: sicNumero || null, updated_at: new Date().toISOString() }, { onConflict: "id" })
       .select();
     setSaving(false);
     if (error) {
@@ -998,7 +1020,7 @@ function SicDiagramaInner() {
     }
     toast.success(`Guardado — ${payload.nodes.length} objeto${payload.nodes.length === 1 ? "" : "s"}`);
     setSaved(true);
-  }, [nodes, edges]);
+  }, [nodes, edges, sicNumero]);
 
   const onConnect = useCallback((connection: Connection) => {
     const srcNode  = nodes.find(n => n.id === connection.source);
@@ -1038,7 +1060,7 @@ function SicDiagramaInner() {
 
   const resetLayout = () => { setNodes([]); setEdges([]); };
 
-  const handleImport = useCallback((newNodes: Node[], newEdges: Edge[], replace: boolean) => {
+  const handleImport = useCallback((newNodes: Node[], newEdges: Edge[], replace: boolean, numero: string) => {
     if (replace) {
       setNodes(newNodes);
       setEdges(newEdges);
@@ -1046,6 +1068,7 @@ function SicDiagramaInner() {
       setNodes(ns => [...ns, ...newNodes]);
       setEdges(es => [...es, ...newEdges]);
     }
+    if (numero) setSicNumero(numero);
   }, [setNodes, setEdges]);
 
   const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
@@ -1067,7 +1090,14 @@ function SicDiagramaInner() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Diagrama de flujo</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-semibold text-foreground">Diagrama de flujo</h2>
+            {sicNumero && (
+              <span className="px-2 py-0.5 rounded-md text-xs font-semibold" style={{ background: "rgba(45,212,191,.12)", color: "#2dd4bf", border: "1px solid rgba(45,212,191,.3)" }}>
+                {sicNumero}
+              </span>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground mt-1">Proceso SIC – SIGA · doble clic para editar un objeto</p>
         </div>
         <div className="flex items-center gap-2">
