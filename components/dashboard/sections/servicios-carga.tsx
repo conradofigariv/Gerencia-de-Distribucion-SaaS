@@ -126,24 +126,22 @@ export function ServiciosCargaSection() {
     })();
   }, []);
 
-  // Open reminder config dialog
-  const openConfig = async () => {
-    setConfigOpen(true);
+  // Load reminder data whenever the dialog opens
+  useEffect(() => {
+    if (!configOpen) return;
     setLoadingConfig(true);
-    try {
-      const cfgs = await fetchReminders([REMINDER_KEY]);
-      const cfg = cfgs[0];
-      if (cfg) {
-        setReminderFreq(cfg.frequency_days);
-        setReminderLastUpd(cfg.last_updated_at);
-        if (cfg.reminder_time) setReminderTime(cfg.reminder_time.substring(0, 5));
-      }
-    } catch (e) {
-      toast.error(`Error al cargar recordatorio: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setLoadingConfig(false);
-    }
-  };
+    fetchReminders([REMINDER_KEY])
+      .then(cfgs => {
+        const cfg = cfgs[0];
+        if (cfg) {
+          setReminderFreq(cfg.frequency_days);
+          setReminderLastUpd(cfg.last_updated_at);
+          if (cfg.reminder_time) setReminderTime(cfg.reminder_time.substring(0, 5));
+        }
+      })
+      .catch(e => toast.error(`Error al cargar recordatorio: ${e instanceof Error ? e.message : String(e)}`))
+      .finally(() => setLoadingConfig(false));
+  }, [configOpen]);
 
   const saveConfig = async () => {
     if (!userId) return;
@@ -574,7 +572,7 @@ export function ServiciosCargaSection() {
         </div>
         {canConfig && (
           <button
-            onClick={openConfig}
+            onClick={() => setConfigOpen(true)}
             className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all"
           >
             <BellRing className="w-3.5 h-3.5" />Recordatorio

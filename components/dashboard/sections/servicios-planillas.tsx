@@ -227,29 +227,27 @@ export function ServiciosPlanillasSection() {
 
   useEffect(() => { loadStatus(); }, [loadStatus]);
 
-  // Open config dialog and load current frequencies
-  const openConfig = async () => {
-    setConfigOpen(true);
+  // Load reminder data whenever the dialog opens
+  useEffect(() => {
+    if (!configOpen) return;
     setLoadingConfig(true);
-    try {
-      const cfgs = await fetchReminders(REMINDER_DEFS.map(d => d.key));
-      const freq:  Record<string, number>       = { "planillas-OP": 7,      "planillas-QW": 7,      "planillas-MATRICULAS": 7 };
-      const time:  Record<string, string>       = { "planillas-OP": "09:00", "planillas-QW": "09:00", "planillas-MATRICULAS": "09:00" };
-      const lastUp: Record<string, string|null> = { "planillas-OP": null,   "planillas-QW": null,   "planillas-MATRICULAS": null };
-      for (const cfg of cfgs) {
-        freq[cfg.section_id]   = cfg.frequency_days;
-        lastUp[cfg.section_id] = cfg.last_updated_at;
-        if (cfg.reminder_time) time[cfg.section_id] = cfg.reminder_time.substring(0, 5);
-      }
-      setReminderFreq(freq);
-      setReminderTime(time);
-      setReminderLastUpdate(lastUp);
-    } catch (e) {
-      toast.error(`Error al cargar recordatorios: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setLoadingConfig(false);
-    }
-  };
+    fetchReminders(REMINDER_DEFS.map(d => d.key))
+      .then(cfgs => {
+        const freq:  Record<string, number>       = { "planillas-OP": 7,      "planillas-QW": 7,      "planillas-MATRICULAS": 7 };
+        const time:  Record<string, string>       = { "planillas-OP": "09:00", "planillas-QW": "09:00", "planillas-MATRICULAS": "09:00" };
+        const lastUp: Record<string, string|null> = { "planillas-OP": null,   "planillas-QW": null,   "planillas-MATRICULAS": null };
+        for (const cfg of cfgs) {
+          freq[cfg.section_id]   = cfg.frequency_days;
+          lastUp[cfg.section_id] = cfg.last_updated_at;
+          if (cfg.reminder_time) time[cfg.section_id] = cfg.reminder_time.substring(0, 5);
+        }
+        setReminderFreq(freq);
+        setReminderTime(time);
+        setReminderLastUpdate(lastUp);
+      })
+      .catch(e => toast.error(`Error al cargar recordatorios: ${e instanceof Error ? e.message : String(e)}`))
+      .finally(() => setLoadingConfig(false));
+  }, [configOpen]);
 
   const saveConfig = async () => {
     if (!userId) return;
@@ -428,7 +426,7 @@ export function ServiciosPlanillasSection() {
         <div className="flex items-center gap-2">
           {canConfig && (
             <button
-              onClick={openConfig}
+              onClick={() => setConfigOpen(true)}
               className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all"
             >
               <BellRing className="w-3.5 h-3.5" />Recordatorios
