@@ -16,7 +16,7 @@ import "@xyflow/react/dist/style.css";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { X, Plus, Trash2, Check, Loader2, Users, Save, RotateCcw } from "lucide-react";
+import { X, Plus, Trash2, Check, Loader2, Users, Save, RotateCcw, Upload } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,6 +27,8 @@ interface PasoData {
   responsables?: string[];
   createdAt?: string;
   color?: string;
+  sec?: number;
+  nota?: string;
 }
 
 // ─── Color palette ────────────────────────────────────────────────────────────
@@ -278,7 +280,23 @@ function NeonNodeBase({ data: d, selected, defaultColor, minWidth = 80, minHeigh
             <span className="truncate max-w-[80px]">{owner}</span>
           </div>
         )}
+
+        {d.nota && (
+          <div className="text-[8px] italic leading-tight text-center mt-0.5 px-2 w-full" style={{ color, opacity: 0.55 }}>
+            {d.nota.length > 50 ? d.nota.slice(0, 47) + "…" : d.nota}
+          </div>
+        )}
       </div>
+
+      {/* Sec number badge (top-right) */}
+      {d.sec != null && (
+        <div
+          className="absolute top-0 right-3 z-20 w-[22px] h-[22px] rounded-[7px] flex items-center justify-center text-[9px] font-bold -translate-y-1/2"
+          style={{ background: "rgba(7,9,18,.95)", border: `1px solid ${color}`, color, boxShadow: `0 0 8px ${glow}` }}
+        >
+          {d.sec}
+        </div>
+      )}
     </div>
   </>);
 }
@@ -696,6 +714,207 @@ function EdgeEditModal({ edgeId, initialType, initialLabel, onSave, onClose }: E
   );
 }
 
+// ─── SIC text parser ─────────────────────────────────────────────────────────
+// Formato: Realizado Por \t\t Sec \t Fecha \t Rev \t Acción \t Nota
+
+interface SICRow { person: string; sec: number; fecha: string; accion: string; nota: string }
+
+function parseFechaSIC(s: string): string {
+  // "dd/mm/yyyy hh:mm:ss" → ISO
+  const [datePart, timePart = "00:00:00"] = s.trim().split(" ");
+  const [d, m, y] = datePart.split("/");
+  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}T${timePart}`;
+}
+
+function parseSICText(text: string): SICRow[] {
+  return text
+    .trim()
+    .split("\n")
+    .map(l => l.split("\t"))
+    .filter(c => {
+      const name = c[0]?.trim();
+      const sec  = parseInt(c[2]?.trim() ?? "");
+      return name && name !== "Realizado Por" && !isNaN(sec);
+    })
+    .map(c => ({
+      person: c[0].trim(),
+      sec:    parseInt(c[2].trim()),
+      fecha:  c[3]?.trim() ?? "",
+      accion: c[5]?.trim() ?? "",
+      nota:   c[6]?.trim() ?? "",
+    }))
+    .sort((a, b) => a.sec - b.sec);
+}
+
+function getActionConfig(accion: string): { type: "process" | "startend" | "decision" | "document" | "parallelogram" | "hexagon"; color: string } {
+  switch (accion.toLowerCase()) {
+    case "ejecutar": return { type: "process",  color: "#60a5fa" };
+    case "aprobar":  return { type: "process",  color: "#34d399" };
+    case "reenviar": return { type: "decision", color: "#f59e0b" };
+    case "reserva":  return { type: "startend", color: "#2dd4bf" };
+    default:         return { type: "process",  color: "#64748b" };
+  }
+}
+
+const SIC_COLS   = 4;
+const SIC_GAP_X  = 220;
+const SIC_GAP_Y  = 160;
+const SIC_NODE_W = 160;
+const SIC_NODE_H = 90;
+
+function buildSICNodes(rows: SICRow[]): Node[] {
+  return rows.map((row, i) => {
+    const { type, color } = getActionConfig(row.accion);
+    const col = i % SIC_COLS;
+    const r   = Math.floor(i / SIC_COLS);
+    return {
+      id:       `sic-${row.sec}`,
+      type,
+      position: { x: col * SIC_GAP_X + 60, y: r * SIC_GAP_Y + 60 },
+      width:    SIC_NODE_W,
+      height:   type === "decision" ? 100 : row.nota ? SIC_NODE_H + 20 : SIC_NODE_H,
+      data: {
+        label:        row.accion,
+        responsables: [row.person],
+        color,
+        createdAt:    row.fecha ? parseFechaSIC(row.fecha) : undefined,
+        sec:          row.sec,
+        nota:         row.nota || undefined,
+      },
+    };
+  });
+}
+
+function buildSICEdges(rows: SICRow[]): Edge[] {
+  return rows.slice(0, -1).map((row, i) => {
+    const next = rows[i + 1];
+    return {
+      id:     `sic-e-${row.sec}`,
+      source: `sic-${row.sec}`,
+      target: `sic-${next.sec}`,
+      data: {
+        sourceColor: getActionConfig(row.accion).color,
+        targetColor: getActionConfig(next.accion).color,
+      },
+    };
+  });
+}
+
+// ─── SIC Import modal ─────────────────────────────────────────────────────────
+
+function SICImportModal({ onImport, onClose }: {
+  onImport: (nodes: Node[], edges: Edge[], replace: boolean) => void;
+  onClose: () => void;
+}) {
+  const [text, setText]       = useState("");
+  const [preview, setPreview] = useState<SICRow[] | null>(null);
+  const [replace, setReplace] = useState(true);
+  const [error, setError]     = useState("");
+
+  const parse = () => {
+    try {
+      const rows = parseSICText(text);
+      if (rows.length === 0) { setError("No se encontraron pasos válidos. Verificá el formato."); return; }
+      setPreview(rows);
+      setError("");
+    } catch (e) {
+      setError(`Error al parsear: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const doImport = () => {
+    if (!preview) return;
+    onImport(buildSICNodes(preview), buildSICEdges(preview), replace);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-foreground">Importar SIC desde texto</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Copiá la tabla desde SIGA y pegala acá</p>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors"><X className="w-4 h-4"/></button>
+        </div>
+
+        {!preview ? (
+          <>
+            <textarea
+              autoFocus
+              value={text}
+              onChange={e => { setText(e.target.value); setError(""); }}
+              placeholder={"Realizado Por\t\tSec\tFecha\tRev\tAcción\tNota\nCalandri, Roman Oscar\t\t12\t15/04/2026 11:59:58\t\tReserva\t\n..."}
+              rows={7}
+              className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground/50 font-mono focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent resize-none"
+            />
+            {error && <p className="text-xs text-destructive">{error}</p>}
+            <button
+              onClick={parse}
+              disabled={!text.trim()}
+              className="w-full py-2 rounded-lg text-sm bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+            >
+              <Check className="w-3.5 h-3.5"/>Previsualizar
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="rounded-lg border border-border overflow-hidden">
+              <div className="grid grid-cols-[24px_72px_1fr_80px] px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground bg-secondary/50 gap-2">
+                <span>#</span><span>Acción</span><span>Responsable</span><span>Fecha</span>
+              </div>
+              <div className="max-h-52 overflow-y-auto divide-y divide-border">
+                {preview.map(row => {
+                  const { color } = getActionConfig(row.accion);
+                  return (
+                    <div key={row.sec} className="grid grid-cols-[24px_72px_1fr_80px] items-center px-3 py-2 gap-2 text-xs">
+                      <span className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0" style={{ background: hexToRgba(color, 0.15), color, border: `1px solid ${hexToRgba(color, 0.4)}` }}>
+                        {row.sec}
+                      </span>
+                      <span className="font-semibold" style={{ color }}>{row.accion}</span>
+                      <span className="text-muted-foreground truncate">{row.person}</span>
+                      <span className="text-muted-foreground/60 text-[10px]">{row.fecha.split(" ")[0]}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {preview.some(r => r.nota) && (
+                <div className="px-3 py-2 bg-secondary/30 border-t border-border">
+                  {preview.filter(r => r.nota).map(r => (
+                    <p key={r.sec} className="text-[9px] text-muted-foreground leading-relaxed">
+                      <span className="font-semibold text-foreground/60">Sec {r.sec}:</span> {r.nota}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <div
+                onClick={() => setReplace(v => !v)}
+                className={cn("w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors", replace ? "bg-accent border-accent" : "border-border")}
+              >
+                {replace && <Check className="w-2.5 h-2.5 text-accent-foreground"/>}
+              </div>
+              <span className="text-xs text-muted-foreground">Reemplazar el canvas actual</span>
+            </label>
+
+            <div className="flex gap-2">
+              <button onClick={() => setPreview(null)} className="flex-1 py-2 rounded-lg text-sm border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                ← Editar texto
+              </button>
+              <button onClick={doImport} className="flex-1 py-2 rounded-lg text-sm bg-accent text-accent-foreground hover:bg-accent/90 flex items-center justify-center gap-2 transition-colors">
+                <Upload className="w-3.5 h-3.5"/>Importar {preview.length} pasos
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 function SicDiagramaInner() {
@@ -705,8 +924,9 @@ function SicDiagramaInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editingNode, setEditingNode] = useState<{ id: string; label: string; responsables: string[]; color: string } | null>(null);
   const [editingEdge, setEditingEdge] = useState<{ id: string; type: string; label: string } | null>(null);
-  const [saved, setSaved]   = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [saved, setSaved]     = useState(true);
+  const [saving, setSaving]   = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes({}));
   const [edges, setEdges, onEdgesChange] = useEdgesState(DEFAULT_EDGES);
@@ -818,6 +1038,16 @@ function SicDiagramaInner() {
 
   const resetLayout = () => { setNodes([]); setEdges([]); };
 
+  const handleImport = useCallback((newNodes: Node[], newEdges: Edge[], replace: boolean) => {
+    if (replace) {
+      setNodes(newNodes);
+      setEdges(newEdges);
+    } else {
+      setNodes(ns => [...ns, ...newNodes]);
+      setEdges(es => [...es, ...newEdges]);
+    }
+  }, [setNodes, setEdges]);
+
   const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
@@ -841,6 +1071,12 @@ function SicDiagramaInner() {
           <p className="text-sm text-muted-foreground mt-1">Proceso SIC – SIGA · doble clic para editar un objeto</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setImportOpen(true)}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            <Upload className="w-3 h-3"/>Importar SIC
+          </button>
           <button
             onClick={handleManualSave}
             disabled={saving || loading}
@@ -997,6 +1233,13 @@ function SicDiagramaInner() {
           initialColor={editingNode.color}
           onSave={handleSaveNode}
           onClose={() => setEditingNode(null)}
+        />
+      )}
+
+      {importOpen && (
+        <SICImportModal
+          onImport={handleImport}
+          onClose={() => setImportOpen(false)}
         />
       )}
     </div>

@@ -131,6 +131,32 @@ Todos los nodos usan el componente `NeonNodeBase` que incluye:
 - **Eliminar:** tecla `Supr` / `Backspace` con nodo/arista seleccionada.
 - **Botones:** Guardar (manual, con indicador de cambios no guardados) + Reset (limpia canvas).
 
+### Importación desde texto SIGA
+Botón **"Importar SIC"** en el header → modal con textarea para pegar el texto tabulado exportado de SIGA.
+
+**Formato esperado** (separado por tabs):
+```
+Realizado Por		Sec	Fecha	Rev	Acción	Nota
+Calandri, Roman Oscar		12	15/04/2026 11:59:58		Reserva	
+```
+Columnas (índice 0-based): `[0]` Persona · `[2]` Sec · `[3]` Fecha (`dd/mm/yyyy hh:mm:ss`) · `[5]` Acción · `[6]` Nota
+
+**Mapeo de Acción → Nodo:**
+| Acción | Tipo | Color |
+|--------|------|-------|
+| Ejecutar | process (rect) | `#60a5fa` azul |
+| Aprobar | process (rect) | `#34d399` verde |
+| Reenviar | decision (diamante) | `#f59e0b` ámbar |
+| Reserva | startend (stadium) | `#2dd4bf` teal |
+
+**Layout:** grilla de 4 columnas, separación 220×160px. Los nodos se conectan en secuencia (Sec 1→2→3…).
+
+**Campos extra en `PasoData`:** `sec?: number` (muestra badge top-right en el nodo) · `nota?: string` (texto italic en el nodo, truncado a 50 chars).
+
+**Funciones clave:** `parseSICText()`, `parseFechaSIC()`, `getActionConfig()`, `buildSICNodes()`, `buildSICEdges()` — todas definidas en sic-diagrama.tsx.
+
+**Opción "Reemplazar canvas":** si está activada, reemplaza todos los nodos/aristas existentes; si no, agrega al canvas actual.
+
 ### Componentes del archivo
 ```
 sic-diagrama.tsx
