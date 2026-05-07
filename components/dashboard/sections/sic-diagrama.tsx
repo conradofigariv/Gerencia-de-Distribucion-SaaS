@@ -201,10 +201,9 @@ interface NeonNodeBaseProps {
   minHeight?: number;
   shapeSvg: ReactNode;
   shapeViewBox?: string;
-  iconSvg: ReactNode;
 }
 
-function NeonNodeBase({ data: d, selected, defaultColor, minWidth = 80, minHeight = 50, shapeSvg, shapeViewBox = "0 0 100 100", iconSvg }: NeonNodeBaseProps) {
+function NeonNodeBase({ data: d, selected, defaultColor, minWidth = 80, minHeight = 50, shapeSvg, shapeViewBox = "0 0 100 100" }: NeonNodeBaseProps) {
   const color   = d.color ?? defaultColor;
   const glow    = getGlow(color);
   const fill    = hexToRgba(color, 0.06);
@@ -242,19 +241,6 @@ function NeonNodeBase({ data: d, selected, defaultColor, minWidth = 80, minHeigh
         className="absolute pointer-events-none z-[1]"
         style={{ inset: 1, borderRadius: "inherit", background: "linear-gradient(180deg,rgba(255,255,255,.04),transparent 30%)" }}
       />
-
-      {/* Icon badge */}
-      <div
-        className="absolute top-0 left-3 z-20 w-[22px] h-[22px] rounded-[7px] flex items-center justify-center -translate-y-1/2"
-        style={{
-          background: "rgba(7,9,18,.95)",
-          border: `1px solid ${color}`,
-          color,
-          boxShadow: `0 0 16px ${glow}, inset 0 1px 0 rgba(255,255,255,.06)`,
-        }}
-      >
-        {iconSvg}
-      </div>
 
       {/* Content */}
       <div className="relative z-20 flex flex-col items-center gap-1 px-4 text-center w-full mt-1">
@@ -308,7 +294,6 @@ function ProcessNode({ data, selected }: NodeProps) {
   return (
     <NeonNodeBase data={data as unknown as PasoData} selected={!!selected} defaultColor="#60a5fa" minWidth={100} minHeight={55}
       shapeSvg={<rect x="4" y="4" width="92" height="92" rx="12" />}
-      iconSvg={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width={11} height={11}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>}
     />
   );
 }
@@ -317,7 +302,6 @@ function StartEndNode({ data, selected }: NodeProps) {
   return (
     <NeonNodeBase data={data as unknown as PasoData} selected={!!selected} defaultColor="#34d399" minWidth={100} minHeight={48}
       shapeSvg={<rect x="4" y="4" width="92" height="92" rx="46" />}
-      iconSvg={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width={11} height={11}><polygon points="6 4 20 12 6 20 6 4"/></svg>}
     />
   );
 }
@@ -326,7 +310,6 @@ function DecisionNode({ data, selected }: NodeProps) {
   return (
     <NeonNodeBase data={data as unknown as PasoData} selected={!!selected} defaultColor="#f59e0b" minWidth={90} minHeight={56}
       shapeSvg={<polygon points="50,4 96,50 50,96 4,50" />}
-      iconSvg={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width={11} height={11}><path d="M12 2v6M12 16v6M2 12h6M16 12h6"/><circle cx="12" cy="12" r="3"/></svg>}
     />
   );
 }
@@ -338,7 +321,6 @@ function DocumentNode({ data, selected }: NodeProps) {
         <path d="M4,4 L70,4 L96,26 L96,92 Q50,106 4,92 Z" />
         <path d="M70,4 L70,26 L96,26" style={{ fill: "none" }} />
       </>}
-      iconSvg={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width={11} height={11}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
     />
   );
 }
@@ -347,7 +329,6 @@ function ParallelogramNode({ data, selected }: NodeProps) {
   return (
     <NeonNodeBase data={data as unknown as PasoData} selected={!!selected} defaultColor="#22d3ee" minWidth={100} minHeight={50}
       shapeSvg={<polygon points="20,4 96,4 80,96 4,96" />}
-      iconSvg={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width={11} height={11}><path d="M3 7h13l5 5-5 5H3"/><path d="M3 12h11"/></svg>}
     />
   );
 }
@@ -356,7 +337,6 @@ function HexagonNode({ data, selected }: NodeProps) {
   return (
     <NeonNodeBase data={data as unknown as PasoData} selected={!!selected} defaultColor="#2dd4bf" minWidth={100} minHeight={60}
       shapeSvg={<polygon points="26,4 74,4 97,50 74,96 26,96 3,50" />}
-      iconSvg={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width={11} height={11}><path d="M12 2 4 6v6c0 5 3.5 9.4 8 10 4.5-.6 8-5 8-10V6l-8-4Z"/></svg>}
     />
   );
 }

@@ -176,15 +176,20 @@
 .sic-edge-flow { animation: sic-dash 1.6s linear infinite; }
 
 /* Active / highlighted SIC node */
-.sic-node-active {
-  outline: 2px solid var(--node-c, #34d399);
-  outline-offset: 3px;
-  border-radius: 4px;
-}
 .sic-node-active .sic-node-svg {
-  animation: sic-active-glow 2s ease-in-out infinite !important;
+  animation: sic-active-glow 1.6s ease-in-out infinite !important;
+}
+.sic-node-active .sic-node-svg path,
+.sic-node-active .sic-node-svg polygon,
+.sic-node-active .sic-node-svg rect,
+.sic-node-active .sic-node-svg ellipse {
+  fill: var(--node-fill-hover) !important;
 }
 @keyframes sic-active-glow {
-  0%, 100% { filter: drop-shadow(0 0 14px var(--node-glow)) drop-shadow(0 0 6px var(--node-glow)); }
-  50%       { filter: drop-shadow(0 0 28px var(--node-glow)) drop-shadow(0 0 16px var(--node-glow)); }
+  0%, 100% {
+    filter: drop-shadow(0 0 6px var(--node-glow)) drop-shadow(0 0 2px var(--node-glow));
+  }
+  50% {
+    filter: drop-shadow(0 0 40px var(--node-c)) drop-shadow(0 0 24px var(--node-glow)) drop-shadow(0 0 10px var(--node-glow));
+  }
 }
