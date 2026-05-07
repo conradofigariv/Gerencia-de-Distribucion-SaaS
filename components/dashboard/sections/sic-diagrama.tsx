@@ -965,7 +965,7 @@ function SicDiagramaInner() {
     (async () => {
       try {
         const [layoutRes] = await Promise.all([
-          supabase.from("sic_diagrama_layout").select("nodes,edges,sic_numero,sic_steps,sic_step_index").eq("id", "main").single(),
+          supabase.from("sic_diagrama_layout").select("*").eq("id", "main").single(),
         ]);
 
         if (layoutRes.error) {
@@ -981,6 +981,7 @@ function SicDiagramaInner() {
           setLoading(false);
           return;
         }
+        // select("*") returns only the columns that actually exist in the table
 
         if (layoutRes.data?.nodes) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1020,17 +1021,22 @@ function SicDiagramaInner() {
       nodes: nodes.map(n => ({ id: n.id, position: n.position, width: n.width, height: n.height, style: n.style, type: n.type, data: n.data })),
       edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle, type: e.type, label: e.label, style: e.style, data: e.data })),
     };
-    const { error } = await supabase
-      .from("sic_diagrama_layout")
-      .upsert({
-        id: "main",
-        ...payload,
-        sic_numero:     sicNumero || null,
-        sic_steps:      sicSteps.length > 0 ? sicSteps : null,
-        sic_step_index: sicSteps.length > 0 ? sicStepIndex : null,
-        updated_at:     new Date().toISOString(),
-      }, { onConflict: "id" })
-      .select();
+    const base = { id: "main", ...payload, updated_at: new Date().toISOString() };
+    const withSIC = {
+      ...base,
+      sic_numero:     sicNumero || null,
+      sic_steps:      sicSteps.length > 0 ? sicSteps : null,
+      sic_step_index: sicSteps.length > 0 ? sicStepIndex : null,
+    };
+
+    let { error } = await supabase.from("sic_diagrama_layout").upsert(withSIC, { onConflict: "id" }).select();
+
+    // If SIC columns don't exist yet, fall back to saving just nodes/edges
+    if (error?.code === "42703") {
+      ({ error } = await supabase.from("sic_diagrama_layout").upsert(base, { onConflict: "id" }).select());
+      if (!error) toast.info("Estado SIC no guardado — agrega columnas sic_numero, sic_steps, sic_step_index (jsonb/int) en Supabase");
+    }
+
     setSaving(false);
     if (error) {
       toast.error(`Error al guardar: ${error.message}`);
