@@ -20,6 +20,14 @@ import { X, Plus, Trash2, Check, Loader2, Users, Save, RotateCcw, Upload } from 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface SICHighlight {
+  sicNumero: string;
+  sec: number;
+  fecha: string;
+  nota: string;
+  person: string;
+}
+
 interface PasoData {
   label: string;
   sublabel?: string;
@@ -29,6 +37,7 @@ interface PasoData {
   color?: string;
   sec?: number;
   nota?: string;
+  highlighted?: SICHighlight;
 }
 
 // ─── Color palette ────────────────────────────────────────────────────────────
@@ -212,7 +221,7 @@ function NeonNodeBase({ data: d, selected, defaultColor, minWidth = 80, minHeigh
     />
     <NeonHandles color={color} />
     <div
-      className="sic-node w-full h-full relative flex flex-col items-center justify-center"
+      className={cn("sic-node w-full h-full relative flex flex-col items-center justify-center", d.highlighted && "sic-node-active")}
       style={{
         "--node-c": color,
         "--node-glow": glow,
@@ -746,121 +755,86 @@ function parseSICText(text: string): SICRow[] {
     .sort((a, b) => a.sec - b.sec);
 }
 
-function getActionConfig(accion: string): { type: "process" | "startend" | "decision" | "document" | "parallelogram" | "hexagon"; color: string } {
-  switch (accion.toLowerCase()) {
-    case "ejecutar": return { type: "process",  color: "#60a5fa" };
-    case "aprobar":  return { type: "process",  color: "#34d399" };
-    case "reenviar": return { type: "decision", color: "#f59e0b" };
-    case "reserva":  return { type: "startend", color: "#2dd4bf" };
-    default:         return { type: "process",  color: "#64748b" };
-  }
-}
-
-const SIC_COLS   = 4;
-const SIC_GAP_X  = 220;
-const SIC_GAP_Y  = 160;
-const SIC_NODE_W = 160;
-const SIC_NODE_H = 90;
-
-function buildSICNodes(rows: SICRow[]): Node[] {
-  return rows.map((row, i) => {
-    const { type, color } = getActionConfig(row.accion);
-    const col = i % SIC_COLS;
-    const r   = Math.floor(i / SIC_COLS);
-    return {
-      id:       `sic-${row.sec}`,
-      type,
-      position: { x: col * SIC_GAP_X + 60, y: r * SIC_GAP_Y + 60 },
-      width:    SIC_NODE_W,
-      height:   type === "decision" ? 100 : row.nota ? SIC_NODE_H + 20 : SIC_NODE_H,
-      data: {
-        label:        row.accion,
-        responsables: [row.person],
-        color,
-        createdAt:    row.fecha ? parseFechaSIC(row.fecha) : undefined,
-        sec:          row.sec,
-        nota:         row.nota || undefined,
-      },
-    };
-  });
-}
-
-function buildSICEdges(rows: SICRow[]): Edge[] {
-  return rows.slice(0, -1).map((row, i) => {
-    const next = rows[i + 1];
-    return {
-      id:     `sic-e-${row.sec}`,
-      source: `sic-${row.sec}`,
-      target: `sic-${next.sec}`,
-      data: {
-        sourceColor: getActionConfig(row.accion).color,
-        targetColor: getActionConfig(next.accion).color,
-      },
-    };
-  });
-}
-
 // ─── SIC Import modal ─────────────────────────────────────────────────────────
 
-function SICImportModal({ onImport, onClose }: {
-  onImport: (nodes: Node[], edges: Edge[], replace: boolean, sicNumero: string) => void;
+function SICImportModal({ nodes, onHighlight, onClose }: {
+  nodes: Node[];
+  onHighlight: (nodeId: string, highlight: SICHighlight) => void;
   onClose: () => void;
 }) {
-  const [text, setText]           = useState("");
-  const [sicNumero, setSicNumero] = useState("");
-  const [preview, setPreview]     = useState<SICRow[] | null>(null);
-  const [replace, setReplace]     = useState(true);
-  const [error, setError]         = useState("");
+  const [text, setText]     = useState("");
+  const [sicNumero, setNum] = useState("");
+  const [result, setResult] = useState<{ row: SICRow; nodeId: string | null; nodeLabel: string | null } | null>(null);
+  const [error, setError]   = useState("");
 
   const parse = () => {
     try {
       const rows = parseSICText(text);
-      if (rows.length === 0) { setError("No se encontraron pasos válidos. Verificá el formato."); return; }
-      setPreview(rows);
+      if (!rows.length) { setError("No se encontraron pasos válidos. Verificá el formato."); return; }
+      const last = rows[rows.length - 1];
+      let nodeId: string | null = null;
+      let nodeLabel: string | null = null;
+      for (const n of nodes) {
+        const d = n.data as PasoData | undefined;
+        if (d?.responsables?.includes(last.person)) {
+          nodeId = n.id;
+          nodeLabel = d.label ?? null;
+          break;
+        }
+      }
+      setResult({ row: last, nodeId, nodeLabel });
       setError("");
     } catch (e) {
-      setError(`Error al parsear: ${e instanceof Error ? e.message : String(e)}`);
+      setError(`Error: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
-  const doImport = () => {
-    if (!preview) return;
-    onImport(buildSICNodes(preview), buildSICEdges(preview), replace, sicNumero.trim());
+  const confirm = () => {
+    if (!result?.nodeId) return;
+    onHighlight(result.nodeId, {
+      sicNumero: sicNumero.trim(),
+      sec:    result.row.sec,
+      fecha:  result.row.fecha,
+      nota:   result.row.nota,
+      person: result.row.person,
+    });
     onClose();
   };
 
+  const found = result?.nodeId != null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-semibold text-foreground">Importar SIC desde texto</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Copiá la tabla desde SIGA y pegala acá</p>
+            <p className="text-sm font-semibold text-foreground">Ubicar SIC en diagrama</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Copiá la tabla de seguimiento desde SIGA</p>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors"><X className="w-4 h-4"/></button>
         </div>
 
-        {!preview ? (
+        {!result ? (
           <>
             <div className="space-y-1.5">
               <p className="text-xs text-muted-foreground font-medium">Número de SIC</p>
               <input
                 autoFocus
                 value={sicNumero}
-                onChange={e => setSicNumero(e.target.value)}
+                onChange={e => setNum(e.target.value)}
                 placeholder="Ej: SIC-2026-0042"
                 className="w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent"
               />
             </div>
             <div className="space-y-1.5">
               <p className="text-xs text-muted-foreground font-medium">Texto de la tabla SIGA</p>
-            <textarea
-              value={text}
-              onChange={e => { setText(e.target.value); setError(""); }}
-              placeholder={"Realizado Por\t\tSec\tFecha\tRev\tAcción\tNota\nCalandri, Roman Oscar\t\t12\t15/04/2026 11:59:58\t\tReserva\t\n..."}
-              rows={7}
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground/50 font-mono focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent resize-none"
-            />
+              <textarea
+                value={text}
+                onChange={e => { setText(e.target.value); setError(""); setResult(null); }}
+                placeholder={"Realizado Por\t\tSec\tFecha\tRev\tAcción\tNota\nCalandri, Roman Oscar\t\t12\t15/04/2026 11:59:58\t\tReserva\t\n..."}
+                rows={7}
+                className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground/50 font-mono focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent resize-none"
+              />
             </div>
             {error && <p className="text-xs text-destructive">{error}</p>}
             <button
@@ -868,63 +842,70 @@ function SICImportModal({ onImport, onClose }: {
               disabled={!text.trim()}
               className="w-full py-2 rounded-lg text-sm bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
             >
-              <Check className="w-3.5 h-3.5"/>Previsualizar
+              <Check className="w-3.5 h-3.5"/>Analizar
             </button>
           </>
         ) : (
           <>
             {sicNumero && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/8 border border-accent/20">
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: "rgba(45,212,191,.08)", border: "1px solid rgba(45,212,191,.25)" }}>
                 <span className="text-xs text-muted-foreground">SIC</span>
-                <span className="text-sm font-semibold text-accent">{sicNumero}</span>
+                <span className="text-sm font-semibold" style={{ color: "#2dd4bf" }}>{sicNumero}</span>
               </div>
             )}
-            <div className="rounded-lg border border-border overflow-hidden">
-              <div className="grid grid-cols-[24px_72px_1fr_80px] px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground bg-secondary/50 gap-2">
-                <span>#</span><span>Acción</span><span>Responsable</span><span>Fecha</span>
-              </div>
-              <div className="max-h-52 overflow-y-auto divide-y divide-border">
-                {preview.map(row => {
-                  const { color } = getActionConfig(row.accion);
-                  return (
-                    <div key={row.sec} className="grid grid-cols-[24px_72px_1fr_80px] items-center px-3 py-2 gap-2 text-xs">
-                      <span className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0" style={{ background: hexToRgba(color, 0.15), color, border: `1px solid ${hexToRgba(color, 0.4)}` }}>
-                        {row.sec}
-                      </span>
-                      <span className="font-semibold" style={{ color }}>{row.accion}</span>
-                      <span className="text-muted-foreground truncate">{row.person}</span>
-                      <span className="text-muted-foreground/60 text-[10px]">{row.fecha.split(" ")[0]}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              {preview.some(r => r.nota) && (
-                <div className="px-3 py-2 bg-secondary/30 border-t border-border">
-                  {preview.filter(r => r.nota).map(r => (
-                    <p key={r.sec} className="text-[9px] text-muted-foreground leading-relaxed">
-                      <span className="font-semibold text-foreground/60">Sec {r.sec}:</span> {r.nota}
-                    </p>
-                  ))}
+
+            <div className="rounded-lg border p-4 space-y-2" style={{
+              borderColor: found ? "rgba(52,211,153,.3)" : "rgba(239,68,68,.3)",
+              background:  found ? "rgba(52,211,153,.05)" : "rgba(239,68,68,.05)",
+            }}>
+              <span className="text-xs font-semibold" style={{ color: found ? "#34d399" : "#ef4444" }}>
+                {found ? "Nodo encontrado" : "Sin coincidencia"}
+              </span>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs mt-2">
+                <div>
+                  <p className="text-muted-foreground">Responsable</p>
+                  <p className="font-medium text-foreground mt-0.5">{result.row.person}</p>
                 </div>
+                <div>
+                  <p className="text-muted-foreground">Sec.</p>
+                  <p className="font-medium text-foreground mt-0.5">{result.row.sec}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Fecha</p>
+                  <p className="font-medium text-foreground mt-0.5">{result.row.fecha.split(" ")[0]}</p>
+                </div>
+                {result.row.accion && (
+                  <div>
+                    <p className="text-muted-foreground">Acción</p>
+                    <p className="font-medium text-foreground mt-0.5">{result.row.accion}</p>
+                  </div>
+                )}
+              </div>
+              {result.row.nota && (
+                <p className="text-[10px] text-muted-foreground italic border-t border-border/50 pt-2">{result.row.nota}</p>
+              )}
+              {found && (
+                <p className="text-[10px] mt-1" style={{ color: "#34d399" }}>
+                  → Nodo: <span className="font-semibold">{result.nodeLabel}</span>
+                </p>
+              )}
+              {!found && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Ningún nodo tiene <span className="font-medium text-foreground">{result.row.person}</span> como encargado.
+                </p>
               )}
             </div>
 
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <div
-                onClick={() => setReplace(v => !v)}
-                className={cn("w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors", replace ? "bg-accent border-accent" : "border-border")}
-              >
-                {replace && <Check className="w-2.5 h-2.5 text-accent-foreground"/>}
-              </div>
-              <span className="text-xs text-muted-foreground">Reemplazar el canvas actual</span>
-            </label>
-
             <div className="flex gap-2">
-              <button onClick={() => setPreview(null)} className="flex-1 py-2 rounded-lg text-sm border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+              <button onClick={() => setResult(null)} className="flex-1 py-2 rounded-lg text-sm border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
                 ← Editar texto
               </button>
-              <button onClick={doImport} className="flex-1 py-2 rounded-lg text-sm bg-accent text-accent-foreground hover:bg-accent/90 flex items-center justify-center gap-2 transition-colors">
-                <Upload className="w-3.5 h-3.5"/>Importar {preview.length} pasos
+              <button
+                onClick={confirm}
+                disabled={!found}
+                className="flex-1 py-2 rounded-lg text-sm bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-40 flex items-center justify-center gap-2 transition-colors"
+              >
+                <Check className="w-3.5 h-3.5"/>Resaltar nodo
               </button>
             </div>
           </>
@@ -1060,16 +1041,29 @@ function SicDiagramaInner() {
 
   const resetLayout = () => { setNodes([]); setEdges([]); };
 
-  const handleImport = useCallback((newNodes: Node[], newEdges: Edge[], replace: boolean, numero: string) => {
-    if (replace) {
-      setNodes(newNodes);
-      setEdges(newEdges);
-    } else {
-      setNodes(ns => [...ns, ...newNodes]);
-      setEdges(es => [...es, ...newEdges]);
-    }
-    if (numero) setSicNumero(numero);
-  }, [setNodes, setEdges]);
+  const handleSICHighlight = useCallback((nodeId: string, highlight: SICHighlight) => {
+    setNodes(ns => ns.map(n => {
+      const d = n.data as PasoData;
+      if (n.id === nodeId) return { ...n, data: { ...d, highlighted: highlight } };
+      if (d.highlighted) {
+        const newData = { ...d };
+        delete newData.highlighted;
+        return { ...n, data: newData };
+      }
+      return n;
+    }));
+    if (highlight.sicNumero) setSicNumero(highlight.sicNumero);
+  }, [setNodes]);
+
+  const clearHighlight = useCallback(() => {
+    setNodes(ns => ns.map(n => {
+      const d = n.data as PasoData;
+      if (!d.highlighted) return n;
+      const newData = { ...d };
+      delete newData.highlighted;
+      return { ...n, data: newData };
+    }));
+  }, [setNodes]);
 
   const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -1084,6 +1078,9 @@ function SicDiagramaInner() {
     const flowPosition = screenToFlowPosition({ x: event.clientX - rect.left, y: event.clientY - rect.top });
     setNodes(ns => [...ns, createNewNode(shapeType, flowPosition.x, flowPosition.y)]);
   }, [screenToFlowPosition, setNodes]);
+
+  const highlightedNode = nodes.find(n => (n.data as PasoData).highlighted != null);
+  const hl = (highlightedNode?.data as PasoData | undefined)?.highlighted;
 
   return (
     <div className="space-y-4">
@@ -1101,6 +1098,15 @@ function SicDiagramaInner() {
           <p className="text-sm text-muted-foreground mt-1">Proceso SIC – SIGA · doble clic para editar un objeto</p>
         </div>
         <div className="flex items-center gap-2">
+          {highlightedNode && (
+            <button
+              onClick={clearHighlight}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
+              style={{ borderColor: "rgba(239,68,68,.4)", color: "#ef4444", background: "rgba(239,68,68,.08)" }}
+            >
+              <X className="w-3 h-3"/>Limpiar resaltado
+            </button>
+          )}
           <button
             onClick={() => setImportOpen(true)}
             className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
@@ -1128,10 +1134,16 @@ function SicDiagramaInner() {
 
       {/* Status bar */}
       <div className="bg-card border border-border rounded-xl px-5 py-3 grid grid-cols-2 sm:grid-cols-5 gap-4 text-xs">
-        {[["SIC","—"],["Estado actual","—"],["Responsable","—"],["Tiempo en paso","—"],["Tiempo total","—"]].map(([k, v]) => (
+        {[
+          ["SIC",           sicNumero || "—"],
+          ["Estado actual", hl ? (highlightedNode?.data as PasoData).label : "—"],
+          ["Responsable",   hl?.person  ?? "—"],
+          ["Sec.",          hl ? String(hl.sec) : "—"],
+          ["Nota",          hl?.nota    || "—"],
+        ].map(([k, v]) => (
           <div key={k}>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{k}</p>
-            <p className="font-medium text-foreground mt-0.5">{v}</p>
+            <p className="font-medium text-foreground mt-0.5 truncate" title={v}>{v}</p>
           </div>
         ))}
       </div>
@@ -1268,7 +1280,8 @@ function SicDiagramaInner() {
 
       {importOpen && (
         <SICImportModal
-          onImport={handleImport}
+          nodes={nodes}
+          onHighlight={handleSICHighlight}
           onClose={() => setImportOpen(false)}
         />
       )}
