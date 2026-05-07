@@ -132,3 +132,45 @@
     @apply bg-transparent text-foreground;
   }
 }
+
+/* SIC flow diagram animations */
+@keyframes sic-dash { to { stroke-dashoffset: -24 } }
+@keyframes sic-fadeup { from { opacity: 0; transform: translateY(14px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes sic-hpulse { 0% { transform: scale(.8); opacity: .8 } 100% { transform: scale(1.6); opacity: 0 } }
+@keyframes sic-pulse { 0%,100% { opacity:1 } 50% { opacity:.35 } }
+@keyframes sic-drift { to { transform: translate3d(-300px,-150px,0) } }
+
+.sic-node { animation: sic-fadeup .5s cubic-bezier(.2,.7,.2,1) both }
+
+/* Handle pulse rings */
+.sic-handle-ring::after {
+  content: ""; position: absolute; inset: -6px; border-radius: 50%;
+  border: 1px solid currentColor; opacity: 0; transform: scale(.7);
+  transition: .25s; pointer-events: none;
+}
+.react-flow__node:hover .sic-handle-ring::after { opacity: .6; transform: scale(1); }
+.sic-handle-ring:hover::after { opacity: 1 !important; transform: scale(1.2) !important; animation: sic-hpulse 1.4s ease-out infinite; }
+
+/* Neon SVG shapes */
+.sic-node-svg {
+  filter: drop-shadow(0 0 12px var(--node-glow, rgba(52,211,153,.45)));
+  transition: filter .3s;
+  overflow: visible;
+}
+.react-flow__node:hover .sic-node-svg { filter: drop-shadow(0 0 22px var(--node-glow, rgba(52,211,153,.45))); }
+.sic-node-svg path,
+.sic-node-svg polygon,
+.sic-node-svg rect,
+.sic-node-svg ellipse {
+  fill: var(--node-fill, rgba(52,211,153,.05));
+  stroke: var(--node-c, #34d399);
+  stroke-width: 1.5;
+  transition: fill .3s;
+}
+.react-flow__node:hover .sic-node-svg path,
+.react-flow__node:hover .sic-node-svg polygon,
+.react-flow__node:hover .sic-node-svg rect,
+.react-flow__node:hover .sic-node-svg ellipse { fill: var(--node-fill-hover, rgba(52,211,153,.10)); }
+
+/* Animated dashed edge */
+.sic-edge-flow { animation: sic-dash 1.6s linear infinite; }
