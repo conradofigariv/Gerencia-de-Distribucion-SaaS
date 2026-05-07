@@ -98,7 +98,7 @@ export function ServiciosCargaSection() {
 
   // Auth / role
   const [userId,    setUserId]    = useState<string | null>(null);
-  const [canConfig, setCanConfig] = useState(false);
+  const [canConfig, setCanConfig] = useState(true); // default true; hidden only if confirmed non-editor
 
   // Reminder config
   const [configOpen,      setConfigOpen]      = useState(false);
@@ -119,8 +119,9 @@ export function ServiciosCargaSection() {
         .select("nivel_acceso")
         .eq("id", user.id)
         .single();
-      if (profile?.nivel_acceso === "administrador" || profile?.nivel_acceso === "editor") {
-        setCanConfig(true);
+      // Only hide the button if we explicitly know the user is a visualizador
+      if (profile?.nivel_acceso === "visualizador") {
+        setCanConfig(false);
       }
     })();
   }, []);
@@ -354,6 +355,97 @@ export function ServiciosCargaSection() {
   const colCount = (t: string) => { const n = splitCol(t).length; return n > 0 ? `${n} fila${n !== 1 ? "s" : ""}` : ""; };
 
   // ════════════════════════════════════════════════════════════════
+  // REMINDER DIALOG (shared between both steps)
+  // ════════════════════════════════════════════════════════════════
+  const reminderDialog = configOpen && (
+    <div
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onClick={() => setConfigOpen(false)}
+    >
+      <div
+        className="bg-popover border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <BellRing className="w-4 h-4 text-accent" />
+            <span className="text-sm font-semibold text-foreground">Recordatorio — Crear seguimiento</span>
+          </div>
+          <button
+            onClick={() => setConfigOpen(false)}
+            className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {loadingConfig ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="p-5 space-y-4">
+            {reminderLastUpd ? (
+              <p className="text-xs text-muted-foreground">
+                Último seguimiento guardado:{" "}
+                {new Date(reminderLastUpd).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Sin seguimiento registrado</p>
+            )}
+            <div className="flex flex-col gap-3 p-4 rounded-xl bg-secondary/30 border border-border">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-sm font-medium text-foreground">Frecuencia</span>
+                <div className="flex flex-col items-end gap-2">
+                  <div className="flex items-center gap-1">
+                    {[1, 7, 14, 30].map(d => (
+                      <button
+                        key={d}
+                        onClick={() => setReminderFreq(d)}
+                        className={cn(
+                          "px-2 py-0.5 text-xs rounded font-medium transition-all",
+                          reminderFreq === d
+                            ? "bg-accent text-accent-foreground"
+                            : "bg-secondary text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        {d}d
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1 bg-secondary rounded-lg px-2 py-1">
+                    <button onClick={() => setReminderFreq(v => Math.max(1, v - 1))}
+                      className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-foreground rounded transition-colors font-bold text-sm">−</button>
+                    <span className="w-9 text-center text-sm font-semibold tabular-nums">{reminderFreq}d</span>
+                    <button onClick={() => setReminderFreq(v => Math.min(365, v + 1))}
+                      className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-foreground rounded transition-colors font-bold text-sm">+</button>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-sm font-medium text-foreground">Hora</span>
+                <input type="time" value={reminderTime} onChange={e => setReminderTime(e.target.value)}
+                  className="h-8 px-2 rounded-lg bg-secondary border border-border text-sm text-foreground tabular-nums focus:outline-none focus:ring-2 focus:ring-ring/20" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
+          <button onClick={() => setConfigOpen(false)}
+            className="h-8 px-4 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
+            Cancelar
+          </button>
+          <button onClick={saveConfig} disabled={savingConfig || loadingConfig}
+            className="h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-all">
+            {savingConfig ? "Guardando..." : "Guardar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ════════════════════════════════════════════════════════════════
   // PREVIEW STEP
   // ════════════════════════════════════════════════════════════════
   if (step === "preview") {
@@ -469,116 +561,6 @@ export function ServiciosCargaSection() {
   // ════════════════════════════════════════════════════════════════
   // INPUT STEP
   // ════════════════════════════════════════════════════════════════
-
-  const reminderDialog = configOpen && (
-    <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      onClick={() => setConfigOpen(false)}
-    >
-      <div
-        className="bg-popover border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <BellRing className="w-4 h-4 text-accent" />
-            <span className="text-sm font-semibold text-foreground">Recordatorio — Crear seguimiento</span>
-          </div>
-          <button
-            onClick={() => setConfigOpen(false)}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {loadingConfig ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <div className="p-5 space-y-4">
-            {reminderLastUpd ? (
-              <p className="text-xs text-muted-foreground">
-                Último seguimiento guardado:{" "}
-                {new Date(reminderLastUpd).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">Sin seguimiento registrado</p>
-            )}
-
-            <div className="flex flex-col gap-3 p-4 rounded-xl bg-secondary/30 border border-border">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm font-medium text-foreground">Frecuencia</span>
-                <div className="flex flex-col items-end gap-2">
-                  {/* Presets */}
-                  <div className="flex items-center gap-1">
-                    {[1, 7, 14, 30].map(d => (
-                      <button
-                        key={d}
-                        onClick={() => setReminderFreq(d)}
-                        className={cn(
-                          "px-2 py-0.5 text-xs rounded font-medium transition-all",
-                          reminderFreq === d
-                            ? "bg-accent text-accent-foreground"
-                            : "bg-secondary text-muted-foreground hover:text-foreground"
-                        )}
-                      >
-                        {d}d
-                      </button>
-                    ))}
-                  </div>
-                  {/* Stepper */}
-                  <div className="flex items-center gap-1 bg-secondary rounded-lg px-2 py-1">
-                    <button
-                      onClick={() => setReminderFreq(v => Math.max(1, v - 1))}
-                      className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-foreground rounded transition-colors font-bold text-sm"
-                    >
-                      −
-                    </button>
-                    <span className="w-9 text-center text-sm font-semibold tabular-nums">{reminderFreq}d</span>
-                    <button
-                      onClick={() => setReminderFreq(v => Math.min(365, v + 1))}
-                      className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-foreground rounded transition-colors font-bold text-sm"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm font-medium text-foreground">Hora</span>
-                <input
-                  type="time"
-                  value={reminderTime}
-                  onChange={e => setReminderTime(e.target.value)}
-                  className="h-8 px-2 rounded-lg bg-secondary border border-border text-sm text-foreground tabular-nums focus:outline-none focus:ring-2 focus:ring-ring/20"
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-          <button
-            onClick={() => setConfigOpen(false)}
-            className="h-8 px-4 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={saveConfig}
-            disabled={savingConfig || loadingConfig}
-            className="h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-all"
-          >
-            {savingConfig ? "Guardando..." : "Guardar"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
   return (
     <>
     <div className="space-y-5">

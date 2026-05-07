@@ -163,7 +163,7 @@ export function ServiciosPlanillasSection() {
 
   // Auth / role
   const [userId,    setUserId]    = useState<string | null>(null);
-  const [canConfig, setCanConfig] = useState(false);
+  const [canConfig, setCanConfig] = useState(true);
 
   // Reminder config dialog
   const [configOpen,    setConfigOpen]    = useState(false);
@@ -193,11 +193,8 @@ export function ServiciosPlanillasSection() {
         .select("nivel_acceso")
         .eq("id", user.id)
         .single();
-      if (
-        profile?.nivel_acceso === "administrador" ||
-        profile?.nivel_acceso === "editor"
-      ) {
-        setCanConfig(true);
+      if (profile?.nivel_acceso === "visualizador") {
+        setCanConfig(false);
       }
     })();
   }, []);
