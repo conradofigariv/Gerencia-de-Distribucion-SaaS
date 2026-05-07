@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, DragEvent, ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, DragEvent, ReactNode, Component } from "react";
 import {
   ReactFlow,
   Background,
@@ -992,10 +992,32 @@ function SicDiagramaInner() {
 
 // ─── Wrapper with ReactFlowProvider ──────────────────────────────────────────
 
+class SicErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="p-6 rounded-xl border border-destructive/40 bg-destructive/10 text-sm space-y-2">
+          <p className="font-semibold text-destructive">Error en el diagrama</p>
+          <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-all">{this.state.error.message}</pre>
+          <pre className="text-xs text-muted-foreground/60 whitespace-pre-wrap break-all">{this.state.error.stack?.split("\n").slice(0,5).join("\n")}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function SicDiagramaSection() {
   return (
-    <ReactFlowProvider>
-      <SicDiagramaInner />
-    </ReactFlowProvider>
+    <SicErrorBoundary>
+      <ReactFlowProvider>
+        <SicDiagramaInner />
+      </ReactFlowProvider>
+    </SicErrorBoundary>
   );
 }
