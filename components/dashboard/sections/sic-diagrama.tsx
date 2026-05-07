@@ -904,7 +904,7 @@ function SicDiagramaInner() {
           ref={containerRef}
           className="flex-1 bg-card border border-border rounded-xl overflow-hidden relative"
           style={{
-            height: 580,
+            height: "calc(100vh - 220px)",
             "--xy-edge-stroke": "#94a3b8",
             "--xy-edge-stroke-width": "1.5",
             "--xy-controls-button-background-color": "transparent",
