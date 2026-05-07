@@ -2,10 +2,11 @@
 
 import { cn } from "@/lib/utils";
 import type { Section } from "@/app/page";
-import { Bell, Search, Calendar } from "lucide-react";
+import { Search, Calendar } from "lucide-react";
 import { useState } from "react";
 import { BgSelector } from "@/components/bg-selector";
 import type { BgEffect } from "@/components/canvas-background";
+import { ReminderBell } from "@/components/dashboard/reminder-bell";
 
 interface HeaderProps {
   activeSection: Section;
@@ -69,10 +70,7 @@ export function Header({ activeSection, bgEffect = "pipeline", onBgChange }: Hea
         {onBgChange && <BgSelector value={bgEffect} onChange={onBgChange} />}
 
         {/* Notifications */}
-        <button className="relative w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all duration-200">
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-accent rounded-full animate-pulse" />
-        </button>
+        <ReminderBell />
 
         {/* User avatar */}
         <button className="w-9 h-9 rounded-lg overflow-hidden bg-secondary ring-2 ring-transparent hover:ring-accent/50 transition-all duration-200">

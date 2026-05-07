@@ -6,8 +6,9 @@ import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import {
   UploadCloud, Loader2, Trash2, CheckCircle2,
-  AlertTriangle, RefreshCw, Database,
+  AlertTriangle, RefreshCw, Database, BellRing, X,
 } from "lucide-react";
+import { markUpdated, fetchReminders, upsertFrequency } from "@/lib/reminders";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,12 @@ interface PlanillaState {
 }
 
 const INIT: PlanillaState = { count: 0, uploadedAt: null, loading: true, uploading: false };
+
+const REMINDER_DEFS = [
+  { key: "planillas-OP",         planilla: "OP" as PlanillaType,         label: "OP",         descripcion: "Órdenes de compra",      accentClass: "text-blue-400" },
+  { key: "planillas-QW",         planilla: "QW" as PlanillaType,         label: "QW",         descripcion: "Expedientes / SCs",       accentClass: "text-purple-400" },
+  { key: "planillas-MATRICULAS", planilla: "MATRICULAS" as PlanillaType, label: "MATRICULAS", descripcion: "Catálogo de materiales",  accentClass: "text-emerald-400" },
+] as const;
 
 // ─── Card ─────────────────────────────────────────────────────────────────────
 
@@ -154,8 +161,43 @@ export function ServiciosPlanillasSection() {
     MATRICULAS: { ...INIT },
   });
 
+  // Auth / role
+  const [userId,    setUserId]    = useState<string | null>(null);
+  const [canConfig, setCanConfig] = useState(false);
+
+  // Reminder config dialog
+  const [configOpen,    setConfigOpen]    = useState(false);
+  const [loadingConfig, setLoadingConfig] = useState(false);
+  const [savingConfig,  setSavingConfig]  = useState(false);
+  const [reminderFreq, setReminderFreq] = useState<Record<string, number>>({
+    "planillas-OP": 7, "planillas-QW": 7, "planillas-MATRICULAS": 7,
+  });
+  const [reminderLastUpdate, setReminderLastUpdate] = useState<Record<string, string | null>>({
+    "planillas-OP": null, "planillas-QW": null, "planillas-MATRICULAS": null,
+  });
+
   const setS = (tipo: PlanillaType, u: Partial<PlanillaState>) =>
     setStates(prev => ({ ...prev, [tipo]: { ...prev[tipo], ...u } }));
+
+  // Fetch user + role on mount
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      setUserId(user.id);
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("nivel_acceso")
+        .eq("id", user.id)
+        .single();
+      if (
+        profile?.nivel_acceso === "administrador" ||
+        profile?.nivel_acceso === "editor"
+      ) {
+        setCanConfig(true);
+      }
+    })();
+  }, []);
 
   const loadStatus = useCallback(async () => {
     setStates(prev => ({
@@ -184,6 +226,43 @@ export function ServiciosPlanillasSection() {
   }, []);
 
   useEffect(() => { loadStatus(); }, [loadStatus]);
+
+  // Open config dialog and load current frequencies
+  const openConfig = async () => {
+    setConfigOpen(true);
+    setLoadingConfig(true);
+    try {
+      const cfgs = await fetchReminders(REMINDER_DEFS.map(d => d.key));
+      const freq: Record<string, number> = { "planillas-OP": 7, "planillas-QW": 7, "planillas-MATRICULAS": 7 };
+      const lastUp: Record<string, string | null> = { "planillas-OP": null, "planillas-QW": null, "planillas-MATRICULAS": null };
+      for (const cfg of cfgs) {
+        freq[cfg.reminder_key]   = cfg.frequency_days;
+        lastUp[cfg.reminder_key] = cfg.last_updated_at;
+      }
+      setReminderFreq(freq);
+      setReminderLastUpdate(lastUp);
+    } catch {
+      toast.error("No se pudieron cargar los recordatorios");
+    } finally {
+      setLoadingConfig(false);
+    }
+  };
+
+  const saveConfig = async () => {
+    if (!userId) return;
+    setSavingConfig(true);
+    try {
+      await Promise.all(
+        REMINDER_DEFS.map(d => upsertFrequency(d.key, reminderFreq[d.key] ?? 7, userId))
+      );
+      toast.success("Recordatorios guardados");
+      setConfigOpen(false);
+    } catch (e) {
+      toast.error(`Error al guardar: ${e instanceof Error ? e.message : "Error"}`);
+    } finally {
+      setSavingConfig(false);
+    }
+  };
 
   const uploadOP = async (file: File) => {
     setS("OP", { uploading: true });
@@ -222,6 +301,7 @@ export function ServiciosPlanillasSection() {
         if (error) { toast.error(`Error insertando OP: ${error.message}`); return; }
       }
       toast.success(`OP: ${mapped.length.toLocaleString("es-AR")} filas guardadas`);
+      if (userId) await markUpdated("planillas-OP", userId).catch(() => {});
     } catch (e) {
       toast.error(`Error OP: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
@@ -274,6 +354,7 @@ export function ServiciosPlanillasSection() {
         if (error) { toast.error(`Error insertando QW: ${error.message}`); return; }
       }
       toast.success(`QW: ${mapped.length.toLocaleString("es-AR")} filas guardadas`);
+      if (userId) await markUpdated("planillas-QW", userId).catch(() => {});
     } catch (e) {
       toast.error(`Error QW: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
@@ -295,7 +376,6 @@ export function ServiciosPlanillasSection() {
         mat_serv:      str(r["Mat/Serv"]             ?? r["Mat./serv."]    ?? r["MAT_SERV"] ?? ""),
       })).filter(r => r.articulo);
       if (!rawMapped.length) { toast.error("No se encontró columna 'Artículo'"); return; }
-      // Deduplicar por artículo
       const dedupMap = new Map<string, typeof rawMapped[0]>();
       for (const r of rawMapped) dedupMap.set(r.articulo, r);
       const mapped = [...dedupMap.values()];
@@ -306,6 +386,7 @@ export function ServiciosPlanillasSection() {
         if (error) { toast.error(`Error insertando MATRICULAS: ${error.message}`); return; }
       }
       toast.success(`MATRICULAS: ${mapped.length.toLocaleString("es-AR")} filas guardadas`);
+      if (userId) await markUpdated("planillas-MATRICULAS", userId).catch(() => {});
     } catch (e) {
       toast.error(`Error MATRICULAS: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
@@ -324,9 +405,9 @@ export function ServiciosPlanillasSection() {
   };
 
   const handleUpload = (tipo: PlanillaType, file: File) => {
-    if (tipo === "OP")        uploadOP(file);
-    else if (tipo === "QW")   uploadQW(file);
-    else                      uploadMatriculas(file);
+    if (tipo === "OP")      uploadOP(file);
+    else if (tipo === "QW") uploadQW(file);
+    else                    uploadMatriculas(file);
   };
 
   const handleClear = (tipo: PlanillaType) => {
@@ -341,10 +422,20 @@ export function ServiciosPlanillasSection() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">Subí las planillas base — quedan persistidas en Supabase.</p>
-        <button onClick={loadStatus}
-          className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all">
-          <RefreshCw className="w-3.5 h-3.5" />Actualizar
-        </button>
+        <div className="flex items-center gap-2">
+          {canConfig && (
+            <button
+              onClick={openConfig}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all"
+            >
+              <BellRing className="w-3.5 h-3.5" />Recordatorios
+            </button>
+          )}
+          <button onClick={loadStatus}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all">
+            <RefreshCw className="w-3.5 h-3.5" />Actualizar
+          </button>
+        </div>
       </div>
 
       {allLoaded && allReady && (
@@ -363,6 +454,124 @@ export function ServiciosPlanillasSection() {
         <PlanillaCard tipo="QW"         label="QW"         descripcion="Expedientes / SCs"        accentClass="text-purple-400"  state={states.QW}         onUpload={f => handleUpload("QW",         f)} onClear={() => handleClear("QW")}         />
         <PlanillaCard tipo="MATRICULAS" label="MATRICULAS" descripcion="Catálogo de materiales"   accentClass="text-emerald-400" state={states.MATRICULAS} onUpload={f => handleUpload("MATRICULAS", f)} onClear={() => handleClear("MATRICULAS")} />
       </div>
+
+      {/* Reminder config dialog */}
+      {configOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setConfigOpen(false)}
+        >
+          <div
+            className="bg-popover border border-border rounded-xl shadow-2xl w-full max-w-lg overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <BellRing className="w-4 h-4 text-accent" />
+                <span className="text-sm font-semibold text-foreground">Configurar recordatorios</span>
+              </div>
+              <button
+                onClick={() => setConfigOpen(false)}
+                className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            {loadingConfig ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="p-5 space-y-3">
+                {REMINDER_DEFS.map(({ key, label, descripcion, accentClass }) => (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between gap-4 p-4 rounded-xl bg-secondary/30 border border-border"
+                  >
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className={cn("text-xs font-bold uppercase tracking-widest mb-0.5", accentClass)}>
+                        {label}
+                      </div>
+                      <p className="text-sm font-medium text-foreground">{descripcion}</p>
+                      {reminderLastUpdate[key] ? (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Última carga:{" "}
+                          {new Date(reminderLastUpdate[key]!).toLocaleString("es-AR", {
+                            dateStyle: "short",
+                            timeStyle: "short",
+                          })}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground mt-0.5">Sin carga registrada</p>
+                      )}
+                    </div>
+
+                    {/* Controls */}
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      {/* Preset buttons */}
+                      <div className="flex items-center gap-1">
+                        {[1, 7, 14, 30].map(d => (
+                          <button
+                            key={d}
+                            onClick={() => setReminderFreq(p => ({ ...p, [key]: d }))}
+                            className={cn(
+                              "px-2 py-0.5 text-xs rounded font-medium transition-all",
+                              reminderFreq[key] === d
+                                ? "bg-accent text-accent-foreground"
+                                : "bg-secondary text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            {d}d
+                          </button>
+                        ))}
+                      </div>
+                      {/* Stepper */}
+                      <div className="flex items-center gap-1 bg-secondary rounded-lg px-2 py-1">
+                        <button
+                          onClick={() => setReminderFreq(p => ({ ...p, [key]: Math.max(1, (p[key] ?? 7) - 1) }))}
+                          className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-foreground rounded transition-colors font-bold text-sm"
+                        >
+                          −
+                        </button>
+                        <span className="w-9 text-center text-sm font-semibold tabular-nums">
+                          {reminderFreq[key] ?? 7}d
+                        </span>
+                        <button
+                          onClick={() => setReminderFreq(p => ({ ...p, [key]: Math.min(365, (p[key] ?? 7) + 1) }))}
+                          className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-foreground rounded transition-colors font-bold text-sm"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
+              <button
+                onClick={() => setConfigOpen(false)}
+                className="h-8 px-4 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={saveConfig}
+                disabled={savingConfig || loadingConfig}
+                className="h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-all"
+              >
+                {savingConfig ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
