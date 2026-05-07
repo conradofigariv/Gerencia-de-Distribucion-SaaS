@@ -894,7 +894,7 @@ function SicDiagramaInner() {
       {/* Diagram with sidebar */}
       <div className="flex gap-4">
         {/* Shapes sidebar */}
-        <div className="w-44 shrink-0 bg-card border border-border rounded-xl px-4 py-4 overflow-y-auto max-h-[580px] [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }}>
+        <div className="w-44 shrink-0 bg-card border border-border rounded-xl px-4 py-4 overflow-y-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none", height: "calc(100vh - 220px)" }}>
           <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-4">Formas</p>
           <ShapePalette />
         </div>
