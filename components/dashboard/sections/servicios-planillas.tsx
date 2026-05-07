@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
@@ -456,10 +457,10 @@ export function ServiciosPlanillasSection() {
         <PlanillaCard tipo="MATRICULAS" label="MATRICULAS" descripcion="Catálogo de materiales"   accentClass="text-emerald-400" state={states.MATRICULAS} onUpload={f => handleUpload("MATRICULAS", f)} onClear={() => handleClear("MATRICULAS")} />
       </div>
 
-      {/* Reminder config dialog */}
-      {configOpen && (
+      {/* Reminder config dialog — rendered via portal to escape stacking context */}
+      {configOpen && createPortal(
         <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
           onClick={() => setConfigOpen(false)}
         >
           <div
@@ -578,7 +579,8 @@ export function ServiciosPlanillasSection() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

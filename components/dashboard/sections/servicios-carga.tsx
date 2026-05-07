@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
@@ -355,9 +356,9 @@ export function ServiciosCargaSection() {
   // ════════════════════════════════════════════════════════════════
   // REMINDER DIALOG (shared between both steps)
   // ════════════════════════════════════════════════════════════════
-  const reminderDialog = configOpen && (
+  const reminderDialog = configOpen && createPortal(
     <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
       onClick={() => setConfigOpen(false)}
     >
       <div
@@ -440,7 +441,8 @@ export function ServiciosCargaSection() {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 
   // ════════════════════════════════════════════════════════════════
