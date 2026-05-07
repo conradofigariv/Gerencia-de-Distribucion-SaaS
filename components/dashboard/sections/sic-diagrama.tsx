@@ -209,7 +209,6 @@ function NeonNodeBase({ data: d, selected, defaultColor, minWidth = 80, minHeigh
   const glow    = getGlow(color);
   const fill    = hexToRgba(color, 0.06);
   const fillHov = hexToRgba(color, 0.12);
-  const days    = getDays(d.createdAt);
   const owner   = d.responsables?.[0];
   const initials = owner ? owner.split(" ").map(s => s[0]).slice(0, 2).join("").toUpperCase() : null;
 
@@ -265,13 +264,6 @@ function NeonNodeBase({ data: d, selected, defaultColor, minWidth = 80, minHeigh
         >
           {d.label}
         </span>
-
-        {days && (
-          <span className="flex items-center gap-1 text-[9px] font-medium uppercase tracking-[.06em]" style={{ color: "#8a8fa6" }}>
-            <span style={{ width: 4, height: 4, borderRadius: "50%", background: color, boxShadow: `0 0 6px ${color}`, display: "inline-block", flexShrink: 0 }} />
-            {days}
-          </span>
-        )}
 
         {owner && (
           <div
