@@ -310,16 +310,14 @@ export function TransformadoresCargaSection() {
     <div className="space-y-4">
 
       {/* ── Top bar ── */}
-      {canConfig && (
-        <div className="flex items-center justify-end">
-          <button
-            onClick={() => setConfigOpen(true)}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all"
-          >
-            <BellRing className="w-3.5 h-3.5" /> Recordatorio
-          </button>
-        </div>
-      )}
+      <div className="flex items-center justify-end">
+        <button
+          onClick={() => setConfigOpen(true)}
+          className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all"
+        >
+          <BellRing className="w-3.5 h-3.5" /> Recordatorio
+        </button>
+      </div>
 
       {/* ── Drop zone ── */}
       {archivo ? (

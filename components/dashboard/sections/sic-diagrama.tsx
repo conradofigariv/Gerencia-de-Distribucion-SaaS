@@ -16,9 +16,17 @@ import "@xyflow/react/dist/style.css";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { X, Plus, Trash2, Check, Loader2, Users, Save, RotateCcw } from "lucide-react";
+import { X, Plus, Trash2, Check, Loader2, Users, Save, RotateCcw, Upload } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface SICHighlight {
+  sicNumero: string;
+  sec: number;
+  fecha: string;
+  nota: string;
+  person: string;
+}
 
 interface PasoData {
   label: string;
@@ -27,6 +35,9 @@ interface PasoData {
   responsables?: string[];
   createdAt?: string;
   color?: string;
+  sec?: number;
+  nota?: string;
+  highlighted?: SICHighlight;
 }
 
 // ─── Color palette ────────────────────────────────────────────────────────────
@@ -210,7 +221,7 @@ function NeonNodeBase({ data: d, selected, defaultColor, minWidth = 80, minHeigh
     />
     <NeonHandles color={color} />
     <div
-      className="sic-node w-full h-full relative flex flex-col items-center justify-center"
+      className={cn("sic-node w-full h-full relative flex flex-col items-center justify-center", d.highlighted && "sic-node-active")}
       style={{
         "--node-c": color,
         "--node-glow": glow,
@@ -278,7 +289,23 @@ function NeonNodeBase({ data: d, selected, defaultColor, minWidth = 80, minHeigh
             <span className="truncate max-w-[80px]">{owner}</span>
           </div>
         )}
+
+        {d.nota && (
+          <div className="text-[8px] italic leading-tight text-center mt-0.5 px-2 w-full" style={{ color, opacity: 0.55 }}>
+            {d.nota.length > 50 ? d.nota.slice(0, 47) + "…" : d.nota}
+          </div>
+        )}
       </div>
+
+      {/* Sec number badge (top-right) */}
+      {d.sec != null && (
+        <div
+          className="absolute top-0 right-3 z-20 w-[22px] h-[22px] rounded-[7px] flex items-center justify-center text-[9px] font-bold -translate-y-1/2"
+          style={{ background: "rgba(7,9,18,.95)", border: `1px solid ${color}`, color, boxShadow: `0 0 8px ${glow}` }}
+        >
+          {d.sec}
+        </div>
+      )}
     </div>
   </>);
 }
@@ -696,6 +723,198 @@ function EdgeEditModal({ edgeId, initialType, initialLabel, onSave, onClose }: E
   );
 }
 
+// ─── SIC text parser ─────────────────────────────────────────────────────────
+// Formato: Realizado Por \t\t Sec \t Fecha \t Rev \t Acción \t Nota
+
+interface SICRow { person: string; sec: number; fecha: string; accion: string; nota: string }
+
+function parseFechaSIC(s: string): string {
+  // "dd/mm/yyyy hh:mm:ss" → ISO
+  const [datePart, timePart = "00:00:00"] = s.trim().split(" ");
+  const [d, m, y] = datePart.split("/");
+  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}T${timePart}`;
+}
+
+function parseSICText(text: string): SICRow[] {
+  return text
+    .trim()
+    .split("\n")
+    .map(l => l.split("\t"))
+    .filter(c => {
+      const name = c[0]?.trim();
+      const sec  = parseInt(c[2]?.trim() ?? "");
+      return name && name !== "Realizado Por" && !isNaN(sec);
+    })
+    .map(c => ({
+      person: c[0].trim(),
+      sec:    parseInt(c[2].trim()),
+      fecha:  c[3]?.trim() ?? "",
+      accion: c[5]?.trim() ?? "",
+      nota:   c[6]?.trim() ?? "",
+    }))
+    .sort((a, b) => a.sec - b.sec);
+}
+
+// ─── SIC Import modal ─────────────────────────────────────────────────────────
+
+function SICImportModal({ nodes, onHighlight, onClose }: {
+  nodes: Node[];
+  onHighlight: (nodeId: string, highlight: SICHighlight) => void;
+  onClose: () => void;
+}) {
+  const [text, setText]     = useState("");
+  const [sicNumero, setNum] = useState("");
+  const [result, setResult] = useState<{ row: SICRow; nodeId: string | null; nodeLabel: string | null } | null>(null);
+  const [error, setError]   = useState("");
+
+  const parse = () => {
+    try {
+      const rows = parseSICText(text);
+      if (!rows.length) { setError("No se encontraron pasos válidos. Verificá el formato."); return; }
+      const last = rows[rows.length - 1];
+      let nodeId: string | null = null;
+      let nodeLabel: string | null = null;
+      for (const n of nodes) {
+        const d = n.data as PasoData | undefined;
+        if (d?.responsables?.includes(last.person)) {
+          nodeId = n.id;
+          nodeLabel = d.label ?? null;
+          break;
+        }
+      }
+      setResult({ row: last, nodeId, nodeLabel });
+      setError("");
+    } catch (e) {
+      setError(`Error: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const confirm = () => {
+    if (!result?.nodeId) return;
+    onHighlight(result.nodeId, {
+      sicNumero: sicNumero.trim(),
+      sec:    result.row.sec,
+      fecha:  result.row.fecha,
+      nota:   result.row.nota,
+      person: result.row.person,
+    });
+    onClose();
+  };
+
+  const found = result?.nodeId != null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-foreground">Ubicar SIC en diagrama</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Copiá la tabla de seguimiento desde SIGA</p>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors"><X className="w-4 h-4"/></button>
+        </div>
+
+        {!result ? (
+          <>
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground font-medium">Número de SIC</p>
+              <input
+                autoFocus
+                value={sicNumero}
+                onChange={e => setNum(e.target.value)}
+                placeholder="Ej: SIC-2026-0042"
+                className="w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground font-medium">Texto de la tabla SIGA</p>
+              <textarea
+                value={text}
+                onChange={e => { setText(e.target.value); setError(""); setResult(null); }}
+                placeholder={"Realizado Por\t\tSec\tFecha\tRev\tAcción\tNota\nCalandri, Roman Oscar\t\t12\t15/04/2026 11:59:58\t\tReserva\t\n..."}
+                rows={7}
+                className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground/50 font-mono focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent resize-none"
+              />
+            </div>
+            {error && <p className="text-xs text-destructive">{error}</p>}
+            <button
+              onClick={parse}
+              disabled={!text.trim()}
+              className="w-full py-2 rounded-lg text-sm bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+            >
+              <Check className="w-3.5 h-3.5"/>Analizar
+            </button>
+          </>
+        ) : (
+          <>
+            {sicNumero && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: "rgba(45,212,191,.08)", border: "1px solid rgba(45,212,191,.25)" }}>
+                <span className="text-xs text-muted-foreground">SIC</span>
+                <span className="text-sm font-semibold" style={{ color: "#2dd4bf" }}>{sicNumero}</span>
+              </div>
+            )}
+
+            <div className="rounded-lg border p-4 space-y-2" style={{
+              borderColor: found ? "rgba(52,211,153,.3)" : "rgba(239,68,68,.3)",
+              background:  found ? "rgba(52,211,153,.05)" : "rgba(239,68,68,.05)",
+            }}>
+              <span className="text-xs font-semibold" style={{ color: found ? "#34d399" : "#ef4444" }}>
+                {found ? "Nodo encontrado" : "Sin coincidencia"}
+              </span>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs mt-2">
+                <div>
+                  <p className="text-muted-foreground">Responsable</p>
+                  <p className="font-medium text-foreground mt-0.5">{result.row.person}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Sec.</p>
+                  <p className="font-medium text-foreground mt-0.5">{result.row.sec}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Fecha</p>
+                  <p className="font-medium text-foreground mt-0.5">{result.row.fecha.split(" ")[0]}</p>
+                </div>
+                {result.row.accion && (
+                  <div>
+                    <p className="text-muted-foreground">Acción</p>
+                    <p className="font-medium text-foreground mt-0.5">{result.row.accion}</p>
+                  </div>
+                )}
+              </div>
+              {result.row.nota && (
+                <p className="text-[10px] text-muted-foreground italic border-t border-border/50 pt-2">{result.row.nota}</p>
+              )}
+              {found && (
+                <p className="text-[10px] mt-1" style={{ color: "#34d399" }}>
+                  → Nodo: <span className="font-semibold">{result.nodeLabel}</span>
+                </p>
+              )}
+              {!found && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Ningún nodo tiene <span className="font-medium text-foreground">{result.row.person}</span> como encargado.
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => setResult(null)} className="flex-1 py-2 rounded-lg text-sm border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                ← Editar texto
+              </button>
+              <button
+                onClick={confirm}
+                disabled={!found}
+                className="flex-1 py-2 rounded-lg text-sm bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-40 flex items-center justify-center gap-2 transition-colors"
+              >
+                <Check className="w-3.5 h-3.5"/>Resaltar nodo
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 function SicDiagramaInner() {
@@ -705,8 +924,10 @@ function SicDiagramaInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editingNode, setEditingNode] = useState<{ id: string; label: string; responsables: string[]; color: string } | null>(null);
   const [editingEdge, setEditingEdge] = useState<{ id: string; type: string; label: string } | null>(null);
-  const [saved, setSaved]   = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [saved, setSaved]         = useState(true);
+  const [saving, setSaving]       = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [sicNumero, setSicNumero] = useState<string>("");
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes({}));
   const [edges, setEdges, onEdgesChange] = useEdgesState(DEFAULT_EDGES);
@@ -743,6 +964,8 @@ function SicDiagramaInner() {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             setEdges(layoutRes.data.edges.map((e: any) => ({ ...e })));
           }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if ((layoutRes.data as any).sic_numero) setSicNumero((layoutRes.data as any).sic_numero);
         }
         setLoading(false);
       } catch (err) {
@@ -768,7 +991,7 @@ function SicDiagramaInner() {
     };
     const { error } = await supabase
       .from("sic_diagrama_layout")
-      .upsert({ id: "main", ...payload, updated_at: new Date().toISOString() }, { onConflict: "id" })
+      .upsert({ id: "main", ...payload, sic_numero: sicNumero || null, updated_at: new Date().toISOString() }, { onConflict: "id" })
       .select();
     setSaving(false);
     if (error) {
@@ -778,7 +1001,7 @@ function SicDiagramaInner() {
     }
     toast.success(`Guardado — ${payload.nodes.length} objeto${payload.nodes.length === 1 ? "" : "s"}`);
     setSaved(true);
-  }, [nodes, edges]);
+  }, [nodes, edges, sicNumero]);
 
   const onConnect = useCallback((connection: Connection) => {
     const srcNode  = nodes.find(n => n.id === connection.source);
@@ -818,6 +1041,30 @@ function SicDiagramaInner() {
 
   const resetLayout = () => { setNodes([]); setEdges([]); };
 
+  const handleSICHighlight = useCallback((nodeId: string, highlight: SICHighlight) => {
+    setNodes(ns => ns.map(n => {
+      const d = n.data as PasoData;
+      if (n.id === nodeId) return { ...n, data: { ...d, highlighted: highlight } };
+      if (d.highlighted) {
+        const newData = { ...d };
+        delete newData.highlighted;
+        return { ...n, data: newData };
+      }
+      return n;
+    }));
+    if (highlight.sicNumero) setSicNumero(highlight.sicNumero);
+  }, [setNodes]);
+
+  const clearHighlight = useCallback(() => {
+    setNodes(ns => ns.map(n => {
+      const d = n.data as PasoData;
+      if (!d.highlighted) return n;
+      const newData = { ...d };
+      delete newData.highlighted;
+      return { ...n, data: newData };
+    }));
+  }, [setNodes]);
+
   const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
@@ -832,15 +1079,40 @@ function SicDiagramaInner() {
     setNodes(ns => [...ns, createNewNode(shapeType, flowPosition.x, flowPosition.y)]);
   }, [screenToFlowPosition, setNodes]);
 
+  const highlightedNode = nodes.find(n => (n.data as PasoData).highlighted != null);
+  const hl = (highlightedNode?.data as PasoData | undefined)?.highlighted;
+
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Diagrama de flujo</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-semibold text-foreground">Diagrama de flujo</h2>
+            {sicNumero && (
+              <span className="px-2 py-0.5 rounded-md text-xs font-semibold" style={{ background: "rgba(45,212,191,.12)", color: "#2dd4bf", border: "1px solid rgba(45,212,191,.3)" }}>
+                {sicNumero}
+              </span>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground mt-1">Proceso SIC – SIGA · doble clic para editar un objeto</p>
         </div>
         <div className="flex items-center gap-2">
+          {highlightedNode && (
+            <button
+              onClick={clearHighlight}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
+              style={{ borderColor: "rgba(239,68,68,.4)", color: "#ef4444", background: "rgba(239,68,68,.08)" }}
+            >
+              <X className="w-3 h-3"/>Limpiar resaltado
+            </button>
+          )}
+          <button
+            onClick={() => setImportOpen(true)}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            <Upload className="w-3 h-3"/>Importar SIC
+          </button>
           <button
             onClick={handleManualSave}
             disabled={saving || loading}
@@ -862,10 +1134,16 @@ function SicDiagramaInner() {
 
       {/* Status bar */}
       <div className="bg-card border border-border rounded-xl px-5 py-3 grid grid-cols-2 sm:grid-cols-5 gap-4 text-xs">
-        {[["SIC","—"],["Estado actual","—"],["Responsable","—"],["Tiempo en paso","—"],["Tiempo total","—"]].map(([k, v]) => (
+        {[
+          ["SIC",           sicNumero || "—"],
+          ["Estado actual", hl ? (highlightedNode?.data as PasoData).label : "—"],
+          ["Responsable",   hl?.person  ?? "—"],
+          ["Sec.",          hl ? String(hl.sec) : "—"],
+          ["Nota",          hl?.nota    || "—"],
+        ].map(([k, v]) => (
           <div key={k}>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{k}</p>
-            <p className="font-medium text-foreground mt-0.5">{v}</p>
+            <p className="font-medium text-foreground mt-0.5 truncate" title={v}>{v}</p>
           </div>
         ))}
       </div>
@@ -997,6 +1275,14 @@ function SicDiagramaInner() {
           initialColor={editingNode.color}
           onSave={handleSaveNode}
           onClose={() => setEditingNode(null)}
+        />
+      )}
+
+      {importOpen && (
+        <SICImportModal
+          nodes={nodes}
+          onHighlight={handleSICHighlight}
+          onClose={() => setImportOpen(false)}
         />
       )}
     </div>
