@@ -8,7 +8,7 @@ import {
   UploadCloud, Loader2, Trash2, CheckCircle2,
   AlertTriangle, RefreshCw, Database, BellRing, X,
 } from "lucide-react";
-import { markUpdated, fetchReminders, upsertFrequency } from "@/lib/reminders";
+import { markUpdated, fetchReminders, upsertConfig } from "@/lib/reminders";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -48,9 +48,9 @@ interface PlanillaState {
 const INIT: PlanillaState = { count: 0, uploadedAt: null, loading: true, uploading: false };
 
 const REMINDER_DEFS = [
-  { key: "planillas-OP",         planilla: "OP" as PlanillaType,         label: "OP",         descripcion: "Órdenes de compra",      accentClass: "text-blue-400" },
-  { key: "planillas-QW",         planilla: "QW" as PlanillaType,         label: "QW",         descripcion: "Expedientes / SCs",       accentClass: "text-purple-400" },
-  { key: "planillas-MATRICULAS", planilla: "MATRICULAS" as PlanillaType, label: "MATRICULAS", descripcion: "Catálogo de materiales",  accentClass: "text-emerald-400" },
+  { key: "planillas-OP",         planilla: "OP" as PlanillaType,         label: "OP",         name: "OP — Órdenes de compra",              descripcion: "Órdenes de compra",      accentClass: "text-blue-400" },
+  { key: "planillas-QW",         planilla: "QW" as PlanillaType,         label: "QW",         name: "QW — Expedientes / SCs",               descripcion: "Expedientes / SCs",       accentClass: "text-purple-400" },
+  { key: "planillas-MATRICULAS", planilla: "MATRICULAS" as PlanillaType, label: "MATRICULAS", name: "MATRICULAS — Catálogo de materiales",  descripcion: "Catálogo de materiales",  accentClass: "text-emerald-400" },
 ] as const;
 
 // ─── Card ─────────────────────────────────────────────────────────────────────
@@ -172,6 +172,9 @@ export function ServiciosPlanillasSection() {
   const [reminderFreq, setReminderFreq] = useState<Record<string, number>>({
     "planillas-OP": 7, "planillas-QW": 7, "planillas-MATRICULAS": 7,
   });
+  const [reminderTime, setReminderTime] = useState<Record<string, string>>({
+    "planillas-OP": "09:00", "planillas-QW": "09:00", "planillas-MATRICULAS": "09:00",
+  });
   const [reminderLastUpdate, setReminderLastUpdate] = useState<Record<string, string | null>>({
     "planillas-OP": null, "planillas-QW": null, "planillas-MATRICULAS": null,
   });
@@ -233,13 +236,16 @@ export function ServiciosPlanillasSection() {
     setLoadingConfig(true);
     try {
       const cfgs = await fetchReminders(REMINDER_DEFS.map(d => d.key));
-      const freq: Record<string, number> = { "planillas-OP": 7, "planillas-QW": 7, "planillas-MATRICULAS": 7 };
-      const lastUp: Record<string, string | null> = { "planillas-OP": null, "planillas-QW": null, "planillas-MATRICULAS": null };
+      const freq:  Record<string, number>       = { "planillas-OP": 7,      "planillas-QW": 7,      "planillas-MATRICULAS": 7 };
+      const time:  Record<string, string>       = { "planillas-OP": "09:00", "planillas-QW": "09:00", "planillas-MATRICULAS": "09:00" };
+      const lastUp: Record<string, string|null> = { "planillas-OP": null,   "planillas-QW": null,   "planillas-MATRICULAS": null };
       for (const cfg of cfgs) {
-        freq[cfg.reminder_key]   = cfg.frequency_days;
-        lastUp[cfg.reminder_key] = cfg.last_updated_at;
+        freq[cfg.section_id]   = cfg.frequency_days;
+        lastUp[cfg.section_id] = cfg.last_updated_at;
+        if (cfg.reminder_time) time[cfg.section_id] = cfg.reminder_time.substring(0, 5);
       }
       setReminderFreq(freq);
+      setReminderTime(time);
       setReminderLastUpdate(lastUp);
     } catch (e) {
       toast.error(`Error al cargar recordatorios: ${e instanceof Error ? e.message : String(e)}`);
@@ -253,7 +259,7 @@ export function ServiciosPlanillasSection() {
     setSavingConfig(true);
     try {
       await Promise.all(
-        REMINDER_DEFS.map(d => upsertFrequency(d.key, reminderFreq[d.key] ?? 7, userId))
+        REMINDER_DEFS.map(d => upsertConfig(d.key, d.name, reminderFreq[d.key] ?? 7, reminderTime[d.key] ?? "09:00", userId))
       );
       toast.success("Recordatorios guardados");
       setConfigOpen(false);
@@ -301,7 +307,7 @@ export function ServiciosPlanillasSection() {
         if (error) { toast.error(`Error insertando OP: ${error.message}`); return; }
       }
       toast.success(`OP: ${mapped.length.toLocaleString("es-AR")} filas guardadas`);
-      if (userId) await markUpdated("planillas-OP", userId).catch(() => {});
+      if (userId) await markUpdated("planillas-OP", "OP — Órdenes de compra", userId).catch(() => {});
     } catch (e) {
       toast.error(`Error OP: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
@@ -354,7 +360,7 @@ export function ServiciosPlanillasSection() {
         if (error) { toast.error(`Error insertando QW: ${error.message}`); return; }
       }
       toast.success(`QW: ${mapped.length.toLocaleString("es-AR")} filas guardadas`);
-      if (userId) await markUpdated("planillas-QW", userId).catch(() => {});
+      if (userId) await markUpdated("planillas-QW", "QW — Expedientes / SCs", userId).catch(() => {});
     } catch (e) {
       toast.error(`Error QW: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
@@ -386,7 +392,7 @@ export function ServiciosPlanillasSection() {
         if (error) { toast.error(`Error insertando MATRICULAS: ${error.message}`); return; }
       }
       toast.success(`MATRICULAS: ${mapped.length.toLocaleString("es-AR")} filas guardadas`);
-      if (userId) await markUpdated("planillas-MATRICULAS", userId).catch(() => {});
+      if (userId) await markUpdated("planillas-MATRICULAS", "MATRICULAS — Catálogo de materiales", userId).catch(() => {});
     } catch (e) {
       toast.error(`Error MATRICULAS: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
@@ -547,6 +553,13 @@ export function ServiciosPlanillasSection() {
                           +
                         </button>
                       </div>
+                      {/* Time */}
+                      <input
+                        type="time"
+                        value={reminderTime[key] ?? "09:00"}
+                        onChange={e => setReminderTime(p => ({ ...p, [key]: e.target.value }))}
+                        className="h-8 px-2 rounded-lg bg-secondary border border-border text-sm text-foreground tabular-nums focus:outline-none focus:ring-2 focus:ring-ring/20"
+                      />
                     </div>
                   </div>
                 ))}

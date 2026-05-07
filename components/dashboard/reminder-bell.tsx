@@ -96,7 +96,7 @@ export function ReminderBell() {
           ) : (
             <ul className="divide-y divide-border max-h-72 overflow-y-auto">
               {overdue.map(r => (
-                <li key={r.reminder_key} className="px-4 py-3 flex items-start gap-3">
+                <li key={r.section_id} className="px-4 py-3 flex items-start gap-3">
                   <span className="mt-1 w-2 h-2 rounded-full bg-destructive flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground">{r.label}</p>
