@@ -309,6 +309,18 @@ export function TransformadoresCargaSection() {
   return (
     <div className="space-y-4">
 
+      {/* ── Top bar ── */}
+      {canConfig && (
+        <div className="flex items-center justify-end">
+          <button
+            onClick={() => setConfigOpen(true)}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all"
+          >
+            <BellRing className="w-3.5 h-3.5" /> Recordatorio
+          </button>
+        </div>
+      )}
+
       {/* ── Drop zone ── */}
       {archivo ? (
         <div className="bg-slate-800/30 border border-slate-700 rounded-xl px-5 py-3 shadow-sm flex items-center gap-3">
@@ -587,26 +599,16 @@ export function TransformadoresCargaSection() {
               />
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            {canConfig && (
-              <button
-                onClick={() => setConfigOpen(true)}
-                className="flex items-center gap-1.5 h-9 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all"
-              >
-                <BellRing className="w-3.5 h-3.5" /> Recordatorio
-              </button>
-            )}
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-colors"
-            >
-              {saving
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</>
-                : <><CheckCircle2 className="w-4 h-4" /> Guardar planilla</>
-              }
-            </button>
-          </div>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-colors"
+          >
+            {saving
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</>
+              : <><CheckCircle2 className="w-4 h-4" /> Guardar planilla</>
+            }
+          </button>
         </div>
       </div>
 
