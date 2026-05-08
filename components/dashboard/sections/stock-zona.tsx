@@ -1,29 +1,106 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   FileText, Trash2, Loader2, ClipboardPaste,
-  Search, X, PackageOpen, RefreshCw,
+  Search, X, PackageOpen, RefreshCw, ChevronDown,
 } from "lucide-react";
 import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
 import type { ZonaUpload, CompraRow } from "@/lib/stockStorage";
 import { toast } from "sonner";
 
-type Tab = "resumen" | "cargar";
+type Tab            = "resumen" | "cargar";
+type ArticuloFiltro = "nro" | "nombre";
+
+// ─── Zone colors ──────────────────────────────────────────────────────────────
+
+const ZONA_COLORS = [
+  "bg-chart-1/20 text-chart-1 border-chart-1/30",
+  "bg-chart-2/20 text-chart-2 border-chart-2/30",
+  "bg-chart-3/20 text-chart-3 border-chart-3/30",
+  "bg-chart-4/20 text-chart-4 border-chart-4/30",
+  "bg-chart-5/20 text-chart-5 border-chart-5/30",
+  "bg-accent/20 text-accent border-accent/30",
+];
+
+function useZonaColorMap(zonas: string[]) {
+  const map: Record<string, string> = {};
+  zonas.forEach((z, i) => { map[z] = ZONA_COLORS[i % ZONA_COLORS.length]; });
+  return map;
+}
+
+// ─── Custom zone dropdown ─────────────────────────────────────────────────────
+
+function ZonaSelect({ zonas, value, onChange, colorMap }: {
+  zonas: string[];
+  value: string;
+  onChange: (v: string) => void;
+  colorMap: Record<string, string>;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const badgeCls = value !== "todos" ? colorMap[value] : "bg-secondary text-muted-foreground border-border";
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-2 h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground hover:border-accent/50 focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all min-w-[160px]"
+      >
+        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${badgeCls}`}>
+          {value === "todos" ? "Todas las zonas" : value}
+        </span>
+        <ChevronDown className={`w-4 h-4 text-muted-foreground ml-auto transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 top-[calc(100%+4px)] left-0 min-w-full bg-card border border-border rounded-lg shadow-lg overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+          <button
+            onClick={() => { onChange("todos"); setOpen(false); }}
+            className={`w-full flex items-center px-3 py-2.5 text-sm hover:bg-secondary/60 transition-colors text-left ${value === "todos" ? "bg-secondary/40" : ""}`}
+          >
+            <span className="text-xs px-2 py-0.5 rounded-full border bg-secondary text-muted-foreground border-border">Todas las zonas</span>
+          </button>
+          {zonas.map(z => (
+            <button
+              key={z}
+              onClick={() => { onChange(z); setOpen(false); }}
+              className={`w-full flex items-center px-3 py-2.5 text-sm hover:bg-secondary/60 transition-colors text-left ${value === z ? "bg-secondary/40" : ""}`}
+            >
+              <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${colorMap[z]}`}>{z}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main section ─────────────────────────────────────────────────────────────
 
 export function StockZonaSection() {
-  const [tab, setTab]                   = useState<Tab>("resumen");
-  const [uploads, setUploads]           = useState<ZonaUpload[]>([]);
-  const [loading, setLoading]           = useState(true);
-  const [text, setText]                 = useState("");
-  const [saving, setSaving]             = useState(false);
-  const [deletingZona, setDeletingZona] = useState<string | null>(null);
+  const [tab, setTab]                       = useState<Tab>("resumen");
+  const [uploads, setUploads]               = useState<ZonaUpload[]>([]);
+  const [loading, setLoading]               = useState(true);
+  const [text, setText]                     = useState("");
+  const [saving, setSaving]                 = useState(false);
+  const [deletingZona, setDeletingZona]     = useState<string | null>(null);
 
   // Resumen filters
-  const [filterZona, setFilterZona]     = useState("todos");
-  const [filterSearch, setFilterSearch] = useState("");
+  const [filterZona, setFilterZona]         = useState("todos");
+  const [filterSearch, setFilterSearch]     = useState("");
+  const [articuloFiltro, setArticuloFiltro] = useState<ArticuloFiltro>("nro");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -33,7 +110,32 @@ export function StockZonaSection() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // ── Carga ──────────────────────────────────────────────────────────────────
+  // ── Derived ────────────────────────────────────────────────────────────────
+
+  const zonas     = uploads.map(u => u.zona);
+  const colorMap  = useZonaColorMap(zonas);
+
+  const lastUpdate = uploads.reduce<string | null>((latest, u) => {
+    if (!latest || u.uploadedAt > latest) return u.uploadedAt;
+    return latest;
+  }, null);
+
+  const allRows: (CompraRow & { zona: string })[] = uploads.flatMap(u =>
+    u.rows.map(r => ({ ...r, zona: u.zona }))
+  );
+
+  const filtered = allRows.filter(r => {
+    const zonaOk   = filterZona === "todos" || r.zona === filterZona;
+    const lo       = filterSearch.toLowerCase();
+    const searchOk = !filterSearch || (
+      articuloFiltro === "nro"
+        ? r.articulo.toLowerCase().includes(lo)
+        : r.descArticulo.toLowerCase().includes(lo)
+    );
+    return zonaOk && searchOk;
+  });
+
+  // ── Carga handlers ─────────────────────────────────────────────────────────
 
   const handleImport = async () => {
     if (!text.trim()) { toast.error("Pegá el texto antes de importar."); return; }
@@ -75,40 +177,26 @@ export function StockZonaSection() {
     setDeletingZona(null);
   };
 
-  // Preview zones from pasted text
   const previewZonas = (() => {
     if (!text.trim()) return [];
     const { rows } = parseTSV(text.trim());
     return [...new Set(rows.map(r => r.organizacion).filter(Boolean))];
   })();
 
-  // ── Resumen ────────────────────────────────────────────────────────────────
-
-  const zonas = uploads.map(u => u.zona);
-
-  const allRows: (CompraRow & { zona: string })[] = uploads.flatMap(u =>
-    u.rows.map(r => ({ ...r, zona: u.zona }))
-  );
-
-  const filtered = allRows.filter(r => {
-    const zonaOk   = filterZona === "todos" || r.zona === filterZona;
-    const lo       = filterSearch.toLowerCase();
-    const searchOk = !filterSearch || r.articulo.toLowerCase().includes(lo) || r.descArticulo.toLowerCase().includes(lo);
-    return zonaOk && searchOk;
-  });
-
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-foreground">Stock por Zona</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Consulta y carga de stock por organización
+            {lastUpdate
+              ? <>Última actualización: <span className="text-foreground">{new Date(lastUpdate).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}</span></>
+              : "Consulta y carga de stock por organización"}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
+        <Button variant="outline" size="sm" onClick={refresh} disabled={loading} className="shrink-0">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
         </Button>
       </div>
@@ -143,24 +231,32 @@ export function StockZonaSection() {
           ) : (
             <>
               {/* Filters */}
-              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-                <select
-                  value={filterZona}
-                  onChange={e => setFilterZona(e.target.value)}
-                  className="h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
-                >
-                  <option value="todos">Todas las zonas</option>
-                  {zonas.map(z => <option key={z} value={z}>{z}</option>)}
-                </select>
+              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center flex-wrap">
+                <ZonaSelect zonas={zonas} value={filterZona} onChange={setFilterZona} colorMap={colorMap} />
 
-                <div className="relative flex-1 max-w-sm">
+                <div className="flex rounded-lg border border-border overflow-hidden">
+                  <button
+                    onClick={() => { setArticuloFiltro("nro"); setFilterSearch(""); }}
+                    className={`h-10 px-3 text-sm transition-colors whitespace-nowrap ${articuloFiltro === "nro" ? "bg-accent text-accent-foreground font-medium" : "bg-secondary text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Artículo Nro
+                  </button>
+                  <button
+                    onClick={() => { setArticuloFiltro("nombre"); setFilterSearch(""); }}
+                    className={`h-10 px-3 text-sm transition-colors whitespace-nowrap border-l border-border ${articuloFiltro === "nombre" ? "bg-accent text-accent-foreground font-medium" : "bg-secondary text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Artículo Nombre
+                  </button>
+                </div>
+
+                <div className="relative flex-1 min-w-[180px] max-w-sm">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <input
                     type="text"
                     value={filterSearch}
                     onChange={e => setFilterSearch(e.target.value)}
-                    placeholder="Buscar artículo o descripción..."
-                    className="w-full h-10 pl-10 pr-8 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
+                    placeholder={articuloFiltro === "nro" ? "Buscar por número..." : "Buscar por nombre..."}
+                    className="w-full h-10 pl-10 pr-8 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all"
                   />
                   {filterSearch && (
                     <button onClick={() => setFilterSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
@@ -180,11 +276,11 @@ export function StockZonaSection() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border bg-secondary/50">
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Zona</th>
                         <th className="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Artículo</th>
                         <th className="text-left px-4 py-3 font-medium text-muted-foreground">Descripción</th>
                         <th className="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">UDM</th>
                         <th className="text-right px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">En Mano</th>
-                        <th className="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Zona</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -197,15 +293,15 @@ export function StockZonaSection() {
                       ) : (
                         filtered.map((row, i) => (
                           <tr key={i} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                            <td className="px-4 py-2.5">
+                              <span className={`text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${colorMap[row.zona] ?? ZONA_COLORS[0]}`}>
+                                {row.zona}
+                              </span>
+                            </td>
                             <td className="px-4 py-2.5 font-mono text-xs text-accent whitespace-nowrap">{row.articulo}</td>
                             <td className="px-4 py-2.5 text-foreground">{row.descArticulo}</td>
                             <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{row.udmPrimaria}</td>
                             <td className="px-4 py-2.5 text-right font-medium tabular-nums">{row.enMano}</td>
-                            <td className="px-4 py-2.5">
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-secondary border border-border text-muted-foreground whitespace-nowrap">
-                                {row.zona}
-                              </span>
-                            </td>
                           </tr>
                         ))
                       )}
@@ -271,14 +367,11 @@ export function StockZonaSection() {
                 className="w-full px-3 py-3 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 font-mono resize-y"
               />
 
-              {/* Zone preview */}
               {previewZonas.length > 0 && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-muted-foreground">Zonas detectadas:</span>
                   {previewZonas.map(z => (
-                    <span key={z} className="text-xs px-2 py-0.5 rounded-full bg-accent/15 border border-accent/30 text-accent">
-                      {z}
-                    </span>
+                    <span key={z} className="text-xs px-2 py-0.5 rounded-full bg-accent/15 border border-accent/30 text-accent">{z}</span>
                   ))}
                 </div>
               )}
