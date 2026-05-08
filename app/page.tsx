@@ -23,6 +23,7 @@ import { ServiciosPlanillasSection } from "@/components/dashboard/sections/servi
 import { TransformadoresCargaSection } from "@/components/dashboard/sections/transformadores-carga";
 import { TransformadoresTablaSection } from "@/components/dashboard/sections/transformadores-tabla";
 import { TransformadoresResumenSection } from "@/components/dashboard/sections/transformadores-resumen";
+import { StockZonaSection } from "@/components/dashboard/sections/stock-zona";
 import { LoginPage } from "@/components/auth/login";
 import { Loader2 } from "lucide-react";
 
@@ -37,7 +38,8 @@ export type Section =
   | "forecasting" | "reports" | "settings"
   | "servicios-resumen" | "servicios-tabla" | "servicios-carga" | "servicios-planillas"
   | "sic-diagrama"
-  | "transformadores-carga" | "transformadores-tabla" | "transformadores-resumen";
+  | "transformadores-carga" | "transformadores-tabla" | "transformadores-resumen"
+  | "stock-zona";
 
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
@@ -98,6 +100,7 @@ export default function Dashboard() {
       case "transformadores-carga":  return <TransformadoresCargaSection />;
       case "transformadores-tabla":  return <TransformadoresTablaSection />;
       case "transformadores-resumen": return <TransformadoresResumenSection />;
+      case "stock-zona":              return <StockZonaSection />;
       default:                       return <OverviewSection />;
     }
   };
