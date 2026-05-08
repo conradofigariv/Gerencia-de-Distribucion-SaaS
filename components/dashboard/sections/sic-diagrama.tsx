@@ -389,7 +389,7 @@ function NeonEdge({ id, sourceX, sourceY, targetX, targetY, data, selected, labe
     : isStraight
     ? Math.hypot(targetX - sourceX, targetY - sourceY)
     : (Math.hypot(targetX - sourceX, targetY - sourceY) + Math.hypot(cpX - sourceX, cpY - sourceY) + Math.hypot(targetX - cpX, targetY - cpY)) / 2;
-  const dotDur = `${Math.max(0.5, approxLen / 160).toFixed(2)}s`;
+  const dotDur = `${Math.max(0.5, approxLen / 110).toFixed(2)}s`;
 
   const startDrag = useCallback(
     (update: (x: number, y: number) => Record<string, unknown>) =>
@@ -440,6 +440,9 @@ function NeonEdge({ id, sourceX, sourceY, targetX, targetY, data, selected, labe
           <path d="M 0 0 L 10 5 L 0 10 z" fill={tgtColor} />
         </marker>
       </defs>
+
+      {/* Invisible wide hit area for easier selection */}
+      <path d={edgePath} fill="none" stroke="transparent" strokeWidth={16} className="react-flow__edge-interaction" />
 
       {/* Edge path */}
       <path
