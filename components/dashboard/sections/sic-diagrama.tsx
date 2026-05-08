@@ -383,6 +383,14 @@ function NeonEdge({ id, sourceX, sourceY, targetX, targetY, data, selected, labe
   const pathId = `sicp-${id}`;
   const markId = `sicm-${id}`;
 
+  // Approximate path length to keep dot speed constant across all edges
+  const approxLen = isStep
+    ? Math.abs(bridgeY - sourceY) + Math.abs(targetX - sourceX) + Math.abs(targetY - bridgeY)
+    : isStraight
+    ? Math.hypot(targetX - sourceX, targetY - sourceY)
+    : (Math.hypot(targetX - sourceX, targetY - sourceY) + Math.hypot(cpX - sourceX, cpY - sourceY) + Math.hypot(targetX - cpX, targetY - cpY)) / 2;
+  const dotDur = `${Math.max(0.5, approxLen / 160).toFixed(2)}s`;
+
   const startDrag = useCallback(
     (update: (x: number, y: number) => Record<string, unknown>) =>
     (e: React.MouseEvent) => {
@@ -451,7 +459,7 @@ function NeonEdge({ id, sourceX, sourceY, targetX, targetY, data, selected, labe
       {/* Animated travelling dot */}
       <circle r="3" fill="white" style={{ filter: "drop-shadow(0 0 5px rgba(255,255,255,.8))" }}>
         {/* @ts-expect-error animateMotion / mpath SMIL elements */}
-        <animateMotion dur="2s" repeatCount="indefinite" calcMode="linear">
+        <animateMotion dur={dotDur} repeatCount="indefinite" calcMode="linear">
           <mpath href={`#${pathId}`} />
         </animateMotion>
       </circle>
