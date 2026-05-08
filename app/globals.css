@@ -140,7 +140,10 @@
 @keyframes sic-pulse { 0%,100% { opacity:1 } 50% { opacity:.35 } }
 @keyframes sic-drift { to { transform: translate3d(-300px,-150px,0) } }
 
-.sic-node { animation: sic-fadeup .5s cubic-bezier(.2,.7,.2,1) both }
+.sic-node {
+  animation: sic-fadeup .5s cubic-bezier(.2,.7,.2,1) both;
+  contain: layout style;
+}
 
 /* Handle pulse rings */
 .sic-handle-ring::after {
@@ -154,8 +157,9 @@
 /* Neon SVG shapes */
 .sic-node-svg {
   filter: drop-shadow(0 0 12px var(--node-glow, rgba(52,211,153,.45)));
-  transition: filter .3s;
+  transition: filter .2s;
   overflow: visible;
+  will-change: filter;
 }
 .react-flow__node:hover .sic-node-svg { filter: drop-shadow(0 0 22px var(--node-glow, rgba(52,211,153,.45))); }
 .sic-node-svg path,
@@ -165,7 +169,6 @@
   fill: var(--node-fill, rgba(52,211,153,.05));
   stroke: var(--node-c, #34d399);
   stroke-width: 1.5;
-  transition: fill .3s;
 }
 .react-flow__node:hover .sic-node-svg path,
 .react-flow__node:hover .sic-node-svg polygon,
@@ -186,10 +189,6 @@
   fill: var(--node-fill-hover) !important;
 }
 @keyframes sic-active-glow {
-  0%, 100% {
-    filter: drop-shadow(0 0 6px var(--node-glow)) drop-shadow(0 0 2px var(--node-glow));
-  }
-  50% {
-    filter: drop-shadow(0 0 40px var(--node-c)) drop-shadow(0 0 24px var(--node-glow)) drop-shadow(0 0 10px var(--node-glow));
-  }
+  0%, 100% { filter: drop-shadow(0 0 6px var(--node-glow)); }
+  50%       { filter: drop-shadow(0 0 38px var(--node-c)) drop-shadow(0 0 18px var(--node-glow)); }
 }

@@ -21,6 +21,7 @@ function daysLabel(days: number): string {
 
 export function ReminderBell() {
   const [overdue, setOverdue] = useState<OverdueReminder[]>([]);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [open, setOpen]       = useState(false);
   const [loading, setLoading] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
@@ -47,7 +48,8 @@ export function ReminderBell() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const count = overdue.length;
+  const visible = overdue.filter(r => !dismissed.has(r.section_id));
+  const count = visible.length;
 
   return (
     <div className="relative" ref={ref}>
@@ -97,8 +99,8 @@ export function ReminderBell() {
             </div>
           ) : (
             <ul className="divide-y divide-border max-h-72 overflow-y-auto">
-              {overdue.map(r => (
-                <li key={r.section_id} className="px-4 py-3 flex items-start gap-3">
+              {visible.map(r => (
+                <li key={r.section_id} className="px-4 py-3 flex items-start gap-3 group">
                   <span className="mt-1 w-2 h-2 rounded-full bg-destructive flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground">{r.label}</p>
@@ -106,6 +108,13 @@ export function ReminderBell() {
                       {r.section} · {daysLabel(r.days_overdue)}
                     </p>
                   </div>
+                  <button
+                    onClick={() => setDismissed(prev => new Set([...prev, r.section_id]))}
+                    className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground hover:bg-secondary transition-all"
+                    title="Descartar"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
                 </li>
               ))}
             </ul>
