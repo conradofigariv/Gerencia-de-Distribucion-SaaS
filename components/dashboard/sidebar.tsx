@@ -24,7 +24,7 @@ import {
   GitMerge,
   Zap,
   ImagePlus,
-  MapPin,
+  Package,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 
@@ -63,9 +63,9 @@ const navItems: NavItemDef[] = [
       { id: "servicios-resumen", label: "Resumen",             icon: LayoutGrid },
       { id: "servicios-tabla",   label: "Lista de seguimiento", icon: Table2 },
       { id: "servicios-carga",   label: "Crear seguimiento",    icon: UploadCloud },
-      { id: "stock-zona",        label: "Stock por Zona",       icon: MapPin },
     ],
   },
+  { kind: "link", id: "stock-zona", label: "Stock por Zona", icon: Package },
   {
     kind: "group",
     id: "transformadores",
@@ -100,7 +100,6 @@ const SERVICIOS_SECTIONS: Section[] = [
   "servicios-resumen",
   "servicios-tabla",
   "servicios-carga",
-  "stock-zona",
 ];
 
 const SIC_SECTIONS: Section[] = ["sic-diagrama"];
