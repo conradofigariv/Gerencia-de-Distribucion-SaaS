@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   FileText, Trash2, Loader2, ClipboardPaste,
   Search, X, PackageOpen, RefreshCw, ChevronDown,
+  ChevronUp, ChevronsUpDown,
 } from "lucide-react";
 import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
 import type { ZonaUpload, CompraRow } from "@/lib/stockStorage";
@@ -13,6 +14,8 @@ import { toast } from "sonner";
 
 type Tab            = "resumen" | "cargar";
 type ArticuloFiltro = "nro" | "nombre";
+type SortCol        = "zona" | "articulo" | "descArticulo" | "udmPrimaria" | "enMano";
+type SortDir        = "asc" | "desc";
 
 // ─── Zone colors ──────────────────────────────────────────────────────────────
 
@@ -101,6 +104,13 @@ export function StockZonaSection() {
   const [filterZona, setFilterZona]         = useState("todos");
   const [filterSearch, setFilterSearch]     = useState("");
   const [articuloFiltro, setArticuloFiltro] = useState<ArticuloFiltro>("nro");
+  const [sortCol, setSortCol]               = useState<SortCol>("zona");
+  const [sortDir, setSortDir]               = useState<SortDir>("asc");
+
+  const handleSort = (col: SortCol) => {
+    if (col === sortCol) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortCol(col); setSortDir("asc"); }
+  };
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -124,16 +134,28 @@ export function StockZonaSection() {
     u.rows.map(r => ({ ...r, zona: u.zona }))
   );
 
-  const filtered = allRows.filter(r => {
-    const zonaOk   = filterZona === "todos" || r.zona === filterZona;
-    const lo       = filterSearch.toLowerCase();
-    const searchOk = !filterSearch || (
-      articuloFiltro === "nro"
-        ? r.articulo.toLowerCase().includes(lo)
-        : r.descArticulo.toLowerCase().includes(lo)
-    );
-    return zonaOk && searchOk;
-  });
+  const filtered = allRows
+    .filter(r => {
+      const zonaOk   = filterZona === "todos" || r.zona === filterZona;
+      const lo       = filterSearch.toLowerCase();
+      const searchOk = !filterSearch || (
+        articuloFiltro === "nro"
+          ? r.articulo.toLowerCase().includes(lo)
+          : r.descArticulo.toLowerCase().includes(lo)
+      );
+      return zonaOk && searchOk;
+    })
+    .sort((a, b) => {
+      let va: string | number = a[sortCol];
+      let vb: string | number = b[sortCol];
+      if (sortCol === "enMano") {
+        va = parseFloat(String(va).replace(",", ".")) || 0;
+        vb = parseFloat(String(vb).replace(",", ".")) || 0;
+        return sortDir === "asc" ? (va as number) - (vb as number) : (vb as number) - (va as number);
+      }
+      const cmp = String(va).localeCompare(String(vb), "es", { numeric: true, sensitivity: "base" });
+      return sortDir === "asc" ? cmp : -cmp;
+    });
 
   // ── Carga handlers ─────────────────────────────────────────────────────────
 
@@ -273,14 +295,40 @@ export function StockZonaSection() {
               {/* Table */}
               <Card className="border-border bg-card overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm table-fixed">
+                    <colgroup>
+                      <col className="w-36" />
+                      <col className="w-28" />
+                      <col />
+                      <col className="w-20" />
+                      <col className="w-24" />
+                    </colgroup>
                     <thead>
-                      <tr className="border-b border-border bg-secondary/50">
-                        <th className="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Zona</th>
-                        <th className="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Artículo</th>
-                        <th className="text-left px-4 py-3 font-medium text-muted-foreground">Descripción</th>
-                        <th className="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">UDM</th>
-                        <th className="text-right px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">En Mano</th>
+                      <tr className="border-b border-border bg-secondary/60">
+                        {(
+                          [
+                            { col: "zona",         label: "Zona",        align: "left"  },
+                            { col: "articulo",     label: "Artículo",    align: "left"  },
+                            { col: "descArticulo", label: "Descripción", align: "left"  },
+                            { col: "udmPrimaria",  label: "UDM",         align: "left"  },
+                            { col: "enMano",       label: "En Mano",     align: "right" },
+                          ] as { col: SortCol; label: string; align: "left" | "right" }[]
+                        ).map(({ col, label, align }) => {
+                          const active = sortCol === col;
+                          const Icon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
+                          return (
+                            <th
+                              key={col}
+                              onClick={() => handleSort(col)}
+                              className={`px-4 py-3 font-medium text-xs uppercase tracking-wide cursor-pointer select-none whitespace-nowrap transition-colors ${align === "right" ? "text-right" : "text-left"} ${active ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                            >
+                              <span className={`inline-flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
+                                {label}
+                                <Icon className={`w-3.5 h-3.5 shrink-0 transition-opacity ${active ? "opacity-100" : "opacity-30"}`} />
+                              </span>
+                            </th>
+                          );
+                        })}
                       </tr>
                     </thead>
                     <tbody>
@@ -299,8 +347,8 @@ export function StockZonaSection() {
                               </span>
                             </td>
                             <td className="px-4 py-2.5 font-mono text-xs text-accent whitespace-nowrap">{row.articulo}</td>
-                            <td className="px-4 py-2.5 text-foreground">{row.descArticulo}</td>
-                            <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{row.udmPrimaria}</td>
+                            <td className="px-4 py-2.5 text-foreground truncate">{row.descArticulo}</td>
+                            <td className="px-4 py-2.5 text-muted-foreground">{row.udmPrimaria}</td>
                             <td className="px-4 py-2.5 text-right font-medium tabular-nums">{row.enMano}</td>
                           </tr>
                         ))
