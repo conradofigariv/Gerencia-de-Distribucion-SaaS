@@ -1,403 +1,315 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabaseClient";
-import { toast } from "sonner";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
-  Upload, Loader2, Search, ChevronDown, ChevronRight,
-  Trash2, RefreshCw, MapPin,
+  FileText, Trash2, Loader2, ClipboardPaste,
+  Search, X, PackageOpen, RefreshCw,
 } from "lucide-react";
+import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
+import type { ZonaUpload, CompraRow } from "@/lib/stockStorage";
+import { toast } from "sonner";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface StockRow {
-  id?: string;
-  zona:        string;
-  matricula:   string;
-  descripcion: string;
-  cantidad:    number | null;
-  cargado_at?: string;
-}
-
-type Tab = "ver" | "cargar";
-
-// ─── Parser ───────────────────────────────────────────────────────────────────
-
-function parseStockText(raw: string): { rows: StockRow[]; errors: string[] } {
-  const lines = raw.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return { rows: [], errors: ["El texto debe tener al menos una fila de encabezado y una de datos."] };
-
-  const headers = lines[0].split("\t").map(h => h.trim().toLowerCase());
-  const idx = {
-    zona:        headers.findIndex(h => h.includes("zona")),
-    matricula:   headers.findIndex(h => h.includes("matric") || h.includes("art")),
-    descripcion: headers.findIndex(h => h.includes("desc") || h.includes("nombre") || h.includes("material")),
-    cantidad:    headers.findIndex(h => h.includes("cant") || h.includes("stock") || h.includes("qty")),
-  };
-
-  const errors: string[] = [];
-  if (idx.zona < 0)      errors.push("No se encontró columna ZONA.");
-  if (idx.matricula < 0) errors.push("No se encontró columna MATRICULA (o ARTICULO).");
-  if (errors.length) return { rows: [], errors };
-
-  const rows: StockRow[] = [];
-  lines.slice(1).forEach((line, i) => {
-    const cols = line.split("\t");
-    const zona      = (cols[idx.zona] ?? "").trim();
-    const matricula = (cols[idx.matricula] ?? "").trim();
-    if (!zona || !matricula) return;
-    const descripcion = idx.descripcion >= 0 ? (cols[idx.descripcion] ?? "").trim() : "";
-    const rawCant     = idx.cantidad >= 0 ? (cols[idx.cantidad] ?? "").trim() : "";
-    const cantidad    = rawCant !== "" ? parseFloat(rawCant.replace(",", ".")) : null;
-    if (rawCant !== "" && isNaN(cantidad!)) {
-      errors.push(`Fila ${i + 2}: cantidad inválida "${rawCant}".`);
-      return;
-    }
-    rows.push({ zona, matricula, descripcion, cantidad });
-  });
-
-  return { rows, errors };
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
+type Tab = "resumen" | "cargar";
 
 export function StockZonaSection() {
-  const [tab, setTab]           = useState<Tab>("ver");
-  const [rows, setRows]         = useState<StockRow[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [saving, setSaving]     = useState(false);
+  const [tab, setTab]                   = useState<Tab>("resumen");
+  const [uploads, setUploads]           = useState<ZonaUpload[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [text, setText]                 = useState("");
+  const [saving, setSaving]             = useState(false);
+  const [deletingZona, setDeletingZona] = useState<string | null>(null);
 
-  // Carga tab state
-  const [rawText, setRawText]   = useState("");
-  const [preview, setPreview]   = useState<StockRow[] | null>(null);
-  const [parseErrors, setParseErrors] = useState<string[]>([]);
-  const [replaceAll, setReplaceAll]   = useState(true);
+  // Resumen filters
+  const [filterZona, setFilterZona]     = useState("todos");
+  const [filterSearch, setFilterSearch] = useState("");
 
-  // Ver tab state
-  const [search, setSearch]         = useState("");
-  const [zonaFilter, setZonaFilter] = useState<string>("__all__");
-  const [expanded, setExpanded]     = useState<Set<string>>(new Set());
-
-  // ── Load ──────────────────────────────────────────────────────────────────
-
-  const load = useCallback(async () => {
+  const refresh = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("stock_zona")
-      .select("*")
-      .order("zona")
-      .order("matricula");
-    if (error) {
-      toast.error(`Error al cargar: ${error.message}`);
-    } else {
-      setRows((data as StockRow[]) ?? []);
-    }
+    setUploads(await getUploads());
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { refresh(); }, [refresh]);
 
-  // ── Parse preview ─────────────────────────────────────────────────────────
+  // ── Carga ──────────────────────────────────────────────────────────────────
 
-  const handleParse = () => {
-    const { rows: parsed, errors } = parseStockText(rawText);
-    setParseErrors(errors);
-    setPreview(errors.length === 0 ? parsed : null);
-    if (errors.length === 0 && parsed.length === 0) {
-      setParseErrors(["No se encontraron filas válidas en el texto."]);
-    }
-  };
+  const handleImport = async () => {
+    if (!text.trim()) { toast.error("Pegá el texto antes de importar."); return; }
 
-  // ── Save ──────────────────────────────────────────────────────────────────
-
-  const handleSave = async () => {
-    if (!preview || preview.length === 0) return;
     setSaving(true);
-    try {
-      if (replaceAll) {
-        const { error: delErr } = await supabase.from("stock_zona").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-        if (delErr) throw delErr;
-      }
-      const BATCH = 500;
-      for (let i = 0; i < preview.length; i += BATCH) {
-        const { error } = await supabase.from("stock_zona").insert(preview.slice(i, i + BATCH));
-        if (error) throw error;
-      }
-      toast.success(`${preview.length} filas guardadas.`);
-      setRawText("");
-      setPreview(null);
-      setParseErrors([]);
-      setTab("ver");
-      await load();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.error(`Error al guardar: ${msg}`);
-    } finally {
-      setSaving(false);
+    const { rows, error } = parseTSV(text.trim());
+    if (error) { toast.error(error); setSaving(false); return; }
+
+    const byZona = new Map<string, CompraRow[]>();
+    for (const row of rows) {
+      const z = row.organizacion || "Sin zona";
+      if (!byZona.has(z)) byZona.set(z, []);
+      byZona.get(z)!.push(row);
     }
+
+    const errors: string[] = [];
+    for (const [zona, zonaRows] of byZona) {
+      const err = await saveUpload({ zona, rows: zonaRows, fileName: "pegado manual", uploadedAt: new Date().toISOString() });
+      if (err) errors.push(`${zona}: ${err}`);
+    }
+
+    if (errors.length > 0) {
+      toast.error(`Errores al guardar: ${errors.join(", ")}`);
+    } else {
+      const zonaNames = [...byZona.keys()].join(", ");
+      toast.success(`${rows.length} registros · ${byZona.size} zona${byZona.size > 1 ? "s" : ""}: ${zonaNames}`);
+      setText("");
+      setTab("resumen");
+      await refresh();
+    }
+    setSaving(false);
   };
 
-  // ── Delete all ────────────────────────────────────────────────────────────
-
-  const handleClearAll = async () => {
-    if (!confirm("¿Eliminar todo el stock cargado?")) return;
-    const { error } = await supabase.from("stock_zona").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    if (error) { toast.error(error.message); return; }
-    setRows([]);
-    toast.success("Stock eliminado.");
+  const handleDelete = async (z: string) => {
+    setDeletingZona(z);
+    const err = await removeUpload(z);
+    if (err) toast.error(`Error al eliminar: ${err}`);
+    else { toast.success(`Zona "${z}" eliminada`); await refresh(); }
+    setDeletingZona(null);
   };
 
-  // ── Derived data ──────────────────────────────────────────────────────────
+  // Preview zones from pasted text
+  const previewZonas = (() => {
+    if (!text.trim()) return [];
+    const { rows } = parseTSV(text.trim());
+    return [...new Set(rows.map(r => r.organizacion).filter(Boolean))];
+  })();
 
-  const zonas = Array.from(new Set(rows.map(r => r.zona))).sort();
+  // ── Resumen ────────────────────────────────────────────────────────────────
 
-  const filtered = rows.filter(r => {
-    const matchZona = zonaFilter === "__all__" || r.zona === zonaFilter;
-    const q = search.toLowerCase();
-    const matchSearch = !q || r.matricula.toLowerCase().includes(q) || r.descripcion.toLowerCase().includes(q);
-    return matchZona && matchSearch;
+  const zonas = uploads.map(u => u.zona);
+
+  const allRows: (CompraRow & { zona: string })[] = uploads.flatMap(u =>
+    u.rows.map(r => ({ ...r, zona: u.zona }))
+  );
+
+  const filtered = allRows.filter(r => {
+    const zonaOk   = filterZona === "todos" || r.zona === filterZona;
+    const lo       = filterSearch.toLowerCase();
+    const searchOk = !filterSearch || r.articulo.toLowerCase().includes(lo) || r.descArticulo.toLowerCase().includes(lo);
+    return zonaOk && searchOk;
   });
 
-  const grouped = zonas
-    .filter(z => zonaFilter === "__all__" || z === zonaFilter)
-    .map(z => ({ zona: z, items: filtered.filter(r => r.zona === z) }))
-    .filter(g => g.items.length > 0);
-
-  const toggleZona = (z: string) =>
-    setExpanded(prev => { const n = new Set(prev); n.has(z) ? n.delete(z) : n.add(z); return n; });
-
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-foreground">Stock por Zona</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {rows.length} materiales en {zonas.length} zona{zonas.length !== 1 ? "s" : ""}
+          <p className="text-sm text-muted-foreground mt-1">
+            Consulta y carga de stock por organización
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={load}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary border border-border transition-colors"
-          >
-            <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
-            Actualizar
-          </button>
-          {rows.length > 0 && (
-            <button
-              onClick={handleClearAll}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-destructive hover:bg-destructive/10 border border-border transition-colors"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Limpiar
-            </button>
-          )}
-        </div>
+        <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+        </Button>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 p-1 bg-secondary/50 rounded-lg w-fit">
-        {(["ver", "cargar"] as Tab[]).map(t => (
+        {(["resumen", "cargar"] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={cn(
-              "px-4 py-1.5 rounded-md text-sm font-medium transition-colors",
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
               tab === t ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-            )}
+            }`}
           >
-            {t === "ver" ? "Ver stock" : "Cargar datos"}
+            {t === "resumen" ? "Resumen de stock" : "Cargar datos"}
           </button>
         ))}
       </div>
 
-      {/* ── VER TAB ── */}
-      {tab === "ver" && (
+      {/* ── RESUMEN ── */}
+      {tab === "resumen" && (
         <div className="space-y-4">
-          {/* Filters */}
-          <div className="flex gap-3">
-            <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Buscar matrícula o descripción..."
-                className="w-full pl-9 pr-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
-              />
-            </div>
-            <select
-              value={zonaFilter}
-              onChange={e => setZonaFilter(e.target.value)}
-              className="px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
-            >
-              <option value="__all__">Todas las zonas</option>
-              {zonas.map(z => <option key={z} value={z}>{z}</option>)}
-            </select>
-          </div>
-
-          {/* Content */}
           {loading ? (
-            <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-sm">Cargando...</span>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-12 justify-center">
+              <Loader2 className="w-4 h-4 animate-spin" />Cargando datos...
             </div>
-          ) : grouped.length === 0 ? (
-            <div className="text-center py-16 text-muted-foreground">
-              <MapPin className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">
-                {rows.length === 0
-                  ? "No hay stock cargado. Usá la pestaña «Cargar datos»."
-                  : "No hay resultados para el filtro aplicado."}
-              </p>
+          ) : uploads.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground">
+              <PackageOpen className="w-12 h-12 opacity-30" />
+              <p className="text-sm">No hay datos cargados. Usá "Cargar datos" para importar.</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {grouped.map(({ zona, items }) => (
-                <div key={zona} className="rounded-xl border border-border bg-card overflow-hidden">
-                  {/* Zona header */}
-                  <button
-                    onClick={() => toggleZona(zona)}
-                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      {expanded.has(zona)
-                        ? <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                        : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
-                      <MapPin className="w-4 h-4 text-accent" />
-                      <span className="font-semibold text-sm text-foreground">{zona}</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">{items.length} material{items.length !== 1 ? "es" : ""}</span>
-                  </button>
+            <>
+              {/* Filters */}
+              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                <select
+                  value={filterZona}
+                  onChange={e => setFilterZona(e.target.value)}
+                  className="h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
+                >
+                  <option value="todos">Todas las zonas</option>
+                  {zonas.map(z => <option key={z} value={z}>{z}</option>)}
+                </select>
 
-                  {/* Zona rows */}
-                  {expanded.has(zona) && (
-                    <div className="border-t border-border">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="bg-secondary/30">
-                            <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Matrícula</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Descripción</th>
-                            <th className="px-4 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">Cantidad</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border">
-                          {items.map((row, i) => (
-                            <tr key={row.id ?? i} className="hover:bg-secondary/30 transition-colors">
-                              <td className="px-4 py-2.5 font-mono text-xs text-foreground">{row.matricula}</td>
-                              <td className="px-4 py-2.5 text-muted-foreground">{row.descripcion || "—"}</td>
-                              <td className="px-4 py-2.5 text-right tabular-nums font-medium text-foreground">
-                                {row.cantidad != null ? row.cantidad.toLocaleString("es-AR") : "—"}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                <div className="relative flex-1 max-w-sm">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={filterSearch}
+                    onChange={e => setFilterSearch(e.target.value)}
+                    placeholder="Buscar artículo o descripción..."
+                    className="w-full h-10 pl-10 pr-8 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
+                  />
+                  {filterSearch && (
+                    <button onClick={() => setFilterSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   )}
                 </div>
-              ))}
-            </div>
+
+                <p className="text-sm text-muted-foreground sm:ml-auto whitespace-nowrap">
+                  {filtered.length} de {allRows.length} registros
+                </p>
+              </div>
+
+              {/* Table */}
+              <Card className="border-border bg-card overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-secondary/50">
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Artículo</th>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground">Descripción</th>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">UDM</th>
+                        <th className="text-right px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">En Mano</th>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Zona</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="text-center py-12 text-muted-foreground text-sm">
+                            No hay registros que coincidan con los filtros
+                          </td>
+                        </tr>
+                      ) : (
+                        filtered.map((row, i) => (
+                          <tr key={i} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                            <td className="px-4 py-2.5 font-mono text-xs text-accent whitespace-nowrap">{row.articulo}</td>
+                            <td className="px-4 py-2.5 text-foreground">{row.descArticulo}</td>
+                            <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{row.udmPrimaria}</td>
+                            <td className="px-4 py-2.5 text-right font-medium tabular-nums">{row.enMano}</td>
+                            <td className="px-4 py-2.5">
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-secondary border border-border text-muted-foreground whitespace-nowrap">
+                                {row.zona}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+
+              {/* Loaded zones with delete */}
+              <Card className="border-border bg-card">
+                <CardHeader>
+                  <CardTitle className="text-base font-medium">Zonas cargadas</CardTitle>
+                  <CardDescription>Datos disponibles en la base de datos</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {uploads.map(u => (
+                      <div key={u.zona} className="flex items-center justify-between p-3 rounded-lg bg-secondary/40 border border-border">
+                        <div className="flex items-center gap-3">
+                          <FileText className="w-4 h-4 text-accent shrink-0" />
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{u.zona}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {u.rows.length} registros · {new Date(u.uploadedAt).toLocaleDateString("es-AR")}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleDelete(u.zona)}
+                          disabled={deletingZona === u.zona}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40"
+                        >
+                          {deletingZona === u.zona
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : <Trash2 className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </>
           )}
         </div>
       )}
 
-      {/* ── CARGAR TAB ── */}
+      {/* ── CARGAR ── */}
       {tab === "cargar" && (
-        <div className="space-y-4 max-w-3xl">
-          <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-            <div>
-              <p className="text-sm font-medium text-foreground mb-1">Pegá los datos desde Excel</p>
-              <p className="text-xs text-muted-foreground">
-                Formato esperado (separado por tabulaciones): <code className="bg-secondary px-1 rounded text-[11px]">ZONA · MATRICULA · DESCRIPCION · CANTIDAD</code>
-                <br/>La primera fila debe ser el encabezado.
-              </p>
-            </div>
-            <textarea
-              value={rawText}
-              onChange={e => { setRawText(e.target.value); setPreview(null); setParseErrors([]); }}
-              placeholder={"ZONA\tMATRICULA\tDESCRIPCION\tCANTIDAD\nGBA\t123456\tCable eléctrico\t50\nCOR\t789012\tTransformador\t10"}
-              rows={10}
-              className="w-full rounded-lg bg-secondary border border-border text-sm text-foreground font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/20 px-3 py-2 resize-y"
-            />
+        <div className="space-y-4">
+          <Card className="border-border bg-card">
+            <CardHeader>
+              <CardTitle className="text-base font-medium">Pegar datos</CardTitle>
+              <CardDescription>
+                Copiá el contenido desde el sistema y pegalo acá. Las zonas se detectan desde la columna Organización.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <textarea
+                value={text}
+                onChange={e => setText(e.target.value)}
+                placeholder={"Pegá aquí el texto copiado del sistema (Ctrl+V)...\n\nDebe contener las columnas: Artículo, Desc Artículo, UDM Primaria, En Mano, Organización"}
+                rows={10}
+                className="w-full px-3 py-3 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 font-mono resize-y"
+              />
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={replaceAll}
-                  onChange={e => setReplaceAll(e.target.checked)}
-                  className="rounded border-border"
-                />
-                Reemplazar todo el stock existente
-              </label>
-              <button
-                onClick={handleParse}
-                disabled={!rawText.trim()}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 border border-border text-sm font-medium text-foreground disabled:opacity-40 transition-colors"
-              >
-                <Upload className="w-4 h-4" />
-                Previsualizar
-              </button>
-            </div>
-          </div>
+              {/* Zone preview */}
+              {previewZonas.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-muted-foreground">Zonas detectadas:</span>
+                  {previewZonas.map(z => (
+                    <span key={z} className="text-xs px-2 py-0.5 rounded-full bg-accent/15 border border-accent/30 text-accent">
+                      {z}
+                    </span>
+                  ))}
+                </div>
+              )}
 
-          {/* Parse errors */}
-          {parseErrors.length > 0 && (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-1">
-              {parseErrors.map((e, i) => (
-                <p key={i} className="text-sm text-destructive">{e}</p>
-              ))}
-            </div>
-          )}
-
-          {/* Preview */}
-          {preview && preview.length > 0 && (
-            <div className="rounded-xl border border-border bg-card overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary/30">
-                <span className="text-sm font-medium text-foreground">
-                  Vista previa — {preview.length} fila{preview.length !== 1 ? "s" : ""}
-                </span>
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-colors"
+              <div className="flex items-center gap-3">
+                <Button
+                  onClick={handleImport}
+                  disabled={saving || !text.trim()}
+                  className="bg-accent hover:bg-accent/90 text-accent-foreground"
                 >
-                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                  {saving ? "Guardando..." : "Guardar"}
-                </button>
-              </div>
-              <div className="overflow-x-auto max-h-72">
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-secondary/80">
-                    <tr>
-                      {["Zona", "Matrícula", "Descripción", "Cantidad"].map(h => (
-                        <th key={h} className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {preview.slice(0, 100).map((r, i) => (
-                      <tr key={i} className="hover:bg-secondary/30">
-                        <td className="px-4 py-2 text-foreground">{r.zona}</td>
-                        <td className="px-4 py-2 font-mono text-xs text-foreground">{r.matricula}</td>
-                        <td className="px-4 py-2 text-muted-foreground">{r.descripcion || "—"}</td>
-                        <td className="px-4 py-2 tabular-nums text-foreground">{r.cantidad != null ? r.cantidad : "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {preview.length > 100 && (
-                  <p className="text-center text-xs text-muted-foreground py-2">
-                    Mostrando 100 de {preview.length} filas
-                  </p>
+                  {saving
+                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importando...</>
+                    : <><ClipboardPaste className="w-4 h-4 mr-2" />Importar</>}
+                </Button>
+                {text.trim() && (
+                  <button onClick={() => setText("")} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    Limpiar
+                  </button>
                 )}
               </div>
-            </div>
-          )}
+
+              <div className="p-3 rounded-lg bg-secondary/40 border border-border space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Columnas requeridas</p>
+                <div className="flex flex-wrap gap-2">
+                  {Object.values(COL_MAP).map(col => (
+                    <span key={col} className="text-xs px-2 py-1 rounded-md bg-secondary border border-border text-foreground">{col}</span>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>
