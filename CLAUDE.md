@@ -1,5 +1,13 @@
 # Gerencia de Distribución SaaS - Guía de Proyecto
 
+## Flujo de Trabajo y Despliegue
+
+- **Repositorio:** GitHub — `conradofigariv/Gerencia-de-Distribucion-SaaS`
+- **Hosting:** Vercel — despliega automáticamente desde la rama `main` de GitHub.
+- **Flujo:** commit → push a `origin/main` (via API si el proxy git rechaza con 403) → Vercel detecta el push y redeploya automáticamente.
+- **Push bloqueado (403):** La rama `main` tiene protección en el proxy git local. Usar `mcp__github__push_files` para empujar directamente via GitHub API. Luego sincronizar local con `git fetch origin main && git reset --hard origin/main`.
+- **Dev local:** `npm run dev` sirve los archivos del disco — cualquier rama puede usarse localmente.
+
 ## Comandos Útiles
 - **Instalar:** `npm install`
 - **Desarrollo:** `npm run dev`
@@ -53,7 +61,7 @@
 | servicios-carga | `filas_manuales` |
 | servicios-tabla | `filas_servicios` |
 | servicios-resumen | `filas_servicios` (lectura) |
-| stock-zona | `stock_zona` |
+| stock-zona | `stock_uploads` |
 | transformadores-carga | `planillas_reserva` |
 | transformadores-tabla | `planillas_reserva` (lectura) |
 | transformadores-resumen | `planillas_reserva`, `transformador_alarms` |
@@ -81,13 +89,11 @@ CREATE TABLE sic_diagrama_active (
 );
 
 -- Stock por Zona
-CREATE TABLE stock_zona (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  zona text NOT NULL,
-  matricula text NOT NULL,
-  descripcion text,
-  cantidad numeric,
-  cargado_at timestamptz DEFAULT now()
+CREATE TABLE stock_uploads (
+  zona text PRIMARY KEY,
+  file_name text,
+  uploaded_at timestamptz DEFAULT now(),
+  rows jsonb NOT NULL
 );
 ```
 
@@ -96,12 +102,12 @@ CREATE TABLE stock_zona (
 ## Sección Stock por Zona (`components/dashboard/sections/stock-zona.tsx`)
 
 - **Propósito:** Ver y cargar el stock de materiales (con matrícula) agrupado por zona de depósito.
-- **Tabla:** `stock_zona(id, zona, matricula, descripcion, cantidad, cargado_at)`
+- **Tabla:** `stock_uploads(zona TEXT PK, file_name, uploaded_at, rows JSONB)` — una fila por zona, `rows` contiene los registros completos.
+- **Lib:** `lib/stockStorage.ts` — `parseTSV`, `getUploads`, `saveUpload`, `removeUpload`, `COL_MAP`.
 - **Dos pestañas:**
-  - **Ver stock:** Tabla expandible agrupada por zona, con filtro de zona y búsqueda por matrícula/descripción.
-  - **Cargar datos:** Textarea para pegar datos desde Excel (tab-separado). Primera fila = encabezado. Columnas detectadas por nombre: `ZONA`, `MATRICULA`/`ARTICULO`, `DESCRIPCION`/`NOMBRE`/`MATERIAL`, `CANTIDAD`/`STOCK`/`QTY`.
-- **Opción "Reemplazar todo":** si está activa, borra todas las filas existentes antes de insertar.
-- **Flujo:** Pegar texto → Previsualizar → Guardar → vuelve a pestaña "Ver stock".
+  - **Resumen de stock:** Tabla pivot — una fila por artículo, columnas fijas (Matrícula, Descripción, UDM, Total) + columnas dinámicas por zona. Filtro de zona, búsqueda por Nro/Nombre, ordenamiento por cualquier columna.
+  - **Cargar datos:** Textarea para pegar datos desde el sistema (tab-separado). Primera fila = encabezado. Columnas: `Artículo`, `Desc Artículo`, `UDM Primaria`, `En Mano`, `Organización`. La zona se detecta desde la columna Organización.
+- **Flujo:** Pegar texto → Previsualizar zonas detectadas → Importar → vuelve a pestaña "Resumen de stock".
 
 ---
 
@@ -115,7 +121,7 @@ Cada sección de carga de datos puede tener un recordatorio configurable. La arq
 
 ### Claves de recordatorio registradas (`ALL_REMINDER_KEYS` en reminder-bell.tsx):
 | key | label | section |
-|-----|-------|---------|
+|-----|-------|--------|
 | `planillas-OP` | OP — Órdenes de compra | Carga de datos |
 | `planillas-QW` | QW — Expedientes / SCs | Carga de datos |
 | `planillas-MATRICULAS` | MATRICULAS — Catálogo de materiales | Carga de datos |
@@ -275,9 +281,9 @@ sic-diagrama.tsx
 ## Notas Importantes de Desarrollo
 
 ### Dev server vs feature branches
-- El servidor de desarrollo (`npm run dev`) corre en la rama `main`.
-- Los cambios en ramas de feature **no son visibles** hasta hacer cherry-pick o merge a `main`.
-- Siempre hacer `git push origin main` luego del cherry-pick para que los cambios sean visibles.
+- El servidor de desarrollo (`npm run dev`) sirve los archivos del disco — la rama de git activa no importa.
+- Los cambios deben pushearse a `origin/main` para que Vercel los despliegue.
+- Si el proxy git rechaza con 403, usar `mcp__github__push_files` (GitHub API) y luego `git fetch origin main && git reset --hard origin/main` para sincronizar local.
 
 ### Modales / Dialogs
 - Usar `createPortal(dialog, document.body)` para que los modales escapen contextos de stacking.
