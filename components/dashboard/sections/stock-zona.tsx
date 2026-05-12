@@ -166,7 +166,7 @@ export function StockZonaSection() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  const zonas    = uploads.map(u => u.zona);
+  const zonas    = uploads.map(u => u.zona).sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
   const colorMap = useZonaColorMap(zonas);
 
   const lastUpdate = uploads.reduce<string | null>((latest, u) => {
