@@ -373,7 +373,9 @@ export function StockZonaSection() {
                 <div className="overflow-x-auto">
                   <table
                     className="text-sm"
-                    style={{ tableLayout: "fixed", width: tableWidth, minWidth: tableWidth }}
+                    style={zonesExpanded
+                      ? { tableLayout: "fixed", width: tableWidth, minWidth: tableWidth }
+                      : { tableLayout: "fixed", width: "100%" }}
                   >
                     <colgroup>
                       {fixedCols.map(c => <col key={c.col} style={{ width: c.w }} />)}
