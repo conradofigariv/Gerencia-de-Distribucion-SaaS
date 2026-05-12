@@ -14,8 +14,17 @@ import { toast } from "sonner";
 
 type Tab            = "resumen" | "cargar";
 type ArticuloFiltro = "nro" | "nombre";
-type SortCol        = "zona" | "articulo" | "descArticulo" | "udmPrimaria" | "enMano";
-type SortDir        = "asc" | "desc";
+
+// SortCol is "articulo" | "descArticulo" | "udmPrimaria" | "total" | <zonaName>
+type SortDir = "asc" | "desc";
+
+interface PivotRow {
+  articulo:     string;
+  descArticulo: string;
+  udmPrimaria:  string;
+  total:        number;
+  byZona:       Record<string, number>;
+}
 
 // ─── Zone colors ──────────────────────────────────────────────────────────────
 
@@ -104,12 +113,12 @@ export function StockZonaSection() {
   const [filterZona, setFilterZona]         = useState("todos");
   const [filterSearch, setFilterSearch]     = useState("");
   const [articuloFiltro, setArticuloFiltro] = useState<ArticuloFiltro>("nro");
-  const [sortCol, setSortCol]               = useState<SortCol>("zona");
+  const [sortCol, setSortCol]               = useState("articulo");
   const [sortDir, setSortDir]               = useState<SortDir>("asc");
 
-  const handleSort = (col: SortCol) => {
+  const handleSort = (col: string) => {
     if (col === sortCol) setSortDir(d => d === "asc" ? "desc" : "asc");
-    else { setSortCol(col); setSortDir("asc"); }
+    else { setSortCol(col); setSortDir(col === "articulo" || col === "descArticulo" || col === "udmPrimaria" ? "asc" : "desc"); }
   };
 
   const refresh = useCallback(async () => {
@@ -130,13 +139,26 @@ export function StockZonaSection() {
     return latest;
   }, null);
 
-  const allRows: (CompraRow & { zona: string })[] = uploads.flatMap(u =>
-    u.rows.map(r => ({ ...r, zona: u.zona }))
-  );
+  // Build pivot: one row per artículo, one column per zona
+  const pivotMap = new Map<string, PivotRow>();
+  for (const upload of uploads) {
+    for (const row of upload.rows) {
+      if (!pivotMap.has(row.articulo)) {
+        pivotMap.set(row.articulo, {
+          articulo: row.articulo, descArticulo: row.descArticulo,
+          udmPrimaria: row.udmPrimaria, total: 0, byZona: {},
+        });
+      }
+      const pivot = pivotMap.get(row.articulo)!;
+      const qty = parseFloat(String(row.enMano).replace(",", ".")) || 0;
+      pivot.total += qty;
+      pivot.byZona[upload.zona] = (pivot.byZona[upload.zona] ?? 0) + qty;
+    }
+  }
 
-  const filtered = allRows
+  const pivotRows = Array.from(pivotMap.values())
     .filter(r => {
-      const zonaOk   = filterZona === "todos" || r.zona === filterZona;
+      const zonaOk   = filterZona === "todos" || (r.byZona[filterZona] ?? 0) > 0;
       const lo       = filterSearch.toLowerCase();
       const searchOk = !filterSearch || (
         articuloFiltro === "nro"
@@ -146,15 +168,21 @@ export function StockZonaSection() {
       return zonaOk && searchOk;
     })
     .sort((a, b) => {
-      let va: string | number = a[sortCol];
-      let vb: string | number = b[sortCol];
-      if (sortCol === "enMano") {
-        va = parseFloat(String(va).replace(",", ".")) || 0;
-        vb = parseFloat(String(vb).replace(",", ".")) || 0;
-        return sortDir === "asc" ? (va as number) - (vb as number) : (vb as number) - (va as number);
+      let va: number | string;
+      let vb: number | string;
+      if (sortCol === "total") {
+        va = a.total; vb = b.total;
+      } else if (sortCol === "articulo" || sortCol === "descArticulo" || sortCol === "udmPrimaria") {
+        va = a[sortCol as keyof Pick<PivotRow, "articulo" | "descArticulo" | "udmPrimaria">];
+        vb = b[sortCol as keyof Pick<PivotRow, "articulo" | "descArticulo" | "udmPrimaria">];
+        const cmp = String(va).localeCompare(String(vb), "es", { numeric: true, sensitivity: "base" });
+        return sortDir === "asc" ? cmp : -cmp;
+      } else {
+        // zona column
+        va = a.byZona[sortCol] ?? 0;
+        vb = b.byZona[sortCol] ?? 0;
       }
-      const cmp = String(va).localeCompare(String(vb), "es", { numeric: true, sensitivity: "base" });
-      return sortDir === "asc" ? cmp : -cmp;
+      return sortDir === "asc" ? (va as number) - (vb as number) : (vb as number) - (va as number);
     });
 
   // ── Carga handlers ─────────────────────────────────────────────────────────
@@ -288,31 +316,23 @@ export function StockZonaSection() {
                 </div>
 
                 <p className="text-sm text-muted-foreground sm:ml-auto whitespace-nowrap">
-                  {filtered.length} de {allRows.length} registros
+                  {pivotRows.length} de {pivotMap.size} artículos
                 </p>
               </div>
 
-              {/* Table */}
+              {/* Pivot Table */}
               <Card className="border-border bg-card overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm table-fixed">
-                    <colgroup>
-                      <col className="w-36" />
-                      <col className="w-28" />
-                      <col />
-                      <col className="w-20" />
-                      <col className="w-24" />
-                    </colgroup>
+                  <table className="w-full text-sm min-w-max">
                     <thead>
                       <tr className="border-b border-border bg-secondary/60">
                         {(
                           [
-                            { col: "zona",         label: "Zona",        align: "left"  },
-                            { col: "articulo",     label: "Artículo",    align: "left"  },
+                            { col: "articulo",     label: "Matrícula",   align: "left"  },
                             { col: "descArticulo", label: "Descripción", align: "left"  },
                             { col: "udmPrimaria",  label: "UDM",         align: "left"  },
-                            { col: "enMano",       label: "En Mano",     align: "right" },
-                          ] as { col: SortCol; label: string; align: "left" | "right" }[]
+                            { col: "total",        label: "Total",       align: "right" },
+                          ] as { col: string; label: string; align: "left" | "right" }[]
                         ).map(({ col, label, align }) => {
                           const active = sortCol === col;
                           const Icon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
@@ -329,27 +349,46 @@ export function StockZonaSection() {
                             </th>
                           );
                         })}
+                        {zonas.map(zona => {
+                          const active = sortCol === zona;
+                          const Icon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
+                          return (
+                            <th
+                              key={zona}
+                              onClick={() => handleSort(zona)}
+                              className={`px-4 py-3 font-medium text-xs uppercase tracking-wide cursor-pointer select-none whitespace-nowrap transition-colors text-right ${active ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                            >
+                              <span className="inline-flex items-center justify-end gap-1.5">
+                                <Icon className={`w-3.5 h-3.5 shrink-0 transition-opacity ${active ? "opacity-100" : "opacity-30"}`} />
+                                <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${colorMap[zona] ?? ZONA_COLORS[0]}`}>{zona}</span>
+                              </span>
+                            </th>
+                          );
+                        })}
                       </tr>
                     </thead>
                     <tbody>
-                      {filtered.length === 0 ? (
+                      {pivotRows.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="text-center py-12 text-muted-foreground text-sm">
+                          <td colSpan={4 + zonas.length} className="text-center py-12 text-muted-foreground text-sm">
                             No hay registros que coincidan con los filtros
                           </td>
                         </tr>
                       ) : (
-                        filtered.map((row, i) => (
+                        pivotRows.map((row, i) => (
                           <tr key={i} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
-                            <td className="px-4 py-2.5">
-                              <span className={`text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${colorMap[row.zona] ?? ZONA_COLORS[0]}`}>
-                                {row.zona}
-                              </span>
-                            </td>
                             <td className="px-4 py-2.5 font-mono text-xs text-accent whitespace-nowrap">{row.articulo}</td>
-                            <td className="px-4 py-2.5 text-foreground truncate">{row.descArticulo}</td>
-                            <td className="px-4 py-2.5 text-muted-foreground">{row.udmPrimaria}</td>
-                            <td className="px-4 py-2.5 text-right font-medium tabular-nums">{row.enMano}</td>
+                            <td className="px-4 py-2.5 text-foreground max-w-[260px] truncate">{row.descArticulo}</td>
+                            <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{row.udmPrimaria}</td>
+                            <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-foreground">{row.total.toLocaleString("es-AR")}</td>
+                            {zonas.map(zona => {
+                              const qty = row.byZona[zona];
+                              return (
+                                <td key={zona} className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
+                                  {qty != null && qty > 0 ? qty.toLocaleString("es-AR") : <span className="opacity-30">—</span>}
+                                </td>
+                              );
+                            })}
                           </tr>
                         ))
                       )}
