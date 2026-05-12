@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   FileText, Trash2, Loader2, ClipboardPaste,
   Search, X, PackageOpen, RefreshCw, ChevronDown,
-  ChevronUp, ChevronsUpDown,
+  ChevronUp, ChevronsUpDown, ChevronRight,
 } from "lucide-react";
 import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
 import type { ZonaUpload, CompraRow } from "@/lib/stockStorage";
@@ -14,9 +14,7 @@ import { toast } from "sonner";
 
 type Tab            = "resumen" | "cargar";
 type ArticuloFiltro = "nro" | "nombre";
-
-// SortCol is "articulo" | "descArticulo" | "udmPrimaria" | "total" | <zonaName>
-type SortDir = "asc" | "desc";
+type SortDir        = "asc" | "desc";
 
 interface PivotRow {
   articulo:     string;
@@ -99,6 +97,20 @@ function ZonaSelect({ zonas, value, onChange, colorMap }: {
   );
 }
 
+// ─── Resize handle ─────────────────────────────────────────────────────
+
+function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
+  return (
+    <div
+      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none group/rh"
+      onMouseDown={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); onStart(e); }}
+      onClick={(e: MouseEvent) => e.stopPropagation()}
+    >
+      <div className="absolute right-0 top-1/4 h-1/2 w-px bg-border group-hover/rh:bg-accent/60 transition-colors" />
+    </div>
+  );
+}
+
 // ─── Main section ─────────────────────────────────────────────────────────────
 
 export function StockZonaSection() {
@@ -116,6 +128,29 @@ export function StockZonaSection() {
   const [sortCol, setSortCol]               = useState("articulo");
   const [sortDir, setSortDir]               = useState<SortDir>("asc");
 
+  // Column resize & zone collapse
+  const [colWidths, setColWidths] = useState({ articulo: 130, descArticulo: 260, udmPrimaria: 70, total: 90 });
+  const [zoneWidth, setZoneWidth] = useState(110);
+  const [zonesExpanded, setZonesExpanded] = useState(true);
+  const resizingRef = useRef<{ col: string; startX: number; startWidth: number } | null>(null);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const { col, startX, startWidth } = resizingRef.current;
+      const newW = Math.max(50, startWidth + e.clientX - startX);
+      if (col === "__zone__") setZoneWidth(newW);
+      else setColWidths(p => ({ ...p, [col]: newW }));
+    };
+    const onUp = () => { resizingRef.current = null; };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
   const handleSort = (col: string) => {
     if (col === sortCol) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortCol(col); setSortDir(col === "articulo" || col === "descArticulo" || col === "udmPrimaria" ? "asc" : "desc"); }
@@ -131,15 +166,15 @@ export function StockZonaSection() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  const zonas     = uploads.map(u => u.zona);
-  const colorMap  = useZonaColorMap(zonas);
+  const zonas    = uploads.map(u => u.zona);
+  const colorMap = useZonaColorMap(zonas);
 
   const lastUpdate = uploads.reduce<string | null>((latest, u) => {
     if (!latest || u.uploadedAt > latest) return u.uploadedAt;
     return latest;
   }, null);
 
-  // Build pivot: one row per artículo, one column per zona
+  // Build pivot
   const pivotMap = new Map<string, PivotRow>();
   for (const upload of uploads) {
     for (const row of upload.rows) {
@@ -178,7 +213,6 @@ export function StockZonaSection() {
         const cmp = String(va).localeCompare(String(vb), "es", { numeric: true, sensitivity: "base" });
         return sortDir === "asc" ? cmp : -cmp;
       } else {
-        // zona column
         va = a.byZona[sortCol] ?? 0;
         vb = b.byZona[sortCol] ?? 0;
       }
@@ -232,6 +266,20 @@ export function StockZonaSection() {
     const { rows } = parseTSV(text.trim());
     return [...new Set(rows.map(r => r.organizacion).filter(Boolean))];
   })();
+
+  // ── Table layout ─────────────────────────────────────────────────────────
+
+  const TOGGLE_W = zonesExpanded ? 36 : 96;
+  const tableWidth =
+    colWidths.articulo + colWidths.descArticulo + colWidths.udmPrimaria + colWidths.total +
+    TOGGLE_W + (zonesExpanded ? zonas.length * zoneWidth : 0);
+
+  const fixedCols = [
+    { col: "articulo",     label: "Matrícula",   align: "left"  as const, w: colWidths.articulo     },
+    { col: "descArticulo", label: "Descripción", align: "left"  as const, w: colWidths.descArticulo },
+    { col: "udmPrimaria",  label: "UDM",         align: "left"  as const, w: colWidths.udmPrimaria  },
+    { col: "total",        label: "Total",       align: "right" as const, w: colWidths.total        },
+  ];
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -323,45 +371,70 @@ export function StockZonaSection() {
               {/* Pivot Table */}
               <Card className="border-border bg-card overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-max">
+                  <table
+                    className="text-sm"
+                    style={{ tableLayout: "fixed", width: tableWidth, minWidth: tableWidth }}
+                  >
+                    <colgroup>
+                      {fixedCols.map(c => <col key={c.col} style={{ width: c.w }} />)}
+                      <col style={{ width: TOGGLE_W }} />
+                      {zonesExpanded && zonas.map(z => <col key={z} style={{ width: zoneWidth }} />)}
+                    </colgroup>
                     <thead>
                       <tr className="border-b border-border bg-secondary/60">
-                        {(
-                          [
-                            { col: "articulo",     label: "Matrícula",   align: "left"  },
-                            { col: "descArticulo", label: "Descripción", align: "left"  },
-                            { col: "udmPrimaria",  label: "UDM",         align: "left"  },
-                            { col: "total",        label: "Total",       align: "right" },
-                          ] as { col: string; label: string; align: "left" | "right" }[]
-                        ).map(({ col, label, align }) => {
+                        {fixedCols.map(({ col, label, align, w }) => {
                           const active = sortCol === col;
                           const Icon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
                           return (
                             <th
                               key={col}
                               onClick={() => handleSort(col)}
-                              className={`px-4 py-3 font-medium text-xs uppercase tracking-wide cursor-pointer select-none whitespace-nowrap transition-colors ${align === "right" ? "text-right" : "text-left"} ${active ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                              style={{ width: w }}
+                              className={`relative px-4 py-3 font-medium text-xs uppercase tracking-wide cursor-pointer select-none overflow-hidden transition-colors ${align === "right" ? "text-right" : "text-left"} ${active ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                             >
                               <span className={`inline-flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
                                 {label}
                                 <Icon className={`w-3.5 h-3.5 shrink-0 transition-opacity ${active ? "opacity-100" : "opacity-30"}`} />
                               </span>
+                              <ResizeHandle
+                                onStart={e => { resizingRef.current = { col, startX: e.clientX, startWidth: w }; }}
+                              />
                             </th>
                           );
                         })}
-                        {zonas.map(zona => {
+
+                        {/* Zone section toggle */}
+                        <th
+                          onClick={() => setZonesExpanded(v => !v)}
+                          style={{ width: TOGGLE_W }}
+                          title={zonesExpanded ? "Colapsar zonas" : "Expandir zonas"}
+                          className="relative px-2 py-3 text-xs font-medium uppercase tracking-wide cursor-pointer select-none overflow-hidden transition-colors text-muted-foreground hover:text-foreground"
+                        >
+                          <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                            <ChevronRight className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${zonesExpanded ? "rotate-180" : ""}`} />
+                            {!zonesExpanded && zonas.length > 0 && (
+                              <span className="tracking-normal normal-case font-normal text-[11px]">{zonas.length} zona{zonas.length !== 1 ? "s" : ""}</span>
+                            )}
+                          </span>
+                        </th>
+
+                        {zonesExpanded && zonas.map(zona => {
                           const active = sortCol === zona;
                           const Icon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
                           return (
                             <th
                               key={zona}
                               onClick={() => handleSort(zona)}
-                              className={`px-4 py-3 font-medium text-xs uppercase tracking-wide cursor-pointer select-none whitespace-nowrap transition-colors text-right ${active ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                              style={{ width: zoneWidth }}
+                              className={`relative px-4 py-3 font-medium text-xs uppercase tracking-wide cursor-pointer select-none overflow-hidden transition-colors text-right ${active ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                             >
                               <span className="inline-flex items-center justify-end gap-1.5">
                                 <Icon className={`w-3.5 h-3.5 shrink-0 transition-opacity ${active ? "opacity-100" : "opacity-30"}`} />
                                 <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${colorMap[zona] ?? ZONA_COLORS[0]}`}>{zona}</span>
                               </span>
+                              <ResizeHandle
+                                onStart={e => { resizingRef.current = { col: "__zone__", startX: e.clientX, startWidth: zoneWidth }; }}
+                              />
                             </th>
                           );
                         })}
@@ -370,18 +443,19 @@ export function StockZonaSection() {
                     <tbody>
                       {pivotRows.length === 0 ? (
                         <tr>
-                          <td colSpan={4 + zonas.length} className="text-center py-12 text-muted-foreground text-sm">
+                          <td colSpan={fixedCols.length + 1 + (zonesExpanded ? zonas.length : 0)} className="text-center py-12 text-muted-foreground text-sm">
                             No hay registros que coincidan con los filtros
                           </td>
                         </tr>
                       ) : (
                         pivotRows.map((row, i) => (
                           <tr key={i} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
-                            <td className="px-4 py-2.5 font-mono text-xs text-accent whitespace-nowrap">{row.articulo}</td>
-                            <td className="px-4 py-2.5 text-foreground max-w-[260px] truncate">{row.descArticulo}</td>
-                            <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{row.udmPrimaria}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-accent overflow-hidden whitespace-nowrap" style={{ textOverflow: "ellipsis" }}>{row.articulo}</td>
+                            <td className="px-4 py-2.5 text-foreground overflow-hidden whitespace-nowrap" style={{ textOverflow: "ellipsis" }}>{row.descArticulo}</td>
+                            <td className="px-4 py-2.5 text-muted-foreground overflow-hidden whitespace-nowrap" style={{ textOverflow: "ellipsis" }}>{row.udmPrimaria}</td>
                             <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-foreground">{row.total.toLocaleString("es-AR")}</td>
-                            {zonas.map(zona => {
+                            <td />
+                            {zonesExpanded && zonas.map(zona => {
                               const qty = row.byZona[zona];
                               return (
                                 <td key={zona} className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
