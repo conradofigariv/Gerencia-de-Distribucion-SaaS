@@ -24,6 +24,7 @@ import {
   GitMerge,
   Zap,
   ImagePlus,
+  Package,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 
@@ -64,6 +65,7 @@ const navItems: NavItemDef[] = [
       { id: "servicios-carga",   label: "Crear seguimiento",    icon: UploadCloud },
     ],
   },
+  { kind: "link", id: "stock-zona", label: "Stock por Zona", icon: Package },
   {
     kind: "group",
     id: "transformadores",

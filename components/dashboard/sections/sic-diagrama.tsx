@@ -16,7 +16,7 @@ import "@xyflow/react/dist/style.css";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { X, Plus, Trash2, Check, Loader2, Users, Save, RotateCcw, Upload, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, Plus, Trash2, Check, Loader2, Users, Save, RotateCcw, Upload, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -201,15 +201,13 @@ interface NeonNodeBaseProps {
   minHeight?: number;
   shapeSvg: ReactNode;
   shapeViewBox?: string;
-  iconSvg: ReactNode;
 }
 
-function NeonNodeBase({ data: d, selected, defaultColor, minWidth = 80, minHeight = 50, shapeSvg, shapeViewBox = "0 0 100 100", iconSvg }: NeonNodeBaseProps) {
+function NeonNodeBase({ data: d, selected, defaultColor, minWidth = 80, minHeight = 50, shapeSvg, shapeViewBox = "0 0 100 100" }: NeonNodeBaseProps) {
   const color   = d.color ?? defaultColor;
   const glow    = getGlow(color);
   const fill    = hexToRgba(color, 0.06);
   const fillHov = hexToRgba(color, 0.12);
-  const days    = getDays(d.createdAt);
   const owner   = d.responsables?.[0];
   const initials = owner ? owner.split(" ").map(s => s[0]).slice(0, 2).join("").toUpperCase() : null;
 
@@ -244,19 +242,6 @@ function NeonNodeBase({ data: d, selected, defaultColor, minWidth = 80, minHeigh
         style={{ inset: 1, borderRadius: "inherit", background: "linear-gradient(180deg,rgba(255,255,255,.04),transparent 30%)" }}
       />
 
-      {/* Icon badge */}
-      <div
-        className="absolute top-0 left-3 z-20 w-[22px] h-[22px] rounded-[7px] flex items-center justify-center -translate-y-1/2"
-        style={{
-          background: "rgba(7,9,18,.95)",
-          border: `1px solid ${color}`,
-          color,
-          boxShadow: `0 0 16px ${glow}, inset 0 1px 0 rgba(255,255,255,.06)`,
-        }}
-      >
-        {iconSvg}
-      </div>
-
       {/* Content */}
       <div className="relative z-20 flex flex-col items-center gap-1 px-4 text-center w-full mt-1">
         <span
@@ -265,13 +250,6 @@ function NeonNodeBase({ data: d, selected, defaultColor, minWidth = 80, minHeigh
         >
           {d.label}
         </span>
-
-        {days && (
-          <span className="flex items-center gap-1 text-[9px] font-medium uppercase tracking-[.06em]" style={{ color: "#8a8fa6" }}>
-            <span style={{ width: 4, height: 4, borderRadius: "50%", background: color, boxShadow: `0 0 6px ${color}`, display: "inline-block", flexShrink: 0 }} />
-            {days}
-          </span>
-        )}
 
         {owner && (
           <div
@@ -316,7 +294,6 @@ function ProcessNode({ data, selected }: NodeProps) {
   return (
     <NeonNodeBase data={data as unknown as PasoData} selected={!!selected} defaultColor="#60a5fa" minWidth={100} minHeight={55}
       shapeSvg={<rect x="4" y="4" width="92" height="92" rx="12" />}
-      iconSvg={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width={11} height={11}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>}
     />
   );
 }
@@ -325,7 +302,6 @@ function StartEndNode({ data, selected }: NodeProps) {
   return (
     <NeonNodeBase data={data as unknown as PasoData} selected={!!selected} defaultColor="#34d399" minWidth={100} minHeight={48}
       shapeSvg={<rect x="4" y="4" width="92" height="92" rx="46" />}
-      iconSvg={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width={11} height={11}><polygon points="6 4 20 12 6 20 6 4"/></svg>}
     />
   );
 }
@@ -334,7 +310,6 @@ function DecisionNode({ data, selected }: NodeProps) {
   return (
     <NeonNodeBase data={data as unknown as PasoData} selected={!!selected} defaultColor="#f59e0b" minWidth={90} minHeight={56}
       shapeSvg={<polygon points="50,4 96,50 50,96 4,50" />}
-      iconSvg={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width={11} height={11}><path d="M12 2v6M12 16v6M2 12h6M16 12h6"/><circle cx="12" cy="12" r="3"/></svg>}
     />
   );
 }
@@ -346,7 +321,6 @@ function DocumentNode({ data, selected }: NodeProps) {
         <path d="M4,4 L70,4 L96,26 L96,92 Q50,106 4,92 Z" />
         <path d="M70,4 L70,26 L96,26" style={{ fill: "none" }} />
       </>}
-      iconSvg={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width={11} height={11}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
     />
   );
 }
@@ -355,7 +329,6 @@ function ParallelogramNode({ data, selected }: NodeProps) {
   return (
     <NeonNodeBase data={data as unknown as PasoData} selected={!!selected} defaultColor="#22d3ee" minWidth={100} minHeight={50}
       shapeSvg={<polygon points="20,4 96,4 80,96 4,96" />}
-      iconSvg={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width={11} height={11}><path d="M3 7h13l5 5-5 5H3"/><path d="M3 12h11"/></svg>}
     />
   );
 }
@@ -364,7 +337,6 @@ function HexagonNode({ data, selected }: NodeProps) {
   return (
     <NeonNodeBase data={data as unknown as PasoData} selected={!!selected} defaultColor="#2dd4bf" minWidth={100} minHeight={60}
       shapeSvg={<polygon points="26,4 74,4 97,50 74,96 26,96 3,50" />}
-      iconSvg={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width={11} height={11}><path d="M12 2 4 6v6c0 5 3.5 9.4 8 10 4.5-.6 8-5 8-10V6l-8-4Z"/></svg>}
     />
   );
 }
@@ -410,6 +382,14 @@ function NeonEdge({ id, sourceX, sourceY, targetX, targetY, data, selected, labe
   const gradId = `sicg-${id}`;
   const pathId = `sicp-${id}`;
   const markId = `sicm-${id}`;
+
+  // Approximate path length to keep dot speed constant across all edges
+  const approxLen = isStep
+    ? Math.abs(bridgeY - sourceY) + Math.abs(targetX - sourceX) + Math.abs(targetY - bridgeY)
+    : isStraight
+    ? Math.hypot(targetX - sourceX, targetY - sourceY)
+    : (Math.hypot(targetX - sourceX, targetY - sourceY) + Math.hypot(cpX - sourceX, cpY - sourceY) + Math.hypot(targetX - cpX, targetY - cpY)) / 2;
+  const dotDur = `${Math.max(0.5, approxLen / 110).toFixed(2)}s`;
 
   const startDrag = useCallback(
     (update: (x: number, y: number) => Record<string, unknown>) =>
@@ -461,6 +441,9 @@ function NeonEdge({ id, sourceX, sourceY, targetX, targetY, data, selected, labe
         </marker>
       </defs>
 
+      {/* Invisible wide hit area for easier selection */}
+      <path d={edgePath} fill="none" stroke="transparent" strokeWidth={16} className="react-flow__edge-interaction" />
+
       {/* Edge path */}
       <path
         id={pathId}
@@ -479,7 +462,7 @@ function NeonEdge({ id, sourceX, sourceY, targetX, targetY, data, selected, labe
       {/* Animated travelling dot */}
       <circle r="3" fill="white" style={{ filter: "drop-shadow(0 0 5px rgba(255,255,255,.8))" }}>
         {/* @ts-expect-error animateMotion / mpath SMIL elements */}
-        <animateMotion dur="2s" repeatCount="indefinite" calcMode="linear">
+        <animateMotion dur={dotDur} repeatCount="indefinite" calcMode="linear">
           <mpath href={`#${pathId}`} />
         </animateMotion>
       </circle>
@@ -728,6 +711,15 @@ function EdgeEditModal({ edgeId, initialType, initialLabel, onSave, onClose }: E
 
 interface SICRow { person: string; sec: number; fecha: string; accion: string; nota: string }
 
+interface SICRecord {
+  sicNumero: string;
+  steps: SICRow[];
+  stepIndex: number;
+  updatedAt?: string;
+}
+
+const SIC_SELECTION_KEY = "sic-diagrama-selected";
+
 function parseFechaSIC(s: string): string {
   // "dd/mm/yyyy hh:mm:ss" → ISO
   const [datePart, timePart = "00:00:00"] = s.trim().split(" ");
@@ -953,19 +945,21 @@ function SicDiagramaInner() {
   const [saved, setSaved]         = useState(true);
   const [saving, setSaving]       = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [sicNumero, setSicNumero] = useState<string>("");
-  const [sicSteps, setSicSteps] = useState<SICRow[]>([]);
-  const [sicStepIndex, setSicStepIndex] = useState<number>(0);
+  const [sicList, setSicList] = useState<SICRecord[]>([]);
+  const [selectedSicNumero, setSelectedSicNumero] = useState<string | null>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes({}));
   const [edges, setEdges, onEdgesChange] = useEdgesState(DEFAULT_EDGES);
 
-  // Load saved layout from Supabase
+  // Load saved layout + SICs from Supabase
   useEffect(() => {
     (async () => {
       try {
-        const [layoutRes] = await Promise.all([
-          supabase.from("sic_diagrama_layout").select("nodes,edges,sic_numero,sic_steps,sic_step_index").eq("id", "main").single(),
+        const [layoutRes, sicsRes] = await Promise.all([
+          supabase.from("sic_diagrama_layout").select("*").eq("id", "main").single(),
+          supabase.from("sic_diagrama_active").select("*").order("updated_at", { ascending: false }),
         ]);
 
         if (layoutRes.error) {
@@ -986,18 +980,43 @@ function SicDiagramaInner() {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const savedNodes: any[] = layoutRes.data.nodes;
           const validPos = (p: unknown) => p != null && typeof (p as { x?: unknown }).x === "number" && typeof (p as { y?: unknown }).y === "number";
-          const extra = savedNodes.filter((s: unknown) => validPos((s as { position?: unknown }).position));
-          setNodes(extra);
+          // Strip transient `highlighted` from saved data (cleanup of older saves)
+          const cleaned = savedNodes
+            .filter((s: unknown) => validPos((s as { position?: unknown }).position))
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .map((n: any) => {
+              const data = { ...(n.data ?? {}) };
+              delete data.highlighted;
+              return { ...n, data };
+            });
+          setNodes(cleaned);
           if (layoutRes.data.edges) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             setEdges(layoutRes.data.edges.map((e: any) => ({ ...e })));
           }
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const ld = layoutRes.data as any;
-          if (ld.sic_numero) setSicNumero(ld.sic_numero);
-          if (Array.isArray(ld.sic_steps)) setSicSteps(ld.sic_steps as SICRow[]);
-          if (typeof ld.sic_step_index === "number") setSicStepIndex(ld.sic_step_index);
         }
+
+        // Load SICs (table may not exist yet — ignore that error)
+        if (!sicsRes.error && Array.isArray(sicsRes.data)) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const records: SICRecord[] = (sicsRes.data as any[]).map(r => ({
+            sicNumero: r.sic_numero,
+            steps:     Array.isArray(r.steps) ? r.steps : [],
+            stepIndex: typeof r.step_index === "number" ? r.step_index : 0,
+            updatedAt: r.updated_at,
+          }));
+          setSicList(records);
+
+          // Restore previous selection from localStorage if it still exists
+          try {
+            const sel = localStorage.getItem(SIC_SELECTION_KEY);
+            if (sel && records.some(r => r.sicNumero === sel)) setSelectedSicNumero(sel);
+          } catch { /* ignore */ }
+        } else if (sicsRes.error && sicsRes.error.code !== "42P01") {
+          // 42P01 = relation does not exist; silently ignore so the diagram still works
+          toast.error(`No se pudieron cargar las SICs: ${sicsRes.error.message}`);
+        }
+
         setLoading(false);
       } catch (err) {
         setLoadError(`Error inesperado: ${err instanceof Error ? err.message : String(err)}`);
@@ -1005,6 +1024,27 @@ function SicDiagramaInner() {
       }
     })();
   }, []);
+
+  // Persist current selection to localStorage
+  useEffect(() => {
+    if (loading) return;
+    try {
+      if (selectedSicNumero) localStorage.setItem(SIC_SELECTION_KEY, selectedSicNumero);
+      else localStorage.removeItem(SIC_SELECTION_KEY);
+    } catch { /* ignore */ }
+  }, [selectedSicNumero, loading]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [dropdownOpen]);
 
   // Mark unsaved on changes after initial load
   const initialLoadDone = useRef(false);
@@ -1017,19 +1057,18 @@ function SicDiagramaInner() {
   const handleManualSave = useCallback(async () => {
     setSaving(true);
     const payload = {
-      nodes: nodes.map(n => ({ id: n.id, position: n.position, width: n.width, height: n.height, style: n.style, type: n.type, data: n.data })),
+      nodes: nodes.map(n => {
+        // Strip the transient `highlighted` overlay before persisting
+        const data = { ...(n.data ?? {}) };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        delete (data as any).highlighted;
+        return { id: n.id, position: n.position, width: n.width, height: n.height, style: n.style, type: n.type, data };
+      }),
       edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle, type: e.type, label: e.label, style: e.style, data: e.data })),
     };
     const { error } = await supabase
       .from("sic_diagrama_layout")
-      .upsert({
-        id: "main",
-        ...payload,
-        sic_numero:     sicNumero || null,
-        sic_steps:      sicSteps.length > 0 ? sicSteps : null,
-        sic_step_index: sicSteps.length > 0 ? sicStepIndex : null,
-        updated_at:     new Date().toISOString(),
-      }, { onConflict: "id" })
+      .upsert({ id: "main", ...payload, updated_at: new Date().toISOString() }, { onConflict: "id" })
       .select();
     setSaving(false);
     if (error) {
@@ -1039,7 +1078,7 @@ function SicDiagramaInner() {
     }
     toast.success(`Guardado — ${payload.nodes.length} objeto${payload.nodes.length === 1 ? "" : "s"}`);
     setSaved(true);
-  }, [nodes, edges, sicNumero, sicSteps, sicStepIndex]);
+  }, [nodes, edges]);
 
   const onConnect = useCallback((connection: Connection) => {
     const srcNode  = nodes.find(n => n.id === connection.source);
@@ -1079,55 +1118,74 @@ function SicDiagramaInner() {
 
   const resetLayout = () => { setNodes([]); setEdges([]); };
 
-  const applyHighlightForStep = useCallback((rows: SICRow[], idx: number, numero: string) => {
-    const step = rows[idx];
-    setNodes(ns => ns.map(n => {
-      const d = n.data as PasoData;
-      const matches = step && d.responsables?.includes(step.person);
-      if (matches) {
-        return { ...n, data: { ...d, highlighted: {
-          sicNumero: numero,
-          sec: step.sec,
-          fecha: step.fecha,
-          nota: step.nota,
-          person: step.person,
-        } } };
-      }
-      if (d.highlighted) {
-        const newData = { ...d };
-        delete newData.highlighted;
-        return { ...n, data: newData };
-      }
-      return n;
-    }));
-  }, [setNodes]);
-
-  const handleSICImport = useCallback((rows: SICRow[], numero: string) => {
-    setSicSteps(rows);
+  const handleSICImport = useCallback(async (rows: SICRow[], numero: string) => {
+    if (!numero) {
+      toast.error("Agregá un número de SIC para guardarla");
+      return;
+    }
     const lastIdx = Math.max(0, rows.length - 1);
-    setSicStepIndex(lastIdx);
-    if (numero) setSicNumero(numero);
-    applyHighlightForStep(rows, lastIdx, numero || sicNumero);
-  }, [applyHighlightForStep, sicNumero]);
+    const now = new Date().toISOString();
 
-  const goToStep = useCallback((idx: number) => {
-    if (idx < 0 || idx >= sicSteps.length) return;
-    setSicStepIndex(idx);
-    applyHighlightForStep(sicSteps, idx, sicNumero);
-  }, [sicSteps, sicNumero, applyHighlightForStep]);
+    const { error } = await supabase
+      .from("sic_diagrama_active")
+      .upsert({
+        sic_numero: numero,
+        steps:      rows,
+        step_index: lastIdx,
+        updated_at: now,
+      }, { onConflict: "sic_numero" });
 
-  const clearSIC = useCallback(() => {
-    setSicSteps([]);
-    setSicStepIndex(0);
-    setSicNumero("");
-    setNodes(ns => ns.map(n => {
-      const d = n.data as PasoData;
-      if (!d.highlighted) return n;
-      const newData = { ...d };
-      delete newData.highlighted;
-      return { ...n, data: newData };
-    }));
-  }, [setNodes]);
+    if (error) {
+      if (error.code === "42P01") {
+        toast.error("Falta crear la tabla sic_diagrama_active en Supabase");
+      } else {
+        toast.error(`No se pudo guardar la SIC: ${error.message}`);
+      }
+      return;
+    }
+
+    setSicList(prev => {
+      const filtered = prev.filter(s => s.sicNumero !== numero);
+      return [{ sicNumero: numero, steps: rows, stepIndex: lastIdx, updatedAt: now }, ...filtered];
+    });
+    setSelectedSicNumero(numero);
+    toast.success(`SIC ${numero} importada — ${rows.length} paso${rows.length === 1 ? "" : "s"}`);
+  }, []);
+
+  const goToStep = useCallback(async (idx: number) => {
+    if (!selectedSicNumero) return;
+    const sic = sicList.find(s => s.sicNumero === selectedSicNumero);
+    if (!sic) return;
+    if (idx < 0 || idx >= sic.steps.length) return;
+
+    // Optimistic UI update
+    setSicList(prev => prev.map(s => s.sicNumero === selectedSicNumero ? { ...s, stepIndex: idx } : s));
+
+    const { error } = await supabase
+      .from("sic_diagrama_active")
+      .update({ step_index: idx, updated_at: new Date().toISOString() })
+      .eq("sic_numero", selectedSicNumero);
+
+    if (error) toast.error(`No se pudo guardar el paso: ${error.message}`);
+  }, [selectedSicNumero, sicList]);
+
+  const deleteSIC = useCallback(async (numero: string) => {
+    if (!confirm(`¿Eliminar la SIC ${numero}? Esta acción no se puede deshacer.`)) return;
+
+    const { error } = await supabase
+      .from("sic_diagrama_active")
+      .delete()
+      .eq("sic_numero", numero);
+
+    if (error) {
+      toast.error(`No se pudo eliminar: ${error.message}`);
+      return;
+    }
+
+    setSicList(prev => prev.filter(s => s.sicNumero !== numero));
+    if (selectedSicNumero === numero) setSelectedSicNumero(null);
+    toast.success(`SIC ${numero} eliminada`);
+  }, [selectedSicNumero]);
 
   const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -1143,29 +1201,113 @@ function SicDiagramaInner() {
     setNodes(ns => [...ns, createNewNode(shapeType, flowPosition.x, flowPosition.y)]);
   }, [screenToFlowPosition, setNodes]);
 
-  const highlightedNode = nodes.find(n => (n.data as PasoData).highlighted != null);
-  const hl = (highlightedNode?.data as PasoData | undefined)?.highlighted;
-  const currentStep = sicSteps[sicStepIndex];
-  const stepColor = currentStep ? getActionColor(currentStep.accion) : null;
-  const hasMatch = currentStep != null && highlightedNode != null;
+  const currentSic   = sicList.find(s => s.sicNumero === selectedSicNumero) ?? null;
+  const currentStep  = currentSic ? currentSic.steps[currentSic.stepIndex] ?? null : null;
+  const stepColor    = currentStep ? getActionColor(currentStep.accion) : null;
+  const matchedNode  = currentStep ? findNodeForPerson(nodes, currentStep.person) : null;
+  const hasMatch     = matchedNode != null;
+  const matchedLabel = matchedNode?.label ?? null;
+
+  // Inject transient `highlighted` overlay into the node passed to ReactFlow,
+  // without mutating the canonical `nodes` state (so layout stays "saved")
+  const renderedNodes = currentStep && matchedNode
+    ? nodes.map(n => n.id === matchedNode.id
+        ? { ...n, data: { ...n.data, highlighted: {
+            sicNumero: selectedSicNumero!,
+            sec:    currentStep.sec,
+            fecha:  currentStep.fecha,
+            nota:   currentStep.nota,
+            person: currentStep.person,
+          } } }
+        : n)
+    : nodes;
 
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <div className="flex items-center gap-3">
             <h2 className="text-xl font-semibold text-foreground">Diagrama de flujo</h2>
-            {sicNumero && (
+            {currentSic && (
               <span className="px-2 py-0.5 rounded-md text-xs font-semibold" style={{ background: "rgba(45,212,191,.12)", color: "#2dd4bf", border: "1px solid rgba(45,212,191,.3)" }}>
-                {sicNumero}
+                {currentSic.sicNumero}
               </span>
             )}
           </div>
           <p className="text-sm text-muted-foreground mt-1">Proceso SIC – SIGA · doble clic para editar un objeto</p>
         </div>
-        <div className="flex items-center gap-2">
-          {sicSteps.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* SIC selector dropdown */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setDropdownOpen(o => !o)}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border text-foreground hover:bg-secondary transition-colors min-w-[160px] justify-between"
+            >
+              <span className="truncate">
+                {currentSic ? `SIC ${currentSic.sicNumero}` : sicList.length > 0 ? "Seleccionar SIC..." : "Sin SICs cargadas"}
+              </span>
+              <ChevronDown className={cn("w-3 h-3 transition-transform shrink-0", dropdownOpen && "rotate-180")}/>
+            </button>
+            {dropdownOpen && (
+              <div className="absolute top-full mt-1 right-0 w-72 bg-card border border-border rounded-lg shadow-2xl z-50 p-1 max-h-80 overflow-y-auto">
+                {sicList.length === 0 ? (
+                  <p className="p-3 text-xs text-muted-foreground text-center">
+                    No hay SICs cargadas. Importá una con el botón &quot;Importar SIC&quot;.
+                  </p>
+                ) : (
+                  <>
+                    {selectedSicNumero && (
+                      <>
+                        <button
+                          onClick={() => { setSelectedSicNumero(null); setDropdownOpen(false); }}
+                          className="w-full text-left px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary rounded transition-colors"
+                        >
+                          Deseleccionar SIC actual
+                        </button>
+                        <div className="my-1 border-t border-border/50"/>
+                      </>
+                    )}
+                    {sicList.map(sic => {
+                      const isSelected = sic.sicNumero === selectedSicNumero;
+                      const stepCur = sic.steps[sic.stepIndex];
+                      const c = stepCur ? getActionColor(stepCur.accion) : "#8a8fa6";
+                      return (
+                        <div
+                          key={sic.sicNumero}
+                          className={cn("flex items-center group rounded transition-colors", isSelected ? "bg-secondary" : "hover:bg-secondary/60")}
+                        >
+                          <button
+                            onClick={() => { setSelectedSicNumero(sic.sicNumero); setDropdownOpen(false); }}
+                            className="flex-1 text-left px-2 py-1.5 min-w-0"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: c, boxShadow: `0 0 6px ${c}` }}/>
+                              <span className="text-sm font-semibold text-foreground truncate">{sic.sicNumero}</span>
+                              {isSelected && <Check className="w-3 h-3 text-accent shrink-0"/>}
+                            </div>
+                            <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                              Paso {sic.stepIndex + 1}/{sic.steps.length} · {stepCur?.accion ?? "—"} · {stepCur?.person ?? "—"}
+                            </p>
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); deleteSIC(sic.sicNumero); }}
+                            title={`Eliminar SIC ${sic.sicNumero}`}
+                            className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5"/>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Prev/Next when a SIC is selected */}
+          {currentSic && (
             <div
               className="flex items-center gap-1 rounded-lg border px-1 py-0.5"
               style={{
@@ -1174,8 +1316,8 @@ function SicDiagramaInner() {
               }}
             >
               <button
-                onClick={() => goToStep(sicStepIndex - 1)}
-                disabled={sicStepIndex === 0}
+                onClick={() => goToStep(currentSic.stepIndex - 1)}
+                disabled={currentSic.stepIndex === 0}
                 title="Paso anterior"
                 className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
               >
@@ -1186,26 +1328,20 @@ function SicDiagramaInner() {
                   Sec {currentStep?.sec ?? "—"}
                 </span>
                 <span className="text-[10px] font-semibold leading-tight" style={{ color: hasMatch ? "#34d399" : "#8a8fa6" }}>
-                  {sicStepIndex + 1} / {sicSteps.length}
+                  {currentSic.stepIndex + 1} / {currentSic.steps.length}
                 </span>
               </div>
               <button
-                onClick={() => goToStep(sicStepIndex + 1)}
-                disabled={sicStepIndex >= sicSteps.length - 1}
+                onClick={() => goToStep(currentSic.stepIndex + 1)}
+                disabled={currentSic.stepIndex >= currentSic.steps.length - 1}
                 title="Paso siguiente"
                 className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
               >
                 <ChevronRight className="w-3.5 h-3.5"/>
               </button>
-              <button
-                onClick={clearSIC}
-                title="Limpiar SIC"
-                className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-secondary transition-colors"
-              >
-                <X className="w-3 h-3"/>
-              </button>
             </div>
           )}
+
           <button
             onClick={() => setImportOpen(true)}
             className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
@@ -1235,13 +1371,13 @@ function SicDiagramaInner() {
       <div className="bg-card border border-border rounded-xl px-5 py-3 grid grid-cols-2 sm:grid-cols-5 gap-4 text-xs">
         <div>
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider">SIC</p>
-          <p className="font-medium text-foreground mt-0.5 truncate">{sicNumero || "—"}</p>
+          <p className="font-medium text-foreground mt-0.5 truncate">{currentSic?.sicNumero ?? "—"}</p>
         </div>
         <div>
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Estado actual</p>
           <p className="font-medium mt-0.5 truncate" style={{ color: hasMatch ? "#fff" : (stepColor ?? "#fff") }}>
             {hasMatch
-              ? (highlightedNode?.data as PasoData).label
+              ? matchedLabel
               : currentStep
                 ? <span className="italic opacity-80">{currentStep.accion} (sin nodo asignado)</span>
                 : "—"}
@@ -1249,18 +1385,18 @@ function SicDiagramaInner() {
         </div>
         <div>
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Responsable</p>
-          <p className="font-medium text-foreground mt-0.5 truncate">{currentStep?.person ?? hl?.person ?? "—"}</p>
+          <p className="font-medium text-foreground mt-0.5 truncate">{currentStep?.person ?? "—"}</p>
         </div>
         <div>
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Sec.</p>
           <p className="font-medium mt-0.5" style={{ color: stepColor ?? undefined }}>
-            {currentStep ? String(currentStep.sec) : (hl ? String(hl.sec) : "—")}
+            {currentStep ? String(currentStep.sec) : "—"}
           </p>
         </div>
         <div>
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Nota</p>
-          <p className="font-medium text-foreground mt-0.5 truncate" title={currentStep?.nota || hl?.nota || ""}>
-            {currentStep?.nota || hl?.nota || "—"}
+          <p className="font-medium text-foreground mt-0.5 truncate" title={currentStep?.nota ?? ""}>
+            {currentStep?.nota || "—"}
           </p>
         </div>
       </div>
@@ -1324,7 +1460,7 @@ function SicDiagramaInner() {
                 </div>
               )}
               <ReactFlow
-                nodes={nodes}
+                nodes={renderedNodes}
                 edges={edges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
