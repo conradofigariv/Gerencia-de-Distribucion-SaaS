@@ -164,7 +164,14 @@ export function InformeTecnicoSection() {
                   ) : t.id === "oferentes" ? (
                     <OferentesTab licitacionId={selected.id} />
                   ) : t.id === "ofertas" ? (
-                    <OfertasTab licitacionId={selected.id} />
+                    <OfertasTab
+                      licitacion={selected}
+                      onUpdated={(updated) => {
+                        setLicitaciones((prev) =>
+                          prev.map((l) => (l.id === updated.id ? updated : l)),
+                        );
+                      }}
+                    />
                   ) : (
                     <PlaceholderTab tab={t.id} />
                   )}
@@ -852,12 +859,35 @@ function OferentesTab({ licitacionId }: { licitacionId: string }) {
 
 // ─── Tab: Ofertas ─────────────────────────────────────────────────────
 
-function OfertasTab({ licitacionId }: { licitacionId: string }) {
+function OfertasTab({
+  licitacion,
+  onUpdated,
+}: {
+  licitacion: Licitacion;
+  onUpdated: (l: Licitacion) => void;
+}) {
+  const licitacionId = licitacion.id;
   const [loading, setLoading] = useState(true);
   const [renglones, setRenglones] = useState<RenglonConItems[]>([]);
   const [oferentes, setOferentes] = useState<Oferente[]>([]);
   const [cells, setCells] = useState<Map<string, { precio: string; divisa: Divisa }>>(new Map());
   const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
+  const [savingToggle, setSavingToggle] = useState(false);
+
+  const handleToggleExclusividad = async () => {
+    setSavingToggle(true);
+    try {
+      const updated = await updateLicitacion(licitacion.id, {
+        exclusividad_renglones: !licitacion.exclusividad_renglones,
+      });
+      onUpdated(updated);
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo guardar la condición");
+    } finally {
+      setSavingToggle(false);
+    }
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -925,27 +955,73 @@ function OfertasTab({ licitacionId }: { licitacionId: string }) {
     );
   }
 
+  const totalItems = renglones.reduce((n, r) => n + r.items.length, 0);
+  const totalOfertas = cells.size;
+
+  const exclusividadHint =
+    renglones.length >= 2
+      ? renglones.length === 2
+        ? "Aplicará entre los 2 renglones cargados."
+        : `Aplicará al conjunto de los ${renglones.length} renglones.`
+      : "Requiere al menos 2 renglones cargados para tener efecto.";
+
+  const conditionsPanel = (
+    <div className="rounded-lg border border-border bg-card p-3 space-y-2">
+      <h4 className="text-xs font-semibold text-foreground">Condiciones del pliego</h4>
+      <label
+        className={`flex items-start gap-3 cursor-pointer -m-1 p-1 rounded transition-colors hover:bg-secondary/20 ${savingToggle ? "opacity-60 pointer-events-none" : ""}`}
+      >
+        <input
+          type="checkbox"
+          checked={licitacion.exclusividad_renglones}
+          onChange={handleToggleExclusividad}
+          disabled={savingToggle}
+          className="mt-0.5 w-4 h-4 accent-accent"
+        />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm text-foreground font-medium">
+            Exclusividad entre renglones
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5">
+            Un mismo oferente no puede ganar todos los renglones, salvo que los demás no cumplan técnicamente. {exclusividadHint}
+          </div>
+        </div>
+        {savingToggle && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground mt-0.5 shrink-0" />}
+      </label>
+
+      <div className="text-[11px] text-muted-foreground border-t border-border pt-2 leading-relaxed">
+        <span className="font-medium text-foreground">Regla automática:</span>{" "}
+        Si un oferente no oferta para alguno de los ítems de un renglón, queda descalificado para ese renglón (mirá la fila <em>Cobertura</em> al pie de cada renglón).
+      </div>
+    </div>
+  );
+
   if (renglones.length === 0) {
     return (
-      <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
-        No hay renglones cargados. Cargalos en la pestaña <strong>Renglones e Ítems</strong> primero.
+      <div className="space-y-3">
+        {conditionsPanel}
+        <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
+          No hay renglones cargados. Cargalos en la pestaña <strong>Renglones e Ítems</strong> primero.
+        </div>
       </div>
     );
   }
 
   if (oferentes.length === 0) {
     return (
-      <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
-        No hay oferentes cargados. Cargalos en la pestaña <strong>Oferentes</strong> primero.
+      <div className="space-y-3">
+        {conditionsPanel}
+        <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
+          No hay oferentes cargados. Cargalos en la pestaña <strong>Oferentes</strong> primero.
+        </div>
       </div>
     );
   }
 
-  const totalItems = renglones.reduce((n, r) => n + r.items.length, 0);
-  const totalOfertas = cells.size;
-
   return (
     <div className="space-y-3">
+      {conditionsPanel}
+
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
           Los precios se guardan automáticamente al salir de cada celda.
@@ -1068,7 +1144,40 @@ function OfertasTab({ licitacionId }: { licitacionId: string }) {
                       </td>
                     </tr>,
                   ]
-                : []),
+                : [
+                    <tr key={`cob-${r.id}`} className="border-t border-border bg-secondary/10">
+                      <td className="py-1.5 px-3 text-[11px] text-muted-foreground italic border-r border-border">
+                        Cobertura del renglón
+                      </td>
+                      {oferentes.map((of) => {
+                        const total = r.items.length;
+                        const con = r.items.reduce((n, it) => {
+                          const c = cells.get(`${it.id}|${of.id}`);
+                          return c && c.precio.trim() !== "" ? n + 1 : n;
+                        }, 0);
+                        let badge: React.ReactNode;
+                        if (con === 0) {
+                          badge = <span className="text-muted-foreground">— Sin ofertar</span>;
+                        } else if (con === total) {
+                          badge = <span className="text-emerald-500">✓ Completo ({con}/{total})</span>;
+                        } else {
+                          badge = (
+                            <span className="text-amber-500" title={`Faltan ${total - con} ítem${total - con === 1 ? "" : "s"}`}>
+                              ⚠ {con}/{total} — descalificado
+                            </span>
+                          );
+                        }
+                        return (
+                          <td
+                            key={of.id}
+                            className="py-1.5 px-2 text-[11px] text-center border-r border-border last:border-r-0"
+                          >
+                            {badge}
+                          </td>
+                        );
+                      })}
+                    </tr>,
+                  ]),
             ])}
           </tbody>
         </table>

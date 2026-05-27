@@ -12,6 +12,7 @@ export interface Licitacion {
   fd_op_fecha: string | null;
   fd_op_valor: number | null;
   umbral_economico_pct: number;
+  exclusividad_renglones: boolean;
   estado: LicitacionEstado;
   created_at: string;
   updated_at: string;
