@@ -31,6 +31,8 @@ const sectionTitles: Record<Section, string> = {
   "transformadores-carga":    "Stock de Transformadores — Carga de datos",
   "transformadores-tabla":    "Stock de Transformadores — Informe de Reservas",
   "transformadores-resumen":  "Stock de Transformadores — Resumen",
+  "stock-zona":               "Stock por Zona",
+  "informe-tecnico":          "Informe Técnico",
 };
 
 export function Header({ activeSection, bgEffect = "pipeline", onBgChange }: HeaderProps) {
