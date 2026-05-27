@@ -375,7 +375,7 @@ function DatosGeneralesTab({
 
       <FormSection
         title="Fechas y valor del dólar"
-        description="FD_SIC: fecha del dólar usado en la SIC. FD_OP: fecha del dólar del Acta de Apertura. Valores en pesos por USD."
+        description="Dólar de la SIC: tipo de cambio usado para normalizar los precios del pliego. Dólar de la OP: tipo de cambio del día del Acta de Apertura. Valores en pesos argentinos por USD."
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
           <FormField label="Fecha de apertura">
@@ -383,17 +383,17 @@ function DatosGeneralesTab({
           </FormField>
           <div />
 
-          <FormField label="FD_SIC — fecha">
+          <FormField label="Fecha de la SIC">
             <input type="date" value={fdSicFecha} onChange={(e) => setFdSicFecha(e.target.value)} className="ti-input" />
           </FormField>
-          <FormField label="FD_SIC — valor USD (ARS por USD)">
+          <FormField label="Dólar de la SIC (ARS por USD)">
             <input type="number" step="0.01" inputMode="decimal" value={fdSicValor} onChange={(e) => setFdSicValor(e.target.value)} placeholder="Ej: 1399.5" className="ti-input" />
           </FormField>
 
-          <FormField label="FD_OP — fecha">
+          <FormField label="Fecha de la OP">
             <input type="date" value={fdOpFecha} onChange={(e) => setFdOpFecha(e.target.value)} className="ti-input" />
           </FormField>
-          <FormField label="FD_OP — valor USD (ARS por USD)">
+          <FormField label="Dólar de la OP (ARS por USD)">
             <input type="number" step="0.01" inputMode="decimal" value={fdOpValor} onChange={(e) => setFdOpValor(e.target.value)} placeholder="Ej: 1398" className="ti-input" />
           </FormField>
         </div>
