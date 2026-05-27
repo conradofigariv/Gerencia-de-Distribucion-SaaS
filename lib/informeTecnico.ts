@@ -255,3 +255,36 @@ export async function lookupMatricula(
   if (!data) return null;
   return { descripcion: String((data as { descripcion: unknown }).descripcion ?? "") };
 }
+
+// ─── Oferentes ──────────────────────────────────────────────────
+
+export async function listOferentes(licitacionId: string): Promise<Oferente[]> {
+  const { data, error } = await supabase
+    .from("licitacion_oferentes")
+    .select("*")
+    .eq("licitacion_id", licitacionId)
+    .order("nombre", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as Oferente[];
+}
+
+export async function createOferente(input: {
+  licitacion_id: string;
+  nombre: string;
+}): Promise<Oferente> {
+  const { data, error } = await supabase
+    .from("licitacion_oferentes")
+    .insert({ licitacion_id: input.licitacion_id, nombre: input.nombre.trim() })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as Oferente;
+}
+
+export async function deleteOferente(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("licitacion_oferentes")
+    .delete()
+    .eq("id", id);
+  if (error) throw error;
+}
