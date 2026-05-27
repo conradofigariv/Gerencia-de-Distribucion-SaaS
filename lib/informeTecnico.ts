@@ -235,3 +235,23 @@ export async function deleteItem(id: string): Promise<void> {
     .eq("id", id);
   if (error) throw error;
 }
+
+// ─── Catálogo de matrículas ──────────────────────────────────────────
+
+export async function lookupMatricula(
+  articulo: string,
+): Promise<{ descripcion: string } | null> {
+  const a = articulo.trim();
+  if (!a) return null;
+  const { data, error } = await supabase
+    .from("matriculas")
+    .select("descripcion")
+    .eq("articulo", a)
+    .maybeSingle();
+  if (error) {
+    console.error(error);
+    return null;
+  }
+  if (!data) return null;
+  return { descripcion: String((data as { descripcion: unknown }).descripcion ?? "") };
+}

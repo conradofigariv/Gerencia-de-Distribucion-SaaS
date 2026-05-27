@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -16,6 +16,7 @@ import {
   createItem,
   updateItem,
   deleteItem,
+  lookupMatricula,
   type Licitacion,
   type Renglon,
   type Item,
@@ -505,7 +506,6 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
     try {
       const rows = await listRenglonesConItems(licitacionId);
       setRenglones(rows);
-      // Auto-expand if there are few renglones
       if (rows.length <= 3) setExpanded(new Set(rows.map((r) => r.id)));
     } catch (e) {
       console.error(e);
@@ -525,15 +525,8 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
     });
   };
 
-  const nextRenglonNumero = () => {
-    const max = renglones.reduce((m, r) => Math.max(m, r.numero), 0);
-    return max + 1;
-  };
-
-  const nextItemNumero = (renglon: RenglonConItems) => {
-    const max = renglon.items.reduce((m, i) => Math.max(m, i.numero_item), 0);
-    return max + 1;
-  };
+  const nextRenglonNumero = () => renglones.reduce((m, r) => Math.max(m, r.numero), 0) + 1;
+  const nextItemNumero = (renglon: RenglonConItems) => renglon.items.reduce((m, i) => Math.max(m, i.numero_item), 0) + 1;
 
   if (loading) {
     return (
@@ -565,30 +558,20 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
           const open = expanded.has(r.id);
           return (
             <div key={r.id} className="border border-border rounded-lg bg-card overflow-hidden">
-              {/* Header */}
               <div className="flex items-center gap-2 px-3 py-2.5 bg-secondary/30">
-                <button
-                  onClick={() => toggleExpand(r.id)}
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                  title={open ? "Colapsar" : "Expandir"}
-                >
+                <button onClick={() => toggleExpand(r.id)} className="text-muted-foreground hover:text-foreground transition-colors">
                   {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                 </button>
                 <div className="flex-1 min-w-0" onClick={() => toggleExpand(r.id)} role="button">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-foreground">Renglón {r.numero}</span>
-                    <span className="text-xs text-muted-foreground">·</span>
-                    <span className="text-xs text-muted-foreground">{r.items.length} ítem{r.items.length === 1 ? "" : "s"}</span>
+                    <span className="text-xs text-muted-foreground">· {r.items.length} ítem{r.items.length === 1 ? "" : "s"}</span>
                   </div>
                   {r.condicion_adjudicacion && (
                     <p className="text-xs text-muted-foreground truncate mt-0.5">{r.condicion_adjudicacion}</p>
                   )}
                 </div>
-                <button
-                  onClick={() => setEditingRenglon(r)}
-                  className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                  title="Editar renglón"
-                >
+                <button onClick={() => setEditingRenglon(r)} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Editar renglón">
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
                 <button
@@ -598,10 +581,7 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
                       await deleteRenglon(r.id);
                       toast.success("Renglón eliminado");
                       setRenglones((prev) => prev.filter((x) => x.id !== r.id));
-                    } catch (e) {
-                      console.error(e);
-                      toast.error("No se pudo eliminar el renglón");
-                    }
+                    } catch (e) { console.error(e); toast.error("No se pudo eliminar el renglón"); }
                   }}
                   className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                   title="Eliminar renglón"
@@ -610,13 +590,10 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
                 </button>
               </div>
 
-              {/* Items */}
               {open && (
                 <div className="p-3 space-y-3">
                   {r.items.length === 0 ? (
-                    <div className="text-xs text-muted-foreground text-center py-4">
-                      Sin ítems cargados.
-                    </div>
+                    <div className="text-xs text-muted-foreground text-center py-4">Sin ítems cargados.</div>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
@@ -644,11 +621,7 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
                               </td>
                               <td className="py-2 px-2 text-right">
                                 <div className="flex items-center justify-end gap-1">
-                                  <button
-                                    onClick={() => setEditingItem(it)}
-                                    className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                                    title="Editar ítem"
-                                  >
+                                  <button onClick={() => setEditingItem(it)} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Editar ítem">
                                     <Pencil className="w-3 h-3" />
                                   </button>
                                   <button
@@ -657,17 +630,8 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
                                       try {
                                         await deleteItem(it.id);
                                         toast.success("Ítem eliminado");
-                                        setRenglones((prev) =>
-                                          prev.map((x) =>
-                                            x.id === r.id
-                                              ? { ...x, items: x.items.filter((i) => i.id !== it.id) }
-                                              : x,
-                                          ),
-                                        );
-                                      } catch (e) {
-                                        console.error(e);
-                                        toast.error("No se pudo eliminar el ítem");
-                                      }
+                                        setRenglones((prev) => prev.map((x) => x.id === r.id ? { ...x, items: x.items.filter((i) => i.id !== it.id) } : x));
+                                      } catch (e) { console.error(e); toast.error("No se pudo eliminar el ítem"); }
                                     }}
                                     className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                                     title="Eliminar ítem"
@@ -682,12 +646,7 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
                       </table>
                     </div>
                   )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setCreatingItemFor(r)}
-                    className="w-full border border-dashed border-border"
-                  >
+                  <Button variant="ghost" size="sm" onClick={() => setCreatingItemFor(r)} className="w-full border border-dashed border-border">
                     <Plus className="w-3.5 h-3.5 mr-1" /> Agregar ítem
                   </Button>
                 </div>
@@ -697,7 +656,6 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
         })}
       </div>
 
-      {/* Modales */}
       {showCreateRenglon && (
         <RenglonModal
           mode="create"
@@ -705,21 +663,12 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
           onClose={() => setShowCreateRenglon(false)}
           onSubmit={async ({ numero, condicion }) => {
             try {
-              const created = await createRenglon({
-                licitacion_id: licitacionId,
-                numero,
-                condicion_adjudicacion: condicion || null,
-              });
-              setRenglones((prev) =>
-                [...prev, { ...created, items: [] }].sort((a, b) => a.numero - b.numero),
-              );
+              const created = await createRenglon({ licitacion_id: licitacionId, numero, condicion_adjudicacion: condicion || null });
+              setRenglones((prev) => [...prev, { ...created, items: [] }].sort((a, b) => a.numero - b.numero));
               setExpanded((prev) => new Set(prev).add(created.id));
               setShowCreateRenglon(false);
               toast.success("Renglón creado");
-            } catch (e) {
-              console.error(e);
-              toast.error("No se pudo crear el renglón");
-            }
+            } catch (e) { console.error(e); toast.error("No se pudo crear el renglón"); }
           }}
         />
       )}
@@ -732,21 +681,11 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
           onClose={() => setEditingRenglon(null)}
           onSubmit={async ({ numero, condicion }) => {
             try {
-              const updated = await updateRenglon(editingRenglon.id, {
-                numero,
-                condicion_adjudicacion: condicion || null,
-              });
-              setRenglones((prev) =>
-                prev
-                  .map((r) => (r.id === editingRenglon.id ? { ...r, ...updated } : r))
-                  .sort((a, b) => a.numero - b.numero),
-              );
+              const updated = await updateRenglon(editingRenglon.id, { numero, condicion_adjudicacion: condicion || null });
+              setRenglones((prev) => prev.map((r) => r.id === editingRenglon.id ? { ...r, ...updated } : r).sort((a, b) => a.numero - b.numero));
               setEditingRenglon(null);
               toast.success("Renglón actualizado");
-            } catch (e) {
-              console.error(e);
-              toast.error("No se pudo actualizar el renglón");
-            }
+            } catch (e) { console.error(e); toast.error("No se pudo actualizar el renglón"); }
           }}
         />
       )}
@@ -759,27 +698,11 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
           onClose={() => setCreatingItemFor(null)}
           onSubmit={async (vals) => {
             try {
-              const created = await createItem({
-                renglon_id: creatingItemFor.id,
-                numero_item: vals.numero_item,
-                matricula: vals.matricula || null,
-                descripcion: vals.descripcion || null,
-                cantidad: vals.cantidad,
-                precio_sic_pesos: vals.precio_sic_pesos,
-              });
-              setRenglones((prev) =>
-                prev.map((r) =>
-                  r.id === creatingItemFor.id
-                    ? { ...r, items: [...r.items, created].sort((a, b) => a.numero_item - b.numero_item) }
-                    : r,
-                ),
-              );
+              const created = await createItem({ renglon_id: creatingItemFor.id, ...vals });
+              setRenglones((prev) => prev.map((r) => r.id === creatingItemFor.id ? { ...r, items: [...r.items, created].sort((a, b) => a.numero_item - b.numero_item) } : r));
               setCreatingItemFor(null);
               toast.success("Ítem agregado");
-            } catch (e) {
-              console.error(e);
-              toast.error("No se pudo agregar el ítem");
-            }
+            } catch (e) { console.error(e); toast.error("No se pudo agregar el ítem"); }
           }}
         />
       )}
@@ -795,31 +718,11 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
           onClose={() => setEditingItem(null)}
           onSubmit={async (vals) => {
             try {
-              const updated = await updateItem(editingItem.id, {
-                numero_item: vals.numero_item,
-                matricula: vals.matricula || null,
-                descripcion: vals.descripcion || null,
-                cantidad: vals.cantidad,
-                precio_sic_pesos: vals.precio_sic_pesos,
-              });
-              setRenglones((prev) =>
-                prev.map((r) =>
-                  r.id === editingItem.renglon_id
-                    ? {
-                        ...r,
-                        items: r.items
-                          .map((i) => (i.id === editingItem.id ? updated : i))
-                          .sort((a, b) => a.numero_item - b.numero_item),
-                      }
-                    : r,
-                ),
-              );
+              const updated = await updateItem(editingItem.id, vals);
+              setRenglones((prev) => prev.map((r) => r.id === editingItem.renglon_id ? { ...r, items: r.items.map((i) => i.id === editingItem.id ? updated : i).sort((a, b) => a.numero_item - b.numero_item) } : r));
               setEditingItem(null);
               toast.success("Ítem actualizado");
-            } catch (e) {
-              console.error(e);
-              toast.error("No se pudo actualizar el ítem");
-            }
+            } catch (e) { console.error(e); toast.error("No se pudo actualizar el ítem"); }
           }}
         />
       )}
@@ -844,16 +747,10 @@ function RenglonModal({
 
   const handle = async () => {
     const n = parseInt(numero, 10);
-    if (!Number.isFinite(n) || n < 1) {
-      toast.error("Número de renglón inválido");
-      return;
-    }
+    if (!Number.isFinite(n) || n < 1) { toast.error("Número de renglón inválido"); return; }
     setSaving(true);
-    try {
-      await onSubmit({ numero: n, condicion: condicion.trim() });
-    } finally {
-      setSaving(false);
-    }
+    try { await onSubmit({ numero: n, condicion: condicion.trim() }); }
+    finally { setSaving(false); }
   };
 
   return (
@@ -863,9 +760,7 @@ function RenglonModal({
           <div className="flex items-start justify-between gap-3">
             <div>
               <CardTitle>{mode === "create" ? "Nuevo renglón" : "Editar renglón"}</CardTitle>
-              <CardDescription>
-                Un renglón es un grupo de ítems que se adjudican juntos a un mismo oferente.
-              </CardDescription>
+              <CardDescription>Un renglón es un grupo de ítems que se adjudican juntos a un mismo oferente.</CardDescription>
             </div>
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
           </div>
@@ -873,23 +768,11 @@ function RenglonModal({
         <CardContent className="space-y-3">
           <label className="block">
             <span className="text-xs text-muted-foreground">Número</span>
-            <input
-              type="number"
-              min={1}
-              value={numero}
-              onChange={(e) => setNumero(e.target.value)}
-              className="mt-1 w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
-            />
+            <input type="number" min={1} value={numero} onChange={(e) => setNumero(e.target.value)} className="mt-1 w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20" />
           </label>
           <label className="block">
             <span className="text-xs text-muted-foreground">Condición de adjudicación (opcional)</span>
-            <textarea
-              value={condicion}
-              onChange={(e) => setCondicion(e.target.value)}
-              placeholder="Ej: Adjudicación por renglón completo a un único oferente."
-              rows={3}
-              className="mt-1 w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none"
-            />
+            <textarea value={condicion} onChange={(e) => setCondicion(e.target.value)} placeholder="Ej: Adjudicación por renglón completo a un único oferente." rows={3} className="mt-1 w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none" />
           </label>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={onClose} disabled={saving}>Cancelar</Button>
@@ -904,6 +787,8 @@ function RenglonModal({
 }
 
 // ─── Modal: Ítem (crear/editar) ────────────────────────────────────────
+
+type LookupStatus = "idle" | "loading" | "found" | "not_found";
 
 function ItemModal({
   mode,
@@ -938,6 +823,25 @@ function ItemModal({
   const [cantidad, setCantidad]       = useState(initialCantidad.toString());
   const [precio, setPrecio]           = useState(initialPrecio?.toString() ?? "");
   const [saving, setSaving]           = useState(false);
+  const [lookupStatus, setLookupStatus] = useState<LookupStatus>("idle");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const code = matricula.trim();
+    if (!code) { setLookupStatus("idle"); return; }
+    setLookupStatus("loading");
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      const result = await lookupMatricula(code);
+      if (result) {
+        setDescripcion(result.descripcion);
+        setLookupStatus("found");
+      } else {
+        setLookupStatus("not_found");
+      }
+    }, 500);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [matricula]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const parseNum = (s: string): number | null => {
     if (!s.trim()) return null;
@@ -947,28 +851,20 @@ function ItemModal({
 
   const handle = async () => {
     const n = parseInt(numero, 10);
-    if (!Number.isFinite(n) || n < 1) {
-      toast.error("Número de ítem inválido");
-      return;
-    }
+    if (!Number.isFinite(n) || n < 1) { toast.error("Número de ítem inválido"); return; }
     const cantNum = parseNum(cantidad);
-    if (cantNum === null || cantNum <= 0) {
-      toast.error("Cantidad inválida");
-      return;
-    }
-    const precioNum = parseNum(precio);
+    if (cantNum === null || cantNum <= 0) { toast.error("Cantidad inválida"); return; }
     setSaving(true);
     try {
-      await onSubmit({
-        numero_item: n,
-        matricula: matricula.trim(),
-        descripcion: descripcion.trim(),
-        cantidad: cantNum,
-        precio_sic_pesos: precioNum,
-      });
-    } finally {
-      setSaving(false);
-    }
+      await onSubmit({ numero_item: n, matricula: matricula.trim(), descripcion: descripcion.trim(), cantidad: cantNum, precio_sic_pesos: parseNum(precio) });
+    } finally { setSaving(false); }
+  };
+
+  const lookupBadge = () => {
+    if (lookupStatus === "loading")   return <span className="text-xs text-muted-foreground flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Buscando…</span>;
+    if (lookupStatus === "found")     return <span className="text-xs text-emerald-500">✓ Encontrada en catálogo</span>;
+    if (lookupStatus === "not_found") return <span className="text-xs text-amber-500">⚠ No está en el catálogo — escribí la descripción manualmente</span>;
+    return null;
   };
 
   return (
@@ -979,7 +875,7 @@ function ItemModal({
             <div>
               <CardTitle>{mode === "create" ? "Nuevo ítem" : "Editar ítem"}</CardTitle>
               <CardDescription>
-                {renglonNumero ? `Renglón ${renglonNumero}. ` : ""}Material a cotizar con su precio SIC (ARS).
+                {renglonNumero ? `Renglón ${renglonNumero}. ` : ""}La descripción se completa automáticamente desde el catálogo de matrículas.
               </CardDescription>
             </div>
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
@@ -991,17 +887,28 @@ function ItemModal({
               <span className="text-xs text-muted-foreground">Número de ítem</span>
               <input type="number" min={1} value={numero} onChange={(e) => setNumero(e.target.value)} className="mt-1 ti-input" />
             </label>
-            <label className="block">
+            <div className="block">
               <span className="text-xs text-muted-foreground">Matrícula</span>
-              <input type="text" value={matricula} onChange={(e) => setMatricula(e.target.value)} placeholder="Ej: 12345" className="mt-1 ti-input" />
-            </label>
+              <input
+                type="text"
+                value={matricula}
+                onChange={(e) => setMatricula(e.target.value)}
+                placeholder="Ej: 12345"
+                className="mt-1 ti-input"
+                autoFocus={mode === "create"}
+              />
+              <div className="mt-1 min-h-[1rem]">{lookupBadge()}</div>
+            </div>
           </div>
           <label className="block">
-            <span className="text-xs text-muted-foreground">Descripción</span>
+            <span className="text-xs text-muted-foreground">
+              Descripción
+              {lookupStatus === "found" && <span className="ml-1 text-muted-foreground/60">(podés editarla)</span>}
+            </span>
             <textarea
               value={descripcion}
               onChange={(e) => setDescripcion(e.target.value)}
-              placeholder="Ej: RTU para teleoperación de subestación"
+              placeholder="Se completa automáticamente al ingresar la matrícula"
               rows={2}
               className="mt-1 w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none"
             />
