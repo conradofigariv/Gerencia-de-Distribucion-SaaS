@@ -70,7 +70,7 @@ export interface Adjudicacion {
   confirmado_at: string;
 }
 
-// ─── Licitaciones ────────────────────────────────────────────
+// ─── Licitaciones ────────────────────────────────────────────────
 
 export async function listLicitaciones(): Promise<Licitacion[]> {
   const { data, error } = await supabase
@@ -113,7 +113,7 @@ export async function deleteLicitacion(id: string): Promise<void> {
   if (error) throw error;
 }
 
-// ─── Renglones ──────────────────────────────────────────────────
+// ─── Renglones ──────────────────────────────────────────────
 
 export async function listRenglonesConItems(
   licitacionId: string,
@@ -188,7 +188,7 @@ export async function deleteRenglon(id: string): Promise<void> {
   if (error) throw error;
 }
 
-// ─── Ítems ──────────────────────────────────────────────────────
+// ─── Ítems ────────────────────────────────────────────────
 
 export async function createItem(input: {
   renglon_id: string;
@@ -236,7 +236,7 @@ export async function deleteItem(id: string): Promise<void> {
   if (error) throw error;
 }
 
-// ─── Catálogo de matrículas ──────────────────────────────────────────
+// ─── Catálogo de matrículas ──────────────────────────────────────
 
 export async function lookupMatricula(
   articulo: string,
@@ -286,5 +286,58 @@ export async function deleteOferente(id: string): Promise<void> {
     .from("licitacion_oferentes")
     .delete()
     .eq("id", id);
+  if (error) throw error;
+}
+
+// ─── Ofertas ─────────────────────────────────────────────────
+
+export async function listOfertas(licitacionId: string): Promise<Oferta[]> {
+  const { data: renglones, error: rErr } = await supabase
+    .from("licitacion_renglones")
+    .select("id")
+    .eq("licitacion_id", licitacionId);
+  if (rErr) throw rErr;
+
+  const renglonIds = (renglones ?? []).map((r: { id: string }) => r.id);
+  if (renglonIds.length === 0) return [];
+
+  const { data: items, error: iErr } = await supabase
+    .from("licitacion_items")
+    .select("id")
+    .in("renglon_id", renglonIds);
+  if (iErr) throw iErr;
+
+  const itemIds = (items ?? []).map((i: { id: string }) => i.id);
+  if (itemIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("licitacion_ofertas")
+    .select("*")
+    .in("item_id", itemIds);
+  if (error) throw error;
+  return (data ?? []) as Oferta[];
+}
+
+export async function upsertOferta(input: {
+  oferente_id: string;
+  item_id: string;
+  precio_unitario: number;
+  divisa: Divisa;
+}): Promise<Oferta> {
+  const { data, error } = await supabase
+    .from("licitacion_ofertas")
+    .upsert(input, { onConflict: "oferente_id,item_id" })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as Oferta;
+}
+
+export async function deleteOferta(oferenteId: string, itemId: string): Promise<void> {
+  const { error } = await supabase
+    .from("licitacion_ofertas")
+    .delete()
+    .eq("oferente_id", oferenteId)
+    .eq("item_id", itemId);
   if (error) throw error;
 }

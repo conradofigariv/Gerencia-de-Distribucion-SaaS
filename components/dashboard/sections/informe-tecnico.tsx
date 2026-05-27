@@ -20,11 +20,15 @@ import {
   listOferentes,
   createOferente,
   deleteOferente,
+  listOfertas,
+  upsertOferta,
+  deleteOferta,
   type Licitacion,
   type Renglon,
   type Item,
   type RenglonConItems,
   type Oferente,
+  type Divisa,
 } from "@/lib/informeTecnico";
 import { toast } from "sonner";
 
@@ -75,37 +79,50 @@ export function InformeTecnicoSection() {
 
   return (
     <div className="space-y-6">
+      {/* Header bar: selector + acciones */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
           <Gavel className="w-6 h-6 text-accent" />
           <div>
             <h2 className="text-lg font-semibold text-foreground">Informe Técnico</h2>
-            <p className="text-xs text-muted-foreground">Análisis de ofertas y adjudicación por renglón.</p>
+            <p className="text-xs text-muted-foreground">
+              Análisis de ofertas y adjudicación por renglón.
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {licitaciones.length > 0 && (
-            <LicitacionSelector licitaciones={licitaciones} selectedId={selectedId} onSelect={setSelectedId} />
+            <LicitacionSelector
+              licitaciones={licitaciones}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
           )}
           <Button onClick={() => setShowCreate(true)} size="sm">
-            <Plus className="w-4 h-4 mr-1" /> Nueva licitación
+            <Plus className="w-4 h-4 mr-1" />
+            Nueva licitación
           </Button>
         </div>
       </div>
 
+      {/* Vacío */}
       {licitaciones.length === 0 && (
         <Card>
           <CardContent className="py-12 flex flex-col items-center text-center gap-3">
             <Gavel className="w-10 h-10 text-muted-foreground" />
             <CardTitle>No hay licitaciones cargadas</CardTitle>
-            <CardDescription>Creá una nueva licitación para empezar a cargar renglones, oferentes y ofertas.</CardDescription>
+            <CardDescription>
+              Creá una nueva licitación para empezar a cargar renglones, oferentes y ofertas.
+            </CardDescription>
             <Button onClick={() => setShowCreate(true)} className="mt-2">
-              <Plus className="w-4 h-4 mr-1" /> Crear primera licitación
+              <Plus className="w-4 h-4 mr-1" />
+              Crear primera licitación
             </Button>
           </CardContent>
         </Card>
       )}
 
+      {/* Wizard */}
       {selected && (
         <Tabs value={tab} onValueChange={(v) => setTab(v as WizardTab)} className="w-full">
           <TabsList className="w-full justify-start overflow-x-auto h-auto flex-wrap">
@@ -113,7 +130,8 @@ export function InformeTecnicoSection() {
               const Icon = t.icon;
               return (
                 <TabsTrigger key={t.id} value={t.id} className="gap-2">
-                  <Icon className="w-4 h-4" /> {t.label}
+                  <Icon className="w-4 h-4" />
+                  {t.label}
                 </TabsTrigger>
               );
             })}
@@ -124,7 +142,8 @@ export function InformeTecnicoSection() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <t.icon className="w-5 h-5 text-accent" /> {t.label}
+                    <t.icon className="w-5 h-5 text-accent" />
+                    {t.label}
                   </CardTitle>
                   <CardDescription>
                     Licitación SIC <span className="font-mono">{selected.numero_sic}</span> — {selected.titulo}
@@ -134,12 +153,18 @@ export function InformeTecnicoSection() {
                   {t.id === "datos" ? (
                     <DatosGeneralesTab
                       licitacion={selected}
-                      onUpdated={(updated) => setLicitaciones((prev) => prev.map((l) => l.id === updated.id ? updated : l))}
+                      onUpdated={(updated) => {
+                        setLicitaciones((prev) =>
+                          prev.map((l) => (l.id === updated.id ? updated : l)),
+                        );
+                      }}
                     />
                   ) : t.id === "renglones" ? (
                     <RenglonesTab licitacionId={selected.id} />
                   ) : t.id === "oferentes" ? (
                     <OferentesTab licitacionId={selected.id} />
+                  ) : t.id === "ofertas" ? (
+                    <OfertasTab licitacionId={selected.id} />
                   ) : (
                     <PlaceholderTab tab={t.id} />
                   )}
@@ -150,6 +175,7 @@ export function InformeTecnicoSection() {
         </Tabs>
       )}
 
+      {/* Modal de creación */}
       {showCreate && (
         <CreateLicitacionModal
           loading={creating}
@@ -178,7 +204,9 @@ export function InformeTecnicoSection() {
 
 // ─── Selector de licitación ──────────────────────────────────────────
 
-function LicitacionSelector({ licitaciones, selectedId, onSelect }: {
+function LicitacionSelector({
+  licitaciones, selectedId, onSelect,
+}: {
   licitaciones: Licitacion[];
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -194,16 +222,24 @@ function LicitacionSelector({ licitaciones, selectedId, onSelect }: {
       >
         <span className="truncate flex-1 text-left">
           {selected ? (
-            <><span className="font-mono text-xs text-accent mr-2">SIC {selected.numero_sic}</span>{selected.titulo}</>
-          ) : "Seleccionar licitación"}
+            <>
+              <span className="font-mono text-xs text-accent mr-2">SIC {selected.numero_sic}</span>
+              {selected.titulo}
+            </>
+          ) : (
+            "Seleccionar licitación"
+          )}
         </span>
         <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
         <div className="absolute z-50 top-[calc(100%+4px)] right-0 min-w-[320px] bg-card border border-border rounded-lg shadow-lg overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
           {licitaciones.map((l) => (
-            <button key={l.id} onClick={() => { onSelect(l.id); setOpen(false); }}
-              className={`w-full px-3 py-2.5 text-sm hover:bg-secondary/60 transition-colors text-left ${l.id === selectedId ? "bg-secondary/40" : ""}`}>
+            <button
+              key={l.id}
+              onClick={() => { onSelect(l.id); setOpen(false); }}
+              className={`w-full px-3 py-2.5 text-sm hover:bg-secondary/60 transition-colors text-left ${l.id === selectedId ? "bg-secondary/40" : ""}`}
+            >
               <div className="font-mono text-xs text-accent">SIC {l.numero_sic}</div>
               <div className="text-foreground">{l.titulo}</div>
             </button>
@@ -214,9 +250,11 @@ function LicitacionSelector({ licitaciones, selectedId, onSelect }: {
   );
 }
 
-// ─── Modal: crear licitación ─────────────────────────────────────────────────
+// ─── Modal: crear licitación ──────────────────────────────────────────────
 
-function CreateLicitacionModal({ loading, onClose, onSubmit }: {
+function CreateLicitacionModal({
+  loading, onClose, onSubmit,
+}: {
   loading: boolean;
   onClose: () => void;
   onSubmit: (numero_sic: string, titulo: string) => void;
@@ -229,22 +267,38 @@ function CreateLicitacionModal({ loading, onClose, onSubmit }: {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Nueva licitación</CardTitle>
-          <CardDescription>Solo necesitás un número de SIC y un título. El resto de los datos los cargás en las pestañas.</CardDescription>
+          <CardDescription>
+            Solo necesitás un número de SIC y un título. El resto de los datos
+            los cargás en las pestañas.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <label className="block">
             <span className="text-xs text-muted-foreground">Número SIC</span>
-            <input type="text" value={numeroSic} onChange={(e) => setNumeroSic(e.target.value)} placeholder="Ej: 21441"
-              className="mt-1 w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20" />
+            <input
+              type="text"
+              value={numeroSic}
+              onChange={(e) => setNumeroSic(e.target.value)}
+              placeholder="Ej: 21441"
+              className="mt-1 w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
+            />
           </label>
           <label className="block">
             <span className="text-xs text-muted-foreground">Título / objeto</span>
-            <input type="text" value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej: Adquisición de RTU para teleoperación"
-              className="mt-1 w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20" />
+            <input
+              type="text"
+              value={titulo}
+              onChange={(e) => setTitulo(e.target.value)}
+              placeholder="Ej: Adquisición de RTU para teleoperación"
+              className="mt-1 w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
+            />
           </label>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={onClose} disabled={loading}>Cancelar</Button>
-            <Button onClick={() => onSubmit(numeroSic.trim(), titulo.trim())} disabled={loading || !numeroSic.trim() || !titulo.trim()}>
+            <Button
+              onClick={() => onSubmit(numeroSic.trim(), titulo.trim())}
+              disabled={loading || !numeroSic.trim() || !titulo.trim()}
+            >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Crear"}
             </Button>
           </div>
@@ -254,21 +308,23 @@ function CreateLicitacionModal({ loading, onClose, onSubmit }: {
   );
 }
 
-// ─── Tab: Datos generales ────────────────────────────────────────────
+// ─── Tab: Datos generales ────────────────────────────────────
 
-function DatosGeneralesTab({ licitacion, onUpdated }: {
+function DatosGeneralesTab({
+  licitacion, onUpdated,
+}: {
   licitacion: Licitacion;
   onUpdated: (l: Licitacion) => void;
 }) {
-  const [numeroSic,     setNumeroSic]     = useState(licitacion.numero_sic);
-  const [titulo,        setTitulo]        = useState(licitacion.titulo);
-  const [fechaApertura, setFechaApertura] = useState(licitacion.fecha_apertura ?? "");
-  const [fdSicFecha,    setFdSicFecha]    = useState(licitacion.fd_sic_fecha ?? "");
-  const [fdSicValor,    setFdSicValor]    = useState<string>(licitacion.fd_sic_valor?.toString() ?? "");
-  const [fdOpFecha,     setFdOpFecha]     = useState(licitacion.fd_op_fecha ?? "");
-  const [fdOpValor,     setFdOpValor]     = useState<string>(licitacion.fd_op_valor?.toString() ?? "");
-  const [umbral,        setUmbral]        = useState<string>(licitacion.umbral_economico_pct?.toString() ?? "50");
-  const [saving,        setSaving]        = useState(false);
+  const [numeroSic,       setNumeroSic]       = useState(licitacion.numero_sic);
+  const [titulo,          setTitulo]          = useState(licitacion.titulo);
+  const [fechaApertura,   setFechaApertura]   = useState(licitacion.fecha_apertura ?? "");
+  const [fdSicFecha,      setFdSicFecha]      = useState(licitacion.fd_sic_fecha ?? "");
+  const [fdSicValor,      setFdSicValor]      = useState<string>(licitacion.fd_sic_valor?.toString() ?? "");
+  const [fdOpFecha,       setFdOpFecha]       = useState(licitacion.fd_op_fecha ?? "");
+  const [fdOpValor,       setFdOpValor]       = useState<string>(licitacion.fd_op_valor?.toString() ?? "");
+  const [umbral,          setUmbral]          = useState<string>(licitacion.umbral_economico_pct?.toString() ?? "50");
+  const [saving,          setSaving]          = useState(false);
 
   useEffect(() => {
     setNumeroSic(licitacion.numero_sic);
@@ -279,7 +335,7 @@ function DatosGeneralesTab({ licitacion, onUpdated }: {
     setFdOpFecha(licitacion.fd_op_fecha ?? "");
     setFdOpValor(licitacion.fd_op_valor?.toString() ?? "");
     setUmbral(licitacion.umbral_economico_pct?.toString() ?? "50");
-  }, [licitacion.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [licitacion.id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty =
     numeroSic     !== licitacion.numero_sic ||
@@ -298,16 +354,25 @@ function DatosGeneralesTab({ licitacion, onUpdated }: {
   };
 
   const handleSave = async () => {
-    if (!numeroSic.trim() || !titulo.trim()) { toast.error("Número SIC y título son obligatorios"); return; }
+    if (!numeroSic.trim() || !titulo.trim()) {
+      toast.error("Número SIC y título son obligatorios");
+      return;
+    }
     const umbralNum = parseNum(umbral);
-    if (umbralNum === null || umbralNum < 0) { toast.error("Umbral económico inválido"); return; }
+    if (umbralNum === null || umbralNum < 0) {
+      toast.error("Umbral económico inválido");
+      return;
+    }
     setSaving(true);
     try {
       const updated = await updateLicitacion(licitacion.id, {
-        numero_sic: numeroSic.trim(), titulo: titulo.trim(),
+        numero_sic:     numeroSic.trim(),
+        titulo:         titulo.trim(),
         fecha_apertura: fechaApertura || null,
-        fd_sic_fecha: fdSicFecha || null, fd_sic_valor: parseNum(fdSicValor),
-        fd_op_fecha: fdOpFecha || null,   fd_op_valor: parseNum(fdOpValor),
+        fd_sic_fecha:   fdSicFecha || null,
+        fd_sic_valor:   parseNum(fdSicValor),
+        fd_op_fecha:    fdOpFecha || null,
+        fd_op_valor:    parseNum(fdOpValor),
         umbral_economico_pct: umbralNum,
       });
       onUpdated(updated);
@@ -342,12 +407,14 @@ function DatosGeneralesTab({ licitacion, onUpdated }: {
             <input type="date" value={fechaApertura} onChange={(e) => setFechaApertura(e.target.value)} className="ti-input" />
           </FormField>
           <div />
+
           <FormField label="Fecha de la SIC">
             <input type="date" value={fdSicFecha} onChange={(e) => setFdSicFecha(e.target.value)} className="ti-input" />
           </FormField>
           <FormField label="Dólar de la SIC (ARS por USD)">
             <input type="number" step="0.01" inputMode="decimal" value={fdSicValor} onChange={(e) => setFdSicValor(e.target.value)} placeholder="Ej: 1399.5" className="ti-input" />
           </FormField>
+
           <FormField label="Fecha de la OP">
             <input type="date" value={fdOpFecha} onChange={(e) => setFdOpFecha(e.target.value)} className="ti-input" />
           </FormField>
@@ -357,7 +424,10 @@ function DatosGeneralesTab({ licitacion, onUpdated }: {
         </div>
       </FormSection>
 
-      <FormSection title="Configuración" description="Umbral máximo de sobreprecio aceptable respecto al precio SIC en USD. Default: 50%.">
+      <FormSection
+        title="Configuración"
+        description="Umbral máximo de sobreprecio aceptable respecto al precio SIC en USD. Default: 50%."
+      >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <FormField label="Umbral económico (%)">
             <input type="number" step="0.1" inputMode="decimal" value={umbral} onChange={(e) => setUmbral(e.target.value)} className="ti-input" />
@@ -375,11 +445,19 @@ function DatosGeneralesTab({ licitacion, onUpdated }: {
 
       <style jsx global>{`
         .ti-input {
-          height: 2.25rem; padding: 0 0.75rem; border-radius: 0.5rem;
-          background-color: hsl(var(--secondary)); border: 1px solid hsl(var(--border));
-          font-size: 0.875rem; color: hsl(var(--foreground)); width: 100%;
+          height: 2.25rem;
+          padding: 0 0.75rem;
+          border-radius: 0.5rem;
+          background-color: hsl(var(--secondary));
+          border: 1px solid hsl(var(--border));
+          font-size: 0.875rem;
+          color: hsl(var(--foreground));
+          width: 100%;
         }
-        .ti-input:focus { outline: none; box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2); }
+        .ti-input:focus {
+          outline: none;
+          box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+        }
       `}</style>
     </div>
   );
@@ -410,41 +488,65 @@ function PlaceholderTab({ tab }: { tab: WizardTab }) {
   const messages: Record<WizardTab, string> = {
     datos:        "Datos generales — fechas, valores de dólar y umbral económico.",
     renglones:    "Renglones e ítems — matrícula, descripción, cantidad, precio SIC.",
-    oferentes:    "Oferentes — participantes del Acta de Apertura.",
+    oferentes:    "Próxima fase: registrar la lista de oferentes participantes.",
     ofertas:      "Próxima fase: grilla de precios unitarios por ítem × oferente (USD o ARS).",
     evaluacion:   "Próxima fase: marcar Cumple/No cumple técnicamente por renglón × oferente.",
     adjudicacion: "Próxima fase: tabla resumen con cálculo de %SIC y selección manual del ganador por renglón.",
   };
-  return <div className="text-sm text-muted-foreground py-6 text-center">{messages[tab]}</div>;
+  return (
+    <div className="text-sm text-muted-foreground py-6 text-center">
+      {messages[tab]}
+    </div>
+  );
 }
 
-// ─── Tab: Renglones e Ítems ──────────────────────────────────────────
+// ─── Tab: Renglones e Ítems ──────────────────────────────────
 
 function RenglonesTab({ licitacionId }: { licitacionId: string }) {
   const [loading, setLoading] = useState(true);
   const [renglones, setRenglones] = useState<RenglonConItems[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
   const [showCreateRenglon, setShowCreateRenglon] = useState(false);
   const [editingRenglon, setEditingRenglon] = useState<Renglon | null>(null);
+
   const [creatingItemFor, setCreatingItemFor] = useState<RenglonConItems | null>(null);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
 
-  useEffect(() => {
+  const refresh = async () => {
     setLoading(true);
-    listRenglonesConItems(licitacionId)
-      .then((rows) => {
-        setRenglones(rows);
-        if (rows.length <= 3) setExpanded(new Set(rows.map((r) => r.id)));
-      })
-      .catch((e) => { console.error(e); toast.error("No se pudieron cargar los renglones"); })
-      .finally(() => setLoading(false));
-  }, [licitacionId]); // eslint-disable-line react-hooks/exhaustive-deps
+    try {
+      const rows = await listRenglonesConItems(licitacionId);
+      setRenglones(rows);
+      if (rows.length <= 3) setExpanded(new Set(rows.map((r) => r.id)));
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudieron cargar los renglones");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const toggleExpand = (id: string) => setExpanded((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  useEffect(() => { refresh(); }, [licitacionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleExpand = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   const nextRenglonNumero = () => renglones.reduce((m, r) => Math.max(m, r.numero), 0) + 1;
-  const nextItemNumero = (r: RenglonConItems) => r.items.reduce((m, i) => Math.max(m, i.numero_item), 0) + 1;
+  const nextItemNumero = (renglon: RenglonConItems) => renglon.items.reduce((m, i) => Math.max(m, i.numero_item), 0) + 1;
 
-  if (loading) return <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Cargando renglones...</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
+        <Loader2 className="w-4 h-4 animate-spin" /> Cargando renglones...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -452,12 +554,14 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
         <p className="text-xs text-muted-foreground">
           {renglones.length} renglón{renglones.length === 1 ? "" : "es"} · {renglones.reduce((n, r) => n + r.items.length, 0)} ítem{renglones.reduce((n, r) => n + r.items.length, 0) === 1 ? "" : "s"}
         </p>
-        <Button size="sm" onClick={() => setShowCreateRenglon(true)}><Plus className="w-4 h-4 mr-1" /> Agregar renglón</Button>
+        <Button size="sm" onClick={() => setShowCreateRenglon(true)}>
+          <Plus className="w-4 h-4 mr-1" /> Agregar renglón
+        </Button>
       </div>
 
       {renglones.length === 0 && (
         <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
-          No hay renglones aún. Hacé clic en "Agregar renglón" para empezar.
+          No hay renglones aún. Hacé clic en “Agregar renglón” para empezar.
         </div>
       )}
 
@@ -475,7 +579,9 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
                     <span className="text-sm font-semibold text-foreground">Renglón {r.numero}</span>
                     <span className="text-xs text-muted-foreground">· {r.items.length} ítem{r.items.length === 1 ? "" : "s"}</span>
                   </div>
-                  {r.condicion_adjudicacion && <p className="text-xs text-muted-foreground truncate mt-0.5">{r.condicion_adjudicacion}</p>}
+                  {r.condicion_adjudicacion && (
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">{r.condicion_adjudicacion}</p>
+                  )}
                 </div>
                 <button onClick={() => setEditingRenglon(r)} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Editar renglón">
                   <Pencil className="w-3.5 h-3.5" />
@@ -483,10 +589,14 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
                 <button
                   onClick={async () => {
                     if (!confirm(`¿Eliminar el renglón ${r.numero} y todos sus ítems?`)) return;
-                    try { await deleteRenglon(r.id); toast.success("Renglón eliminado"); setRenglones((prev) => prev.filter((x) => x.id !== r.id)); }
-                    catch (e) { console.error(e); toast.error("No se pudo eliminar el renglón"); }
+                    try {
+                      await deleteRenglon(r.id);
+                      toast.success("Renglón eliminado");
+                      setRenglones((prev) => prev.filter((x) => x.id !== r.id));
+                    } catch (e) { console.error(e); toast.error("No se pudo eliminar el renglón"); }
                   }}
-                  className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors" title="Eliminar renglón"
+                  className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                  title="Eliminar renglón"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -517,19 +627,29 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
                               <td className="py-2 px-2 text-foreground">{it.descripcion || "—"}</td>
                               <td className="py-2 px-2 text-right tabular-nums">{it.cantidad}</td>
                               <td className="py-2 px-2 text-right tabular-nums">
-                                {it.precio_sic_pesos !== null ? it.precio_sic_pesos.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+                                {it.precio_sic_pesos !== null
+                                  ? it.precio_sic_pesos.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                                  : "—"}
                               </td>
                               <td className="py-2 px-2 text-right">
                                 <div className="flex items-center justify-end gap-1">
-                                  <button onClick={() => setEditingItem(it)} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Editar ítem"><Pencil className="w-3 h-3" /></button>
+                                  <button onClick={() => setEditingItem(it)} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Editar ítem">
+                                    <Pencil className="w-3 h-3" />
+                                  </button>
                                   <button
                                     onClick={async () => {
                                       if (!confirm(`¿Eliminar el ítem ${it.numero_item}?`)) return;
-                                      try { await deleteItem(it.id); toast.success("Ítem eliminado"); setRenglones((prev) => prev.map((x) => x.id === r.id ? { ...x, items: x.items.filter((i) => i.id !== it.id) } : x)); }
-                                      catch (e) { console.error(e); toast.error("No se pudo eliminar el ítem"); }
+                                      try {
+                                        await deleteItem(it.id);
+                                        toast.success("Ítem eliminado");
+                                        setRenglones((prev) => prev.map((x) => x.id === r.id ? { ...x, items: x.items.filter((i) => i.id !== it.id) } : x));
+                                      } catch (e) { console.error(e); toast.error("No se pudo eliminar el ítem"); }
                                     }}
-                                    className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors" title="Eliminar ítem"
-                                  ><Trash2 className="w-3 h-3" /></button>
+                                    className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                                    title="Eliminar ítem"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
                                 </div>
                               </td>
                             </tr>
@@ -549,50 +669,71 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
       </div>
 
       {showCreateRenglon && (
-        <RenglonModal mode="create" initialNumero={nextRenglonNumero()} onClose={() => setShowCreateRenglon(false)}
+        <RenglonModal
+          mode="create"
+          initialNumero={nextRenglonNumero()}
+          onClose={() => setShowCreateRenglon(false)}
           onSubmit={async ({ numero, condicion }) => {
             try {
               const created = await createRenglon({ licitacion_id: licitacionId, numero, condicion_adjudicacion: condicion || null });
               setRenglones((prev) => [...prev, { ...created, items: [] }].sort((a, b) => a.numero - b.numero));
               setExpanded((prev) => new Set(prev).add(created.id));
-              setShowCreateRenglon(false); toast.success("Renglón creado");
+              setShowCreateRenglon(false);
+              toast.success("Renglón creado");
             } catch (e) { console.error(e); toast.error("No se pudo crear el renglón"); }
           }}
         />
       )}
+
       {editingRenglon && (
-        <RenglonModal mode="edit" initialNumero={editingRenglon.numero} initialCondicion={editingRenglon.condicion_adjudicacion ?? ""}
+        <RenglonModal
+          mode="edit"
+          initialNumero={editingRenglon.numero}
+          initialCondicion={editingRenglon.condicion_adjudicacion ?? ""}
           onClose={() => setEditingRenglon(null)}
           onSubmit={async ({ numero, condicion }) => {
             try {
               const updated = await updateRenglon(editingRenglon.id, { numero, condicion_adjudicacion: condicion || null });
               setRenglones((prev) => prev.map((r) => r.id === editingRenglon.id ? { ...r, ...updated } : r).sort((a, b) => a.numero - b.numero));
-              setEditingRenglon(null); toast.success("Renglón actualizado");
+              setEditingRenglon(null);
+              toast.success("Renglón actualizado");
             } catch (e) { console.error(e); toast.error("No se pudo actualizar el renglón"); }
           }}
         />
       )}
+
       {creatingItemFor && (
-        <ItemModal mode="create" initialNumero={nextItemNumero(creatingItemFor)} renglonNumero={creatingItemFor.numero}
+        <ItemModal
+          mode="create"
+          initialNumero={nextItemNumero(creatingItemFor)}
+          renglonNumero={creatingItemFor.numero}
           onClose={() => setCreatingItemFor(null)}
           onSubmit={async (vals) => {
             try {
               const created = await createItem({ renglon_id: creatingItemFor.id, ...vals });
               setRenglones((prev) => prev.map((r) => r.id === creatingItemFor.id ? { ...r, items: [...r.items, created].sort((a, b) => a.numero_item - b.numero_item) } : r));
-              setCreatingItemFor(null); toast.success("Ítem agregado");
+              setCreatingItemFor(null);
+              toast.success("Ítem agregado");
             } catch (e) { console.error(e); toast.error("No se pudo agregar el ítem"); }
           }}
         />
       )}
+
       {editingItem && (
-        <ItemModal mode="edit" initialNumero={editingItem.numero_item} initialMatricula={editingItem.matricula ?? ""}
-          initialDescripcion={editingItem.descripcion ?? ""} initialCantidad={editingItem.cantidad} initialPrecio={editingItem.precio_sic_pesos}
+        <ItemModal
+          mode="edit"
+          initialNumero={editingItem.numero_item}
+          initialMatricula={editingItem.matricula ?? ""}
+          initialDescripcion={editingItem.descripcion ?? ""}
+          initialCantidad={editingItem.cantidad}
+          initialPrecio={editingItem.precio_sic_pesos}
           onClose={() => setEditingItem(null)}
           onSubmit={async (vals) => {
             try {
               const updated = await updateItem(editingItem.id, vals);
               setRenglones((prev) => prev.map((r) => r.id === editingItem.renglon_id ? { ...r, items: r.items.map((i) => i.id === editingItem.id ? updated : i).sort((a, b) => a.numero_item - b.numero_item) } : r));
-              setEditingItem(null); toast.success("Ítem actualizado");
+              setEditingItem(null);
+              toast.success("Ítem actualizado");
             } catch (e) { console.error(e); toast.error("No se pudo actualizar el ítem"); }
           }}
         />
@@ -601,7 +742,7 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
   );
 }
 
-// ─── Tab: Oferentes ───────────────────────────────────────────────────
+// ─── Tab: Oferentes ──────────────────────────────────────────────
 
 function OferentesTab({ licitacionId }: { licitacionId: string }) {
   const [loading, setLoading]     = useState(true);
@@ -622,7 +763,8 @@ function OferentesTab({ licitacionId }: { licitacionId: string }) {
     const n = nombre.trim();
     if (!n) return;
     if (oferentes.some((o) => o.nombre.toLowerCase() === n.toLowerCase())) {
-      toast.error("Ya existe un oferente con ese nombre"); return;
+      toast.error("Ya existe un oferente con ese nombre");
+      return;
     }
     setAdding(true);
     try {
@@ -651,7 +793,13 @@ function OferentesTab({ licitacionId }: { licitacionId: string }) {
     }
   };
 
-  if (loading) return <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Cargando oferentes...</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
+        <Loader2 className="w-4 h-4 animate-spin" /> Cargando oferentes...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 max-w-lg">
@@ -674,7 +822,7 @@ function OferentesTab({ licitacionId }: { licitacionId: string }) {
 
       {oferentes.length === 0 ? (
         <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
-          No hay oferentes cargados. Agregá los participantes del Acta de Apertura.
+          No hay oferentes cargados. Agregaí los participantes del Acta de Apertura.
         </div>
       ) : (
         <div className="border border-border rounded-lg divide-y divide-border overflow-hidden">
@@ -682,7 +830,11 @@ function OferentesTab({ licitacionId }: { licitacionId: string }) {
             <div key={o.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-secondary/30 transition-colors">
               <span className="text-xs text-muted-foreground w-5 text-right tabular-nums">{i + 1}.</span>
               <span className="flex-1 text-sm text-foreground">{o.nombre}</span>
-              <button onClick={() => handleDelete(o)} className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors" title="Eliminar oferente">
+              <button
+                onClick={() => handleDelete(o)}
+                className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                title="Eliminar oferente"
+              >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -698,9 +850,238 @@ function OferentesTab({ licitacionId }: { licitacionId: string }) {
   );
 }
 
-// ─── Modal: Renglón (crear/editar) ─────────────────────────────────────
+// ─── Tab: Ofertas ─────────────────────────────────────────────────────
 
-function RenglonModal({ mode, initialNumero, initialCondicion = "", onClose, onSubmit }: {
+function OfertasTab({ licitacionId }: { licitacionId: string }) {
+  const [loading, setLoading] = useState(true);
+  const [renglones, setRenglones] = useState<RenglonConItems[]>([]);
+  const [oferentes, setOferentes] = useState<Oferente[]>([]);
+  const [cells, setCells] = useState<Map<string, { precio: string; divisa: Divisa }>>(new Map());
+  const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      listRenglonesConItems(licitacionId),
+      listOferentes(licitacionId),
+      listOfertas(licitacionId),
+    ])
+      .then(([rens, offs, oftas]) => {
+        setRenglones(rens);
+        setOferentes(offs);
+        const map = new Map<string, { precio: string; divisa: Divisa }>();
+        for (const o of oftas) {
+          map.set(`${o.item_id}|${o.oferente_id}`, {
+            precio: o.precio_unitario.toString(),
+            divisa: o.divisa,
+          });
+        }
+        setCells(map);
+      })
+      .catch((e) => { console.error(e); toast.error("No se pudieron cargar las ofertas"); })
+      .finally(() => setLoading(false));
+  }, [licitacionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const getCell = (itemId: string, ofId: string) =>
+    cells.get(`${itemId}|${ofId}`) ?? { precio: "", divisa: "ARS" as Divisa };
+
+  const setCell = (itemId: string, ofId: string, patch: Partial<{ precio: string; divisa: Divisa }>) =>
+    setCells((prev) => {
+      const next = new Map(prev);
+      const key = `${itemId}|${ofId}`;
+      next.set(key, { ...(next.get(key) ?? { precio: "", divisa: "ARS" as Divisa }), ...patch });
+      return next;
+    });
+
+  const saveCell = async (itemId: string, ofId: string) => {
+    const key = `${itemId}|${ofId}`;
+    const cell = cells.get(key) ?? { precio: "", divisa: "ARS" as Divisa };
+    const precioStr = cell.precio.trim();
+
+    if (!precioStr) {
+      try { await deleteOferta(ofId, itemId); }
+      catch (e) { console.error(e); }
+      setCells((prev) => { const next = new Map(prev); next.delete(key); return next; });
+      return;
+    }
+
+    const precio = Number(precioStr.replace(",", "."));
+    if (!Number.isFinite(precio) || precio < 0) { toast.error("Precio inválido"); return; }
+
+    setSavingCells((prev) => new Set(prev).add(key));
+    try {
+      await upsertOferta({ oferente_id: ofId, item_id: itemId, precio_unitario: precio, divisa: cell.divisa });
+    } catch (e) { console.error(e); toast.error("No se pudo guardar la oferta"); }
+    finally {
+      setSavingCells((prev) => { const next = new Set(prev); next.delete(key); return next; });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
+        <Loader2 className="w-4 h-4 animate-spin" /> Cargando ofertas...
+      </div>
+    );
+  }
+
+  if (renglones.length === 0) {
+    return (
+      <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
+        No hay renglones cargados. Cargalos en la pestaña <strong>Renglones e Ítems</strong> primero.
+      </div>
+    );
+  }
+
+  if (oferentes.length === 0) {
+    return (
+      <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
+        No hay oferentes cargados. Cargalos en la pestaña <strong>Oferentes</strong> primero.
+      </div>
+    );
+  }
+
+  const totalItems = renglones.reduce((n, r) => n + r.items.length, 0);
+  const totalOfertas = cells.size;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          Los precios se guardan automáticamente al salir de cada celda.
+        </p>
+        <p className="text-xs text-muted-foreground tabular-nums">
+          {totalOfertas} / {totalItems * oferentes.length} celdas completadas
+        </p>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="bg-secondary/50">
+              <th
+                className="text-left py-2.5 px-3 font-medium text-muted-foreground border-r border-border"
+                style={{ minWidth: "280px" }}
+              >
+                Ítem
+              </th>
+              {oferentes.map((of) => (
+                <th
+                  key={of.id}
+                  className="py-2.5 px-3 font-medium text-foreground border-r border-border last:border-r-0 text-center"
+                  style={{ minWidth: "180px" }}
+                >
+                  {of.nombre}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {renglones.flatMap((r) => [
+              <tr key={`reng-${r.id}`} className="bg-secondary/20 border-t border-border">
+                <td colSpan={1 + oferentes.length} className="py-1.5 px-3 font-semibold">
+                  <span className="text-accent">Renglón {r.numero}</span>
+                  {r.condicion_adjudicacion && (
+                    <span className="font-normal text-muted-foreground ml-2">{r.condicion_adjudicacion}</span>
+                  )}
+                </td>
+              </tr>,
+              ...r.items.map((item) => (
+                <tr key={item.id} className="border-t border-border hover:bg-secondary/10 transition-colors">
+                  <td className="py-2 px-3 border-r border-border align-top">
+                    <div className="flex items-start gap-2">
+                      <span className="font-mono text-muted-foreground shrink-0 text-[11px] mt-0.5">
+                        {r.numero}.{item.numero_item}
+                      </span>
+                      <div className="min-w-0">
+                        {item.matricula && (
+                          <div className="font-mono text-accent text-[11px]">{item.matricula}</div>
+                        )}
+                        <div className="text-foreground leading-tight break-words">
+                          {item.descripcion || "Sin descripción"}
+                        </div>
+                        <div className="text-muted-foreground text-[11px] mt-0.5">
+                          Cant: {item.cantidad}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  {oferentes.map((of) => {
+                    const key = `${item.id}|${of.id}`;
+                    const cell = getCell(item.id, of.id);
+                    const isSaving = savingCells.has(key);
+                    return (
+                      <td key={of.id} className="py-1.5 px-2 border-r border-border last:border-r-0 align-middle">
+                        <div className="flex items-center gap-1 relative">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={cell.precio}
+                            onChange={(e) => setCell(item.id, of.id, { precio: e.target.value })}
+                            onBlur={() => saveCell(item.id, of.id)}
+                            placeholder="—"
+                            className="w-full min-w-0 h-7 px-2 rounded bg-secondary border border-border text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-ring/20"
+                          />
+                          <select
+                            value={cell.divisa}
+                            onChange={(e) => {
+                              const divisa = e.target.value as Divisa;
+                              setCell(item.id, of.id, { divisa });
+                              const precioStr = cell.precio.trim();
+                              if (precioStr) {
+                                const n = Number(precioStr.replace(",", "."));
+                                if (Number.isFinite(n) && n >= 0) {
+                                  upsertOferta({
+                                    oferente_id: of.id,
+                                    item_id: item.id,
+                                    precio_unitario: n,
+                                    divisa,
+                                  }).catch(console.error);
+                                }
+                              }
+                            }}
+                            className="h-7 px-1 rounded bg-secondary border border-border focus:outline-none cursor-pointer shrink-0 text-xs"
+                          >
+                            <option value="ARS">ARS</option>
+                            <option value="USD">USD</option>
+                          </select>
+                          {isSaving && (
+                            <span className="absolute -top-1.5 -right-1.5">
+                              <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              )),
+              ...(r.items.length === 0
+                ? [
+                    <tr key={`empty-${r.id}`} className="border-t border-border">
+                      <td
+                        colSpan={1 + oferentes.length}
+                        className="py-2 px-3 text-center text-muted-foreground italic"
+                      >
+                        Sin ítems en este renglón.
+                      </td>
+                    </tr>,
+                  ]
+                : []),
+            ])}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal: Renglón (crear/editar) ─────────────────────────────
+
+function RenglonModal({
+  mode, initialNumero, initialCondicion = "", onClose, onSubmit,
+}: {
   mode: "create" | "edit";
   initialNumero: number;
   initialCondicion?: string;
@@ -734,14 +1115,11 @@ function RenglonModal({ mode, initialNumero, initialCondicion = "", onClose, onS
         <CardContent className="space-y-3">
           <label className="block">
             <span className="text-xs text-muted-foreground">Número</span>
-            <input type="number" min={1} value={numero} onChange={(e) => setNumero(e.target.value)}
-              className="mt-1 w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20" />
+            <input type="number" min={1} value={numero} onChange={(e) => setNumero(e.target.value)} className="mt-1 w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20" />
           </label>
           <label className="block">
             <span className="text-xs text-muted-foreground">Condición de adjudicación (opcional)</span>
-            <textarea value={condicion} onChange={(e) => setCondicion(e.target.value)}
-              placeholder="Ej: Adjudicación por renglón completo a un único oferente." rows={3}
-              className="mt-1 w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none" />
+            <textarea value={condicion} onChange={(e) => setCondicion(e.target.value)} placeholder="Ej: Adjudicación por renglón completo a un único oferente." rows={3} className="mt-1 w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none" />
           </label>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={onClose} disabled={saving}>Cancelar</Button>
@@ -755,13 +1133,20 @@ function RenglonModal({ mode, initialNumero, initialCondicion = "", onClose, onS
   );
 }
 
-// ─── Modal: Ítem (crear/editar) ────────────────────────────────────────
+// ─── Modal: Ítem (crear/editar) ────────────────────────────────────
 
 type LookupStatus = "idle" | "loading" | "found" | "not_found";
 
 function ItemModal({
-  mode, renglonNumero, initialNumero, initialMatricula = "", initialDescripcion = "",
-  initialCantidad = 1, initialPrecio = null, onClose, onSubmit,
+  mode,
+  renglonNumero,
+  initialNumero,
+  initialMatricula = "",
+  initialDescripcion = "",
+  initialCantidad = 1,
+  initialPrecio = null,
+  onClose,
+  onSubmit,
 }: {
   mode: "create" | "edit";
   renglonNumero?: number;
@@ -771,7 +1156,13 @@ function ItemModal({
   initialCantidad?: number;
   initialPrecio?: number | null;
   onClose: () => void;
-  onSubmit: (vals: { numero_item: number; matricula: string; descripcion: string; cantidad: number; precio_sic_pesos: number | null }) => void | Promise<void>;
+  onSubmit: (vals: {
+    numero_item: number;
+    matricula: string;
+    descripcion: string;
+    cantidad: number;
+    precio_sic_pesos: number | null;
+  }) => void | Promise<void>;
 }) {
   const [numero, setNumero]           = useState(initialNumero.toString());
   const [matricula, setMatricula]     = useState(initialMatricula);
@@ -789,8 +1180,12 @@ function ItemModal({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       const result = await lookupMatricula(code);
-      if (result) { setDescripcion(result.descripcion); setLookupStatus("found"); }
-      else { setLookupStatus("not_found"); }
+      if (result) {
+        setDescripcion(result.descripcion);
+        setLookupStatus("found");
+      } else {
+        setLookupStatus("not_found");
+      }
     }, 500);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [matricula]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -841,17 +1236,29 @@ function ItemModal({
             </label>
             <div className="block">
               <span className="text-xs text-muted-foreground">Matrícula</span>
-              <input type="text" value={matricula} onChange={(e) => setMatricula(e.target.value)} placeholder="Ej: 12345" className="mt-1 ti-input" autoFocus={mode === "create"} />
+              <input
+                type="text"
+                value={matricula}
+                onChange={(e) => setMatricula(e.target.value)}
+                placeholder="Ej: 12345"
+                className="mt-1 ti-input"
+                autoFocus={mode === "create"}
+              />
               <div className="mt-1 min-h-[1rem]">{lookupBadge()}</div>
             </div>
           </div>
           <label className="block">
             <span className="text-xs text-muted-foreground">
-              Descripción{lookupStatus === "found" && <span className="ml-1 text-muted-foreground/60">(podés editarla)</span>}
+              Descripción
+              {lookupStatus === "found" && <span className="ml-1 text-muted-foreground/60">(podés editarla)</span>}
             </span>
-            <textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)}
-              placeholder="Se completa automáticamente al ingresar la matrícula" rows={2}
-              className="mt-1 w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none" />
+            <textarea
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              placeholder="Se completa automáticamente al ingresar la matrícula"
+              rows={2}
+              className="mt-1 w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none"
+            />
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
