@@ -25,6 +25,7 @@ import {
   Zap,
   ImagePlus,
   Package,
+  Gavel,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 
@@ -86,6 +87,7 @@ const navItems: NavItemDef[] = [
       { id: "sic-diagrama", label: "Diagrama de flujo", icon: GitMerge },
     ],
   },
+  { kind: "link", id: "informe-tecnico", label: "Informe Técnico", icon: Gavel },
   { kind: "link", id: "overview", label: "Overview", icon: LayoutDashboard },
   { kind: "link", id: "pipeline", label: "Pipeline", icon: GitBranch },
   { kind: "link", id: "deals", label: "Deals", icon: Handshake },
