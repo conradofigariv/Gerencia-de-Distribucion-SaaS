@@ -4,12 +4,22 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Gavel, Loader2, ChevronDown, FileText, Layers, Users, Tag, ClipboardCheck, Trophy, Save } from "lucide-react";
+import { Plus, Gavel, Loader2, ChevronDown, ChevronRight, FileText, Layers, Users, Tag, ClipboardCheck, Trophy, Save, Pencil, Trash2, X } from "lucide-react";
 import {
   listLicitaciones,
   createLicitacion,
   updateLicitacion,
+  listRenglonesConItems,
+  createRenglon,
+  updateRenglon,
+  deleteRenglon,
+  createItem,
+  updateItem,
+  deleteItem,
   type Licitacion,
+  type Renglon,
+  type Item,
+  type RenglonConItems,
 } from "@/lib/informeTecnico";
 import { toast } from "sonner";
 
@@ -140,6 +150,8 @@ export function InformeTecnicoSection() {
                         );
                       }}
                     />
+                  ) : t.id === "renglones" ? (
+                    <RenglonesTab licitacionId={selected.id} />
                   ) : (
                     <PlaceholderTab tab={t.id} />
                   )}
@@ -225,7 +237,7 @@ function LicitacionSelector({
   );
 }
 
-// ─── Modal: crear licitación ────────────────────────────────────────────
+// ─── Modal: crear licitación ─────────────────────────────────────────────────
 
 function CreateLicitacionModal({
   loading, onClose, onSubmit,
@@ -378,7 +390,7 @@ function DatosGeneralesTab({
         description="Dólar de la SIC: tipo de cambio usado para normalizar los precios del pliego. Dólar de la OP: tipo de cambio del día del Acta de Apertura. Valores en pesos argentinos por USD."
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-          <FormField label="Fecha de apertura">
+          <FormField label="Fecha del Acta de Apertura">
             <input type="date" value={fechaApertura} onChange={(e) => setFechaApertura(e.target.value)} className="ti-input" />
           </FormField>
           <div />
@@ -461,16 +473,557 @@ function FormField({ label, children, className = "" }: { label: string; childre
 
 function PlaceholderTab({ tab }: { tab: WizardTab }) {
   const messages: Record<WizardTab, string> = {
-    datos:        "Próxima fase: cargar fechas y valores de dólar (FD_SIC / FD_OP) y umbral económico.",
-    renglones:    "Próxima fase: agregar renglones e ítems (matrícula, descripción, cantidad, precio SIC).",
+    datos:        "Datos generales — fechas, valores de dólar y umbral económico.",
+    renglones:    "Renglones e ítems — matrícula, descripción, cantidad, precio SIC.",
     oferentes:    "Próxima fase: registrar la lista de oferentes participantes.",
     ofertas:      "Próxima fase: grilla de precios unitarios por ítem × oferente (USD o ARS).",
     evaluacion:   "Próxima fase: marcar Cumple/No cumple técnicamente por renglón × oferente.",
-    adjudicacion: "Próxima fase: tabla resumen con cálculo de %SIC y selección manual del ganádor por renglón.",
+    adjudicacion: "Próxima fase: tabla resumen con cálculo de %SIC y selección manual del ganador por renglón.",
   };
   return (
     <div className="text-sm text-muted-foreground py-6 text-center">
       {messages[tab]}
+    </div>
+  );
+}
+
+// ─── Tab: Renglones e Ítems ──────────────────────────────────────────
+
+function RenglonesTab({ licitacionId }: { licitacionId: string }) {
+  const [loading, setLoading] = useState(true);
+  const [renglones, setRenglones] = useState<RenglonConItems[]>([]);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const [showCreateRenglon, setShowCreateRenglon] = useState(false);
+  const [editingRenglon, setEditingRenglon] = useState<Renglon | null>(null);
+
+  const [creatingItemFor, setCreatingItemFor] = useState<RenglonConItems | null>(null);
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
+
+  const refresh = async () => {
+    setLoading(true);
+    try {
+      const rows = await listRenglonesConItems(licitacionId);
+      setRenglones(rows);
+      // Auto-expand if there are few renglones
+      if (rows.length <= 3) setExpanded(new Set(rows.map((r) => r.id)));
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudieron cargar los renglones");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { refresh(); }, [licitacionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleExpand = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const nextRenglonNumero = () => {
+    const max = renglones.reduce((m, r) => Math.max(m, r.numero), 0);
+    return max + 1;
+  };
+
+  const nextItemNumero = (renglon: RenglonConItems) => {
+    const max = renglon.items.reduce((m, i) => Math.max(m, i.numero_item), 0);
+    return max + 1;
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
+        <Loader2 className="w-4 h-4 animate-spin" /> Cargando renglones...
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          {renglones.length} renglón{renglones.length === 1 ? "" : "es"} · {renglones.reduce((n, r) => n + r.items.length, 0)} ítem{renglones.reduce((n, r) => n + r.items.length, 0) === 1 ? "" : "s"}
+        </p>
+        <Button size="sm" onClick={() => setShowCreateRenglon(true)}>
+          <Plus className="w-4 h-4 mr-1" /> Agregar renglón
+        </Button>
+      </div>
+
+      {renglones.length === 0 && (
+        <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
+          No hay renglones aún. Hacé clic en "Agregar renglón" para empezar.
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {renglones.map((r) => {
+          const open = expanded.has(r.id);
+          return (
+            <div key={r.id} className="border border-border rounded-lg bg-card overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center gap-2 px-3 py-2.5 bg-secondary/30">
+                <button
+                  onClick={() => toggleExpand(r.id)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  title={open ? "Colapsar" : "Expandir"}
+                >
+                  {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </button>
+                <div className="flex-1 min-w-0" onClick={() => toggleExpand(r.id)} role="button">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">Renglón {r.numero}</span>
+                    <span className="text-xs text-muted-foreground">·</span>
+                    <span className="text-xs text-muted-foreground">{r.items.length} ítem{r.items.length === 1 ? "" : "s"}</span>
+                  </div>
+                  {r.condicion_adjudicacion && (
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">{r.condicion_adjudicacion}</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => setEditingRenglon(r)}
+                  className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                  title="Editar renglón"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!confirm(`¿Eliminar el renglón ${r.numero} y todos sus ítems?`)) return;
+                    try {
+                      await deleteRenglon(r.id);
+                      toast.success("Renglón eliminado");
+                      setRenglones((prev) => prev.filter((x) => x.id !== r.id));
+                    } catch (e) {
+                      console.error(e);
+                      toast.error("No se pudo eliminar el renglón");
+                    }
+                  }}
+                  className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                  title="Eliminar renglón"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Items */}
+              {open && (
+                <div className="p-3 space-y-3">
+                  {r.items.length === 0 ? (
+                    <div className="text-xs text-muted-foreground text-center py-4">
+                      Sin ítems cargados.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-border text-muted-foreground">
+                            <th className="text-left py-2 px-2 w-12">#</th>
+                            <th className="text-left py-2 px-2 w-32">Matrícula</th>
+                            <th className="text-left py-2 px-2">Descripción</th>
+                            <th className="text-right py-2 px-2 w-20">Cantidad</th>
+                            <th className="text-right py-2 px-2 w-36">Precio SIC (ARS)</th>
+                            <th className="w-16"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {r.items.map((it) => (
+                            <tr key={it.id} className="border-b border-border/40 hover:bg-secondary/30 transition-colors">
+                              <td className="py-2 px-2 font-mono text-muted-foreground">{it.numero_item}</td>
+                              <td className="py-2 px-2 font-mono">{it.matricula || "—"}</td>
+                              <td className="py-2 px-2 text-foreground">{it.descripcion || "—"}</td>
+                              <td className="py-2 px-2 text-right tabular-nums">{it.cantidad}</td>
+                              <td className="py-2 px-2 text-right tabular-nums">
+                                {it.precio_sic_pesos !== null
+                                  ? it.precio_sic_pesos.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                                  : "—"}
+                              </td>
+                              <td className="py-2 px-2 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <button
+                                    onClick={() => setEditingItem(it)}
+                                    className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                                    title="Editar ítem"
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      if (!confirm(`¿Eliminar el ítem ${it.numero_item}?`)) return;
+                                      try {
+                                        await deleteItem(it.id);
+                                        toast.success("Ítem eliminado");
+                                        setRenglones((prev) =>
+                                          prev.map((x) =>
+                                            x.id === r.id
+                                              ? { ...x, items: x.items.filter((i) => i.id !== it.id) }
+                                              : x,
+                                          ),
+                                        );
+                                      } catch (e) {
+                                        console.error(e);
+                                        toast.error("No se pudo eliminar el ítem");
+                                      }
+                                    }}
+                                    className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                                    title="Eliminar ítem"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCreatingItemFor(r)}
+                    className="w-full border border-dashed border-border"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Agregar ítem
+                  </Button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Modales */}
+      {showCreateRenglon && (
+        <RenglonModal
+          mode="create"
+          initialNumero={nextRenglonNumero()}
+          onClose={() => setShowCreateRenglon(false)}
+          onSubmit={async ({ numero, condicion }) => {
+            try {
+              const created = await createRenglon({
+                licitacion_id: licitacionId,
+                numero,
+                condicion_adjudicacion: condicion || null,
+              });
+              setRenglones((prev) =>
+                [...prev, { ...created, items: [] }].sort((a, b) => a.numero - b.numero),
+              );
+              setExpanded((prev) => new Set(prev).add(created.id));
+              setShowCreateRenglon(false);
+              toast.success("Renglón creado");
+            } catch (e) {
+              console.error(e);
+              toast.error("No se pudo crear el renglón");
+            }
+          }}
+        />
+      )}
+
+      {editingRenglon && (
+        <RenglonModal
+          mode="edit"
+          initialNumero={editingRenglon.numero}
+          initialCondicion={editingRenglon.condicion_adjudicacion ?? ""}
+          onClose={() => setEditingRenglon(null)}
+          onSubmit={async ({ numero, condicion }) => {
+            try {
+              const updated = await updateRenglon(editingRenglon.id, {
+                numero,
+                condicion_adjudicacion: condicion || null,
+              });
+              setRenglones((prev) =>
+                prev
+                  .map((r) => (r.id === editingRenglon.id ? { ...r, ...updated } : r))
+                  .sort((a, b) => a.numero - b.numero),
+              );
+              setEditingRenglon(null);
+              toast.success("Renglón actualizado");
+            } catch (e) {
+              console.error(e);
+              toast.error("No se pudo actualizar el renglón");
+            }
+          }}
+        />
+      )}
+
+      {creatingItemFor && (
+        <ItemModal
+          mode="create"
+          initialNumero={nextItemNumero(creatingItemFor)}
+          renglonNumero={creatingItemFor.numero}
+          onClose={() => setCreatingItemFor(null)}
+          onSubmit={async (vals) => {
+            try {
+              const created = await createItem({
+                renglon_id: creatingItemFor.id,
+                numero_item: vals.numero_item,
+                matricula: vals.matricula || null,
+                descripcion: vals.descripcion || null,
+                cantidad: vals.cantidad,
+                precio_sic_pesos: vals.precio_sic_pesos,
+              });
+              setRenglones((prev) =>
+                prev.map((r) =>
+                  r.id === creatingItemFor.id
+                    ? { ...r, items: [...r.items, created].sort((a, b) => a.numero_item - b.numero_item) }
+                    : r,
+                ),
+              );
+              setCreatingItemFor(null);
+              toast.success("Ítem agregado");
+            } catch (e) {
+              console.error(e);
+              toast.error("No se pudo agregar el ítem");
+            }
+          }}
+        />
+      )}
+
+      {editingItem && (
+        <ItemModal
+          mode="edit"
+          initialNumero={editingItem.numero_item}
+          initialMatricula={editingItem.matricula ?? ""}
+          initialDescripcion={editingItem.descripcion ?? ""}
+          initialCantidad={editingItem.cantidad}
+          initialPrecio={editingItem.precio_sic_pesos}
+          onClose={() => setEditingItem(null)}
+          onSubmit={async (vals) => {
+            try {
+              const updated = await updateItem(editingItem.id, {
+                numero_item: vals.numero_item,
+                matricula: vals.matricula || null,
+                descripcion: vals.descripcion || null,
+                cantidad: vals.cantidad,
+                precio_sic_pesos: vals.precio_sic_pesos,
+              });
+              setRenglones((prev) =>
+                prev.map((r) =>
+                  r.id === editingItem.renglon_id
+                    ? {
+                        ...r,
+                        items: r.items
+                          .map((i) => (i.id === editingItem.id ? updated : i))
+                          .sort((a, b) => a.numero_item - b.numero_item),
+                      }
+                    : r,
+                ),
+              );
+              setEditingItem(null);
+              toast.success("Ítem actualizado");
+            } catch (e) {
+              console.error(e);
+              toast.error("No se pudo actualizar el ítem");
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Modal: Renglón (crear/editar) ─────────────────────────────────────
+
+function RenglonModal({
+  mode, initialNumero, initialCondicion = "", onClose, onSubmit,
+}: {
+  mode: "create" | "edit";
+  initialNumero: number;
+  initialCondicion?: string;
+  onClose: () => void;
+  onSubmit: (vals: { numero: number; condicion: string }) => void | Promise<void>;
+}) {
+  const [numero, setNumero] = useState(initialNumero.toString());
+  const [condicion, setCondicion] = useState(initialCondicion);
+  const [saving, setSaving] = useState(false);
+
+  const handle = async () => {
+    const n = parseInt(numero, 10);
+    if (!Number.isFinite(n) || n < 1) {
+      toast.error("Número de renglón inválido");
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSubmit({ numero: n, condicion: condicion.trim() });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle>{mode === "create" ? "Nuevo renglón" : "Editar renglón"}</CardTitle>
+              <CardDescription>
+                Un renglón es un grupo de ítems que se adjudican juntos a un mismo oferente.
+              </CardDescription>
+            </div>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <label className="block">
+            <span className="text-xs text-muted-foreground">Número</span>
+            <input
+              type="number"
+              min={1}
+              value={numero}
+              onChange={(e) => setNumero(e.target.value)}
+              className="mt-1 w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs text-muted-foreground">Condición de adjudicación (opcional)</span>
+            <textarea
+              value={condicion}
+              onChange={(e) => setCondicion(e.target.value)}
+              placeholder="Ej: Adjudicación por renglón completo a un único oferente."
+              rows={3}
+              className="mt-1 w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none"
+            />
+          </label>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={onClose} disabled={saving}>Cancelar</Button>
+            <Button onClick={handle} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (mode === "create" ? "Crear" : "Guardar")}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─── Modal: Ítem (crear/editar) ────────────────────────────────────────
+
+function ItemModal({
+  mode,
+  renglonNumero,
+  initialNumero,
+  initialMatricula = "",
+  initialDescripcion = "",
+  initialCantidad = 1,
+  initialPrecio = null,
+  onClose,
+  onSubmit,
+}: {
+  mode: "create" | "edit";
+  renglonNumero?: number;
+  initialNumero: number;
+  initialMatricula?: string;
+  initialDescripcion?: string;
+  initialCantidad?: number;
+  initialPrecio?: number | null;
+  onClose: () => void;
+  onSubmit: (vals: {
+    numero_item: number;
+    matricula: string;
+    descripcion: string;
+    cantidad: number;
+    precio_sic_pesos: number | null;
+  }) => void | Promise<void>;
+}) {
+  const [numero, setNumero]           = useState(initialNumero.toString());
+  const [matricula, setMatricula]     = useState(initialMatricula);
+  const [descripcion, setDescripcion] = useState(initialDescripcion);
+  const [cantidad, setCantidad]       = useState(initialCantidad.toString());
+  const [precio, setPrecio]           = useState(initialPrecio?.toString() ?? "");
+  const [saving, setSaving]           = useState(false);
+
+  const parseNum = (s: string): number | null => {
+    if (!s.trim()) return null;
+    const n = Number(s.replace(",", "."));
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const handle = async () => {
+    const n = parseInt(numero, 10);
+    if (!Number.isFinite(n) || n < 1) {
+      toast.error("Número de ítem inválido");
+      return;
+    }
+    const cantNum = parseNum(cantidad);
+    if (cantNum === null || cantNum <= 0) {
+      toast.error("Cantidad inválida");
+      return;
+    }
+    const precioNum = parseNum(precio);
+    setSaving(true);
+    try {
+      await onSubmit({
+        numero_item: n,
+        matricula: matricula.trim(),
+        descripcion: descripcion.trim(),
+        cantidad: cantNum,
+        precio_sic_pesos: precioNum,
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <Card className="w-full max-w-lg">
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle>{mode === "create" ? "Nuevo ítem" : "Editar ítem"}</CardTitle>
+              <CardDescription>
+                {renglonNumero ? `Renglón ${renglonNumero}. ` : ""}Material a cotizar con su precio SIC (ARS).
+              </CardDescription>
+            </div>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-xs text-muted-foreground">Número de ítem</span>
+              <input type="number" min={1} value={numero} onChange={(e) => setNumero(e.target.value)} className="mt-1 ti-input" />
+            </label>
+            <label className="block">
+              <span className="text-xs text-muted-foreground">Matrícula</span>
+              <input type="text" value={matricula} onChange={(e) => setMatricula(e.target.value)} placeholder="Ej: 12345" className="mt-1 ti-input" />
+            </label>
+          </div>
+          <label className="block">
+            <span className="text-xs text-muted-foreground">Descripción</span>
+            <textarea
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              placeholder="Ej: RTU para teleoperación de subestación"
+              rows={2}
+              className="mt-1 w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none"
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-xs text-muted-foreground">Cantidad</span>
+              <input type="number" step="0.01" min="0" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="mt-1 ti-input" />
+            </label>
+            <label className="block">
+              <span className="text-xs text-muted-foreground">Precio SIC (ARS)</span>
+              <input type="number" step="0.01" min="0" value={precio} onChange={(e) => setPrecio(e.target.value)} placeholder="Ej: 1500000" className="mt-1 ti-input" />
+            </label>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={onClose} disabled={saving}>Cancelar</Button>
+            <Button onClick={handle} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (mode === "create" ? "Agregar" : "Guardar")}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
