@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Gavel, Loader2, ChevronDown, ChevronRight, FileText, Layers, Users, Tag, ClipboardCheck, Trophy, Save, Pencil, Trash2, X } from "lucide-react";
+import { Plus, Gavel, Loader2, ChevronDown, ChevronRight, FileText, Layers, Users, Tag, ClipboardCheck, Trophy, Check, Pencil, Trash2, X } from "lucide-react";
 import {
   listLicitaciones,
   createLicitacion,
@@ -80,20 +79,35 @@ export function InformeTecnicoSection() {
     );
   }
 
+  const activeTab = TABS.find((t) => t.id === tab);
+  const ActiveIcon = activeTab?.icon ?? FileText;
+
   return (
     <div className="space-y-6">
-      {/* Header bar: selector + acciones */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
-          <Gavel className="w-6 h-6 text-accent" />
+      {/* Header bar: title + selector + actions */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3">
+          <div
+            className="grid place-items-center mt-0.5"
+            style={{
+              width: 36, height: 36, borderRadius: 9,
+              background: "oklch(0.30 0.10 155 / 0.45)",
+              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
+              color: "#86efac",
+            }}
+          >
+            <FileText className="w-[18px] h-[18px]" strokeWidth={2} />
+          </div>
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Informe Técnico</h2>
-            <p className="text-xs text-muted-foreground">
+            <h2 className="text-[22px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.4, margin: 0 }}>
+              Informe Técnico
+            </h2>
+            <p className="mt-1 text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
               Análisis de ofertas y adjudicación por renglón.
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           {licitaciones.length > 0 && (
             <LicitacionSelector
               licitaciones={licitaciones}
@@ -101,90 +115,137 @@ export function InformeTecnicoSection() {
               onSelect={setSelectedId}
             />
           )}
-          <Button onClick={() => setShowCreate(true)} size="sm">
-            <Plus className="w-4 h-4 mr-1" />
+          <BeastPrimaryButton onClick={() => setShowCreate(true)} icon={<Plus className="w-3.5 h-3.5" strokeWidth={2.4} />}>
             Nueva licitación
-          </Button>
+          </BeastPrimaryButton>
         </div>
       </div>
 
-      {/* Vacío */}
+      {/* Empty state */}
       {licitaciones.length === 0 && (
-        <Card>
-          <CardContent className="py-12 flex flex-col items-center text-center gap-3">
-            <Gavel className="w-10 h-10 text-muted-foreground" />
-            <CardTitle>No hay licitaciones cargadas</CardTitle>
-            <CardDescription>
-              Creá una nueva licitación para empezar a cargar renglones, oferentes y ofertas.
-            </CardDescription>
-            <Button onClick={() => setShowCreate(true)} className="mt-2">
-              <Plus className="w-4 h-4 mr-1" />
-              Crear primera licitación
-            </Button>
-          </CardContent>
-        </Card>
+        <div
+          className="flex flex-col items-center text-center gap-3 py-14 px-6 rounded-[14px]"
+          style={{
+            background: "oklch(0.235 0.005 270)",
+            border: "1px dashed oklch(1 0 0 / 0.07)",
+          }}
+        >
+          <div
+            className="grid place-items-center mb-1"
+            style={{
+              width: 48, height: 48, borderRadius: 12,
+              background: "oklch(0.27 0.005 270)",
+              color: "oklch(0.70 0 0)",
+            }}
+          >
+            <Gavel className="w-5 h-5" />
+          </div>
+          <div className="text-[15px] font-semibold text-foreground">No hay licitaciones cargadas</div>
+          <div className="text-[13px] max-w-md leading-relaxed" style={{ color: "oklch(0.50 0 0)" }}>
+            Creá una nueva licitación para empezar a cargar renglones, oferentes y ofertas.
+          </div>
+          <BeastPrimaryButton onClick={() => setShowCreate(true)} icon={<Plus className="w-3.5 h-3.5" strokeWidth={2.4} />} className="mt-2">
+            Crear primera licitación
+          </BeastPrimaryButton>
+        </div>
       )}
 
       {/* Wizard */}
       {selected && (
-        <Tabs value={tab} onValueChange={(v) => setTab(v as WizardTab)} className="w-full">
-          <TabsList className="w-full justify-start overflow-x-auto h-auto flex-wrap">
+        <>
+          {/* Tabs — beast pure pill bar */}
+          <div
+            style={{
+              display: "inline-flex", gap: 4, padding: 4,
+              background: "oklch(0.235 0.005 270)", borderRadius: 12,
+              flexWrap: "wrap", maxWidth: "100%",
+            }}
+          >
             {TABS.map((t) => {
               const Icon = t.icon;
+              const isActive = tab === t.id;
               return (
-                <TabsTrigger key={t.id} value={t.id} className="gap-2">
-                  <Icon className="w-4 h-4" />
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 7,
+                    padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer",
+                    background: isActive ? "oklch(0.27 0.005 270)" : "transparent",
+                    color: isActive ? "oklch(0.97 0 0)" : "oklch(0.65 0 0)",
+                    fontSize: 13, fontWeight: isActive ? 500 : 400,
+                    transition: "background .15s, color .15s",
+                    boxShadow: isActive ? "0 1px 0 oklch(1 0 0 / 0.06) inset" : "none",
+                    whiteSpace: "nowrap",
+                  }}
+                  onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; }}
+                  onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.65 0 0)"; }}
+                >
+                  <Icon className="w-3.5 h-3.5" strokeWidth={1.8} />
                   {t.label}
-                </TabsTrigger>
+                </button>
               );
             })}
-          </TabsList>
+          </div>
 
-          {TABS.map((t) => (
-            <TabsContent key={t.id} value={t.id} className="mt-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <t.icon className="w-5 h-5 text-accent" />
-                    {t.label}
-                  </CardTitle>
-                  <CardDescription>
-                    Licitación SIC <span className="font-mono">{selected.numero_sic}</span> — {selected.titulo}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {t.id === "datos" ? (
-                    <DatosGeneralesTab
-                      licitacion={selected}
-                      onUpdated={(updated) => {
-                        setLicitaciones((prev) =>
-                          prev.map((l) => (l.id === updated.id ? updated : l)),
-                        );
-                      }}
-                    />
-                  ) : t.id === "renglones" ? (
-                    <RenglonesTab licitacionId={selected.id} />
-                  ) : t.id === "oferentes" ? (
-                    <OferentesTab licitacionId={selected.id} />
-                  ) : t.id === "ofertas" ? (
-                    <OfertasTab
-                      licitacion={selected}
-                      onUpdated={(updated) => {
-                        setLicitaciones((prev) =>
-                          prev.map((l) => (l.id === updated.id ? updated : l)),
-                        );
-                      }}
-                    />
-                  ) : t.id === "evaluacion" ? (
-                    <EvaluacionTab licitacionId={selected.id} />
-                  ) : (
-                    <PlaceholderTab tab={t.id} />
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-          ))}
-        </Tabs>
+          {/* Content card */}
+          <div
+            className="px-6 py-6 sm:px-7"
+            style={{
+              background: "oklch(0.235 0.005 270)",
+              border: "1px solid oklch(1 0 0 / 0.07)",
+              borderRadius: 14,
+            }}
+          >
+            <div className="flex items-center gap-2.5 mb-1.5">
+              <div
+                className="grid place-items-center"
+                style={{
+                  width: 26, height: 26, borderRadius: 7,
+                  background: "oklch(0.30 0.10 155 / 0.45)",
+                  border: "1px solid oklch(0.55 0.15 155 / 0.5)",
+                  color: "#86efac",
+                }}
+              >
+                <ActiveIcon className="w-3.5 h-3.5" strokeWidth={2} />
+              </div>
+              <h2 className="text-[17px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.2, margin: 0 }}>
+                {activeTab?.label}
+              </h2>
+            </div>
+            <p className="ml-9 mb-6 text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
+              Licitación SIC <span className="font-mono" style={{ color: "#86efac" }}>{selected.numero_sic}</span> — {selected.titulo}
+            </p>
+
+            {tab === "datos" ? (
+              <DatosGeneralesTab
+                licitacion={selected}
+                onUpdated={(updated) => {
+                  setLicitaciones((prev) =>
+                    prev.map((l) => (l.id === updated.id ? updated : l)),
+                  );
+                }}
+              />
+            ) : tab === "renglones" ? (
+              <RenglonesTab licitacionId={selected.id} />
+            ) : tab === "oferentes" ? (
+              <OferentesTab licitacionId={selected.id} />
+            ) : tab === "ofertas" ? (
+              <OfertasTab
+                licitacion={selected}
+                onUpdated={(updated) => {
+                  setLicitaciones((prev) =>
+                    prev.map((l) => (l.id === updated.id ? updated : l)),
+                  );
+                }}
+              />
+            ) : tab === "evaluacion" ? (
+              <EvaluacionTab licitacionId={selected.id} />
+            ) : (
+              <PlaceholderTab tab={tab} />
+            )}
+          </div>
+        </>
       )}
 
       {/* Modal de creación */}
@@ -214,6 +275,40 @@ export function InformeTecnicoSection() {
   );
 }
 
+// ─── Beast primary button (purple with glow) ─────────────────────────
+
+function BeastPrimaryButton({
+  children, onClick, icon, disabled, className = "",
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  icon?: React.ReactNode;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex items-center gap-1.5 ${className}`}
+      style={{
+        padding: "9px 14px", borderRadius: 9, border: "none",
+        background: disabled ? "oklch(0.27 0.005 270)" : "#8B5CF6",
+        color: disabled ? "oklch(0.50 0 0)" : "#fff",
+        fontSize: 13, fontWeight: 600,
+        cursor: disabled ? "not-allowed" : "pointer",
+        boxShadow: disabled ? "none" : "0 1px 0 oklch(1 0 0 / 0.1) inset, 0 8px 16px -10px rgba(139,92,246,0.6)",
+        transition: "filter .15s",
+      }}
+      onMouseEnter={(e) => { if (!disabled) (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1.1)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.filter = "none"; }}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
 // ─── Selector de licitación ──────────────────────────────────────────
 
 function LicitacionSelector({
@@ -224,38 +319,96 @@ function LicitacionSelector({
   onSelect: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
   const selected = licitaciones.find((l) => l.id === selectedId);
 
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
   return (
-    <div className="relative">
+    <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground hover:border-accent/50 focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all min-w-[260px]"
+        className="flex items-center gap-2"
+        style={{
+          height: 38, padding: "0 12px", borderRadius: 9, minWidth: 260,
+          background: "oklch(0.16 0.005 270)",
+          border: `1px solid ${open ? "oklch(0.55 0.20 295 / 0.55)" : "oklch(1 0 0 / 0.07)"}`,
+          color: "oklch(0.97 0 0)", fontSize: 13,
+          transition: "border-color .15s, box-shadow .15s",
+          boxShadow: open ? "0 0 0 3px oklch(0.55 0.20 295 / 0.15)" : "none",
+        }}
       >
-        <span className="truncate flex-1 text-left">
+        <span className="truncate flex-1 text-left flex items-center gap-2">
           {selected ? (
             <>
-              <span className="font-mono text-xs text-accent mr-2">SIC {selected.numero_sic}</span>
-              {selected.titulo}
+              <span
+                className="font-mono"
+                style={{
+                  padding: "2px 7px", borderRadius: 6, fontSize: 11.5, fontWeight: 600,
+                  background: "oklch(0.30 0.10 155 / 0.45)",
+                  border: "1px solid oklch(0.55 0.15 155 / 0.5)",
+                  color: "#86efac", letterSpacing: 0.3,
+                }}
+              >
+                SIC {selected.numero_sic}
+              </span>
+              <span className="truncate" style={{ color: "oklch(0.85 0 0)" }}>{selected.titulo}</span>
             </>
           ) : (
-            "Seleccionar licitación"
+            <span style={{ color: "oklch(0.50 0 0)" }}>Seleccionar licitación</span>
           )}
         </span>
-        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown
+          className={`w-4 h-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+          style={{ color: "oklch(0.55 0 0)" }}
+        />
       </button>
       {open && (
-        <div className="absolute z-50 top-[calc(100%+4px)] right-0 min-w-[320px] bg-card border border-border rounded-lg shadow-lg overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
-          {licitaciones.map((l) => (
-            <button
-              key={l.id}
-              onClick={() => { onSelect(l.id); setOpen(false); }}
-              className={`w-full px-3 py-2.5 text-sm hover:bg-secondary/60 transition-colors text-left ${l.id === selectedId ? "bg-secondary/40" : ""}`}
-            >
-              <div className="font-mono text-xs text-accent">SIC {l.numero_sic}</div>
-              <div className="text-foreground">{l.titulo}</div>
-            </button>
-          ))}
+        <div
+          className="absolute z-50 top-[calc(100%+6px)] right-0 min-w-[340px] overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
+          style={{
+            background: "oklch(0.205 0.005 270)",
+            border: "1px solid oklch(1 0 0 / 0.07)",
+            borderRadius: 10,
+            boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6), 0 0 0 1px oklch(1 0 0 / 0.02) inset",
+            padding: 4,
+          }}
+        >
+          {licitaciones.map((l) => {
+            const isActive = l.id === selectedId;
+            return (
+              <button
+                key={l.id}
+                onClick={() => { onSelect(l.id); setOpen(false); }}
+                className="w-full text-left flex items-start gap-2.5 transition-colors"
+                style={{
+                  padding: "8px 10px", borderRadius: 7, border: "none", background: isActive ? "oklch(0.27 0.005 270)" : "transparent", cursor: "pointer",
+                }}
+                onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "oklch(0.25 0.005 270)"; }}
+                onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+              >
+                <span
+                  className="font-mono shrink-0 mt-0.5"
+                  style={{
+                    padding: "2px 7px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+                    background: "oklch(0.30 0.10 155 / 0.45)",
+                    border: "1px solid oklch(0.55 0.15 155 / 0.5)",
+                    color: "#86efac", letterSpacing: 0.3,
+                  }}
+                >
+                  SIC {l.numero_sic}
+                </span>
+                <span className="flex-1 truncate text-[13px]" style={{ color: isActive ? "oklch(0.97 0 0)" : "oklch(0.80 0 0)", fontWeight: isActive ? 500 : 400 }}>
+                  {l.titulo}
+                </span>
+                {isActive && <Check className="w-3.5 h-3.5 shrink-0 mt-1" style={{ color: "#8B5CF6" }} strokeWidth={2.6} />}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -447,28 +600,75 @@ function DatosGeneralesTab({
         </div>
       </FormSection>
 
-      <div className="flex items-center justify-end gap-3 pt-2 border-t border-border">
-        {dirty && <span className="text-xs text-amber-500">● Cambios sin guardar</span>}
-        <Button onClick={handleSave} disabled={!dirty || saving}>
-          {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+      <div
+        className="flex items-center gap-2.5 pt-4 mt-2"
+        style={{ borderTop: "1px solid oklch(1 0 0 / 0.04)" }}
+      >
+        <div className="flex-1 text-[12px]" style={{ color: dirty ? "#fcd34d" : "oklch(0.45 0 0)" }}>
+          {dirty
+            ? "● Cambios sin guardar"
+            : "Los cambios se aplican al análisis de todos los renglones de esta licitación."}
+        </div>
+        <button
+          onClick={() => {
+            setNumeroSic(licitacion.numero_sic);
+            setTitulo(licitacion.titulo);
+            setFechaApertura(licitacion.fecha_apertura ?? "");
+            setFdSicFecha(licitacion.fd_sic_fecha ?? "");
+            setFdSicValor(licitacion.fd_sic_valor?.toString() ?? "");
+            setFdOpFecha(licitacion.fd_op_fecha ?? "");
+            setFdOpValor(licitacion.fd_op_valor?.toString() ?? "");
+            setUmbral(licitacion.umbral_economico_pct?.toString() ?? "50");
+          }}
+          disabled={!dirty || saving}
+          style={{
+            padding: "9px 14px", borderRadius: 9,
+            background: "transparent", border: "1px solid oklch(1 0 0 / 0.07)",
+            color: "oklch(0.70 0 0)", fontSize: 13, fontWeight: 500,
+            cursor: (!dirty || saving) ? "not-allowed" : "pointer",
+            opacity: (!dirty || saving) ? 0.4 : 1,
+          }}
+        >
+          Descartar
+        </button>
+        <BeastPrimaryButton
+          onClick={handleSave}
+          disabled={!dirty || saving}
+          icon={saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" strokeWidth={2.4} />}
+        >
           Guardar cambios
-        </Button>
+        </BeastPrimaryButton>
       </div>
 
       <style jsx global>{`
         .ti-input {
-          height: 2.25rem;
-          padding: 0 0.75rem;
-          border-radius: 0.5rem;
-          background-color: hsl(var(--secondary));
-          border: 1px solid hsl(var(--border));
-          font-size: 0.875rem;
-          color: hsl(var(--foreground));
           width: 100%;
+          height: 40px;
+          padding: 0 12px;
+          border-radius: 9px;
+          background-color: oklch(0.16 0.005 270);
+          border: 1px solid oklch(1 0 0 / 0.07);
+          font-size: 13.5px;
+          color: oklch(0.97 0 0);
+          transition: border-color .15s, box-shadow .15s;
         }
+        .ti-input::placeholder { color: oklch(0.40 0 0); }
         .ti-input:focus {
           outline: none;
-          box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+          border-color: oklch(0.55 0.20 295 / 0.55);
+          box-shadow: 0 0 0 3px oklch(0.55 0.20 295 / 0.15);
+        }
+        .ti-input[type="number"],
+        .ti-input[type="date"] {
+          font-family: 'JetBrains Mono', ui-monospace, monospace;
+          font-size: 14px;
+          font-weight: 500;
+          letter-spacing: 0.3px;
+        }
+        .ti-input[type="date"]::-webkit-calendar-picker-indicator {
+          filter: invert(0.7);
+          opacity: 0.6;
+          cursor: pointer;
         }
       `}</style>
     </div>
@@ -477,21 +677,24 @@ function DatosGeneralesTab({
 
 function FormSection({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-3">
-      <div>
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-        {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
-      </div>
+    <section style={{ marginBottom: 28 }}>
+      <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, letterSpacing: -0.1, color: "oklch(0.97 0 0)" }}>{title}</h3>
+      {description && (
+        <p style={{ margin: "4px 0 16px", fontSize: 12.5, color: "oklch(0.50 0 0)", lineHeight: 1.55, maxWidth: 720 }}>
+          {description}
+        </p>
+      )}
+      {!description && <div style={{ height: 14 }} />}
       {children}
-    </div>
+    </section>
   );
 }
 
 function FormField({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <label className={`block ${className}`}>
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <div className="mt-1">{children}</div>
+    <label className={`flex flex-col gap-1.5 ${className}`}>
+      <span className="text-[12px] font-medium" style={{ color: "oklch(0.60 0 0)" }}>{label}</span>
+      {children}
     </label>
   );
 }
@@ -731,17 +934,40 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
 }
 
 function PlaceholderTab({ tab }: { tab: WizardTab }) {
-  const messages: Record<WizardTab, string> = {
-    datos:        "Datos generales — fechas, valores de dólar y umbral económico.",
-    renglones:    "Renglones e ítems — matrícula, descripción, cantidad, precio SIC.",
-    oferentes:    "Próxima fase: registrar la lista de oferentes participantes.",
-    ofertas:      "Próxima fase: grilla de precios unitarios por ítem × oferente (USD o ARS).",
-    evaluacion:   "Próxima fase: marcar Cumple/No cumple técnicamente por renglón × oferente.",
-    adjudicacion: "Próxima fase: tabla resumen con cálculo de %SIC y selección manual del ganador por renglón.",
+  const messages: Record<WizardTab, { title: string; desc: string }> = {
+    datos:        { title: "Datos generales",     desc: "Fechas, valores de dólar y umbral económico." },
+    renglones:    { title: "Renglones e Ítems",   desc: "Matrícula, descripción, cantidad y precio SIC por renglón." },
+    oferentes:    { title: "Oferentes",           desc: "Próxima fase: registrar la lista de oferentes participantes." },
+    ofertas:      { title: "Ofertas",             desc: "Próxima fase: grilla de precios unitarios por ítem × oferente (USD o ARS)." },
+    evaluacion:   { title: "Evaluación técnica",  desc: "Próxima fase: marcar Cumple/No cumple técnicamente por renglón × oferente." },
+    adjudicacion: { title: "Adjudicación",        desc: "Próxima fase: tabla resumen con cálculo de %SIC y selección manual del ganador por renglón." },
   };
+  const iconMap: Record<WizardTab, React.ElementType> = {
+    datos: FileText, renglones: Layers, oferentes: Users, ofertas: Tag, evaluacion: ClipboardCheck, adjudicacion: Trophy,
+  };
+  const Icon = iconMap[tab];
+  const m = messages[tab];
   return (
-    <div className="text-sm text-muted-foreground py-6 text-center">
-      {messages[tab]}
+    <div
+      className="text-center"
+      style={{
+        padding: "70px 24px", color: "oklch(0.50 0 0)",
+        background: "oklch(0.205 0.005 270)",
+        border: "1px dashed oklch(1 0 0 / 0.07)",
+        borderRadius: 14,
+      }}
+    >
+      <div
+        className="mx-auto grid place-items-center"
+        style={{
+          width: 48, height: 48, borderRadius: 12, marginBottom: 14,
+          background: "oklch(0.27 0.005 270)", color: "oklch(0.70 0 0)",
+        }}
+      >
+        <Icon className="w-5 h-5" />
+      </div>
+      <div className="text-[15px] font-semibold" style={{ color: "oklch(0.97 0 0)", marginBottom: 4 }}>{m.title}</div>
+      <div className="text-[13px] max-w-md mx-auto leading-relaxed">{m.desc}</div>
     </div>
   );
 }
