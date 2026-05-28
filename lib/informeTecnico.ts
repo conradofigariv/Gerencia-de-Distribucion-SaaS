@@ -342,3 +342,43 @@ export async function deleteOferta(oferenteId: string, itemId: string): Promise<
     .eq("item_id", itemId);
   if (error) throw error;
 }
+
+// ─── Evaluación técnica ──────────────────────────────────────────
+
+export async function listEvaluaciones(
+  licitacionId: string,
+): Promise<EvaluacionTecnica[]> {
+  const { data: renglones, error: rErr } = await supabase
+    .from("licitacion_renglones")
+    .select("id")
+    .eq("licitacion_id", licitacionId);
+  if (rErr) throw rErr;
+
+  const renglonIds = (renglones ?? []).map((r: { id: string }) => r.id);
+  if (renglonIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("licitacion_evaluaciones_tecnicas")
+    .select("*")
+    .in("renglon_id", renglonIds);
+  if (error) throw error;
+  return (data ?? []) as EvaluacionTecnica[];
+}
+
+export async function upsertEvaluacion(input: {
+  oferente_id: string;
+  renglon_id: string;
+  cumple: boolean | null;
+  observaciones: string | null;
+}): Promise<EvaluacionTecnica> {
+  const { data, error } = await supabase
+    .from("licitacion_evaluaciones_tecnicas")
+    .upsert(
+      { ...input, updated_at: new Date().toISOString() },
+      { onConflict: "oferente_id,renglon_id" },
+    )
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as EvaluacionTecnica;
+}

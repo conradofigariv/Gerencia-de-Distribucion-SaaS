@@ -23,12 +23,15 @@ import {
   listOfertas,
   upsertOferta,
   deleteOferta,
+  listEvaluaciones,
+  upsertEvaluacion,
   type Licitacion,
   type Renglon,
   type Item,
   type RenglonConItems,
   type Oferente,
   type Divisa,
+  type EvaluacionTecnica,
 } from "@/lib/informeTecnico";
 import { toast } from "sonner";
 
@@ -172,6 +175,8 @@ export function InformeTecnicoSection() {
                         );
                       }}
                     />
+                  ) : t.id === "evaluacion" ? (
+                    <EvaluacionTab licitacionId={selected.id} />
                   ) : (
                     <PlaceholderTab tab={t.id} />
                   )}
@@ -491,6 +496,240 @@ function FormField({ label, children, className = "" }: { label: string; childre
   );
 }
 
+// ─── Tab: Evaluación técnica ─────────────────────────────────────
+
+function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
+  const [loading, setLoading] = useState(true);
+  const [renglones, setRenglones] = useState<Renglon[]>([]);
+  const [oferentes, setOferentes] = useState<Oferente[]>([]);
+  const [evals, setEvals] = useState<Map<string, EvaluacionTecnica>>(new Map());
+  const [saving, setSaving] = useState<Set<string>>(new Set());
+
+  const cellKey = (renglonId: string, oferenteId: string) => `${renglonId}|${oferenteId}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [reng, ofer, evs] = await Promise.all([
+          listRenglonesConItems(licitacionId),
+          listOferentes(licitacionId),
+          listEvaluaciones(licitacionId),
+        ]);
+        if (cancelled) return;
+        setRenglones(reng);
+        setOferentes(ofer);
+        const map = new Map<string, EvaluacionTecnica>();
+        for (const ev of evs) map.set(cellKey(ev.renglon_id, ev.oferente_id), ev);
+        setEvals(map);
+      } catch (e) {
+        console.error(e);
+        toast.error("No se pudo cargar la evaluación técnica");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [licitacionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const doSave = async (
+    renglonId: string,
+    oferenteId: string,
+    cumple: boolean | null,
+    observaciones: string | null,
+  ) => {
+    const key = cellKey(renglonId, oferenteId);
+    setSaving((prev) => new Set(prev).add(key));
+    try {
+      const result = await upsertEvaluacion({ oferente_id: oferenteId, renglon_id: renglonId, cumple, observaciones });
+      setEvals((prev) => new Map(prev).set(key, result));
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo guardar la evaluación");
+    } finally {
+      setSaving((prev) => { const n = new Set(prev); n.delete(key); return n; });
+    }
+  };
+
+  const handleToggle = (renglonId: string, oferenteId: string, value: boolean) => {
+    const key = cellKey(renglonId, oferenteId);
+    const current = evals.get(key);
+    const next = current?.cumple === value ? null : value;
+    setEvals((prev) =>
+      new Map(prev).set(key, {
+        id: current?.id ?? "",
+        oferente_id: oferenteId,
+        renglon_id: renglonId,
+        cumple: next,
+        observaciones: current?.observaciones ?? null,
+      }),
+    );
+    doSave(renglonId, oferenteId, next, current?.observaciones ?? null);
+  };
+
+  const handleObsChange = (renglonId: string, oferenteId: string, obs: string) => {
+    const key = cellKey(renglonId, oferenteId);
+    const current = evals.get(key);
+    setEvals((prev) =>
+      new Map(prev).set(key, {
+        id: current?.id ?? "",
+        oferente_id: oferenteId,
+        renglon_id: renglonId,
+        cumple: current?.cumple ?? null,
+        observaciones: obs || null,
+      }),
+    );
+  };
+
+  const handleObsBlur = (renglonId: string, oferenteId: string) => {
+    const key = cellKey(renglonId, oferenteId);
+    const current = evals.get(key);
+    doSave(renglonId, oferenteId, current?.cumple ?? null, current?.observaciones ?? null);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 py-8 justify-center text-muted-foreground text-sm">
+        <Loader2 className="w-4 h-4 animate-spin" /> Cargando evaluación técnica...
+      </div>
+    );
+  }
+
+  if (renglones.length === 0) {
+    return (
+      <div className="text-sm text-muted-foreground py-8 text-center">
+        No hay renglones cargados. Volvé a la pestaña <strong>Renglones e Ítems</strong> para agregarlos.
+      </div>
+    );
+  }
+
+  if (oferentes.length === 0) {
+    return (
+      <div className="text-sm text-muted-foreground py-8 text-center">
+        No hay oferentes registrados. Volvé a la pestaña <strong>Oferentes</strong> para agregarlos.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-secondary/60 border-b border-border">
+              <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground w-36 border-r border-border">
+                Renglón
+              </th>
+              {oferentes.map((of) => (
+                <th
+                  key={of.id}
+                  className="px-4 py-2.5 text-xs font-semibold text-center text-muted-foreground min-w-[220px] border-r border-border last:border-r-0"
+                >
+                  {of.nombre}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {renglones.map((r, ri) => (
+              <tr
+                key={r.id}
+                className={`border-b border-border last:border-b-0 ${ri % 2 === 0 ? "" : "bg-secondary/20"}`}
+              >
+                <td className="px-4 py-3 font-medium text-foreground align-top border-r border-border">
+                  <span className="text-xs text-muted-foreground block">Renglón</span>
+                  <span className="text-base font-semibold">{r.numero}</span>
+                </td>
+                {oferentes.map((of) => {
+                  const key = cellKey(r.id, of.id);
+                  const ev = evals.get(key);
+                  const cumple = ev?.cumple ?? null;
+                  const obs = ev?.observaciones ?? "";
+                  const isSaving = saving.has(key);
+                  return (
+                    <td key={of.id} className="px-3 py-3 align-top border-r border-border last:border-r-0">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            onClick={() => handleToggle(r.id, of.id, true)}
+                            disabled={isSaving}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium border transition-colors disabled:opacity-60 ${
+                              cumple === true
+                                ? "bg-emerald-500/15 border-emerald-500/60 text-emerald-400"
+                                : "border-border text-muted-foreground hover:bg-secondary/60"
+                            }`}
+                          >
+                            ✓ Cumple
+                          </button>
+                          <button
+                            onClick={() => handleToggle(r.id, of.id, false)}
+                            disabled={isSaving}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium border transition-colors disabled:opacity-60 ${
+                              cumple === false
+                                ? "bg-red-500/15 border-red-500/60 text-red-400"
+                                : "border-border text-muted-foreground hover:bg-secondary/60"
+                            }`}
+                          >
+                            ✗ No cumple
+                          </button>
+                          {isSaving && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+                        </div>
+                        <textarea
+                          value={obs}
+                          onChange={(e) => handleObsChange(r.id, of.id, e.target.value)}
+                          onBlur={() => handleObsBlur(r.id, of.id)}
+                          placeholder="Observaciones..."
+                          rows={2}
+                          className="w-full px-2 py-1.5 rounded-md bg-secondary border border-border text-xs text-foreground resize-none focus:outline-none focus:ring-1 focus:ring-ring/30 placeholder:text-muted-foreground/40"
+                        />
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Resumen */}
+      <div className="rounded-lg border border-border bg-card p-3 space-y-1.5">
+        <h4 className="text-xs font-semibold text-foreground">Resumen de evaluación técnica</h4>
+        {renglones.map((r) => {
+          const cumpleN = oferentes.filter((of) => evals.get(cellKey(r.id, of.id))?.cumple === true).length;
+          const noCumpleN = oferentes.filter((of) => evals.get(cellKey(r.id, of.id))?.cumple === false).length;
+          const pendN = oferentes.length - cumpleN - noCumpleN;
+          return (
+            <div key={r.id} className="flex items-center gap-3 text-xs">
+              <span className="text-muted-foreground w-20 shrink-0">Renglón {r.numero}:</span>
+              {cumpleN > 0 && (
+                <span className="text-emerald-400 font-medium">
+                  {cumpleN} {cumpleN === 1 ? "cumple" : "cumplen"}
+                </span>
+              )}
+              {noCumpleN > 0 && (
+                <span className="text-red-400 font-medium">
+                  {noCumpleN} no {noCumpleN === 1 ? "cumple" : "cumplen"}
+                </span>
+              )}
+              {pendN > 0 && (
+                <span className="text-muted-foreground/70">
+                  {pendN} sin evaluar
+                </span>
+              )}
+              {pendN === 0 && cumpleN === 0 && noCumpleN === 0 && (
+                <span className="text-muted-foreground/50">Sin evaluaciones</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function PlaceholderTab({ tab }: { tab: WizardTab }) {
   const messages: Record<WizardTab, string> = {
     datos:        "Datos generales — fechas, valores de dólar y umbral económico.",
@@ -568,7 +807,7 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
 
       {renglones.length === 0 && (
         <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
-          No hay renglones aún. Hacé clic en “Agregar renglón” para empezar.
+          No hay renglones aún. Hacé clic en "Agregar renglón" para empezar.
         </div>
       )}
 
