@@ -397,16 +397,26 @@ export function StockZonaSection() {
       </div>
 
       {/* Tabs */}
-      <div className="inline-flex gap-1 p-1 rounded-[10px] bg-secondary/50 border border-border/50">
-        {(["resumen", "cargar", "familias"] as Tab[]).map(t => (
+      <div style={{ display: "inline-flex", gap: 4, padding: 4, background: "oklch(0.235 0.005 270)", borderRadius: 10 }}>
+        {([
+          { id: "resumen"  as Tab, label: "Resumen de stock" },
+          { id: "cargar"   as Tab, label: "Cargar datos"     },
+          { id: "familias" as Tab, label: "Familias"         },
+        ]).map(t => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3.5 py-1.5 rounded-[7px] text-[13px] font-medium transition-colors ${
-              tab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-            }`}
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            style={{
+              padding: "7px 14px", borderRadius: 7, border: "none", cursor: "pointer",
+              background: tab === t.id ? "oklch(0.27 0.005 270)" : "transparent",
+              color: tab === t.id ? "oklch(0.97 0 0)" : "oklch(0.60 0 0)",
+              fontSize: 13, fontWeight: tab === t.id ? 500 : 400,
+              transition: "background .15s, color .15s",
+            }}
+            onMouseEnter={e => { if (tab !== t.id) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.82 0 0)"; }}
+            onMouseLeave={e => { if (tab !== t.id) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.60 0 0)"; }}
           >
-            {t === "resumen" ? "Resumen de stock" : t === "cargar" ? "Cargar datos" : "Familias"}
+            {t.label}
           </button>
         ))}
       </div>
