@@ -1008,7 +1008,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
     for (const it of r.items) {
       const o = ofertasMap.get(`${it.id}|${ofId}`);
       if (!o) continue;
-      const p = o.divisa === "ARS" ? o.precio : fdOp ? o.precio * fdOp : null;
+      const p = o.divisa === "ARS" ? o.precio : fdSic ? o.precio * fdSic : null;
       if (p === null) return { totalARS: null, cobertura: cnt };
       t += p;
       cnt++;
@@ -1017,8 +1017,8 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
   };
 
   const calcPct = (ofARS: number | null, sicARS: number | null): number | null => {
-    if (ofARS === null || sicARS === null || sicARS === 0 || !fdOp || !fdSic) return null;
-    return ((ofARS / fdOp) / (sicARS / fdSic) - 1) * 100;
+    if (ofARS === null || sicARS === null || sicARS === 0 || !fdSic) return null;
+    return (ofARS / sicARS - 1) * 100;
   };
 
   const handleAdjudicar = async (renglonId: string, ofId: string) => {
