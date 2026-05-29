@@ -194,30 +194,30 @@ export function InformeTecnicoSection() {
 
           {/* Content card */}
           <div
-            className="px-6 py-6 sm:px-7"
+            className="px-4 py-6 sm:px-6 overflow-hidden"
             style={{
               background: "oklch(0.235 0.005 270)",
               border: "1px solid oklch(1 0 0 / 0.07)",
               borderRadius: 14,
             }}
           >
-            <div className="flex items-center gap-2.5 mb-1.5">
+            <div className="flex items-center gap-3 mb-2">
               <div
                 className="grid place-items-center"
                 style={{
-                  width: 26, height: 26, borderRadius: 7,
+                  width: 30, height: 30, borderRadius: 8,
                   background: "oklch(0.30 0.10 155 / 0.45)",
                   border: "1px solid oklch(0.55 0.15 155 / 0.5)",
                   color: "#86efac",
                 }}
               >
-                <ActiveIcon className="w-3.5 h-3.5" strokeWidth={2} />
+                <ActiveIcon className="w-4 h-4" strokeWidth={2} />
               </div>
-              <h2 className="text-[17px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.2, margin: 0 }}>
+              <h2 className="text-[20px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.3, margin: 0 }}>
                 {activeTab?.label}
               </h2>
             </div>
-            <p className="ml-9 mb-6 text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
+            <p className="ml-[42px] mb-7 text-[14.5px]" style={{ color: "oklch(0.58 0 0)" }}>
               Licitación SIC <span className="font-mono" style={{ color: "#86efac" }}>{selected.numero_sic}</span> — {selected.titulo}
             </p>
 
@@ -657,12 +657,12 @@ function DatosGeneralesTab({
       <style jsx global>{`
         .ti-input {
           width: 100%;
-          height: 40px;
-          padding: 0 12px;
+          height: 44px;
+          padding: 0 13px;
           border-radius: 9px;
           background-color: oklch(0.16 0.005 270);
           border: 1px solid oklch(1 0 0 / 0.07);
-          font-size: 13.5px;
+          font-size: 15px;
           color: oklch(0.97 0 0);
           transition: border-color .15s, box-shadow .15s;
         }
@@ -675,7 +675,7 @@ function DatosGeneralesTab({
         .ti-input[type="number"],
         .ti-input[type="date"] {
           font-family: 'JetBrains Mono', ui-monospace, monospace;
-          font-size: 14px;
+          font-size: 15.5px;
           font-weight: 500;
           letter-spacing: 0.3px;
         }
@@ -692,9 +692,9 @@ function DatosGeneralesTab({
 function FormSection({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
     <section style={{ marginBottom: 28 }}>
-      <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, letterSpacing: -0.1, color: "oklch(0.97 0 0)" }}>{title}</h3>
+      <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: -0.1, color: "oklch(0.97 0 0)" }}>{title}</h3>
       {description && (
-        <p style={{ margin: "4px 0 16px", fontSize: 12.5, color: "oklch(0.50 0 0)", lineHeight: 1.55, maxWidth: 720 }}>
+        <p style={{ margin: "5px 0 16px", fontSize: 13.5, color: "oklch(0.52 0 0)", lineHeight: 1.55, maxWidth: 760 }}>
           {description}
         </p>
       )}
@@ -707,7 +707,7 @@ function FormSection({ title, description, children }: { title: string; descript
 function FormField({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
   return (
     <label className={`flex flex-col gap-1.5 ${className}`}>
-      <span className="text-[12px] font-medium" style={{ color: "oklch(0.60 0 0)" }}>{label}</span>
+      <span className="text-[13px] font-medium" style={{ color: "oklch(0.62 0 0)" }}>{label}</span>
       {children}
     </label>
   );
@@ -832,17 +832,17 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-sm border-collapse">
+      <div className="overflow-x-auto rounded-lg border border-border -mx-4 sm:-mx-6">
+        <table className="w-full text-[15px] border-collapse">
           <thead>
             <tr className="bg-secondary/60 border-b border-border">
-              <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground w-36 border-r border-border">
+              <th className="text-left px-4 py-3 text-[13px] font-semibold text-muted-foreground w-36 border-r border-border">
                 Renglón
               </th>
               {oferentes.map((of) => (
                 <th
                   key={of.id}
-                  className="px-4 py-2.5 text-xs font-semibold text-center text-muted-foreground min-w-[220px] border-r border-border last:border-r-0"
+                  className="px-4 py-3 text-[15px] font-semibold text-center text-foreground min-w-[240px] border-r border-border last:border-r-0"
                 >
                   {of.nombre}
                 </th>
@@ -856,8 +856,8 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                 className={`border-b border-border last:border-b-0 ${ri % 2 === 0 ? "" : "bg-secondary/20"}`}
               >
                 <td className="px-4 py-3 font-medium text-foreground align-top border-r border-border">
-                  <span className="text-xs text-muted-foreground block">Renglón</span>
-                  <span className="text-base font-semibold">{r.numero}</span>
+                  <span className="text-[13px] text-muted-foreground block">Renglón</span>
+                  <span className="text-lg font-semibold">{r.numero}</span>
                 </td>
                 {oferentes.map((of) => {
                   const key = cellKey(r.id, of.id);
@@ -872,7 +872,7 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                           <button
                             onClick={() => handleToggle(r.id, of.id, true)}
                             disabled={isSaving}
-                            className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium border transition-colors disabled:opacity-60 ${
+                            className={`flex items-center gap-1 px-3 py-1.5 rounded text-[13.5px] font-medium border transition-colors disabled:opacity-60 ${
                               cumple === true
                                 ? "bg-emerald-500/15 border-emerald-500/60 text-emerald-400"
                                 : "border-border text-muted-foreground hover:bg-secondary/60"
@@ -883,7 +883,7 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                           <button
                             onClick={() => handleToggle(r.id, of.id, false)}
                             disabled={isSaving}
-                            className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium border transition-colors disabled:opacity-60 ${
+                            className={`flex items-center gap-1 px-3 py-1.5 rounded text-[13.5px] font-medium border transition-colors disabled:opacity-60 ${
                               cumple === false
                                 ? "bg-red-500/15 border-red-500/60 text-red-400"
                                 : "border-border text-muted-foreground hover:bg-secondary/60"
@@ -899,7 +899,7 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                           onBlur={() => handleObsBlur(r.id, of.id)}
                           placeholder="Observaciones..."
                           rows={2}
-                          className="w-full px-2 py-1.5 rounded-md bg-secondary border border-border text-xs text-foreground resize-none focus:outline-none focus:ring-1 focus:ring-ring/30 placeholder:text-muted-foreground/40"
+                          className="w-full px-2.5 py-2 rounded-md bg-secondary border border-border text-[14px] text-foreground resize-none focus:outline-none focus:ring-1 focus:ring-ring/30 placeholder:text-muted-foreground/40"
                         />
                       </div>
                     </td>
@@ -912,15 +912,15 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
       </div>
 
       {/* Resumen */}
-      <div className="rounded-lg border border-border bg-card p-3 space-y-1.5">
-        <h4 className="text-xs font-semibold text-foreground">Resumen de evaluación técnica</h4>
+      <div className="rounded-lg border border-border bg-card p-4 space-y-2">
+        <h4 className="text-[13px] font-semibold text-foreground uppercase tracking-wide" style={{ color: "oklch(0.55 0 0)" }}>Resumen de evaluación técnica</h4>
         {renglones.map((r) => {
           const cumpleN = oferentes.filter((of) => evals.get(cellKey(r.id, of.id))?.cumple === true).length;
           const noCumpleN = oferentes.filter((of) => evals.get(cellKey(r.id, of.id))?.cumple === false).length;
           const pendN = oferentes.length - cumpleN - noCumpleN;
           return (
-            <div key={r.id} className="flex items-center gap-3 text-xs">
-              <span className="text-muted-foreground w-20 shrink-0">Renglón {r.numero}:</span>
+            <div key={r.id} className="flex items-center gap-3 text-[14px]">
+              <span className="text-muted-foreground w-24 shrink-0">Renglón {r.numero}:</span>
               {cumpleN > 0 && (
                 <span className="text-emerald-400 font-medium">
                   {cumpleN} {cumpleN === 1 ? "cumple" : "cumplen"}
@@ -1058,7 +1058,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
   return (
     <div className="space-y-4">
       {missingRates && (
-        <div style={{ background: "oklch(0.25 0.06 55 / 0.35)", border: "1px solid oklch(0.55 0.12 55 / 0.45)", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: "oklch(0.82 0.08 60)" }}>
+        <div style={{ background: "oklch(0.25 0.06 55 / 0.35)", border: "1px solid oklch(0.55 0.12 55 / 0.45)", borderRadius: 10, padding: "11px 16px", fontSize: 14, color: "oklch(0.82 0.08 60)" }}>
           ⚠ Cargá los valores del dólar SIC y OP en <strong>Datos generales</strong> para calcular el % vs. SIC.
         </div>
       )}
@@ -1073,7 +1073,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
             {/* Header */}
             <div style={{ padding: "11px 16px", borderBottom: "1px solid oklch(1 0 0 / 0.06)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "oklch(0.48 0 0)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Renglón</span>
-              <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 15, fontWeight: 700, color: "#86efac" }}>{r.numero}</span>
+              <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 18, fontWeight: 700, color: "#86efac" }}>{r.numero}</span>
               {r.condicion_adjudicacion && (
                 <span style={{ fontSize: 12.5, color: "oklch(0.58 0 0)" }}>{r.condicion_adjudicacion}</span>
               )}
@@ -1086,7 +1086,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
 
             {/* Comparison table */}
             <div className="overflow-x-auto">
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.06)" }}>
                     <th style={{ textAlign: "left", padding: "9px 16px", fontSize: 11, fontWeight: 600, color: "oklch(0.43 0 0)", textTransform: "uppercase", letterSpacing: "0.05em", width: 130 }}>
@@ -1095,7 +1095,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                     {oferentes.map((of) => {
                       const isAdj = adjOfId === of.id;
                       return (
-                        <th key={of.id} style={{ textAlign: "center", padding: "9px 16px", fontSize: 13, fontWeight: 600, minWidth: 160, color: isAdj ? "#86efac" : "oklch(0.85 0 0)", background: isAdj ? "oklch(0.24 0.04 155 / 0.20)" : "transparent", borderBottom: isAdj ? "2px solid oklch(0.55 0.15 155 / 0.55)" : "none" }}>
+                        <th key={of.id} style={{ textAlign: "center", padding: "11px 16px", fontSize: 15.5, fontWeight: 600, minWidth: 190, color: isAdj ? "#86efac" : "oklch(0.85 0 0)", background: isAdj ? "oklch(0.24 0.04 155 / 0.20)" : "transparent", borderBottom: isAdj ? "2px solid oklch(0.55 0.15 155 / 0.55)" : "none" }}>
                           {of.nombre}
                         </th>
                       );
@@ -1105,20 +1105,20 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                 <tbody>
                   {/* Precio total */}
                   <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.04)" }}>
-                    <td style={{ padding: "9px 16px", fontSize: 12, color: "oklch(0.52 0 0)", fontWeight: 500 }}>Precio total</td>
+                    <td style={{ padding: "9px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500 }}>Precio total</td>
                     {oferentes.map((of) => {
                       const { totalARS, cobertura } = calcOferta(r, of.id);
                       const isAdj = adjOfId === of.id;
                       return (
                         <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
                           {totalARS !== null && cobertura === r.items.length ? (
-                            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 13, color: "oklch(0.90 0 0)", fontWeight: 500 }}>
+                            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 14.5, color: "oklch(0.90 0 0)", fontWeight: 500 }}>
                               {totalARS.toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS
                             </span>
                           ) : cobertura > 0 ? (
-                            <span style={{ fontSize: 12, color: "oklch(0.52 0 0)" }}>parcial</span>
+                            <span style={{ fontSize: 13.5, color: "oklch(0.52 0 0)" }}>parcial</span>
                           ) : (
-                            <span style={{ fontSize: 13, color: "oklch(0.33 0 0)" }}>—</span>
+                            <span style={{ fontSize: 14.5, color: "oklch(0.33 0 0)" }}>—</span>
                           )}
                         </td>
                       );
@@ -1127,7 +1127,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
 
                   {/* % vs SIC */}
                   <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.04)" }}>
-                    <td style={{ padding: "9px 16px", fontSize: 12, color: "oklch(0.52 0 0)", fontWeight: 500 }}>% vs. SIC</td>
+                    <td style={{ padding: "9px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500 }}>% vs. SIC</td>
                     {oferentes.map((of) => {
                       const { totalARS, cobertura } = calcOferta(r, of.id);
                       const pct = cobertura === r.items.length ? calcPct(totalARS, sicARS) : null;
@@ -1136,11 +1136,11 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                       return (
                         <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
                           {pct !== null ? (
-                            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 13.5, fontWeight: 700, color: over ? "#fca5a5" : "#86efac" }}>
+                            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 16, fontWeight: 700, color: over ? "#fca5a5" : "#86efac" }}>
                               {pct >= 0 ? "+" : ""}{pct.toFixed(1)}%
                             </span>
                           ) : (
-                            <span style={{ fontSize: 13, color: "oklch(0.33 0 0)" }}>—</span>
+                            <span style={{ fontSize: 14.5, color: "oklch(0.33 0 0)" }}>—</span>
                           )}
                         </td>
                       );
@@ -1149,18 +1149,18 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
 
                   {/* Técnica */}
                   <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.04)" }}>
-                    <td style={{ padding: "9px 16px", fontSize: 12, color: "oklch(0.52 0 0)", fontWeight: 500 }}>Técnica</td>
+                    <td style={{ padding: "9px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500 }}>Técnica</td>
                     {oferentes.map((of) => {
                       const cumple = evalsMap.get(`${r.id}|${of.id}`);
                       const isAdj = adjOfId === of.id;
                       return (
                         <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
                           {cumple === true ? (
-                            <span style={{ fontSize: 12.5, color: "#86efac", fontWeight: 500 }}>✓ Cumple</span>
+                            <span style={{ fontSize: 14, color: "#86efac", fontWeight: 500 }}>✓ Cumple</span>
                           ) : cumple === false ? (
-                            <span style={{ fontSize: 12.5, color: "#fca5a5", fontWeight: 500 }}>✗ No cumple</span>
+                            <span style={{ fontSize: 14, color: "#fca5a5", fontWeight: 500 }}>✗ No cumple</span>
                           ) : (
-                            <span style={{ fontSize: 12.5, color: "oklch(0.42 0 0)" }}>Sin evaluar</span>
+                            <span style={{ fontSize: 14, color: "oklch(0.42 0 0)" }}>Sin evaluar</span>
                           )}
                         </td>
                       );
@@ -1169,7 +1169,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
 
                   {/* Cobertura */}
                   <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.06)" }}>
-                    <td style={{ padding: "9px 16px", fontSize: 12, color: "oklch(0.52 0 0)", fontWeight: 500 }}>Cobertura</td>
+                    <td style={{ padding: "9px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500 }}>Cobertura</td>
                     {oferentes.map((of) => {
                       const { cobertura } = calcOferta(r, of.id);
                       const total = r.items.length;
@@ -1177,13 +1177,13 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                       return (
                         <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
                           {total === 0 ? (
-                            <span style={{ fontSize: 12.5, color: "oklch(0.42 0 0)" }}>—</span>
+                            <span style={{ fontSize: 14, color: "oklch(0.42 0 0)" }}>—</span>
                           ) : cobertura === total ? (
-                            <span style={{ fontSize: 12.5, color: "#86efac", fontWeight: 500 }}>✓ Completo</span>
+                            <span style={{ fontSize: 14, color: "#86efac", fontWeight: 500 }}>✓ Completo</span>
                           ) : cobertura > 0 ? (
-                            <span style={{ fontSize: 12.5, color: "#fcd34d" }}>⚠ {cobertura}/{total}</span>
+                            <span style={{ fontSize: 14, color: "#fcd34d" }}>⚠ {cobertura}/{total}</span>
                           ) : (
-                            <span style={{ fontSize: 12.5, color: "oklch(0.42 0 0)" }}>Sin ofertar</span>
+                            <span style={{ fontSize: 14, color: "oklch(0.42 0 0)" }}>Sin ofertar</span>
                           )}
                         </td>
                       );
@@ -1192,7 +1192,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
 
                   {/* Adjudicar row */}
                   <tr>
-                    <td style={{ padding: "10px 16px", fontSize: 12, color: "oklch(0.52 0 0)", fontWeight: 600 }}>Adjudicar</td>
+                    <td style={{ padding: "10px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 600 }}>Adjudicar</td>
                     {oferentes.map((of) => {
                       const isAdj = adjOfId === of.id;
                       return (
@@ -1201,10 +1201,10 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                             onClick={() => handleAdjudicar(r.id, of.id)}
                             disabled={isSaving}
                             style={{
-                              padding: "7px 18px", borderRadius: 8, border: "none", cursor: isSaving ? "wait" : "pointer",
+                              padding: "9px 22px", borderRadius: 8, border: "none", cursor: isSaving ? "wait" : "pointer",
                               background: isAdj ? "#86efac" : "oklch(0.27 0.005 270)",
                               color: isAdj ? "oklch(0.10 0.02 155)" : "oklch(0.62 0 0)",
-                              fontSize: 12.5, fontWeight: 600,
+                              fontSize: 14, fontWeight: 600,
                               transition: "background .15s, color .15s",
                               boxShadow: isAdj ? "0 2px 10px -4px oklch(0.55 0.15 155 / 0.5)" : "none",
                             }}
@@ -1236,13 +1236,13 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
               const adjOf = adjOfId ? oferentes.find((o) => o.id === adjOfId) : null;
               const { totalARS, cobertura } = adjOfId ? calcOferta(r, adjOfId) : { totalARS: null, cobertura: 0 };
               return (
-                <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
-                  <span style={{ fontFamily: "ui-monospace, monospace", color: "#86efac", fontWeight: 600, width: 90, flexShrink: 0 }}>Renglón {r.numero}</span>
+                <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14.5 }}>
+                  <span style={{ fontFamily: "ui-monospace, monospace", color: "#86efac", fontWeight: 600, width: 96, flexShrink: 0 }}>Renglón {r.numero}</span>
                   {adjOf ? (
                     <>
                       <span style={{ color: "oklch(0.88 0 0)", fontWeight: 500 }}>{adjOf.nombre}</span>
                       {totalARS !== null && cobertura === r.items.length && (
-                        <span style={{ marginLeft: "auto", fontFamily: "ui-monospace, monospace", fontSize: 12.5, color: "oklch(0.65 0 0)" }}>
+                        <span style={{ marginLeft: "auto", fontFamily: "ui-monospace, monospace", fontSize: 14, color: "oklch(0.65 0 0)" }}>
                           {totalARS.toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS
                         </span>
                       )}
@@ -1540,7 +1540,7 @@ function RenglonesTab({
                     <div className="text-xs text-muted-foreground text-center py-4">Sin ítems cargados.</div>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
+                      <table className="w-full text-[13.5px]">
                         <thead>
                           <tr className="border-b border-border text-muted-foreground">
                             <th className="w-6"></th>
@@ -1590,7 +1590,7 @@ function RenglonesTab({
                                       setRenglones((prev) => prev.map((r2) => r2.id === r.id ? { ...r2, items: r2.items.map((i) => i.id === it.id ? up : i) } : r2));
                                     } catch { toast.error("No se pudo actualizar"); }
                                   }}
-                                  className="oferta-price-input w-full text-right tabular-nums bg-transparent border-b border-transparent hover:border-border/50 focus:border-accent focus:outline-none py-0.5 text-xs"
+                                  className="oferta-price-input w-full text-right tabular-nums bg-transparent border-b border-transparent hover:border-border/50 focus:border-accent focus:outline-none py-0.5 text-[13.5px]"
                                 />
                               </td>
                               <td className="py-1.5 px-2 text-right">
@@ -1611,7 +1611,7 @@ function RenglonesTab({
                                         setRenglones((prev) => prev.map((r2) => r2.id === r.id ? { ...r2, items: r2.items.map((i) => i.id === it.id ? up : i) } : r2));
                                       } catch { toast.error("No se pudo actualizar"); }
                                     }}
-                                    className="oferta-price-input w-24 text-right tabular-nums bg-transparent border-b border-transparent hover:border-border/50 focus:border-accent focus:outline-none py-0.5 text-xs"
+                                    className="oferta-price-input w-28 text-right tabular-nums bg-transparent border-b border-transparent hover:border-border/50 focus:border-accent focus:outline-none py-0.5 text-[13.5px]"
                                   />
                                   <select
                                     key={`div-${it.id}-${it.precio_sic_divisa ?? "ARS"}`}
@@ -1623,7 +1623,7 @@ function RenglonesTab({
                                         setRenglones((prev) => prev.map((r2) => r2.id === r.id ? { ...r2, items: r2.items.map((i) => i.id === it.id ? up : i) } : r2));
                                       } catch { toast.error("No se pudo actualizar"); }
                                     }}
-                                    className="text-[11px] bg-transparent border-none focus:outline-none cursor-pointer text-muted-foreground"
+                                    className="text-[12.5px] bg-transparent border-none focus:outline-none cursor-pointer text-muted-foreground"
                                   >
                                     <option value="ARS">ARS</option>
                                     <option value="USD">USD</option>
@@ -2000,29 +2000,29 @@ function OfertasTab({
       `}</style>
 
       <div className="flex items-center justify-between">
-        <p className="text-[13px] text-muted-foreground">
+        <p className="text-[14px] text-muted-foreground">
           Los precios se guardan automáticamente al salir de cada celda.
         </p>
-        <p className="text-[13px] text-muted-foreground tabular-nums">
+        <p className="text-[14px] text-muted-foreground tabular-nums">
           {totalOfertas} / {totalItems * oferentes.length} celdas completadas
         </p>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-[13px] border-collapse">
+      <div className="overflow-x-auto rounded-lg border border-border -mx-4 sm:-mx-6">
+        <table className="w-full text-[14.5px] border-collapse">
           <thead>
             <tr className="bg-secondary/50">
               <th
-                className="text-left py-3 px-3 font-medium text-muted-foreground border-r border-border"
-                style={{ minWidth: "280px" }}
+                className="text-left py-3.5 px-4 font-medium text-muted-foreground border-r border-border"
+                style={{ minWidth: "320px" }}
               >
                 Ítem
               </th>
               {oferentes.map((of) => (
                 <th
                   key={of.id}
-                  className="py-3 px-3 font-medium text-foreground border-r border-border last:border-r-0 text-center"
-                  style={{ minWidth: "190px" }}
+                  className="py-3.5 px-4 font-semibold text-foreground border-r border-border last:border-r-0 text-center text-[15px]"
+                  style={{ minWidth: "210px" }}
                 >
                   {of.nombre}
                 </th>
@@ -2032,7 +2032,7 @@ function OfertasTab({
           <tbody>
             {renglones.flatMap((r) => [
               <tr key={`reng-${r.id}`} className="bg-secondary/20 border-t border-border">
-                <td colSpan={1 + oferentes.length} className="py-2 px-3 font-semibold">
+                <td colSpan={1 + oferentes.length} className="py-2.5 px-4 font-semibold text-[14.5px]">
                   <span className="text-accent">Renglón {r.numero}</span>
                   {r.condicion_adjudicacion && (
                     <span className="font-normal text-muted-foreground ml-2">{r.condicion_adjudicacion}</span>
@@ -2041,19 +2041,19 @@ function OfertasTab({
               </tr>,
               ...r.items.map((item) => (
                 <tr key={item.id} className="border-t border-border hover:bg-secondary/10 transition-colors">
-                  <td className="py-2 px-3 border-r border-border align-top">
-                    <div className="flex items-start gap-2">
-                      <span className="font-mono text-muted-foreground shrink-0 text-[12px] mt-0.5">
+                  <td className="py-2.5 px-4 border-r border-border align-top">
+                    <div className="flex items-start gap-2.5">
+                      <span className="font-mono text-muted-foreground shrink-0 text-[13px] mt-0.5">
                         {r.numero}.{item.numero_item}
                       </span>
                       <div className="min-w-0">
                         {item.matricula && (
-                          <div className="font-mono text-accent text-[12px]">{item.matricula}</div>
+                          <div className="font-mono text-accent text-[13px]">{item.matricula}</div>
                         )}
-                        <div className="text-foreground leading-tight break-words">
+                        <div className="text-foreground leading-snug break-words text-[14.5px]">
                           {item.descripcion || "Sin descripción"}
                         </div>
-                        <div className="text-muted-foreground text-[12px] mt-0.5">
+                        <div className="text-muted-foreground text-[13px] mt-0.5">
                           Cant: {item.cantidad}
                         </div>
                       </div>
@@ -2064,7 +2064,7 @@ function OfertasTab({
                     const cell = getCell(item.id, of.id);
                     const isSaving = savingCells.has(key);
                     return (
-                      <td key={of.id} className="py-1.5 px-2 border-r border-border last:border-r-0 align-middle">
+                      <td key={of.id} className="py-2 px-2.5 border-r border-border last:border-r-0 align-middle">
                         <div className="flex items-center gap-1.5 relative">
                           <input
                             type="number"
@@ -2074,8 +2074,8 @@ function OfertasTab({
                             onChange={(e) => setCell(item.id, of.id, { precio: e.target.value })}
                             onBlur={() => saveCell(item.id, of.id)}
                             placeholder="—"
-                            className="oferta-price-input w-full min-w-0 h-8 px-2 rounded border text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-ring/20"
-                            style={{ background: "oklch(0.16 0.005 270)", borderColor: "oklch(1 0 0 / 0.09)", color: "oklch(0.92 0 0)", fontSize: 13 }}
+                            className="oferta-price-input w-full min-w-0 h-9 px-2.5 rounded border text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-ring/20"
+                            style={{ background: "oklch(0.16 0.005 270)", borderColor: "oklch(1 0 0 / 0.09)", color: "oklch(0.92 0 0)", fontSize: 14.5 }}
                           />
                           <select
                             value={cell.divisa}
@@ -2096,10 +2096,10 @@ function OfertasTab({
                               }
                             }}
                             style={{
-                              height: 32, padding: "0 7px", borderRadius: 7, flexShrink: 0,
+                              height: 36, padding: "0 8px", borderRadius: 8, flexShrink: 0,
                               background: "oklch(0.20 0.005 270)",
                               border: "1px solid oklch(1 0 0 / 0.09)",
-                              color: "oklch(0.80 0 0)", fontSize: 12.5,
+                              color: "oklch(0.80 0 0)", fontSize: 13.5,
                               cursor: "pointer", outline: "none",
                             }}
                           >
@@ -2130,7 +2130,7 @@ function OfertasTab({
                   ]
                 : [
                     <tr key={`cob-${r.id}`} className="border-t border-border bg-secondary/10">
-                      <td className="py-1.5 px-3 text-[12px] text-muted-foreground italic border-r border-border">
+                      <td className="py-2 px-4 text-[13px] text-muted-foreground italic border-r border-border">
                         Cobertura del renglón
                       </td>
                       {oferentes.map((of) => {
@@ -2154,7 +2154,7 @@ function OfertasTab({
                         return (
                           <td
                             key={of.id}
-                            className="py-1.5 px-2 text-[12px] text-center border-r border-border last:border-r-0"
+                            className="py-2 px-2.5 text-[13px] text-center border-r border-border last:border-r-0"
                           >
                             {badge}
                           </td>
