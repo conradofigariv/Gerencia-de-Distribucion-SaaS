@@ -227,7 +227,15 @@ export function InformeTecnicoSection() {
                 }}
               />
             ) : tab === "renglones" ? (
-              <RenglonesTab licitacionId={selected.id} />
+              <RenglonesTab
+                licitacionId={selected.id}
+                licitacion={selected}
+                onUpdated={(updated) => {
+                  setLicitaciones((prev) =>
+                    prev.map((l) => (l.id === updated.id ? updated : l)),
+                  );
+                }}
+              />
             ) : tab === "oferentes" ? (
               <OferentesTab licitacionId={selected.id} />
             ) : tab === "ofertas" ? (
@@ -974,16 +982,40 @@ function PlaceholderTab({ tab }: { tab: WizardTab }) {
 
 // ─── Tab: Renglones e Ítems ──────────────────────────────────
 
-function RenglonesTab({ licitacionId }: { licitacionId: string }) {
+function RenglonesTab({
+  licitacionId,
+  licitacion,
+  onUpdated,
+}: {
+  licitacionId: string;
+  licitacion: Licitacion;
+  onUpdated: (l: Licitacion) => void;
+}) {
   const [loading, setLoading] = useState(true);
   const [renglones, setRenglones] = useState<RenglonConItems[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [savingToggle, setSavingToggle] = useState(false);
 
   const [showCreateRenglon, setShowCreateRenglon] = useState(false);
   const [editingRenglon, setEditingRenglon] = useState<Renglon | null>(null);
 
   const [creatingItemFor, setCreatingItemFor] = useState<RenglonConItems | null>(null);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
+
+  const handleToggleExclusividad = async () => {
+    setSavingToggle(true);
+    try {
+      const updated = await updateLicitacion(licitacion.id, {
+        exclusividad_renglones: !licitacion.exclusividad_renglones,
+      });
+      onUpdated(updated);
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo guardar la condición");
+    } finally {
+      setSavingToggle(false);
+    }
+  };
 
   const refresh = async () => {
     setLoading(true);
@@ -1139,6 +1171,45 @@ function RenglonesTab({ licitacionId }: { licitacionId: string }) {
           );
         })}
       </div>
+
+      {/* Condiciones del pliego */}
+      {(() => {
+        const hint =
+          renglones.length >= 2
+            ? renglones.length === 2
+              ? "Aplicará entre los 2 renglones cargados."
+              : `Aplicará al conjunto de los ${renglones.length} renglones.`
+            : "Requiere al menos 2 renglones cargados para tener efecto.";
+        return (
+          <div style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", borderRadius: 12, padding: "14px 16px" }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "oklch(0.50 0 0)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+              Condiciones del pliego
+            </div>
+            <button
+              onClick={handleToggleExclusividad}
+              disabled={savingToggle}
+              style={{ display: "flex", alignItems: "flex-start", gap: 12, width: "100%", background: "none", border: "none", cursor: savingToggle ? "wait" : "pointer", padding: "6px 8px", borderRadius: 8, opacity: savingToggle ? 0.6 : 1, transition: "background .12s" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+            >
+              <div style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, marginTop: 1, background: licitacion.exclusividad_renglones ? "oklch(0.30 0.10 155 / 0.45)" : "oklch(0.16 0.005 270)", border: `1px solid ${licitacion.exclusividad_renglones ? "oklch(0.55 0.15 155 / 0.5)" : "oklch(1 0 0 / 0.12)"}`, display: "flex", alignItems: "center", justifyContent: "center", transition: "background .15s, border-color .15s" }}>
+                {licitacion.exclusividad_renglones && <Check className="w-3 h-3" style={{ color: "#86efac" }} strokeWidth={2.5} />}
+              </div>
+              <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                <div style={{ fontSize: 13.5, fontWeight: 500, color: "oklch(0.92 0 0)" }}>Exclusividad entre renglones</div>
+                <div style={{ fontSize: 12, color: "oklch(0.55 0 0)", marginTop: 3, lineHeight: 1.5 }}>
+                  Un mismo oferente no puede ganar todos los renglones, salvo que los demás no cumplan técnicamente. {hint}
+                </div>
+              </div>
+              {savingToggle && <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "oklch(0.50 0 0)", marginTop: 2, flexShrink: 0 }} />}
+            </button>
+            <div style={{ fontSize: 11, color: "oklch(0.48 0 0)", borderTop: "1px solid oklch(1 0 0 / 0.06)", paddingTop: 8, marginTop: 8, lineHeight: 1.6 }}>
+              <span style={{ fontWeight: 500, color: "oklch(0.60 0 0)" }}>Regla automática:</span>{" "}
+              Si un oferente no oferta para alguno de los ítems de un renglón, queda descalificado para ese renglón (mirá la fila <em>Cobertura</em> al pie de cada renglón).
+            </div>
+          </div>
+        );
+      })()}
 
       {showCreateRenglon && (
         <RenglonModal
@@ -1337,22 +1408,6 @@ function OfertasTab({
   const [oferentes, setOferentes] = useState<Oferente[]>([]);
   const [cells, setCells] = useState<Map<string, { precio: string; divisa: Divisa }>>(new Map());
   const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
-  const [savingToggle, setSavingToggle] = useState(false);
-
-  const handleToggleExclusividad = async () => {
-    setSavingToggle(true);
-    try {
-      const updated = await updateLicitacion(licitacion.id, {
-        exclusividad_renglones: !licitacion.exclusividad_renglones,
-      });
-      onUpdated(updated);
-    } catch (e) {
-      console.error(e);
-      toast.error("No se pudo guardar la condición");
-    } finally {
-      setSavingToggle(false);
-    }
-  };
 
   useEffect(() => {
     setLoading(true);
@@ -1423,70 +1478,24 @@ function OfertasTab({
   const totalItems = renglones.reduce((n, r) => n + r.items.length, 0);
   const totalOfertas = cells.size;
 
-  const exclusividadHint =
-    renglones.length >= 2
-      ? renglones.length === 2
-        ? "Aplicará entre los 2 renglones cargados."
-        : `Aplicará al conjunto de los ${renglones.length} renglones.`
-      : "Requiere al menos 2 renglones cargados para tener efecto.";
-
-  const conditionsPanel = (
-    <div className="rounded-lg border border-border bg-card p-3 space-y-2">
-      <h4 className="text-xs font-semibold text-foreground">Condiciones del pliego</h4>
-      <label
-        className={`flex items-start gap-3 cursor-pointer -m-1 p-1 rounded transition-colors hover:bg-secondary/20 ${savingToggle ? "opacity-60 pointer-events-none" : ""}`}
-      >
-        <input
-          type="checkbox"
-          checked={licitacion.exclusividad_renglones}
-          onChange={handleToggleExclusividad}
-          disabled={savingToggle}
-          className="mt-0.5 w-4 h-4 accent-accent"
-        />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm text-foreground font-medium">
-            Exclusividad entre renglones
-          </div>
-          <div className="text-xs text-muted-foreground mt-0.5">
-            Un mismo oferente no puede ganar todos los renglones, salvo que los demás no cumplan técnicamente. {exclusividadHint}
-          </div>
-        </div>
-        {savingToggle && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground mt-0.5 shrink-0" />}
-      </label>
-
-      <div className="text-[11px] text-muted-foreground border-t border-border pt-2 leading-relaxed">
-        <span className="font-medium text-foreground">Regla automática:</span>{" "}
-        Si un oferente no oferta para alguno de los ítems de un renglón, queda descalificado para ese renglón (mirá la fila <em>Cobertura</em> al pie de cada renglón).
-      </div>
-    </div>
-  );
-
   if (renglones.length === 0) {
     return (
-      <div className="space-y-3">
-        {conditionsPanel}
-        <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
-          No hay renglones cargados. Cargalos en la pestaña <strong>Renglones e Ítems</strong> primero.
-        </div>
+      <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
+        No hay renglones cargados. Cargalos en la pestaña <strong>Renglones e Ítems</strong> primero.
       </div>
     );
   }
 
   if (oferentes.length === 0) {
     return (
-      <div className="space-y-3">
-        {conditionsPanel}
-        <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
-          No hay oferentes cargados. Cargalos en la pestaña <strong>Oferentes</strong> primero.
-        </div>
+      <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
+        No hay oferentes cargados. Cargalos en la pestaña <strong>Oferentes</strong> primero.
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      {conditionsPanel}
-
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
           Los precios se guardan automáticamente al salir de cada celda.
