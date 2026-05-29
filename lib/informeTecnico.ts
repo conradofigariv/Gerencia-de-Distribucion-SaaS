@@ -382,3 +382,50 @@ export async function upsertEvaluacion(input: {
   if (error) throw error;
   return data as EvaluacionTecnica;
 }
+
+// ─── Adjudicaciones ──────────────────────────────────────────────
+
+export async function listAdjudicaciones(
+  licitacionId: string,
+): Promise<Adjudicacion[]> {
+  const { data: renglones, error: rErr } = await supabase
+    .from("licitacion_renglones")
+    .select("id")
+    .eq("licitacion_id", licitacionId);
+  if (rErr) throw rErr;
+
+  const renglonIds = (renglones ?? []).map((r: { id: string }) => r.id);
+  if (renglonIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("licitacion_adjudicaciones")
+    .select("*")
+    .in("renglon_id", renglonIds);
+  if (error) throw error;
+  return (data ?? []) as Adjudicacion[];
+}
+
+export async function upsertAdjudicacion(input: {
+  renglon_id: string;
+  oferente_id: string;
+  confirmado_por?: string | null;
+}): Promise<Adjudicacion> {
+  const { data, error } = await supabase
+    .from("licitacion_adjudicaciones")
+    .upsert(
+      { ...input, confirmado_at: new Date().toISOString() },
+      { onConflict: "renglon_id" },
+    )
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as Adjudicacion;
+}
+
+export async function deleteAdjudicacion(renglonId: string): Promise<void> {
+  const { error } = await supabase
+    .from("licitacion_adjudicaciones")
+    .delete()
+    .eq("renglon_id", renglonId);
+  if (error) throw error;
+}

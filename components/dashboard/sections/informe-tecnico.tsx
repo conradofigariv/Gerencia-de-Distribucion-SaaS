@@ -24,6 +24,9 @@ import {
   deleteOferta,
   listEvaluaciones,
   upsertEvaluacion,
+  listAdjudicaciones,
+  upsertAdjudicacion,
+  deleteAdjudicacion,
   type Licitacion,
   type Renglon,
   type Item,
@@ -31,6 +34,7 @@ import {
   type Oferente,
   type Divisa,
   type EvaluacionTecnica,
+  type Adjudicacion,
 } from "@/lib/informeTecnico";
 import { toast } from "sonner";
 
@@ -249,6 +253,8 @@ export function InformeTecnicoSection() {
               />
             ) : tab === "evaluacion" ? (
               <EvaluacionTab licitacionId={selected.id} />
+            ) : tab === "adjudicacion" ? (
+              <AdjudicacionTab licitacion={selected} />
             ) : (
               <PlaceholderTab tab={tab} />
             )}
@@ -941,6 +947,315 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
   );
 }
 
+// ─── Tab: Adjudicación ───────────────────────────────────────────
+
+function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
+  const licitacionId = licitacion.id;
+  const [loading, setLoading] = useState(true);
+  const [renglones, setRenglones] = useState<RenglonConItems[]>([]);
+  const [oferentes, setOferentes] = useState<Oferente[]>([]);
+  const [ofertasMap, setOfertasMap] = useState<Map<string, { precio: number; divisa: Divisa }>>(new Map());
+  const [evalsMap, setEvalsMap] = useState<Map<string, boolean | null>>(new Map());
+  const [adjMap, setAdjMap] = useState<Map<string, string>>(new Map()); // renglonId → oferenteId
+  const [saving, setSaving] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      listRenglonesConItems(licitacionId),
+      listOferentes(licitacionId),
+      listOfertas(licitacionId),
+      listEvaluaciones(licitacionId),
+      listAdjudicaciones(licitacionId),
+    ])
+      .then(([rens, offs, oftas, evs, adjs]: [RenglonConItems[], Oferente[], { id: string; oferente_id: string; item_id: string; precio_unitario: number; divisa: Divisa }[], EvaluacionTecnica[], Adjudicacion[]]) => {
+        setRenglones(rens);
+        setOferentes(offs);
+        const om = new Map<string, { precio: number; divisa: Divisa }>();
+        for (const o of oftas) om.set(`${o.item_id}|${o.oferente_id}`, { precio: o.precio_unitario, divisa: o.divisa });
+        setOfertasMap(om);
+        const em = new Map<string, boolean | null>();
+        for (const ev of evs) em.set(`${ev.renglon_id}|${ev.oferente_id}`, ev.cumple);
+        setEvalsMap(em);
+        const am = new Map<string, string>();
+        for (const adj of adjs) am.set(adj.renglon_id, adj.oferente_id);
+        setAdjMap(am);
+      })
+      .catch((e) => { console.error(e); toast.error("No se pudo cargar la adjudicación"); })
+      .finally(() => setLoading(false));
+  }, [licitacionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fdOp = licitacion.fd_op_valor;
+  const fdSic = licitacion.fd_sic_valor;
+  const umbral = licitacion.umbral_economico_pct;
+
+  const calcSicARS = (r: RenglonConItems): number | null => {
+    let t = 0;
+    for (const it of r.items) {
+      if (it.precio_sic_pesos === null) return null;
+      t += it.cantidad * it.precio_sic_pesos;
+    }
+    return t;
+  };
+
+  const calcOferta = (r: RenglonConItems, ofId: string): { totalARS: number | null; cobertura: number } => {
+    let t = 0;
+    let cnt = 0;
+    for (const it of r.items) {
+      const o = ofertasMap.get(`${it.id}|${ofId}`);
+      if (!o) continue;
+      const p = o.divisa === "ARS" ? o.precio : fdOp ? o.precio * fdOp : null;
+      if (p === null) return { totalARS: null, cobertura: cnt };
+      t += it.cantidad * p;
+      cnt++;
+    }
+    return { totalARS: cnt > 0 ? t : null, cobertura: cnt };
+  };
+
+  const calcPct = (ofARS: number | null, sicARS: number | null): number | null => {
+    if (ofARS === null || sicARS === null || sicARS === 0 || !fdOp || !fdSic) return null;
+    return ((ofARS / fdOp) / (sicARS / fdSic) - 1) * 100;
+  };
+
+  const handleAdjudicar = async (renglonId: string, ofId: string) => {
+    setSaving((p) => new Set(p).add(renglonId));
+    try {
+      if (adjMap.get(renglonId) === ofId) {
+        await deleteAdjudicacion(renglonId);
+        setAdjMap((p) => { const n = new Map(p); n.delete(renglonId); return n; });
+      } else {
+        await upsertAdjudicacion({ renglon_id: renglonId, oferente_id: ofId });
+        setAdjMap((p) => new Map(p).set(renglonId, ofId));
+      }
+    } catch (e) { console.error(e); toast.error("No se pudo guardar"); }
+    finally { setSaving((p) => { const n = new Set(p); n.delete(renglonId); return n; }); }
+  };
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
+      <Loader2 className="w-4 h-4 animate-spin" /> Cargando...
+    </div>
+  );
+
+  if (renglones.length === 0) return (
+    <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
+      No hay renglones. Cargalos en <strong>Renglones e Ítems</strong> primero.
+    </div>
+  );
+
+  if (oferentes.length === 0) return (
+    <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
+      No hay oferentes. Cargalos en <strong>Oferentes</strong> primero.
+    </div>
+  );
+
+  const missingRates = !fdSic || !fdOp;
+
+  return (
+    <div className="space-y-4">
+      {missingRates && (
+        <div style={{ background: "oklch(0.25 0.06 55 / 0.35)", border: "1px solid oklch(0.55 0.12 55 / 0.45)", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: "oklch(0.82 0.08 60)" }}>
+          ⚠ Cargá los valores del dólar SIC y OP en <strong>Datos generales</strong> para calcular el % vs. SIC.
+        </div>
+      )}
+
+      {renglones.map((r) => {
+        const sicARS = calcSicARS(r);
+        const adjOfId = adjMap.get(r.id);
+        const isSaving = saving.has(r.id);
+
+        return (
+          <div key={r.id} style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", borderRadius: 12 }}>
+            {/* Header */}
+            <div style={{ padding: "11px 16px", borderBottom: "1px solid oklch(1 0 0 / 0.06)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "oklch(0.48 0 0)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Renglón</span>
+              <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 15, fontWeight: 700, color: "#86efac" }}>{r.numero}</span>
+              {r.condicion_adjudicacion && (
+                <span style={{ fontSize: 12.5, color: "oklch(0.58 0 0)" }}>{r.condicion_adjudicacion}</span>
+              )}
+              {adjOfId && (
+                <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "oklch(0.30 0.10 155 / 0.45)", border: "1px solid oklch(0.55 0.15 155 / 0.5)", color: "#86efac" }}>
+                  ✓ Adjudicado — {oferentes.find((o) => o.id === adjOfId)?.nombre}
+                </span>
+              )}
+            </div>
+
+            {/* Comparison table */}
+            <div className="overflow-x-auto">
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.06)" }}>
+                    <th style={{ textAlign: "left", padding: "9px 16px", fontSize: 11, fontWeight: 600, color: "oklch(0.43 0 0)", textTransform: "uppercase", letterSpacing: "0.05em", width: 130 }}>
+                      Criterio
+                    </th>
+                    {oferentes.map((of) => {
+                      const isAdj = adjOfId === of.id;
+                      return (
+                        <th key={of.id} style={{ textAlign: "center", padding: "9px 16px", fontSize: 13, fontWeight: 600, minWidth: 160, color: isAdj ? "#86efac" : "oklch(0.85 0 0)", background: isAdj ? "oklch(0.24 0.04 155 / 0.20)" : "transparent", borderBottom: isAdj ? "2px solid oklch(0.55 0.15 155 / 0.55)" : "none" }}>
+                          {of.nombre}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Precio total */}
+                  <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.04)" }}>
+                    <td style={{ padding: "9px 16px", fontSize: 12, color: "oklch(0.52 0 0)", fontWeight: 500 }}>Precio total</td>
+                    {oferentes.map((of) => {
+                      const { totalARS, cobertura } = calcOferta(r, of.id);
+                      const isAdj = adjOfId === of.id;
+                      return (
+                        <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
+                          {totalARS !== null && cobertura === r.items.length ? (
+                            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 13, color: "oklch(0.90 0 0)", fontWeight: 500 }}>
+                              {totalARS.toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS
+                            </span>
+                          ) : cobertura > 0 ? (
+                            <span style={{ fontSize: 12, color: "oklch(0.52 0 0)" }}>parcial</span>
+                          ) : (
+                            <span style={{ fontSize: 13, color: "oklch(0.33 0 0)" }}>—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+
+                  {/* % vs SIC */}
+                  <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.04)" }}>
+                    <td style={{ padding: "9px 16px", fontSize: 12, color: "oklch(0.52 0 0)", fontWeight: 500 }}>% vs. SIC</td>
+                    {oferentes.map((of) => {
+                      const { totalARS, cobertura } = calcOferta(r, of.id);
+                      const pct = cobertura === r.items.length ? calcPct(totalARS, sicARS) : null;
+                      const isAdj = adjOfId === of.id;
+                      const over = pct !== null && pct > umbral;
+                      return (
+                        <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
+                          {pct !== null ? (
+                            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 13.5, fontWeight: 700, color: over ? "#fca5a5" : "#86efac" }}>
+                              {pct >= 0 ? "+" : ""}{pct.toFixed(1)}%
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 13, color: "oklch(0.33 0 0)" }}>—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+
+                  {/* Técnica */}
+                  <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.04)" }}>
+                    <td style={{ padding: "9px 16px", fontSize: 12, color: "oklch(0.52 0 0)", fontWeight: 500 }}>Técnica</td>
+                    {oferentes.map((of) => {
+                      const cumple = evalsMap.get(`${r.id}|${of.id}`);
+                      const isAdj = adjOfId === of.id;
+                      return (
+                        <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
+                          {cumple === true ? (
+                            <span style={{ fontSize: 12.5, color: "#86efac", fontWeight: 500 }}>✓ Cumple</span>
+                          ) : cumple === false ? (
+                            <span style={{ fontSize: 12.5, color: "#fca5a5", fontWeight: 500 }}>✗ No cumple</span>
+                          ) : (
+                            <span style={{ fontSize: 12.5, color: "oklch(0.42 0 0)" }}>Sin evaluar</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+
+                  {/* Cobertura */}
+                  <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.06)" }}>
+                    <td style={{ padding: "9px 16px", fontSize: 12, color: "oklch(0.52 0 0)", fontWeight: 500 }}>Cobertura</td>
+                    {oferentes.map((of) => {
+                      const { cobertura } = calcOferta(r, of.id);
+                      const total = r.items.length;
+                      const isAdj = adjOfId === of.id;
+                      return (
+                        <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
+                          {total === 0 ? (
+                            <span style={{ fontSize: 12.5, color: "oklch(0.42 0 0)" }}>—</span>
+                          ) : cobertura === total ? (
+                            <span style={{ fontSize: 12.5, color: "#86efac", fontWeight: 500 }}>✓ Completo</span>
+                          ) : cobertura > 0 ? (
+                            <span style={{ fontSize: 12.5, color: "#fcd34d" }}>⚠ {cobertura}/{total}</span>
+                          ) : (
+                            <span style={{ fontSize: 12.5, color: "oklch(0.42 0 0)" }}>Sin ofertar</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+
+                  {/* Adjudicar row */}
+                  <tr>
+                    <td style={{ padding: "10px 16px", fontSize: 12, color: "oklch(0.52 0 0)", fontWeight: 600 }}>Adjudicar</td>
+                    {oferentes.map((of) => {
+                      const isAdj = adjOfId === of.id;
+                      return (
+                        <td key={of.id} style={{ textAlign: "center", padding: "10px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
+                          <button
+                            onClick={() => handleAdjudicar(r.id, of.id)}
+                            disabled={isSaving}
+                            style={{
+                              padding: "7px 18px", borderRadius: 8, border: "none", cursor: isSaving ? "wait" : "pointer",
+                              background: isAdj ? "#86efac" : "oklch(0.27 0.005 270)",
+                              color: isAdj ? "oklch(0.10 0.02 155)" : "oklch(0.62 0 0)",
+                              fontSize: 12.5, fontWeight: 600,
+                              transition: "background .15s, color .15s",
+                              boxShadow: isAdj ? "0 2px 10px -4px oklch(0.55 0.15 155 / 0.5)" : "none",
+                            }}
+                            onMouseEnter={(e) => { if (!isAdj && !isSaving) e.currentTarget.style.background = "oklch(0.32 0.005 270)"; }}
+                            onMouseLeave={(e) => { if (!isAdj) e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
+                          >
+                            {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin inline" /> : isAdj ? "✓ Adjudicado" : "Adjudicar"}
+                          </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Summary */}
+      {adjMap.size > 0 && (
+        <div style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", borderRadius: 12, padding: "14px 16px" }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "oklch(0.50 0 0)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+            Resumen de adjudicación
+          </div>
+          <div className="space-y-2">
+            {renglones.map((r) => {
+              const adjOfId = adjMap.get(r.id);
+              const adjOf = adjOfId ? oferentes.find((o) => o.id === adjOfId) : null;
+              const { totalARS, cobertura } = adjOfId ? calcOferta(r, adjOfId) : { totalARS: null, cobertura: 0 };
+              return (
+                <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+                  <span style={{ fontFamily: "ui-monospace, monospace", color: "#86efac", fontWeight: 600, width: 90, flexShrink: 0 }}>Renglón {r.numero}</span>
+                  {adjOf ? (
+                    <>
+                      <span style={{ color: "oklch(0.88 0 0)", fontWeight: 500 }}>{adjOf.nombre}</span>
+                      {totalARS !== null && cobertura === r.items.length && (
+                        <span style={{ marginLeft: "auto", fontFamily: "ui-monospace, monospace", fontSize: 12.5, color: "oklch(0.65 0 0)" }}>
+                          {totalARS.toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span style={{ color: "oklch(0.42 0 0)", fontStyle: "italic" }}>Sin adjudicar</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PlaceholderTab({ tab }: { tab: WizardTab }) {
   const messages: Record<WizardTab, { title: string; desc: string }> = {
     datos:        { title: "Datos generales",     desc: "Fechas, valores de dólar y umbral económico." },
@@ -1496,21 +1811,27 @@ function OfertasTab({
 
   return (
     <div className="space-y-3">
+      <style>{`
+        .oferta-price-input::-webkit-inner-spin-button,
+        .oferta-price-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        .oferta-price-input { -moz-appearance: textfield; }
+      `}</style>
+
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[13px] text-muted-foreground">
           Los precios se guardan automáticamente al salir de cada celda.
         </p>
-        <p className="text-xs text-muted-foreground tabular-nums">
+        <p className="text-[13px] text-muted-foreground tabular-nums">
           {totalOfertas} / {totalItems * oferentes.length} celdas completadas
         </p>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-xs border-collapse">
+        <table className="w-full text-[13px] border-collapse">
           <thead>
             <tr className="bg-secondary/50">
               <th
-                className="text-left py-2.5 px-3 font-medium text-muted-foreground border-r border-border"
+                className="text-left py-3 px-3 font-medium text-muted-foreground border-r border-border"
                 style={{ minWidth: "280px" }}
               >
                 Ítem
@@ -1518,8 +1839,8 @@ function OfertasTab({
               {oferentes.map((of) => (
                 <th
                   key={of.id}
-                  className="py-2.5 px-3 font-medium text-foreground border-r border-border last:border-r-0 text-center"
-                  style={{ minWidth: "180px" }}
+                  className="py-3 px-3 font-medium text-foreground border-r border-border last:border-r-0 text-center"
+                  style={{ minWidth: "190px" }}
                 >
                   {of.nombre}
                 </th>
@@ -1529,7 +1850,7 @@ function OfertasTab({
           <tbody>
             {renglones.flatMap((r) => [
               <tr key={`reng-${r.id}`} className="bg-secondary/20 border-t border-border">
-                <td colSpan={1 + oferentes.length} className="py-1.5 px-3 font-semibold">
+                <td colSpan={1 + oferentes.length} className="py-2 px-3 font-semibold">
                   <span className="text-accent">Renglón {r.numero}</span>
                   {r.condicion_adjudicacion && (
                     <span className="font-normal text-muted-foreground ml-2">{r.condicion_adjudicacion}</span>
@@ -1540,17 +1861,17 @@ function OfertasTab({
                 <tr key={item.id} className="border-t border-border hover:bg-secondary/10 transition-colors">
                   <td className="py-2 px-3 border-r border-border align-top">
                     <div className="flex items-start gap-2">
-                      <span className="font-mono text-muted-foreground shrink-0 text-[11px] mt-0.5">
+                      <span className="font-mono text-muted-foreground shrink-0 text-[12px] mt-0.5">
                         {r.numero}.{item.numero_item}
                       </span>
                       <div className="min-w-0">
                         {item.matricula && (
-                          <div className="font-mono text-accent text-[11px]">{item.matricula}</div>
+                          <div className="font-mono text-accent text-[12px]">{item.matricula}</div>
                         )}
                         <div className="text-foreground leading-tight break-words">
                           {item.descripcion || "Sin descripción"}
                         </div>
-                        <div className="text-muted-foreground text-[11px] mt-0.5">
+                        <div className="text-muted-foreground text-[12px] mt-0.5">
                           Cant: {item.cantidad}
                         </div>
                       </div>
@@ -1562,7 +1883,7 @@ function OfertasTab({
                     const isSaving = savingCells.has(key);
                     return (
                       <td key={of.id} className="py-1.5 px-2 border-r border-border last:border-r-0 align-middle">
-                        <div className="flex items-center gap-1 relative">
+                        <div className="flex items-center gap-1.5 relative">
                           <input
                             type="number"
                             step="0.01"
@@ -1571,7 +1892,8 @@ function OfertasTab({
                             onChange={(e) => setCell(item.id, of.id, { precio: e.target.value })}
                             onBlur={() => saveCell(item.id, of.id)}
                             placeholder="—"
-                            className="w-full min-w-0 h-7 px-2 rounded bg-secondary border border-border text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-ring/20"
+                            className="oferta-price-input w-full min-w-0 h-8 px-2 rounded border text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-ring/20"
+                            style={{ background: "oklch(0.16 0.005 270)", borderColor: "oklch(1 0 0 / 0.09)", color: "oklch(0.92 0 0)", fontSize: 13 }}
                           />
                           <select
                             value={cell.divisa}
@@ -1591,7 +1913,13 @@ function OfertasTab({
                                 }
                               }
                             }}
-                            className="h-7 px-1 rounded bg-secondary border border-border focus:outline-none cursor-pointer shrink-0 text-xs"
+                            style={{
+                              height: 32, padding: "0 7px", borderRadius: 7, flexShrink: 0,
+                              background: "oklch(0.20 0.005 270)",
+                              border: "1px solid oklch(1 0 0 / 0.09)",
+                              color: "oklch(0.80 0 0)", fontSize: 12.5,
+                              cursor: "pointer", outline: "none",
+                            }}
                           >
                             <option value="ARS">ARS</option>
                             <option value="USD">USD</option>
@@ -1620,7 +1948,7 @@ function OfertasTab({
                   ]
                 : [
                     <tr key={`cob-${r.id}`} className="border-t border-border bg-secondary/10">
-                      <td className="py-1.5 px-3 text-[11px] text-muted-foreground italic border-r border-border">
+                      <td className="py-1.5 px-3 text-[12px] text-muted-foreground italic border-r border-border">
                         Cobertura del renglón
                       </td>
                       {oferentes.map((of) => {
@@ -1644,7 +1972,7 @@ function OfertasTab({
                         return (
                           <td
                             key={of.id}
-                            className="py-1.5 px-2 text-[11px] text-center border-r border-border last:border-r-0"
+                            className="py-1.5 px-2 text-[12px] text-center border-r border-border last:border-r-0"
                           >
                             {badge}
                           </td>
