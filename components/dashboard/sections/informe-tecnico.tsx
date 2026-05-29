@@ -1100,7 +1100,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
               )}
               {sicARS !== null && (
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "oklch(0.60 0 0)", background: "oklch(0.18 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", borderRadius: 6, padding: "2px 9px" }}>
-                  <span style={{ color: "oklch(0.48 0 0)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", fontSize: 10.5 }}>SIC</span>
+                  <span style={{ color: "oklch(0.48 0 0)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", fontSize: 10.5 }}>Total SIC del Renglón</span>
                   <span style={{ fontFamily: "ui-monospace, monospace", fontWeight: 600, color: "oklch(0.72 0 0)" }}>
                     {sicARS.toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS
                   </span>
