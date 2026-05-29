@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Gavel, Loader2, ChevronDown, ChevronRight, FileText, Layers, Users, Tag, ClipboardCheck, Trophy, Check, Pencil, Trash2, X } from "lucide-react";
+import { Plus, Gavel, Loader2, ChevronDown, ChevronRight, FileText, Layers, Users, Tag, ClipboardCheck, Trophy, Check, Pencil, Trash2, X, GripVertical, Copy } from "lucide-react";
 import {
   listLicitaciones,
   createLicitacion,
@@ -1321,6 +1321,11 @@ function RenglonesTab({
   const [creatingItemFor, setCreatingItemFor] = useState<RenglonConItems | null>(null);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
 
+  // Drag & drop / duplicación de ítems entre renglones
+  const [dragItem, setDragItem] = useState<{ item: Item; fromRenglonId: string } | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [duplicatingRenglon, setDuplicatingRenglon] = useState<string | null>(null);
+
   const handleToggleExclusividad = async () => {
     setSavingToggle(true);
     try {
@@ -1363,6 +1368,66 @@ function RenglonesTab({
   const nextRenglonNumero = () => renglones.reduce((m, r) => Math.max(m, r.numero), 0) + 1;
   const nextItemNumero = (renglon: RenglonConItems) => renglon.items.reduce((m, i) => Math.max(m, i.numero_item), 0) + 1;
 
+  // Copia un ítem (independiente) a un renglón destino
+  const copyItemToRenglon = async (item: Item, target: RenglonConItems) => {
+    const numero_item = target.items.reduce((m, i) => Math.max(m, i.numero_item), 0) + 1;
+    const created = await createItem({
+      renglon_id: target.id,
+      numero_item,
+      matricula: item.matricula,
+      descripcion: item.descripcion,
+      cantidad: item.cantidad,
+      precio_sic_pesos: item.precio_sic_pesos,
+      precio_sic_divisa: item.precio_sic_divisa,
+    });
+    setRenglones((prev) => prev.map((r2) => r2.id === target.id
+      ? { ...r2, items: [...r2.items, created].sort((a, b) => a.numero_item - b.numero_item) }
+      : r2));
+    return created;
+  };
+
+  // Soltar un ítem arrastrado en un renglón destino (copia, mantiene original)
+  const handleDropOnRenglon = async (target: RenglonConItems) => {
+    const d = dragItem;
+    setDragItem(null);
+    setDragOverId(null);
+    if (!d || d.fromRenglonId === target.id) return;
+    try {
+      await copyItemToRenglon(d.item, target);
+      toast.success(`Ítem copiado al renglón ${target.numero}`);
+    } catch (e) { console.error(e); toast.error("No se pudo copiar el ítem"); }
+  };
+
+  // Duplica un renglón completo con todos sus ítems
+  const duplicateRenglon = async (r: RenglonConItems) => {
+    setDuplicatingRenglon(r.id);
+    try {
+      const numero = nextRenglonNumero();
+      const created = await createRenglon({
+        licitacion_id: licitacionId,
+        numero,
+        condicion_adjudicacion: r.condicion_adjudicacion,
+      });
+      const newItems: Item[] = [];
+      for (const it of r.items) {
+        const ci = await createItem({
+          renglon_id: created.id,
+          numero_item: it.numero_item,
+          matricula: it.matricula,
+          descripcion: it.descripcion,
+          cantidad: it.cantidad,
+          precio_sic_pesos: it.precio_sic_pesos,
+          precio_sic_divisa: it.precio_sic_divisa,
+        });
+        newItems.push(ci);
+      }
+      setRenglones((prev) => [...prev, { ...created, items: newItems.sort((a, b) => a.numero_item - b.numero_item) }].sort((a, b) => a.numero - b.numero));
+      setExpanded((prev) => new Set(prev).add(created.id));
+      toast.success(`Renglón ${r.numero} duplicado como renglón ${numero} (${r.items.length} ítem${r.items.length === 1 ? "" : "s"})`);
+    } catch (e) { console.error(e); toast.error("No se pudo duplicar el renglón"); }
+    finally { setDuplicatingRenglon(null); }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
@@ -1373,10 +1438,17 @@ function RenglonesTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">
-          {renglones.length} renglón{renglones.length === 1 ? "" : "es"} · {renglones.reduce((n, r) => n + r.items.length, 0)} ítem{renglones.reduce((n, r) => n + r.items.length, 0) === 1 ? "" : "s"}
-        </p>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground">
+            {renglones.length} renglón{renglones.length === 1 ? "" : "es"} · {renglones.reduce((n, r) => n + r.items.length, 0)} ítem{renglones.reduce((n, r) => n + r.items.length, 0) === 1 ? "" : "s"}
+          </p>
+          {renglones.length > 1 && (
+            <p className="text-[11px] mt-0.5" style={{ color: "oklch(0.48 0 0)" }}>
+              Arrastrá un ítem (<GripVertical className="inline w-3 h-3 -mt-0.5" />) a otro renglón para copiarlo · o usá <Copy className="inline w-3 h-3 -mt-0.5" /> para duplicar el renglón completo.
+            </p>
+          )}
+        </div>
         <Button size="sm" onClick={() => setShowCreateRenglon(true)}>
           <Plus className="w-4 h-4 mr-1" /> Agregar renglón
         </Button>
@@ -1391,8 +1463,34 @@ function RenglonesTab({
       <div className="space-y-3">
         {renglones.map((r) => {
           const open = expanded.has(r.id);
+          const isDropTarget = dragOverId === r.id && dragItem?.fromRenglonId !== r.id;
+          const canDrop = !!dragItem && dragItem.fromRenglonId !== r.id;
           return (
-            <div key={r.id} className="border border-border rounded-lg bg-card overflow-hidden">
+            <div
+              key={r.id}
+              className="border rounded-lg bg-card overflow-hidden transition-colors"
+              style={{
+                borderColor: isDropTarget ? "#86efac" : undefined,
+                boxShadow: isDropTarget ? "0 0 0 1px #86efac, 0 0 18px -6px rgba(134,239,172,0.5)" : undefined,
+              }}
+              onDragOver={(e) => {
+                if (!canDrop) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "copy";
+                if (dragOverId !== r.id) setDragOverId(r.id);
+              }}
+              onDragLeave={(e) => {
+                // sólo limpiar si el cursor sale realmente del contenedor
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                  setDragOverId((prev) => (prev === r.id ? null : prev));
+                }
+              }}
+              onDrop={(e) => {
+                if (!canDrop) return;
+                e.preventDefault();
+                handleDropOnRenglon(r);
+              }}
+            >
               <div className="flex items-center gap-2 px-3 py-2.5 bg-secondary/30">
                 <button onClick={() => toggleExpand(r.id)} className="text-muted-foreground hover:text-foreground transition-colors">
                   {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -1401,11 +1499,22 @@ function RenglonesTab({
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-foreground">Renglón {r.numero}</span>
                     <span className="text-xs text-muted-foreground">· {r.items.length} ítem{r.items.length === 1 ? "" : "s"}</span>
+                    {isDropTarget && (
+                      <span className="text-[11px] font-medium" style={{ color: "#86efac" }}>Soltá para copiar aquí</span>
+                    )}
                   </div>
                   {r.condicion_adjudicacion && (
                     <p className="text-xs text-muted-foreground truncate mt-0.5">{r.condicion_adjudicacion}</p>
                   )}
                 </div>
+                <button
+                  onClick={() => duplicateRenglon(r)}
+                  disabled={duplicatingRenglon === r.id}
+                  className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                  title="Duplicar renglón con todos sus ítems"
+                >
+                  {duplicatingRenglon === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
                 <button onClick={() => setEditingRenglon(r)} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Editar renglón">
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
@@ -1434,6 +1543,7 @@ function RenglonesTab({
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="border-b border-border text-muted-foreground">
+                            <th className="w-6"></th>
                             <th className="text-left py-2 px-2 w-12">#</th>
                             <th className="text-left py-2 px-2 w-32">Matrícula</th>
                             <th className="text-left py-2 px-2">Descripción</th>
@@ -1443,8 +1553,25 @@ function RenglonesTab({
                           </tr>
                         </thead>
                         <tbody>
-                          {r.items.map((it) => (
-                            <tr key={it.id} className="border-b border-border/40 hover:bg-secondary/30 transition-colors">
+                          {r.items.map((it) => {
+                            const isDragging = dragItem?.item.id === it.id;
+                            return (
+                            <tr key={it.id} className="border-b border-border/40 hover:bg-secondary/30 transition-colors" style={{ opacity: isDragging ? 0.4 : 1 }}>
+                              <td className="py-2 pl-1 pr-0 align-middle">
+                                <span
+                                  draggable
+                                  onDragStart={(e) => {
+                                    setDragItem({ item: it, fromRenglonId: r.id });
+                                    e.dataTransfer.effectAllowed = "copy";
+                                    try { e.dataTransfer.setData("text/plain", it.id); } catch { /* noop */ }
+                                  }}
+                                  onDragEnd={() => { setDragItem(null); setDragOverId(null); }}
+                                  className="inline-flex items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-foreground transition-colors"
+                                  title="Arrastrar para copiar a otro renglón"
+                                >
+                                  <GripVertical className="w-3.5 h-3.5" />
+                                </span>
+                              </td>
                               <td className="py-2 px-2 font-mono text-muted-foreground">{it.numero_item}</td>
                               <td className="py-2 px-2 font-mono">{it.matricula || "—"}</td>
                               <td className="py-2 px-2 text-foreground">{it.descripcion || "—"}</td>
@@ -1525,7 +1652,8 @@ function RenglonesTab({
                                 </div>
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
