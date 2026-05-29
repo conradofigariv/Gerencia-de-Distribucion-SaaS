@@ -1098,6 +1098,14 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
               {r.condicion_adjudicacion && (
                 <span style={{ fontSize: 12.5, color: "oklch(0.58 0 0)" }}>{r.condicion_adjudicacion}</span>
               )}
+              {sicARS !== null && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "oklch(0.60 0 0)", background: "oklch(0.18 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", borderRadius: 6, padding: "2px 9px" }}>
+                  <span style={{ color: "oklch(0.48 0 0)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", fontSize: 10.5 }}>SIC</span>
+                  <span style={{ fontFamily: "ui-monospace, monospace", fontWeight: 600, color: "oklch(0.72 0 0)" }}>
+                    {sicARS.toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS
+                  </span>
+                </span>
+              )}
               {adjOfId && (
                 <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "oklch(0.30 0.10 155 / 0.45)", border: "1px solid oklch(0.55 0.15 155 / 0.5)", color: "#86efac" }}>
                   ✓ Adjudicado — {oferentes.find((o) => o.id === adjOfId)?.nombre}
@@ -1144,20 +1152,6 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                         </td>
                       );
                     })}
-                  </tr>
-
-                  {/* Precio total de la SIC */}
-                  <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.04)" }}>
-                    <td style={{ padding: "9px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500 }}>Precio total de la SIC</td>
-                    <td colSpan={Math.max(oferentes.length, 1)} style={{ textAlign: "center", padding: "9px 12px" }}>
-                      {sicARS !== null ? (
-                        <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 14.5, color: "oklch(0.72 0 0)", fontWeight: 500 }}>
-                          {sicARS.toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: 14.5, color: "oklch(0.33 0 0)" }}>—</span>
-                      )}
-                    </td>
                   </tr>
 
                   {/* % vs SIC */}
