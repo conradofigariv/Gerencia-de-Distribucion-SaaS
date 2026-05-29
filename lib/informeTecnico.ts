@@ -33,6 +33,7 @@ export interface Item {
   descripcion: string | null;
   cantidad: number;
   precio_sic_pesos: number | null;
+  precio_sic_divisa: Divisa;
 }
 
 export interface RenglonConItems extends Renglon {
@@ -198,6 +199,7 @@ export async function createItem(input: {
   descripcion?: string | null;
   cantidad?: number;
   precio_sic_pesos?: number | null;
+  precio_sic_divisa?: Divisa;
 }): Promise<Item> {
   const { data, error } = await supabase
     .from("licitacion_items")
@@ -208,6 +210,7 @@ export async function createItem(input: {
       descripcion: input.descripcion ?? null,
       cantidad: input.cantidad ?? 1,
       precio_sic_pesos: input.precio_sic_pesos ?? null,
+      precio_sic_divisa: input.precio_sic_divisa ?? "ARS",
     })
     .select("*")
     .single();

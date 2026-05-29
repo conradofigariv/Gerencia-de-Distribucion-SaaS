@@ -993,7 +993,11 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
     let t = 0;
     for (const it of r.items) {
       if (it.precio_sic_pesos === null) return null;
-      t += it.cantidad * it.precio_sic_pesos;
+      const enARS = (it.precio_sic_divisa ?? "ARS") === "USD"
+        ? (fdSic ? it.precio_sic_pesos * fdSic : null)
+        : it.precio_sic_pesos;
+      if (enARS === null) return null;
+      t += it.cantidad * enARS;
     }
     return t;
   };
@@ -1433,8 +1437,8 @@ function RenglonesTab({
                             <th className="text-left py-2 px-2 w-12">#</th>
                             <th className="text-left py-2 px-2 w-32">Matrícula</th>
                             <th className="text-left py-2 px-2">Descripción</th>
-                            <th className="text-right py-2 px-2 w-20">Cantidad</th>
-                            <th className="text-right py-2 px-2 w-36">Precio SIC (ARS)</th>
+                            <th className="text-right py-2 px-2 w-24">Cantidad</th>
+                            <th className="text-right py-2 px-2 w-44">Precio SIC</th>
                             <th className="w-16"></th>
                           </tr>
                         </thead>
@@ -1444,11 +1448,60 @@ function RenglonesTab({
                               <td className="py-2 px-2 font-mono text-muted-foreground">{it.numero_item}</td>
                               <td className="py-2 px-2 font-mono">{it.matricula || "—"}</td>
                               <td className="py-2 px-2 text-foreground">{it.descripcion || "—"}</td>
-                              <td className="py-2 px-2 text-right tabular-nums">{it.cantidad}</td>
-                              <td className="py-2 px-2 text-right tabular-nums">
-                                {it.precio_sic_pesos !== null
-                                  ? it.precio_sic_pesos.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                                  : "—"}
+                              <td className="py-1.5 px-2 text-right">
+                                <input
+                                  key={`qty-${it.id}-${it.cantidad}`}
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  defaultValue={it.cantidad}
+                                  onBlur={async (e) => {
+                                    const val = parseFloat(e.target.value);
+                                    if (!Number.isFinite(val) || val <= 0 || val === it.cantidad) return;
+                                    try {
+                                      const up = await updateItem(it.id, { cantidad: val });
+                                      setRenglones((prev) => prev.map((r2) => r2.id === r.id ? { ...r2, items: r2.items.map((i) => i.id === it.id ? up : i) } : r2));
+                                    } catch { toast.error("No se pudo actualizar"); }
+                                  }}
+                                  className="oferta-price-input w-full text-right tabular-nums bg-transparent border-b border-transparent hover:border-border/50 focus:border-accent focus:outline-none py-0.5 text-xs"
+                                />
+                              </td>
+                              <td className="py-1.5 px-2 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <input
+                                    key={`prc-${it.id}-${it.precio_sic_pesos}`}
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    defaultValue={it.precio_sic_pesos ?? ""}
+                                    placeholder="—"
+                                    onBlur={async (e) => {
+                                      const raw = e.target.value.trim();
+                                      const val = raw ? parseFloat(raw) : null;
+                                      if (val === it.precio_sic_pesos) return;
+                                      try {
+                                        const up = await updateItem(it.id, { precio_sic_pesos: val });
+                                        setRenglones((prev) => prev.map((r2) => r2.id === r.id ? { ...r2, items: r2.items.map((i) => i.id === it.id ? up : i) } : r2));
+                                      } catch { toast.error("No se pudo actualizar"); }
+                                    }}
+                                    className="oferta-price-input w-24 text-right tabular-nums bg-transparent border-b border-transparent hover:border-border/50 focus:border-accent focus:outline-none py-0.5 text-xs"
+                                  />
+                                  <select
+                                    key={`div-${it.id}-${it.precio_sic_divisa ?? "ARS"}`}
+                                    defaultValue={it.precio_sic_divisa ?? "ARS"}
+                                    onChange={async (e) => {
+                                      const d = e.target.value as Divisa;
+                                      try {
+                                        const up = await updateItem(it.id, { precio_sic_divisa: d });
+                                        setRenglones((prev) => prev.map((r2) => r2.id === r.id ? { ...r2, items: r2.items.map((i) => i.id === it.id ? up : i) } : r2));
+                                      } catch { toast.error("No se pudo actualizar"); }
+                                    }}
+                                    className="text-[11px] bg-transparent border-none focus:outline-none cursor-pointer text-muted-foreground"
+                                  >
+                                    <option value="ARS">ARS</option>
+                                    <option value="USD">USD</option>
+                                  </select>
+                                </div>
                               </td>
                               <td className="py-2 px-2 text-right">
                                 <div className="flex items-center justify-end gap-1">
@@ -1572,7 +1625,7 @@ function RenglonesTab({
               setRenglones((prev) => prev.map((r) => r.id === creatingItemFor.id ? { ...r, items: [...r.items, created].sort((a, b) => a.numero_item - b.numero_item) } : r));
               setCreatingItemFor(null);
               toast.success("Ítem agregado");
-            } catch (e) { console.error(e); toast.error("No se pudo agregar el ítem"); }
+            } catch (e) { console.error(e); toast.error("No se pudo crear el ítem"); }
           }}
         />
       )}
@@ -1585,6 +1638,7 @@ function RenglonesTab({
           initialDescripcion={editingItem.descripcion ?? ""}
           initialCantidad={editingItem.cantidad}
           initialPrecio={editingItem.precio_sic_pesos}
+          initialDivisa={editingItem.precio_sic_divisa ?? "ARS"}
           onClose={() => setEditingItem(null)}
           onSubmit={async (vals) => {
             try {
@@ -2056,6 +2110,7 @@ function ItemModal({
   initialDescripcion = "",
   initialCantidad = 1,
   initialPrecio = null,
+  initialDivisa = "ARS",
   onClose,
   onSubmit,
 }: {
@@ -2066,6 +2121,7 @@ function ItemModal({
   initialDescripcion?: string;
   initialCantidad?: number;
   initialPrecio?: number | null;
+  initialDivisa?: Divisa;
   onClose: () => void;
   onSubmit: (vals: {
     numero_item: number;
@@ -2073,6 +2129,7 @@ function ItemModal({
     descripcion: string;
     cantidad: number;
     precio_sic_pesos: number | null;
+    precio_sic_divisa: Divisa;
   }) => void | Promise<void>;
 }) {
   const [numero, setNumero]           = useState(initialNumero.toString());
@@ -2080,6 +2137,7 @@ function ItemModal({
   const [descripcion, setDescripcion] = useState(initialDescripcion);
   const [cantidad, setCantidad]       = useState(initialCantidad.toString());
   const [precio, setPrecio]           = useState(initialPrecio?.toString() ?? "");
+  const [divisa, setDivisa]           = useState<Divisa>(initialDivisa);
   const [saving, setSaving]           = useState(false);
   const [lookupStatus, setLookupStatus] = useState<LookupStatus>("idle");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2114,7 +2172,7 @@ function ItemModal({
     if (cantNum === null || cantNum <= 0) { toast.error("Cantidad inválida"); return; }
     setSaving(true);
     try {
-      await onSubmit({ numero_item: n, matricula: matricula.trim(), descripcion: descripcion.trim(), cantidad: cantNum, precio_sic_pesos: parseNum(precio) });
+      await onSubmit({ numero_item: n, matricula: matricula.trim(), descripcion: descripcion.trim(), cantidad: cantNum, precio_sic_pesos: parseNum(precio), precio_sic_divisa: divisa });
     } finally { setSaving(false); }
   };
 
@@ -2174,13 +2232,42 @@ function ItemModal({
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="text-xs text-muted-foreground">Cantidad</span>
-              <input type="number" step="0.01" min="0" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="mt-1 ti-input" />
+              <input type="number" step="0.01" min="0" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="mt-1 ti-input oferta-price-input" />
             </label>
-            <label className="block">
-              <span className="text-xs text-muted-foreground">Precio SIC (ARS)</span>
-              <input type="number" step="0.01" min="0" value={precio} onChange={(e) => setPrecio(e.target.value)} placeholder="Ej: 1500000" className="mt-1 ti-input" />
-            </label>
+            <div className="block">
+              <span className="text-xs text-muted-foreground">Precio SIC</span>
+              <div className="mt-1 flex gap-1.5">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={precio}
+                  onChange={(e) => setPrecio(e.target.value)}
+                  placeholder="Ej: 1500000"
+                  className="ti-input oferta-price-input flex-1 min-w-0"
+                />
+                <select
+                  value={divisa}
+                  onChange={(e) => setDivisa(e.target.value as Divisa)}
+                  style={{
+                    height: 40, padding: "0 8px", borderRadius: 9, flexShrink: 0,
+                    background: "oklch(0.20 0.005 270)",
+                    border: "1px solid oklch(1 0 0 / 0.07)",
+                    color: "oklch(0.80 0 0)", fontSize: 12.5,
+                    cursor: "pointer", outline: "none",
+                  }}
+                >
+                  <option value="ARS">ARS</option>
+                  <option value="USD">USD</option>
+                </select>
+              </div>
+            </div>
           </div>
+          <style>{`
+            .oferta-price-input::-webkit-inner-spin-button,
+            .oferta-price-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+            .oferta-price-input { -moz-appearance: textfield; }
+          `}</style>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={onClose} disabled={saving}>Cancelar</Button>
             <Button onClick={handle} disabled={saving}>
