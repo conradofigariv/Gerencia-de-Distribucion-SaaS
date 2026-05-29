@@ -1166,7 +1166,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                         <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
                           {pct !== null ? (
                             <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 16, fontWeight: 700, color: over ? "#fca5a5" : rankColor(of.id) }}>
-                              {pct >= 0 ? "+" : ""}{pct.toFixed(1)}%
+                              {pct >= 0 ? "+" : ""}{pct.toFixed(2)}%
                             </span>
                           ) : (
                             <span style={{ fontSize: 14.5, color: "oklch(0.33 0 0)" }}>—</span>
