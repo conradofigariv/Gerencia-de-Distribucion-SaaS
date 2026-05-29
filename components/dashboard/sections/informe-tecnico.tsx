@@ -997,7 +997,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
         ? (fdSic ? it.precio_sic_pesos * fdSic : null)
         : it.precio_sic_pesos;
       if (enARS === null) return null;
-      t += it.cantidad * enARS;
+      t += enARS;
     }
     return t;
   };
@@ -1010,7 +1010,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
       if (!o) continue;
       const p = o.divisa === "ARS" ? o.precio : fdOp ? o.precio * fdOp : null;
       if (p === null) return { totalARS: null, cobertura: cnt };
-      t += it.cantidad * p;
+      t += p;
       cnt++;
     }
     return { totalARS: cnt > 0 ? t : null, cobertura: cnt };
