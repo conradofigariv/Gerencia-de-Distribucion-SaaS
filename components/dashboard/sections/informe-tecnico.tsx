@@ -1068,6 +1068,21 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
         const adjOfId = adjMap.get(r.id);
         const isSaving = saving.has(r.id);
 
+        // Ranking de % vs SIC: más barato (menor %) → verde, siguiente → amarillo, resto → blanco
+        const pctByOf = new Map<string, number>();
+        for (const of of oferentes) {
+          const { totalARS, cobertura } = calcOferta(r, of.id);
+          const pct = cobertura === r.items.length ? calcPct(totalARS, sicARS) : null;
+          if (pct !== null) pctByOf.set(of.id, pct);
+        }
+        const rankedOfIds = [...pctByOf.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id);
+        const rankColor = (ofId: string): string => {
+          const idx = rankedOfIds.indexOf(ofId);
+          if (idx === 0) return "#86efac";       // más barato → verde
+          if (idx === 1) return "#fcd34d";       // siguiente → amarillo
+          return "oklch(0.92 0 0)";              // resto → blanco
+        };
+
         return (
           <div key={r.id} style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", borderRadius: 12 }}>
             {/* Header */}
@@ -1103,9 +1118,9 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Precio total */}
+                  {/* Precio total ofertado */}
                   <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.04)" }}>
-                    <td style={{ padding: "9px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500 }}>Precio total</td>
+                    <td style={{ padding: "9px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500 }}>Precio total ofertado</td>
                     {oferentes.map((of) => {
                       const { totalARS, cobertura } = calcOferta(r, of.id);
                       const isAdj = adjOfId === of.id;
@@ -1125,6 +1140,20 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                     })}
                   </tr>
 
+                  {/* Precio total de la SIC */}
+                  <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.04)" }}>
+                    <td style={{ padding: "9px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500 }}>Precio total de la SIC</td>
+                    <td colSpan={Math.max(oferentes.length, 1)} style={{ textAlign: "center", padding: "9px 12px" }}>
+                      {sicARS !== null ? (
+                        <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 14.5, color: "oklch(0.72 0 0)", fontWeight: 500 }}>
+                          {sicARS.toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 14.5, color: "oklch(0.33 0 0)" }}>—</span>
+                      )}
+                    </td>
+                  </tr>
+
                   {/* % vs SIC */}
                   <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.04)" }}>
                     <td style={{ padding: "9px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500 }}>% vs. SIC</td>
@@ -1136,7 +1165,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                       return (
                         <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
                           {pct !== null ? (
-                            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 16, fontWeight: 700, color: over ? "#fca5a5" : "#86efac" }}>
+                            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 16, fontWeight: 700, color: over ? "#fca5a5" : rankColor(of.id) }}>
                               {pct >= 0 ? "+" : ""}{pct.toFixed(1)}%
                             </span>
                           ) : (
