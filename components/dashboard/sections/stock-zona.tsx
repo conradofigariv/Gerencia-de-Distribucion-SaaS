@@ -950,7 +950,7 @@ export function StockZonaSection() {
                                 position: "sticky",
                                 top: 0,
                                 zIndex: 2,
-                                background: "hsl(var(--secondary))",
+                                background: "oklch(0.255 0.006 270)",
                               }}
                             >
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 5, justifyContent: align === "right" ? "flex-end" : "flex-start" }}>
@@ -974,7 +974,7 @@ export function StockZonaSection() {
                             position: "sticky",
                             top: 0,
                             zIndex: 2,
-                            background: "hsl(var(--secondary))",
+                            background: "oklch(0.255 0.006 270)",
                           }}
                         >
                           <span className="inline-flex items-center gap-1 whitespace-nowrap">
@@ -1001,7 +1001,7 @@ export function StockZonaSection() {
                                 position: "sticky",
                                 top: 0,
                                 zIndex: 2,
-                                background: "hsl(var(--secondary))",
+                                background: "oklch(0.255 0.006 270)",
                               }}
                             >
                               <span className="inline-flex items-center justify-center gap-1.5">
@@ -1411,7 +1411,7 @@ export function StockZonaSection() {
                     </colgroup>
                     <thead>
                       <tr>
-                        <th style={{ padding: "14px 0 14px 14px", width: 44, position: "sticky", top: 0, zIndex: 2, background: "hsl(var(--secondary))", borderBottom: "1px solid hsl(var(--border))" }}>
+                        <th style={{ padding: "14px 0 14px 14px", width: 44, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>
                           <button
                             onClick={toggleSelectAll}
                             title={allVisibleSelected ? "Deseleccionar todo" : "Seleccionar todo"}
@@ -1426,12 +1426,12 @@ export function StockZonaSection() {
                             {allVisibleSelected && <Check className="w-3 h-3" strokeWidth={3} />}
                           </button>
                         </th>
-                        <th style={{ padding: "14px 14px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 130, position: "sticky", top: 0, zIndex: 2, background: "hsl(var(--secondary))", borderBottom: "1px solid hsl(var(--border))" }}>Matrícula</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", position: "sticky", top: 0, zIndex: 2, background: "hsl(var(--secondary))", borderBottom: "1px solid hsl(var(--border))" }}>Descripción</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160, position: "sticky", top: 0, zIndex: 2, background: "hsl(var(--secondary))", borderBottom: "1px solid hsl(var(--border))" }}>Familia</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160, position: "sticky", top: 0, zIndex: 2, background: "hsl(var(--secondary))", borderBottom: "1px solid hsl(var(--border))" }}>Subfamilia</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160, position: "sticky", top: 0, zIndex: 2, background: "hsl(var(--secondary))", borderBottom: "1px solid hsl(var(--border))" }}>Tipo</th>
-                        <th style={{ width: 32, position: "sticky", top: 0, zIndex: 2, background: "hsl(var(--secondary))", borderBottom: "1px solid hsl(var(--border))" }} />
+                        <th style={{ padding: "14px 14px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 130, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Matrícula</th>
+                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Descripción</th>
+                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Familia</th>
+                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Subfamilia</th>
+                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Tipo</th>
+                        <th style={{ width: 32, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }} />
                       </tr>
                     </thead>
                     <tbody>
