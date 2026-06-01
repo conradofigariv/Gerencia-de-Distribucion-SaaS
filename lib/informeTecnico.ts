@@ -386,6 +386,15 @@ export async function upsertEvaluacion(input: {
   return data as EvaluacionTecnica;
 }
 
+export async function deleteEvaluacion(oferenteId: string, renglonId: string): Promise<void> {
+  const { error } = await supabase
+    .from("licitacion_evaluaciones_tecnicas")
+    .delete()
+    .eq("oferente_id", oferenteId)
+    .eq("renglon_id", renglonId);
+  if (error) throw error;
+}
+
 // ─── Adjudicaciones ──────────────────────────────────────────────
 
 export async function listAdjudicaciones(

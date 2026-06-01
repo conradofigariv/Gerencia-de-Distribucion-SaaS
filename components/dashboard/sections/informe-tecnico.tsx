@@ -33,6 +33,7 @@ import {
   type RenglonConItems,
   type Oferente,
   type Divisa,
+  deleteEvaluacion,
   type EvaluacionTecnica,
   type Adjudicacion,
 } from "@/lib/informeTecnico";
@@ -825,17 +826,37 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
   const handleToggle = (renglonId: string, oferenteId: string, value: boolean) => {
     const key = cellKey(renglonId, oferenteId);
     const current = evals.get(key);
-    const next = current?.cumple === value ? null : value;
+    // If already set to this value, clear the record entirely
+    if (current?.cumple === value) {
+      setEvals((prev) => { const n = new Map(prev); n.delete(key); return n; });
+      setSaving((prev) => new Set(prev).add(key));
+      deleteEvaluacion(oferenteId, renglonId)
+        .catch((e) => { console.error(e); toast.error("No se pudo guardar"); })
+        .finally(() => setSaving((prev) => { const n = new Set(prev); n.delete(key); return n; }));
+      return;
+    }
     setEvals((prev) =>
-      new Map(prev).set(key, {
-        id: current?.id ?? "",
-        oferente_id: oferenteId,
-        renglon_id: renglonId,
-        cumple: next,
-        observaciones: current?.observaciones ?? null,
-      }),
+      new Map(prev).set(key, { id: current?.id ?? "", oferente_id: oferenteId, renglon_id: renglonId, cumple: value, observaciones: current?.observaciones ?? null }),
     );
-    doSave(renglonId, oferenteId, next, current?.observaciones ?? null);
+    doSave(renglonId, oferenteId, value, current?.observaciones ?? null);
+  };
+
+  const handlePendiente = (renglonId: string, oferenteId: string) => {
+    const key = cellKey(renglonId, oferenteId);
+    const current = evals.get(key);
+    // If already pending (record exists with cumple=null), clear it
+    if (evals.has(key) && current?.cumple === null) {
+      setEvals((prev) => { const n = new Map(prev); n.delete(key); return n; });
+      setSaving((prev) => new Set(prev).add(key));
+      deleteEvaluacion(oferenteId, renglonId)
+        .catch((e) => { console.error(e); toast.error("No se pudo guardar"); })
+        .finally(() => setSaving((prev) => { const n = new Set(prev); n.delete(key); return n; }));
+      return;
+    }
+    setEvals((prev) =>
+      new Map(prev).set(key, { id: current?.id ?? "", oferente_id: oferenteId, renglon_id: renglonId, cumple: null, observaciones: current?.observaciones ?? null }),
+    );
+    doSave(renglonId, oferenteId, null, current?.observaciones ?? null);
   };
 
   const handleObsChange = (renglonId: string, oferenteId: string, obs: string) => {
@@ -914,7 +935,9 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                 {oferentes.map((of) => {
                   const key = cellKey(r.id, of.id);
                   const ev = evals.get(key);
+                  const hasRecord = evals.has(key);
                   const cumple = ev?.cumple ?? null;
+                  const isPendiente = hasRecord && cumple === null;
                   const obs = ev?.observaciones ?? "";
                   const isSaving = saving.has(key);
                   return (
@@ -931,6 +954,17 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                             }`}
                           >
                             ✓ Cumple
+                          </button>
+                          <button
+                            onClick={() => handlePendiente(r.id, of.id)}
+                            disabled={isSaving}
+                            className={`flex items-center gap-1 px-3 py-1.5 rounded text-[13.5px] font-medium border transition-colors disabled:opacity-60 ${
+                              isPendiente
+                                ? "bg-amber-500/15 border-amber-500/60 text-amber-400"
+                                : "border-border text-muted-foreground hover:bg-secondary/60"
+                            }`}
+                          >
+                            ⏳ Pendiente
                           </button>
                           <button
                             onClick={() => handleToggle(r.id, of.id, false)}
@@ -967,9 +1001,10 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
       <div className="rounded-lg border border-border bg-card p-4 space-y-2">
         <h4 className="text-[13px] font-semibold text-foreground uppercase tracking-wide" style={{ color: "oklch(0.55 0 0)" }}>Resumen de evaluación técnica</h4>
         {renglones.map((r) => {
-          const cumpleN = oferentes.filter((of) => evals.get(cellKey(r.id, of.id))?.cumple === true).length;
-          const noCumpleN = oferentes.filter((of) => evals.get(cellKey(r.id, of.id))?.cumple === false).length;
-          const pendN = oferentes.length - cumpleN - noCumpleN;
+          const cumpleN    = oferentes.filter((of) => evals.get(cellKey(r.id, of.id))?.cumple === true).length;
+          const noCumpleN  = oferentes.filter((of) => evals.get(cellKey(r.id, of.id))?.cumple === false).length;
+          const pendienteN = oferentes.filter((of) => evals.has(cellKey(r.id, of.id)) && evals.get(cellKey(r.id, of.id))?.cumple === null).length;
+          const sinEvalN   = oferentes.length - cumpleN - noCumpleN - pendienteN;
           return (
             <div key={r.id} className="flex items-center gap-3 text-[14px]">
               <span className="text-muted-foreground w-24 shrink-0">Renglón {r.numero}:</span>
@@ -978,17 +1013,22 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                   {cumpleN} {cumpleN === 1 ? "cumple" : "cumplen"}
                 </span>
               )}
+              {pendienteN > 0 && (
+                <span className="text-amber-400 font-medium">
+                  {pendienteN} {pendienteN === 1 ? "pendiente" : "pendientes"}
+                </span>
+              )}
               {noCumpleN > 0 && (
                 <span className="text-red-400 font-medium">
                   {noCumpleN} no {noCumpleN === 1 ? "cumple" : "cumplen"}
                 </span>
               )}
-              {pendN > 0 && (
+              {sinEvalN > 0 && (
                 <span className="text-muted-foreground/70">
-                  {pendN} sin evaluar
+                  {sinEvalN} sin evaluar
                 </span>
               )}
-              {pendN === 0 && cumpleN === 0 && noCumpleN === 0 && (
+              {sinEvalN === 0 && cumpleN === 0 && noCumpleN === 0 && pendienteN === 0 && (
                 <span className="text-muted-foreground/50">Sin evaluaciones</span>
               )}
             </div>
@@ -1007,7 +1047,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
   const [renglones, setRenglones] = useState<RenglonConItems[]>([]);
   const [oferentes, setOferentes] = useState<Oferente[]>([]);
   const [ofertasMap, setOfertasMap] = useState<Map<string, { precio: number; divisa: Divisa }>>(new Map());
-  const [evalsMap, setEvalsMap] = useState<Map<string, boolean | null>>(new Map());
+  const [evalsMap, setEvalsMap] = useState<Map<string, { cumple: boolean | null }>>(new Map());
   const [adjMap, setAdjMap] = useState<Map<string, string>>(new Map()); // renglonId → oferenteId
   const [saving, setSaving] = useState<Set<string>>(new Set());
 
@@ -1026,8 +1066,8 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
         const om = new Map<string, { precio: number; divisa: Divisa }>();
         for (const o of oftas) om.set(`${o.item_id}|${o.oferente_id}`, { precio: o.precio_unitario, divisa: o.divisa });
         setOfertasMap(om);
-        const em = new Map<string, boolean | null>();
-        for (const ev of evs) em.set(`${ev.renglon_id}|${ev.oferente_id}`, ev.cumple);
+        const em = new Map<string, { cumple: boolean | null }>();
+        for (const ev of evs) em.set(`${ev.renglon_id}|${ev.oferente_id}`, { cumple: ev.cumple });
         setEvalsMap(em);
         const am = new Map<string, string>();
         for (const adj of adjs) am.set(adj.renglon_id, adj.oferente_id);
@@ -1226,7 +1266,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                   <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.04)" }}>
                     <td style={{ padding: "9px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500 }}>Técnica</td>
                     {oferentes.map((of) => {
-                      const cumple = evalsMap.get(`${r.id}|${of.id}`);
+                      const cumple = evalsMap.get(`${r.id}|${of.id}`)?.cumple ?? null;
                       const isAdj = adjOfId === of.id;
                       return (
                         <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
@@ -1234,6 +1274,8 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                             <span style={{ fontSize: 14, color: "#86efac", fontWeight: 500 }}>✓ Cumple</span>
                           ) : cumple === false ? (
                             <span style={{ fontSize: 14, color: "#fca5a5", fontWeight: 500 }}>✗ No cumple</span>
+                          ) : cumple === null && evalsMap.has(`${r.id}|${of.id}`) ? (
+                            <span style={{ fontSize: 14, color: "#fcd34d", fontWeight: 500 }}>⏳ Pendiente</span>
                           ) : (
                             <span style={{ fontSize: 14, color: "oklch(0.42 0 0)" }}>Sin evaluar</span>
                           )}
