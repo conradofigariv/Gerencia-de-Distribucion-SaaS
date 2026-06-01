@@ -503,7 +503,6 @@ function DatosGeneralesTab({
 }) {
   const [numeroSic,       setNumeroSic]       = useState(licitacion.numero_sic);
   const [titulo,          setTitulo]          = useState(licitacion.titulo);
-  const [fechaApertura,   setFechaApertura]   = useState(licitacion.fecha_apertura ?? "");
   const [fdSicFecha,      setFdSicFecha]      = useState(licitacion.fd_sic_fecha ?? "");
   const [fdSicValor,      setFdSicValor]      = useState<string>(licitacion.fd_sic_valor?.toString() ?? "");
   const [fdOpFecha,       setFdOpFecha]       = useState(licitacion.fd_op_fecha ?? "");
@@ -514,7 +513,6 @@ function DatosGeneralesTab({
   useEffect(() => {
     setNumeroSic(licitacion.numero_sic);
     setTitulo(licitacion.titulo);
-    setFechaApertura(licitacion.fecha_apertura ?? "");
     setFdSicFecha(licitacion.fd_sic_fecha ?? "");
     setFdSicValor(licitacion.fd_sic_valor?.toString() ?? "");
     setFdOpFecha(licitacion.fd_op_fecha ?? "");
@@ -525,7 +523,6 @@ function DatosGeneralesTab({
   const dirty =
     numeroSic     !== licitacion.numero_sic ||
     titulo        !== licitacion.titulo ||
-    fechaApertura !== (licitacion.fecha_apertura ?? "") ||
     fdSicFecha    !== (licitacion.fd_sic_fecha ?? "") ||
     fdSicValor    !== (licitacion.fd_sic_valor?.toString() ?? "") ||
     fdOpFecha     !== (licitacion.fd_op_fecha ?? "") ||
@@ -601,7 +598,7 @@ function DatosGeneralesTab({
       const updated = await updateLicitacion(licitacion.id, {
         numero_sic:     numeroSic.trim(),
         titulo:         titulo.trim(),
-        fecha_apertura: fechaApertura || null,
+
         fd_sic_fecha:   fdSicFecha || null,
         fd_sic_valor:   parseNum(fdSicValor),
         fd_op_fecha:    fdOpFecha || null,
@@ -636,11 +633,6 @@ function DatosGeneralesTab({
         description="Dólar de la SIC: tipo de cambio usado para normalizar los precios del pliego. Dólar de la OP: tipo de cambio del día del Acta de Apertura. Valores en pesos argentinos por USD."
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-          <FormField label="Fecha del Acta de Apertura">
-            <input type="date" value={fechaApertura} onChange={(e) => setFechaApertura(e.target.value)} className="ti-input" />
-          </FormField>
-          <div />
-
           <FormField label="Fecha de la SIC">
             <input type="date" value={fdSicFecha} onChange={(e) => setFdSicFecha(e.target.value)} className="ti-input" />
           </FormField>
@@ -648,7 +640,7 @@ function DatosGeneralesTab({
             <input type="number" step="0.01" inputMode="decimal" value={fdSicValor} onChange={(e) => setFdSicValor(e.target.value)} placeholder="Ej: 1399.5" className="ti-input" style={{ appearance: "textfield", MozAppearance: "textfield" } as React.CSSProperties} />
           </FormField>
 
-          <FormField label="Fecha de la OP">
+          <FormField label="Fecha de la OP (Fecha del Acta de Apertura)">
             <input type="date" value={fdOpFecha} onChange={(e) => setFdOpFecha(e.target.value)} className="ti-input" />
           </FormField>
           <FormField label="Dólar de la OP (ARS por USD)">
@@ -688,7 +680,6 @@ function DatosGeneralesTab({
           onClick={() => {
             setNumeroSic(licitacion.numero_sic);
             setTitulo(licitacion.titulo);
-            setFechaApertura(licitacion.fecha_apertura ?? "");
             setFdSicFecha(licitacion.fd_sic_fecha ?? "");
             setFdSicValor(licitacion.fd_sic_valor?.toString() ?? "");
             setFdOpFecha(licitacion.fd_op_fecha ?? "");
