@@ -420,6 +420,14 @@ export function StockZonaSection() {
         m.set(f.articulo, { articulo: f.articulo, descArticulo: "", udmPrimaria: "", total: 0, byZona: {} });
       }
     }
+    // Servicios del catálogo maestro: por definición no tienen stock, así que
+    // no aparecerían por sí solos. Se incluyen (Total 0) para que se puedan ver
+    // y filtrar. Los materiales sin stock NO se agregan (serían ruido).
+    for (const [articulo, info] of matriculasInfo) {
+      if (info.tipo === "servicio" && !m.has(articulo)) {
+        m.set(articulo, { articulo, descArticulo: "", udmPrimaria: "", total: 0, byZona: {} });
+      }
+    }
     // Enriquecer con el catálogo maestro `matriculas`: la descripción y UDM más
     // actualizadas mandan; si la matrícula no está en la maestra, queda el dato
     // del stock (o vacío para las clasificadas sin stock).
