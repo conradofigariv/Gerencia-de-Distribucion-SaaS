@@ -55,6 +55,34 @@ export async function upsertFamiliesBulk(rows: FamilyRow[]): Promise<string | nu
   return error?.message ?? null;
 }
 
+/** Info maestra de una matrícula (catálogo oficial cargado en "Carga de datos"). */
+export interface MatriculaInfo {
+  descripcion: string;
+  udm:         string;
+}
+
+/**
+ * Lee el catálogo maestro `matriculas` (la lista más actualizada de matrículas
+ * con su descripción y UDM). Devuelve un Map articulo → { descripcion, udm }.
+ * Pagina de a 1000 porque Supabase limita el tamaño de respuesta.
+ */
+export async function getMatriculasInfo(): Promise<Map<string, MatriculaInfo>> {
+  const map = new Map<string, MatriculaInfo>();
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("matriculas")
+      .select("articulo, descripcion, unidad_medida")
+      .range(from, from + PAGE - 1);
+    if (error || !data || data.length === 0) break;
+    for (const r of data as { articulo: string; descripcion: string | null; unidad_medida: string | null }[]) {
+      if (r.articulo) map.set(r.articulo, { descripcion: r.descripcion ?? "", udm: r.unidad_medida ?? "" });
+    }
+    if (data.length < PAGE) break;
+  }
+  return map;
+}
+
 export async function deleteFamily(articulo: string): Promise<string | null> {
   const { error } = await supabase
     .from("stock_article_families")

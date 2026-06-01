@@ -10,8 +10,8 @@ import {
 import { CheckIcon } from "lucide-react";
 import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
 import type { ZonaUpload, CompraRow } from "@/lib/stockStorage";
-import { getFamilies, upsertFamily, deleteFamily, upsertFamiliesBulk, deleteFamiliesBulk } from "@/lib/stockFamilies";
-import type { FamilyRow, ArticuloTipo } from "@/lib/stockFamilies";
+import { getFamilies, upsertFamily, deleteFamily, upsertFamiliesBulk, deleteFamiliesBulk, getMatriculasInfo } from "@/lib/stockFamilies";
+import type { FamilyRow, ArticuloTipo, MatriculaInfo } from "@/lib/stockFamilies";
 import { toast } from "sonner";
 
 type Tab            = "resumen" | "cargar" | "familias";
@@ -351,6 +351,9 @@ export function StockZonaSection() {
   const [zonesExpanded, setZonesExpanded] = useState(true);
   const resizingRef = useRef<{ col: string; startX: number; startWidth: number } | null>(null);
 
+  // Catálogo maestro de matrículas (descripción + UDM más actualizadas)
+  const [matriculasInfo, setMatriculasInfo] = useState<Map<string, MatriculaInfo>>(new Map());
+
   // Families tab
   const [families, setFamilies]             = useState<FamilyRow[]>([]);
   const [localEdits, setLocalEdits]         = useState<Record<string, { familia: string; subfamilia: string; tipo: ArticuloTipo }>>({});
@@ -398,8 +401,13 @@ export function StockZonaSection() {
     setFamilies(await getFamilies());
   }, []);
 
+  const refreshMatriculas = useCallback(async () => {
+    setMatriculasInfo(await getMatriculasInfo());
+  }, []);
+
   useEffect(() => { refresh(); }, [refresh]);
   useEffect(() => { refreshFamilies(); }, [refreshFamilies]);
+  useEffect(() => { refreshMatriculas(); }, [refreshMatriculas]);
 
   useEffect(() => {
     setLocalEdits(prev => {
@@ -460,14 +468,24 @@ export function StockZonaSection() {
       }
     }
     // Matrículas clasificadas (servicio/material) sin stock cargado:
-    // se incluyen con descripción y UDM vacías para que sean visibles.
+    // se incluyen para que sean visibles (su descripción/UDM se completa abajo).
     for (const f of families) {
       if (!m.has(f.articulo)) {
         m.set(f.articulo, { articulo: f.articulo, descArticulo: "", udmPrimaria: "", total: 0, byZona: {} });
       }
     }
+    // Enriquecer con el catálogo maestro `matriculas`: la descripción y UDM más
+    // actualizadas mandan; si la matrícula no está en la maestra, queda el dato
+    // del stock (o vacío para las clasificadas sin stock).
+    for (const pivot of m.values()) {
+      const info = matriculasInfo.get(pivot.articulo);
+      if (info) {
+        if (info.descripcion) pivot.descArticulo = info.descripcion;
+        if (info.udm)         pivot.udmPrimaria  = info.udm;
+      }
+    }
     return m;
-  }, [uploads, families]);
+  }, [uploads, families, matriculasInfo]);
 
   const pivotRows = useMemo(() => Array.from(pivotMap.values())
     .filter(r => {
@@ -757,7 +775,7 @@ export function StockZonaSection() {
           </div>
         </div>
         <button
-          onClick={refresh}
+          onClick={() => { refresh(); refreshFamilies(); refreshMatriculas(); }}
           disabled={loading}
           className="flex items-center justify-center w-8 h-8 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors disabled:opacity-40 mt-0.5"
         >
