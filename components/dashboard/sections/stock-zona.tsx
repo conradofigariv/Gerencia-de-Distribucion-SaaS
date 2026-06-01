@@ -21,6 +21,8 @@ type SortDir        = "asc" | "desc";
 
 // Caché de sesión del catálogo maestro (para que la 2da carga sea instantánea)
 const MATRICULAS_CACHE_KEY = "stock-zona-matriculas-cache";
+// Ancho de columnas persistido (para que la lista se vea igual al volver)
+const COLWIDTHS_KEY = "stock-zona-colwidths";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] = [
   { id: "resumen",  label: "Resumen de stock", icon: PackageOpen, desc: "Stock consolidado por artículo y zona de depósito." },
@@ -289,7 +291,47 @@ export function StockZonaSection() {
   const [colWidths, setColWidths] = useState({ articulo: 140, descArticulo: 280, udmPrimaria: 84, tipo: 130, total: 100 });
   const [zoneWidth, setZoneWidth] = useState(120);
   const [zonesExpanded, setZonesExpanded] = useState(true);
+  const [zoneAnim, setZoneAnim] = useState<"in" | "out" | null>(null);   // animación colapso/expansión
+  const zoneAnimTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const colWidthsLoaded = useRef(false);
   const resizingRef = useRef<{ col: string; startX: number; startWidth: number } | null>(null);
+
+  // ── Persistencia del ancho de columnas (localStorage) ───────────────────────
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(COLWIDTHS_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as { colWidths?: Partial<typeof colWidths>; zoneWidth?: number };
+        if (saved.colWidths) setColWidths(c => ({ ...c, ...saved.colWidths }));
+        if (typeof saved.zoneWidth === "number") setZoneWidth(saved.zoneWidth);
+      }
+    } catch { /* ignorar */ }
+    colWidthsLoaded.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!colWidthsLoaded.current) return;   // no guardar antes de cargar lo previo
+    try { localStorage.setItem(COLWIDTHS_KEY, JSON.stringify({ colWidths, zoneWidth })); } catch { /* ignorar */ }
+  }, [colWidths, zoneWidth]);
+
+  // ── Toggle de zonas con animación ───────────────────────────────────────────
+  const toggleZones = useCallback(() => {
+    if (zoneAnimTimer.current) clearTimeout(zoneAnimTimer.current);
+    if (zonesExpanded) {
+      // colapsar: reproducir salida y recién después ocultar las columnas
+      setZoneAnim("out");
+      zoneAnimTimer.current = setTimeout(() => { setZonesExpanded(false); setZoneAnim(null); }, 230);
+    } else {
+      // expandir: mostrar las columnas y reproducir entrada
+      setZonesExpanded(true);
+      setZoneAnim("in");
+      zoneAnimTimer.current = setTimeout(() => setZoneAnim(null), 260);
+    }
+  }, [zonesExpanded]);
+
+  useEffect(() => () => { if (zoneAnimTimer.current) clearTimeout(zoneAnimTimer.current); }, []);
+
+  const zoneAnimClass = zoneAnim === "in" ? "sz-zone-in" : zoneAnim === "out" ? "sz-zone-out" : "";
 
   // Catálogo maestro de matrículas (descripción + UDM + tipo más actualizados)
   const [matriculasInfo, setMatriculasInfo] = useState<Map<string, MatriculaInfo>>(new Map());
@@ -962,7 +1004,7 @@ export function StockZonaSection() {
                           );
                         })}
                         <th
-                          onClick={() => setZonesExpanded(v => !v)}
+                          onClick={toggleZones}
                           title={zonesExpanded ? "Colapsar zonas" : "Expandir zonas"}
                           style={{
                             width: TOGGLE_W,
@@ -1004,7 +1046,7 @@ export function StockZonaSection() {
                                 background: "oklch(0.255 0.006 270)",
                               }}
                             >
-                              <span className="inline-flex items-center justify-center gap-1.5">
+                              <span className={`inline-flex items-center justify-center gap-1.5 ${zoneAnimClass}`}>
                                 <SortIcon className={`w-3.5 h-3.5 shrink-0 text-muted-foreground ${active ? "opacity-100" : "opacity-30"}`} />
                                 <ZonePill zona={zona} />
                               </span>
@@ -1071,10 +1113,12 @@ export function StockZonaSection() {
                                     const qty = row.byZona[zona];
                                     return (
                                       <td key={zona} style={{ ...bottomBorder, padding: "10px 6px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
-                                        {qty != null && qty > 0
-                                          ? qty.toLocaleString("es-AR", { maximumFractionDigits: 2 })
-                                          : <span style={{ opacity: 0.25 }}>—</span>
-                                        }
+                                        <span className={zoneAnimClass ? `${zoneAnimClass} inline-block` : undefined}>
+                                          {qty != null && qty > 0
+                                            ? qty.toLocaleString("es-AR", { maximumFractionDigits: 2 })
+                                            : <span style={{ opacity: 0.25 }}>—</span>
+                                          }
+                                        </span>
                                       </td>
                                     );
                                   })}

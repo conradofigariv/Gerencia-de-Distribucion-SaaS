@@ -196,3 +196,15 @@ input[type="number"] { -moz-appearance: textfield; }
   0%, 100% { filter: drop-shadow(0 0 6px var(--node-glow)); }
   50%       { filter: drop-shadow(0 0 38px var(--node-c)) drop-shadow(0 0 18px var(--node-glow)); }
 }
+
+/* Stock por Zona — animación de colapso/expansión de columnas de zona */
+@keyframes sz-zone-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes sz-zone-out {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-10px); }
+}
+.sz-zone-in  { animation: sz-zone-in  .24s ease-out both; }
+.sz-zone-out { animation: sz-zone-out .22s ease-in  both; }
