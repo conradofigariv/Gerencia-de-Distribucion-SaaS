@@ -2004,6 +2004,32 @@ function OfertasTab({
       .finally(() => setLoading(false));
   }, [licitacionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const setAllDivisas = async (divisa: Divisa) => {
+    const allItems = renglones.flatMap((r) => r.items);
+    const updates: Promise<unknown>[] = [];
+    setCells((prev) => {
+      const next = new Map(prev);
+      for (const of_ of oferentes) {
+        for (const it of allItems) {
+          const key = `${it.id}|${of_.id}`;
+          const existing = next.get(key);
+          if (existing) {
+            next.set(key, { ...existing, divisa });
+            if (existing.precio.trim()) {
+              updates.push(
+                upsertOferta({ oferente_id: of_.id, item_id: it.id, precio_unitario: parseFloat(existing.precio), divisa })
+                  .catch((e) => console.error(e))
+              );
+            }
+          }
+        }
+      }
+      return next;
+    });
+    await Promise.all(updates);
+    toast.success(`Todas las divisas cambiadas a ${divisa}`);
+  };
+
   const getCell = (itemId: string, ofId: string) =>
     cells.get(`${itemId}|${ofId}`) ?? { precio: "", divisa: "ARS" as Divisa };
 
@@ -2074,13 +2100,24 @@ function OfertasTab({
         .oferta-price-input { -moz-appearance: textfield; }
       `}</style>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <p className="text-[14px] text-muted-foreground">
           Los precios se guardan automáticamente al salir de cada celda.
         </p>
-        <p className="text-[14px] text-muted-foreground tabular-nums">
-          {totalOfertas} / {totalItems * oferentes.length} celdas completadas
-        </p>
+        <div className="flex items-center gap-3">
+          <span style={{ fontSize: 12.5, color: "oklch(0.50 0 0)", fontWeight: 500 }}>Cambiar todas las divisas:</span>
+          <button onClick={() => setAllDivisas("USD")}
+            style={{ padding: "5px 14px", borderRadius: 7, border: "1px solid oklch(1 0 0 / 0.10)", background: "oklch(0.20 0.005 270)", color: "#86efac", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            USD
+          </button>
+          <button onClick={() => setAllDivisas("ARS")}
+            style={{ padding: "5px 14px", borderRadius: 7, border: "1px solid oklch(1 0 0 / 0.10)", background: "oklch(0.20 0.005 270)", color: "oklch(0.85 0 0)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            ARS
+          </button>
+          <p className="text-[14px] text-muted-foreground tabular-nums">
+            {totalOfertas} / {totalItems * oferentes.length} celdas completadas
+          </p>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border -mx-4 sm:-mx-6">
