@@ -123,6 +123,8 @@ interface TipoImportResult {
   matCount:  number;
   servCount: number;
   skipped:   number;   // filas sin matrícula o sin tipo reconocido
+  tipoColLabel?: string;                       // encabezado de la columna de tipo detectada
+  unmatched?: { value: string; count: number }[]; // valores no reconocidos (para diagnóstico)
   error?:    string;
 }
 
@@ -135,7 +137,7 @@ function parseTipoImport(text: string): TipoImportResult {
   const header = splitRow(lines[0]).map(c => c.toLowerCase());
 
   const headerArt  = header.findIndex(h => h === "artículo" || h === "articulo" || h.includes("matr") || h.includes("artíc") || h.includes("artic"));
-  const headerTipo = header.findIndex(h => h.includes("mat/ser") || h.includes("tipo") || (h.includes("mat") && h.includes("ser")));
+  const headerTipo = header.findIndex(h => h.includes("mat/ser") || h.includes("mat./ser") || h.includes("mat/serv") || (h.includes("mat") && h.includes("ser")) || h === "tipo");
   const hasHeader  = headerArt !== -1 || headerTipo !== -1;
   const dataStart  = hasHeader ? 1 : 0;
   const artIdx     = headerArt !== -1 ? headerArt : 0;
@@ -156,20 +158,34 @@ function parseTipoImport(text: string): TipoImportResult {
   }
   if (tipoIdx === -1) return { ...empty, error: "No encontré la columna de Material/Servicio. Revisá que el encabezado incluya «Mat/Ser»." };
 
+  const splitHeader = splitRow(lines[0]);
+  const tipoColLabel = hasHeader ? (splitHeader[tipoIdx] ?? `Columna ${tipoIdx + 1}`) : `Columna ${tipoIdx + 1}`;
+
   const seen = new Set<string>();
   const rows: { matricula: string; tipo: ArticuloTipo }[] = [];
+  const unmatchedMap = new Map<string, number>();
   let matCount = 0, servCount = 0, skipped = 0;
   for (let i = dataStart; i < lines.length; i++) {
     const cells = splitRow(lines[i]);
     const matricula = (cells[artIdx] ?? "").trim();
-    const tipo = normalizeTipo(cells[tipoIdx] ?? "");
-    if (!matricula || !tipo) { skipped++; continue; }
+    const rawTipo = (cells[tipoIdx] ?? "").trim();
+    const tipo = normalizeTipo(rawTipo);
+    if (!matricula || !tipo) {
+      // Registrar valores no vacíos que no se reconocieron (diagnóstico)
+      if (matricula && rawTipo) unmatchedMap.set(rawTipo, (unmatchedMap.get(rawTipo) ?? 0) + 1);
+      skipped++;
+      continue;
+    }
     if (seen.has(matricula)) continue;
     seen.add(matricula);
     rows.push({ matricula, tipo });
     if (tipo === "material") matCount++; else servCount++;
   }
-  return { rows, matCount, servCount, skipped };
+  const unmatched = [...unmatchedMap.entries()]
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+  return { rows, matCount, servCount, skipped, tipoColLabel, unmatched };
 }
 
 // ─── Resize handle ────────────────────────────────────────────────────────────
@@ -1389,16 +1405,41 @@ export function StockZonaSection() {
                     tipoImportPreview.error ? (
                       <p className="mt-2.5 text-[12.5px]" style={{ color: "#fca5a5" }}>{tipoImportPreview.error}</p>
                     ) : (
-                      <div className="flex items-center gap-2 flex-wrap mt-3">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: "oklch(0.27 0.005 270)", color: "oklch(0.90 0 0)", border: "1px solid oklch(1 0 0 / 0.08)" }}>
-                          {tipoImportPreview.rows.length} matrículas
-                        </span>
-                        {tipoImportPreview.matCount > 0 && <TipoPill tipo="material" />}
-                        {tipoImportPreview.matCount > 0 && <span className="text-[11.5px] text-muted-foreground -ml-1">×{tipoImportPreview.matCount}</span>}
-                        {tipoImportPreview.servCount > 0 && <TipoPill tipo="servicio" />}
-                        {tipoImportPreview.servCount > 0 && <span className="text-[11.5px] text-muted-foreground -ml-1">×{tipoImportPreview.servCount}</span>}
-                        {tipoImportPreview.skipped > 0 && (
-                          <span className="text-[11.5px]" style={{ color: "#fcd34d" }}>{tipoImportPreview.skipped} fila{tipoImportPreview.skipped === 1 ? "" : "s"} sin tipo válido</span>
+                      <div className="mt-3 space-y-2.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: "oklch(0.27 0.005 270)", color: "oklch(0.90 0 0)", border: "1px solid oklch(1 0 0 / 0.08)" }}>
+                            {tipoImportPreview.rows.length} matrículas
+                          </span>
+                          {tipoImportPreview.matCount > 0 && <TipoPill tipo="material" />}
+                          {tipoImportPreview.matCount > 0 && <span className="text-[11.5px] text-muted-foreground -ml-1">×{tipoImportPreview.matCount}</span>}
+                          {tipoImportPreview.servCount > 0 && <TipoPill tipo="servicio" />}
+                          {tipoImportPreview.servCount > 0 && <span className="text-[11.5px] text-muted-foreground -ml-1">×{tipoImportPreview.servCount}</span>}
+                          {tipoImportPreview.skipped > 0 && (
+                            <span className="text-[11.5px]" style={{ color: "#fcd34d" }}>{tipoImportPreview.skipped} fila{tipoImportPreview.skipped === 1 ? "" : "s"} sin tipo válido</span>
+                          )}
+                          {tipoImportPreview.tipoColLabel && (
+                            <span className="text-[11.5px] text-muted-foreground">
+                              · Columna de tipo: <span className="text-foreground/80 font-medium">«{tipoImportPreview.tipoColLabel}»</span>
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Diagnóstico: valores que no se reconocieron como material/servicio */}
+                        {tipoImportPreview.unmatched && tipoImportPreview.unmatched.length > 0 && (
+                          <div
+                            className="rounded-[10px] p-2.5 text-[11.5px]"
+                            style={{ background: "oklch(0.30 0.10 50 / 0.18)", border: "1px solid oklch(0.6 0.15 60 / 0.4)", color: "#fcd34d" }}
+                          >
+                            <span className="font-semibold">Valores no reconocidos en «{tipoImportPreview.tipoColLabel}»:</span>{" "}
+                            {tipoImportPreview.unmatched.map((u, i) => (
+                              <span key={u.value}>
+                                {i > 0 && ", "}
+                                <span style={{ fontFamily: "ui-monospace, monospace", color: "#fff" }}>“{u.value}”</span>
+                                <span className="text-muted-foreground"> ×{u.count}</span>
+                              </span>
+                            ))}
+                            <span className="block mt-1 text-muted-foreground">Si alguno de estos debería ser «servicio» o «material», avisame el valor exacto y ajusto el detector.</span>
+                          </div>
                         )}
                       </div>
                     )
