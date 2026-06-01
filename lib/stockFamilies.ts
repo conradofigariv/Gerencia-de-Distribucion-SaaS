@@ -59,12 +59,23 @@ export async function upsertFamiliesBulk(rows: FamilyRow[]): Promise<string | nu
 export interface MatriculaInfo {
   descripcion: string;
   udm:         string;
+  tipo:        ArticuloTipo;   // derivado de la columna `mat_serv` de la planilla
+}
+
+/** Normaliza el valor de la columna Mat/Serv del catálogo a material/servicio. */
+function normalizeMatServ(raw: string | null | undefined): ArticuloTipo {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (!s) return "";
+  if (s.startsWith("s")) return "servicio";   // Servicio / Serv / S
+  if (s.startsWith("m")) return "material";   // Material / Mat / M
+  return "";
 }
 
 /**
  * Lee el catálogo maestro `matriculas` (la lista más actualizada de matrículas
- * con su descripción y UDM). Devuelve un Map articulo → { descripcion, udm }.
- * Pagina de a 1000 porque Supabase limita el tamaño de respuesta.
+ * con su descripción, UDM y tipo Material/Servicio). Devuelve un Map
+ * articulo → { descripcion, udm, tipo }. Pagina de a 1000 porque Supabase
+ * limita el tamaño de respuesta.
  */
 export async function getMatriculasInfo(): Promise<Map<string, MatriculaInfo>> {
   const map = new Map<string, MatriculaInfo>();
@@ -72,11 +83,15 @@ export async function getMatriculasInfo(): Promise<Map<string, MatriculaInfo>> {
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from("matriculas")
-      .select("articulo, descripcion, unidad_medida")
+      .select("articulo, descripcion, unidad_medida, mat_serv")
       .range(from, from + PAGE - 1);
     if (error || !data || data.length === 0) break;
-    for (const r of data as { articulo: string; descripcion: string | null; unidad_medida: string | null }[]) {
-      if (r.articulo) map.set(r.articulo, { descripcion: r.descripcion ?? "", udm: r.unidad_medida ?? "" });
+    for (const r of data as { articulo: string; descripcion: string | null; unidad_medida: string | null; mat_serv: string | null }[]) {
+      if (r.articulo) map.set(r.articulo, {
+        descripcion: r.descripcion ?? "",
+        udm:         r.unidad_medida ?? "",
+        tipo:        normalizeMatServ(r.mat_serv),
+      });
     }
     if (data.length < PAGE) break;
   }

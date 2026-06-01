@@ -108,86 +108,6 @@ function TipoPill({ tipo }: { tipo: ArticuloTipo }) {
   );
 }
 
-// ─── Importar Mat/Ser desde Excel ──────────────────────────────────────────────
-
-function normalizeTipo(raw: string): ArticuloTipo {
-  const s = raw.trim().toLowerCase();
-  if (!s) return "";
-  if (s.startsWith("s")) return "servicio";   // Servicio / Serv / S
-  if (s.startsWith("m")) return "material";   // Material / Mat / M
-  return "";
-}
-
-interface TipoImportResult {
-  rows:      { matricula: string; tipo: ArticuloTipo }[];
-  matCount:  number;
-  servCount: number;
-  skipped:   number;   // filas sin matrícula o sin tipo reconocido
-  tipoColLabel?: string;                       // encabezado de la columna de tipo detectada
-  unmatched?: { value: string; count: number }[]; // valores no reconocidos (para diagnóstico)
-  error?:    string;
-}
-
-function parseTipoImport(text: string): TipoImportResult {
-  const empty: TipoImportResult = { rows: [], matCount: 0, servCount: 0, skipped: 0 };
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length === 0) return { ...empty, error: "Pegá los datos del Excel primero." };
-
-  const splitRow = (l: string) => l.split("\t").map(c => c.trim());
-  const header = splitRow(lines[0]).map(c => c.toLowerCase());
-
-  const headerArt  = header.findIndex(h => h === "artículo" || h === "articulo" || h.includes("matr") || h.includes("artíc") || h.includes("artic"));
-  const headerTipo = header.findIndex(h => h.includes("mat/ser") || h.includes("mat./ser") || h.includes("mat/serv") || (h.includes("mat") && h.includes("ser")) || h === "tipo");
-  const hasHeader  = headerArt !== -1 || headerTipo !== -1;
-  const dataStart  = hasHeader ? 1 : 0;
-  const artIdx     = headerArt !== -1 ? headerArt : 0;
-
-  let tipoIdx = headerTipo;
-  if (tipoIdx === -1) {
-    // Adivinar la columna de tipo: la que más valores reconoce como material/servicio
-    const sample = lines.slice(dataStart, dataStart + 40).map(splitRow);
-    const colCount = sample.reduce((m, r) => Math.max(m, r.length), 0);
-    let best = -1, bestScore = 0;
-    for (let c = 0; c < colCount; c++) {
-      if (c === artIdx) continue;
-      let score = 0;
-      for (const r of sample) if (normalizeTipo(r[c] ?? "")) score++;
-      if (score > bestScore) { bestScore = score; best = c; }
-    }
-    tipoIdx = bestScore > 0 ? best : -1;
-  }
-  if (tipoIdx === -1) return { ...empty, error: "No encontré la columna de Material/Servicio. Revisá que el encabezado incluya «Mat/Ser»." };
-
-  const splitHeader = splitRow(lines[0]);
-  const tipoColLabel = hasHeader ? (splitHeader[tipoIdx] ?? `Columna ${tipoIdx + 1}`) : `Columna ${tipoIdx + 1}`;
-
-  const seen = new Set<string>();
-  const rows: { matricula: string; tipo: ArticuloTipo }[] = [];
-  const unmatchedMap = new Map<string, number>();
-  let matCount = 0, servCount = 0, skipped = 0;
-  for (let i = dataStart; i < lines.length; i++) {
-    const cells = splitRow(lines[i]);
-    const matricula = (cells[artIdx] ?? "").trim();
-    const rawTipo = (cells[tipoIdx] ?? "").trim();
-    const tipo = normalizeTipo(rawTipo);
-    if (!matricula || !tipo) {
-      // Registrar valores no vacíos que no se reconocieron (diagnóstico)
-      if (matricula && rawTipo) unmatchedMap.set(rawTipo, (unmatchedMap.get(rawTipo) ?? 0) + 1);
-      skipped++;
-      continue;
-    }
-    if (seen.has(matricula)) continue;
-    seen.add(matricula);
-    rows.push({ matricula, tipo });
-    if (tipo === "material") matCount++; else servCount++;
-  }
-  const unmatched = [...unmatchedMap.entries()]
-    .map(([value, count]) => ({ value, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 8);
-  return { rows, matCount, servCount, skipped, tipoColLabel, unmatched };
-}
-
 // ─── Resize handle ────────────────────────────────────────────────────────────
 
 function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
@@ -377,11 +297,6 @@ export function StockZonaSection() {
   const [familiaSearch, setFamiliaSearch]   = useState("");
   const [onlyUnclassified, setOnlyUnclassified] = useState(false);
 
-  // Importar Mat/Ser desde Excel
-  const [importOpen, setImportOpen]         = useState(false);
-  const [importText, setImportText]         = useState("");
-  const [importingTipos, setImportingTipos] = useState(false);
-
   // Bulk assignment
   const [selectedArticulos, setSelectedArticulos] = useState<Set<string>>(new Set());
   const [bulkFamilia, setBulkFamilia]       = useState("");
@@ -456,8 +371,22 @@ export function StockZonaSection() {
 
   const familyMap = useMemo(() => new Map(families.map(f => [f.articulo, f])), [families]);
 
+  // Tipo efectivo de una matrícula: la edición manual (Familias) tiene prioridad;
+  // si no hay, sale del catálogo maestro `matriculas.mat_serv` (Carga de datos).
+  const tipoOf = useCallback((articulo: string): ArticuloTipo => {
+    const manual = familyMap.get(articulo)?.tipo;
+    if (manual) return manual;
+    return matriculasInfo.get(articulo)?.tipo ?? "";
+  }, [familyMap, matriculasInfo]);
+
   const familiasDisponibles = useMemo(
     () => [...new Set(families.map(f => f.familia).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es")),
+    [families],
+  );
+
+  // Cantidad de matrículas con familia/subfamilia asignada (asignación real).
+  const asignadosCount = useMemo(
+    () => families.filter(f => f.familia || f.subfamilia).length,
     [families],
   );
 
@@ -483,10 +412,11 @@ export function StockZonaSection() {
         pivot.byZona[upload.zona] = (pivot.byZona[upload.zona] ?? 0) + qty;
       }
     }
-    // Matrículas clasificadas (servicio/material) sin stock cargado:
-    // se incluyen para que sean visibles (su descripción/UDM se completa abajo).
+    // Matrículas con familia/subfamilia asignada manualmente que aún no tienen
+    // stock: se incluyen para que sean visibles (su descripción/UDM se completa
+    // abajo desde el catálogo maestro).
     for (const f of families) {
-      if (!m.has(f.articulo)) {
+      if ((f.familia || f.subfamilia) && !m.has(f.articulo)) {
         m.set(f.articulo, { articulo: f.articulo, descArticulo: "", udmPrimaria: "", total: 0, byZona: {} });
       }
     }
@@ -508,7 +438,7 @@ export function StockZonaSection() {
       const zonaOk       = filterZona === "todos"    || (r.byZona[filterZona] ?? 0) > 0;
       const familiaOk    = !filterFamilia            || (familyMap.get(r.articulo)?.familia ?? "") === filterFamilia;
       const subfamiliaOk = !filterSubfamilia         || (familyMap.get(r.articulo)?.subfamilia ?? "") === filterSubfamilia;
-      const tipoOk       = !filterTipo               || (familyMap.get(r.articulo)?.tipo ?? "") === filterTipo;
+      const tipoOk       = !filterTipo               || tipoOf(r.articulo) === filterTipo;
       const lo           = filterSearch.toLowerCase();
       const searchOk     = !filterSearch || (
         articuloFiltro === "nro"
@@ -522,8 +452,8 @@ export function StockZonaSection() {
         return sortDir === "asc" ? a.total - b.total : b.total - a.total;
       }
       if (sortCol === "tipo") {
-        const va = familyMap.get(a.articulo)?.tipo ?? "";
-        const vb = familyMap.get(b.articulo)?.tipo ?? "";
+        const va = tipoOf(a.articulo);
+        const vb = tipoOf(b.articulo);
         const cmp = va.localeCompare(vb, "es");
         return sortDir === "asc" ? cmp : -cmp;
       }
@@ -536,7 +466,7 @@ export function StockZonaSection() {
       const va = a.byZona[sortCol] ?? 0;
       const vb = b.byZona[sortCol] ?? 0;
       return sortDir === "asc" ? va - vb : vb - va;
-    }), [pivotMap, familyMap, filterZona, filterFamilia, filterSubfamilia, filterTipo, filterSearch, articuloFiltro, sortCol, sortDir]);
+    }), [pivotMap, familyMap, tipoOf, filterZona, filterFamilia, filterSubfamilia, filterTipo, filterSearch, articuloFiltro, sortCol, sortDir]);
 
   const allArticles = useMemo(() => Array.from(pivotMap.values())
     .sort((a, b) => a.articulo.localeCompare(b.articulo, "es", { numeric: true })), [pivotMap]);
@@ -663,39 +593,6 @@ export function StockZonaSection() {
       }
       return next;
     });
-  };
-
-  const tipoImportPreview = useMemo(
-    () => (importText.trim() ? parseTipoImport(importText) : null),
-    [importText],
-  );
-
-  const handleImportTipos = async () => {
-    const parsed = parseTipoImport(importText);
-    if (parsed.error) { toast.error(parsed.error); return; }
-    if (parsed.rows.length === 0) { toast.error("No se detectaron matrículas con tipo válido."); return; }
-    setImportingTipos(true);
-    const famRows: FamilyRow[] = parsed.rows.map(r => {
-      const saved = familyMap.get(r.matricula);
-      return { articulo: r.matricula, familia: saved?.familia || "", subfamilia: saved?.subfamilia || "", tipo: r.tipo };
-    });
-    const CHUNK = 500;
-    for (let i = 0; i < famRows.length; i += CHUNK) {
-      const err = await upsertFamiliesBulk(famRows.slice(i, i + CHUNK));
-      if (err) { toast.error(`Error al importar: ${err}`); setImportingTipos(false); return; }
-    }
-    // Reflejar en el buffer local sin esperar el refresh
-    setLocalEdits(p => {
-      const next = { ...p };
-      for (const r of famRows) next[r.articulo] = { familia: r.familia, subfamilia: r.subfamilia, tipo: r.tipo };
-      return next;
-    });
-    await refreshFamilies();
-    toast.success(
-      `${famRows.length} matrículas importadas · ${parsed.matCount} material, ${parsed.servCount} servicio` +
-      (parsed.skipped ? ` · ${parsed.skipped} omitidas` : ""),
-    );
-    setImportText(""); setImportOpen(false); setImportingTipos(false);
   };
 
   // ── Carga handlers ────────────────────────────────────────────────────────
@@ -1096,7 +993,7 @@ export function StockZonaSection() {
                               </td>
                               <td style={{ ...bottomBorder, padding: "10px 12px", whiteSpace: "nowrap" }}>
                                 {(() => {
-                                  const tipo = familyMap.get(row.articulo)?.tipo ?? "";
+                                  const tipo = tipoOf(row.articulo);
                                   return tipo
                                     ? <TipoPill tipo={tipo} />
                                     : <span style={{ opacity: 0.25, color: "hsl(var(--muted-foreground))" }}>—</span>;
@@ -1349,126 +1246,11 @@ export function StockZonaSection() {
                   Sin clasificar
                 </button>
 
-                <button
-                  onClick={() => setImportOpen(v => !v)}
-                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium transition-colors"
-                  style={{
-                    background: importOpen ? "oklch(0.30 0.10 155 / 0.45)" : "hsl(var(--secondary))",
-                    color: importOpen ? "#86efac" : "hsl(var(--muted-foreground))",
-                    border: `1px solid ${importOpen ? "oklch(0.55 0.15 155 / 0.5)" : "hsl(var(--border))"}`,
-                    cursor: "pointer",
-                  }}
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Importar Mat/Ser
-                </button>
-
                 <p className="text-[12.5px] text-muted-foreground whitespace-nowrap">
                   {filteredFamiliaArticles.length} de {allArticles.length} artículos
-                  {families.length > 0 && <> · <span className="text-accent">{families.length} asignados</span></>}
+                  {asignadosCount > 0 && <> · <span className="text-accent">{asignadosCount} asignados</span></>}
                 </p>
               </div>
-
-              {/* Importar Mat/Ser desde Excel */}
-              {importOpen && (
-                <div className="rounded-[14px] p-4" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(0.55 0.15 155 / 0.3)" }}>
-                  <div className="flex items-start justify-between gap-4 mb-3">
-                    <div>
-                      <h3 className="text-[14.5px] font-semibold tracking-tight text-foreground">Importar Material / Servicio desde Excel</h3>
-                      <p className="mt-1 text-[12.5px] text-muted-foreground leading-relaxed max-w-[560px]">
-                        Pegá la planilla (con encabezado). Detecto la columna <span className="text-foreground/80 font-medium">Artículo</span> y la columna{" "}
-                        <span className="text-foreground/80 font-medium">Mat/Ser</span>. Se actualiza el tipo de cada matrícula <span className="text-foreground/80 font-medium">conservando</span> las familias ya asignadas.
-                      </p>
-                    </div>
-                    <button onClick={() => { setImportText(""); setImportOpen(false); }} className="text-muted-foreground hover:text-foreground shrink-0">
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <textarea
-                    value={importText}
-                    onChange={e => setImportText(e.target.value)}
-                    placeholder={"Pegá aquí el Excel (Ctrl+V)…\n\nArtículo\tDescripción\tUnidad\tEstado Artículo\tMat/Ser\n00000001.0\tFUEL OIL…\tKgs\tActive\tMaterial"}
-                    rows={7}
-                    className="w-full px-3.5 py-3 rounded-[10px] outline-none resize-y text-foreground placeholder:text-muted-foreground/35"
-                    style={{
-                      background: "hsl(var(--background))",
-                      border: "1px solid hsl(var(--border))",
-                      fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
-                      fontSize: 12,
-                      lineHeight: 1.6,
-                    }}
-                  />
-
-                  {/* Preview */}
-                  {tipoImportPreview && (
-                    tipoImportPreview.error ? (
-                      <p className="mt-2.5 text-[12.5px]" style={{ color: "#fca5a5" }}>{tipoImportPreview.error}</p>
-                    ) : (
-                      <div className="mt-3 space-y-2.5">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold" style={{ background: "oklch(0.27 0.005 270)", color: "oklch(0.90 0 0)", border: "1px solid oklch(1 0 0 / 0.08)" }}>
-                            {tipoImportPreview.rows.length} matrículas
-                          </span>
-                          {tipoImportPreview.matCount > 0 && <TipoPill tipo="material" />}
-                          {tipoImportPreview.matCount > 0 && <span className="text-[11.5px] text-muted-foreground -ml-1">×{tipoImportPreview.matCount}</span>}
-                          {tipoImportPreview.servCount > 0 && <TipoPill tipo="servicio" />}
-                          {tipoImportPreview.servCount > 0 && <span className="text-[11.5px] text-muted-foreground -ml-1">×{tipoImportPreview.servCount}</span>}
-                          {tipoImportPreview.skipped > 0 && (
-                            <span className="text-[11.5px]" style={{ color: "#fcd34d" }}>{tipoImportPreview.skipped} fila{tipoImportPreview.skipped === 1 ? "" : "s"} sin tipo válido</span>
-                          )}
-                          {tipoImportPreview.tipoColLabel && (
-                            <span className="text-[11.5px] text-muted-foreground">
-                              · Columna de tipo: <span className="text-foreground/80 font-medium">«{tipoImportPreview.tipoColLabel}»</span>
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Diagnóstico: valores que no se reconocieron como material/servicio */}
-                        {tipoImportPreview.unmatched && tipoImportPreview.unmatched.length > 0 && (
-                          <div
-                            className="rounded-[10px] p-2.5 text-[11.5px]"
-                            style={{ background: "oklch(0.30 0.10 50 / 0.18)", border: "1px solid oklch(0.6 0.15 60 / 0.4)", color: "#fcd34d" }}
-                          >
-                            <span className="font-semibold">Valores no reconocidos en «{tipoImportPreview.tipoColLabel}»:</span>{" "}
-                            {tipoImportPreview.unmatched.map((u, i) => (
-                              <span key={u.value}>
-                                {i > 0 && ", "}
-                                <span style={{ fontFamily: "ui-monospace, monospace", color: "#fff" }}>“{u.value}”</span>
-                                <span className="text-muted-foreground"> ×{u.count}</span>
-                              </span>
-                            ))}
-                            <span className="block mt-1 text-muted-foreground">Si alguno de estos debería ser «servicio» o «material», avisame el valor exacto y ajusto el detector.</span>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  )}
-
-                  <div className="flex items-center gap-2.5 mt-3.5">
-                    <button
-                      onClick={handleImportTipos}
-                      disabled={importingTipos || !tipoImportPreview || !!tipoImportPreview.error || tipoImportPreview.rows.length === 0}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-[9px] text-[13px] font-semibold transition-all disabled:cursor-not-allowed"
-                      style={{
-                        background: (importingTipos || !tipoImportPreview || !!tipoImportPreview?.error || (tipoImportPreview?.rows.length ?? 0) === 0) ? "hsl(var(--secondary))" : "oklch(0.55 0.15 155)",
-                        color: (importingTipos || !tipoImportPreview || !!tipoImportPreview?.error || (tipoImportPreview?.rows.length ?? 0) === 0) ? "hsl(var(--muted-foreground))" : "#04210f",
-                        border: "none",
-                      }}
-                    >
-                      {importingTipos ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" strokeWidth={2.6} />}
-                      {importingTipos ? "Importando…" : "Importar y fusionar"}
-                    </button>
-                    <button
-                      onClick={() => setImportText("")}
-                      disabled={!importText}
-                      className="px-3.5 py-2 rounded-[9px] border border-border text-[13px] font-medium transition-colors bg-transparent text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      Limpiar
-                    </button>
-                  </div>
-                </div>
-              )}
 
               {/* Barra de asignación masiva */}
               {selectedArticulos.size > 0 && (
@@ -1581,6 +1363,8 @@ export function StockZonaSection() {
                         const edit    = localEdits[row.articulo] ?? { familia: "", subfamilia: "", tipo: "" as ArticuloTipo };
                         const isSaving   = savingArticulo === row.articulo;
                         const hasFamily  = !!(familyMap.get(row.articulo)?.familia);
+                        // Tipo del catálogo maestro (Carga de datos); el manual lo pisa.
+                        const catalogTipo = matriculasInfo.get(row.articulo)?.tipo ?? "";
                         const isSelected = selectedArticulos.has(row.articulo);
                         const subfamiliasList = edit.familia ? subfamiliasForFamilia(edit.familia) : [];
                         const isLast = i === filteredFamiliaArticles.length - 1;
@@ -1649,7 +1433,7 @@ export function StockZonaSection() {
                               {!isSaving && (
                                 <BeastSelect
                                   options={TIPO_OPTIONS.map(t => ({ value: t.value, label: t.label, node: <TipoPill tipo={t.value} /> }))}
-                                  value={edit.tipo}
+                                  value={edit.tipo || catalogTipo}
                                   onChange={v => persistRow(row.articulo, { ...edit, tipo: v as ArticuloTipo })}
                                   placeholder="—"
                                   minWidth={140}
