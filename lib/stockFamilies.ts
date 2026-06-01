@@ -74,26 +74,47 @@ function normalizeMatServ(raw: string | null | undefined): ArticuloTipo {
 /**
  * Lee el catálogo maestro `matriculas` (la lista más actualizada de matrículas
  * con su descripción, UDM y tipo Material/Servicio). Devuelve un Map
- * articulo → { descripcion, udm, tipo }. Pagina de a 1000 porque Supabase
- * limita el tamaño de respuesta.
+ * articulo → { descripcion, udm, tipo }.
+ *
+ * Para que sea rápido con ~20k+ filas: pide la primera página con el conteo
+ * exacto y luego descarga el resto de las páginas EN PARALELO (Supabase limita
+ * cada respuesta a ~1000 filas).
  */
 export async function getMatriculasInfo(): Promise<Map<string, MatriculaInfo>> {
-  const map = new Map<string, MatriculaInfo>();
   const PAGE = 1000;
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
-      .from("matriculas")
-      .select("articulo, descripcion, unidad_medida, mat_serv")
-      .range(from, from + PAGE - 1);
-    if (error || !data || data.length === 0) break;
-    for (const r of data as { articulo: string; descripcion: string | null; unidad_medida: string | null; mat_serv: string | null }[]) {
+  const COLS = "articulo, descripcion, unidad_medida, mat_serv";
+  const map = new Map<string, MatriculaInfo>();
+
+  type Row = { articulo: string; descripcion: string | null; unidad_medida: string | null; mat_serv: string | null };
+  const ingest = (rows: Row[] | null) => {
+    for (const r of rows ?? []) {
       if (r.articulo) map.set(r.articulo, {
         descripcion: r.descripcion ?? "",
         udm:         r.unidad_medida ?? "",
         tipo:        normalizeMatServ(r.mat_serv),
       });
     }
-    if (data.length < PAGE) break;
+  };
+
+  // Primera página + conteo total
+  const first = await supabase
+    .from("matriculas")
+    .select(COLS, { count: "exact" })
+    .range(0, PAGE - 1);
+  if (first.error || !first.data) return map;
+  ingest(first.data as Row[]);
+
+  const total = first.count ?? first.data.length;
+  if (total > PAGE) {
+    // Resto de páginas en paralelo
+    const requests = [];
+    for (let from = PAGE; from < total; from += PAGE) {
+      requests.push(
+        supabase.from("matriculas").select(COLS).range(from, from + PAGE - 1),
+      );
+    }
+    const results = await Promise.all(requests);
+    for (const res of results) ingest(res.data as Row[] | null);
   }
   return map;
 }

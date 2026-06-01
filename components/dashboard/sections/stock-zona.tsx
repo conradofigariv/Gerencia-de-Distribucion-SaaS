@@ -18,6 +18,9 @@ type Tab            = "resumen" | "cargar" | "familias";
 type ArticuloFiltro = "nro" | "nombre";
 type SortDir        = "asc" | "desc";
 
+// Caché de sesión del catálogo maestro (para que la 2da carga sea instantánea)
+const MATRICULAS_CACHE_KEY = "stock-zona-matriculas-cache";
+
 const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] = [
   { id: "resumen",  label: "Resumen de stock", icon: PackageOpen, desc: "Stock consolidado por artículo y zona de depósito." },
   { id: "cargar",   label: "Cargar datos",     icon: Download,    desc: "Importá stock pegando los datos directamente desde el sistema." },
@@ -287,8 +290,9 @@ export function StockZonaSection() {
   const [zonesExpanded, setZonesExpanded] = useState(true);
   const resizingRef = useRef<{ col: string; startX: number; startWidth: number } | null>(null);
 
-  // Catálogo maestro de matrículas (descripción + UDM más actualizadas)
+  // Catálogo maestro de matrículas (descripción + UDM + tipo más actualizados)
   const [matriculasInfo, setMatriculasInfo] = useState<Map<string, MatriculaInfo>>(new Map());
+  const [matriculasLoading, setMatriculasLoading] = useState(false);
 
   // Families tab
   const [families, setFamilies]             = useState<FamilyRow[]>([]);
@@ -333,7 +337,19 @@ export function StockZonaSection() {
   }, []);
 
   const refreshMatriculas = useCallback(async () => {
-    setMatriculasInfo(await getMatriculasInfo());
+    // 1) Mostrar al instante desde la caché de sesión (si existe)
+    try {
+      const cached = sessionStorage.getItem(MATRICULAS_CACHE_KEY);
+      if (cached) setMatriculasInfo(new Map(JSON.parse(cached) as [string, MatriculaInfo][]));
+    } catch { /* caché inválida: se ignora */ }
+    // 2) Refrescar desde Supabase (en paralelo) en segundo plano
+    setMatriculasLoading(true);
+    const fresh = await getMatriculasInfo();
+    setMatriculasInfo(fresh);
+    setMatriculasLoading(false);
+    try {
+      sessionStorage.setItem(MATRICULAS_CACHE_KEY, JSON.stringify([...fresh]));
+    } catch { /* sin espacio: la próxima vez se vuelve a bajar */ }
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -869,8 +885,13 @@ export function StockZonaSection() {
                   )}
                 </div>
 
-                <p className="text-[12.5px] text-muted-foreground whitespace-nowrap">
-                  <span className="text-foreground font-medium">{pivotRows.length}</span> de {pivotMap.size} artículos
+                <p className="text-[12.5px] text-muted-foreground whitespace-nowrap flex items-center gap-1.5">
+                  <span><span className="text-foreground font-medium">{pivotRows.length}</span> de {pivotMap.size} artículos</span>
+                  {matriculasLoading && (
+                    <span className="inline-flex items-center gap-1 text-muted-foreground/70">
+                      · <Loader2 className="w-3 h-3 animate-spin" /> catálogo…
+                    </span>
+                  )}
                 </p>
               </div>
 
