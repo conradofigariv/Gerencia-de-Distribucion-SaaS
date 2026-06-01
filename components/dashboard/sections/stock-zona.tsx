@@ -1,16 +1,17 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
+import { createPortal } from "react-dom";
 import {
   Trash2, Loader2, Search, X, PackageOpen, RefreshCw,
   ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight,
-  Download, Sparkles, Tag,
+  Download, Sparkles, Tag, Wrench, Package, Check,
 } from "lucide-react";
 import { CheckIcon } from "lucide-react";
 import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
 import type { ZonaUpload, CompraRow } from "@/lib/stockStorage";
-import { getFamilies, upsertFamily, deleteFamily } from "@/lib/stockFamilies";
-import type { FamilyRow } from "@/lib/stockFamilies";
+import { getFamilies, upsertFamily, deleteFamily, upsertFamiliesBulk, deleteFamiliesBulk } from "@/lib/stockFamilies";
+import type { FamilyRow, ArticuloTipo } from "@/lib/stockFamilies";
 import { toast } from "sonner";
 
 type Tab            = "resumen" | "cargar" | "familias";
@@ -77,6 +78,36 @@ function ZonePill({ zona, small }: { zona: string; small?: boolean }) {
   );
 }
 
+// ─── Tipo (Servicio / Material) ────────────────────────────────────────────────
+
+const TIPO_OPTIONS: { value: Exclude<ArticuloTipo, "">; label: string }[] = [
+  { value: "material", label: "Material" },
+  { value: "servicio", label: "Servicio" },
+];
+
+function tipoMeta(tipo: ArticuloTipo) {
+  if (tipo === "servicio") return { label: "Servicio", color: "#7dd3fc", bg: "oklch(0.28 0.08 230 / 0.5)", border: "oklch(0.70 0.10 230 / 0.45)", Icon: Wrench };
+  if (tipo === "material") return { label: "Material", color: "#86efac", bg: "oklch(0.30 0.10 155 / 0.45)", border: "oklch(0.55 0.15 155 / 0.5)", Icon: Package };
+  return null;
+}
+
+function TipoPill({ tipo }: { tipo: ArticuloTipo }) {
+  const m = tipoMeta(tipo);
+  if (!m) return null;
+  const Icon = m.Icon;
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 5,
+      padding: "3px 9px", borderRadius: 999,
+      background: m.bg, color: m.color, border: `1px solid ${m.border}`,
+      fontSize: 11.5, fontWeight: 600, letterSpacing: 0.2, whiteSpace: "nowrap", flexShrink: 0,
+    }}>
+      <Icon className="w-3 h-3" strokeWidth={2.2} />
+      {m.label}
+    </span>
+  );
+}
+
 // ─── Resize handle ────────────────────────────────────────────────────────────
 
 function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
@@ -96,7 +127,7 @@ function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
 interface BeastOption { value: string; label: string; node?: React.ReactNode }
 
 function BeastSelect({
-  options, value, onChange, placeholder, clearable = false, minWidth = 170, align = "left",
+  options, value, onChange, placeholder, clearable = false, minWidth = 170, align = "left", portal = false,
 }: {
   options: BeastOption[];
   value: string;
@@ -105,16 +136,45 @@ function BeastSelect({
   clearable?: boolean;   // si true, agrega una opción que limpia (value "")
   minWidth?: number;
   align?: "left" | "right";
+  portal?: boolean;      // si true, renderiza el menú en document.body (escapa contenedores con overflow)
 }) {
   const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left?: number; right?: number; minWidth: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const h = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (ref.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
+    };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !portal) return;
+    const update = () => {
+      const r = ref.current?.getBoundingClientRect();
+      if (!r) return;
+      const w = Math.max(minWidth, r.width);
+      // Anclar a la derecha si abrir a la izquierda se saldría del viewport
+      const overflowsRight = r.left + w > window.innerWidth - 8;
+      const anchorRight = align === "right" || overflowsRight;
+      setCoords({
+        top: r.bottom + 6,
+        ...(anchorRight ? { right: Math.max(8, window.innerWidth - r.right) } : { left: r.left }),
+        minWidth: w,
+      });
+    };
+    update();
+    const close = () => setOpen(false);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", update);
+    return () => { window.removeEventListener("scroll", close, true); window.removeEventListener("resize", update); };
+  }, [open, portal, align, minWidth]);
 
   const selected = options.find(o => o.value === value);
   const showPlaceholder = !selected;
@@ -138,13 +198,29 @@ function BeastSelect({
     </button>
   );
 
+  const menuItems = (
+    <>
+      {clearable && renderItem(placeholder, undefined, value === "", () => { onChange(""); setOpen(false); }, "__clear__")}
+      {options.map(o => renderItem(o.label, o.node, o.value === value, () => { onChange(o.value); setOpen(false); }, o.value))}
+    </>
+  );
+
+  const menuStyle: React.CSSProperties = {
+    background: "oklch(0.205 0.005 270)",
+    border: "1px solid oklch(1 0 0 / 0.07)",
+    borderRadius: 10,
+    boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6), 0 0 0 1px oklch(1 0 0 / 0.02) inset",
+    padding: 4,
+    maxHeight: 320, overflowY: "auto",
+  };
+
   return (
     <div ref={ref} className="relative" style={{ flexShrink: 0 }}>
       <button
         onClick={() => setOpen(v => !v)}
         className="flex items-center gap-2"
         style={{
-          height: 38, padding: "0 12px", borderRadius: 9, minWidth,
+          height: 38, padding: "0 12px", borderRadius: 9, minWidth, width: "100%",
           background: "oklch(0.16 0.005 270)",
           border: `1px solid ${open ? "oklch(0.55 0.20 295 / 0.55)" : "oklch(1 0 0 / 0.07)"}`,
           color: "oklch(0.97 0 0)", fontSize: 13,
@@ -157,22 +233,25 @@ function BeastSelect({
         </span>
         <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} style={{ color: "oklch(0.55 0 0)" }} />
       </button>
-      {open && (
+
+      {open && portal && coords && createPortal(
         <div
-          className="absolute z-50 top-[calc(100%+6px)] overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
-          style={{
-            [align]: 0,
-            minWidth: Math.max(minWidth, 200),
-            background: "oklch(0.205 0.005 270)",
-            border: "1px solid oklch(1 0 0 / 0.07)",
-            borderRadius: 10,
-            boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6), 0 0 0 1px oklch(1 0 0 / 0.02) inset",
-            padding: 4,
-            maxHeight: 320, overflowY: "auto",
-          } as React.CSSProperties}
+          ref={menuRef}
+          className="overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
+          style={{ position: "fixed", zIndex: 300, top: coords.top, left: coords.left, right: coords.right, minWidth: coords.minWidth, ...menuStyle }}
         >
-          {clearable && renderItem(placeholder, undefined, value === "", () => { onChange(""); setOpen(false); }, "__clear__")}
-          {options.map(o => renderItem(o.label, o.node, o.value === value, () => { onChange(o.value); setOpen(false); }, o.value))}
+          {menuItems}
+        </div>,
+        document.body,
+      )}
+
+      {open && !portal && (
+        <div
+          ref={menuRef}
+          className="absolute z-50 top-[calc(100%+6px)] overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
+          style={{ [align]: 0, minWidth: Math.max(minWidth, 200), ...menuStyle } as React.CSSProperties}
+        >
+          {menuItems}
         </div>
       )}
     </div>
@@ -195,6 +274,7 @@ export function StockZonaSection() {
   const [filterZona, setFilterZona]         = useState("todos");
   const [filterFamilia, setFilterFamilia]   = useState("");
   const [filterSubfamilia, setFilterSubfamilia] = useState("");
+  const [filterTipo, setFilterTipo]         = useState<ArticuloTipo>("");
   const [filterSearch, setFilterSearch]     = useState("");
   const [articuloFiltro, setArticuloFiltro] = useState<ArticuloFiltro>("nro");
   const [sortCol, setSortCol]               = useState("articulo");
@@ -209,9 +289,17 @@ export function StockZonaSection() {
 
   // Families tab
   const [families, setFamilies]             = useState<FamilyRow[]>([]);
-  const [localEdits, setLocalEdits]         = useState<Record<string, { familia: string; subfamilia: string }>>({});
+  const [localEdits, setLocalEdits]         = useState<Record<string, { familia: string; subfamilia: string; tipo: ArticuloTipo }>>({});
   const [savingArticulo, setSavingArticulo] = useState<string | null>(null);
   const [familiaSearch, setFamiliaSearch]   = useState("");
+  const [onlyUnclassified, setOnlyUnclassified] = useState(false);
+
+  // Bulk assignment
+  const [selectedArticulos, setSelectedArticulos] = useState<Set<string>>(new Set());
+  const [bulkFamilia, setBulkFamilia]       = useState("");
+  const [bulkSubfamilia, setBulkSubfamilia] = useState("");
+  const [bulkTipo, setBulkTipo]             = useState<ArticuloTipo>("");
+  const [applyingBulk, setApplyingBulk]     = useState(false);
 
   // ── Resize events ─────────────────────────────────────────────────────────
 
@@ -248,7 +336,7 @@ export function StockZonaSection() {
     setLocalEdits(prev => {
       const next = { ...prev };
       for (const f of families) {
-        if (!next[f.articulo]) next[f.articulo] = { familia: f.familia, subfamilia: f.subfamilia };
+        if (!next[f.articulo]) next[f.articulo] = { familia: f.familia, subfamilia: f.subfamilia, tipo: f.tipo };
       }
       return next;
     });
@@ -309,13 +397,14 @@ export function StockZonaSection() {
       const zonaOk       = filterZona === "todos"    || (r.byZona[filterZona] ?? 0) > 0;
       const familiaOk    = !filterFamilia            || (familyMap.get(r.articulo)?.familia ?? "") === filterFamilia;
       const subfamiliaOk = !filterSubfamilia         || (familyMap.get(r.articulo)?.subfamilia ?? "") === filterSubfamilia;
+      const tipoOk       = !filterTipo               || (familyMap.get(r.articulo)?.tipo ?? "") === filterTipo;
       const lo           = filterSearch.toLowerCase();
       const searchOk     = !filterSearch || (
         articuloFiltro === "nro"
           ? r.articulo.toLowerCase().includes(lo)
           : r.descArticulo.toLowerCase().includes(lo)
       );
-      return zonaOk && familiaOk && subfamiliaOk && searchOk;
+      return zonaOk && familiaOk && subfamiliaOk && tipoOk && searchOk;
     })
     .sort((a, b) => {
       if (sortCol === "total") {
@@ -330,16 +419,17 @@ export function StockZonaSection() {
       const va = a.byZona[sortCol] ?? 0;
       const vb = b.byZona[sortCol] ?? 0;
       return sortDir === "asc" ? va - vb : vb - va;
-    }), [pivotMap, familyMap, filterZona, filterFamilia, filterSubfamilia, filterSearch, articuloFiltro, sortCol, sortDir]);
+    }), [pivotMap, familyMap, filterZona, filterFamilia, filterSubfamilia, filterTipo, filterSearch, articuloFiltro, sortCol, sortDir]);
 
   const allArticles = useMemo(() => Array.from(pivotMap.values())
     .sort((a, b) => a.articulo.localeCompare(b.articulo, "es", { numeric: true })), [pivotMap]);
 
   const filteredFamiliaArticles = useMemo(() => allArticles.filter(a => {
+    if (onlyUnclassified && (familyMap.get(a.articulo)?.familia ?? "")) return false;
     if (!familiaSearch) return true;
     const lo = familiaSearch.toLowerCase();
     return a.articulo.toLowerCase().includes(lo) || a.descArticulo.toLowerCase().includes(lo);
-  }), [allArticles, familiaSearch]);
+  }), [allArticles, familiaSearch, onlyUnclassified, familyMap]);
 
   const subfamiliasForFamilia = (familia: string) =>
     [...new Set(families.filter(f => f.familia === familia).map(f => f.subfamilia).filter(Boolean))]
@@ -357,23 +447,105 @@ export function StockZonaSection() {
     return REQUIRED_COLS.map(c => ({ name: c, found: head.includes(c) }));
   }, [text]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Family save on blur ────────────────────────────────────────────────────
+  // ── Persist one article (familia / subfamilia / tipo) ───────────────────────
 
-  const handleFamilyBlur = async (articulo: string) => {
-    const local = localEdits[articulo] ?? { familia: "", subfamilia: "" };
+  const persistRow = async (articulo: string, next: { familia: string; subfamilia: string; tipo: ArticuloTipo }) => {
+    setLocalEdits(p => ({ ...p, [articulo]: next }));
     const saved = familyMap.get(articulo);
-    const savedFamilia    = saved?.familia   ?? "";
+    const savedFamilia    = saved?.familia    ?? "";
     const savedSubfamilia = saved?.subfamilia ?? "";
-    if (local.familia === savedFamilia && local.subfamilia === savedSubfamilia) return;
+    const savedTipo       = saved?.tipo       ?? "";
+    if (next.familia.trim() === savedFamilia && next.subfamilia.trim() === savedSubfamilia && next.tipo === savedTipo) return;
     setSavingArticulo(articulo);
-    if (!local.familia.trim()) {
+    const isEmpty = !next.familia.trim() && !next.subfamilia.trim() && !next.tipo;
+    if (isEmpty) {
       if (saved) await deleteFamily(articulo);
     } else {
-      const err = await upsertFamily({ articulo, familia: local.familia.trim(), subfamilia: local.subfamilia.trim() });
+      const err = await upsertFamily({ articulo, familia: next.familia.trim(), subfamilia: next.subfamilia.trim(), tipo: next.tipo });
       if (err) { toast.error(`Error al guardar: ${err}`); setSavingArticulo(null); return; }
     }
     await refreshFamilies();
     setSavingArticulo(null);
+  };
+
+  const handleFamilyBlur = (articulo: string) => {
+    const local = localEdits[articulo] ?? { familia: "", subfamilia: "", tipo: "" as ArticuloTipo };
+    return persistRow(articulo, local);
+  };
+
+  // ── Bulk assignment ─────────────────────────────────────────────────────────
+
+  const toggleSelect = (articulo: string) => {
+    setSelectedArticulos(prev => {
+      const next = new Set(prev);
+      if (next.has(articulo)) next.delete(articulo); else next.add(articulo);
+      return next;
+    });
+  };
+
+  const applyBulk = async () => {
+    const fam = bulkFamilia.trim();
+    const sub = bulkSubfamilia.trim();
+    if (!fam && !sub && !bulkTipo) { toast.error("Elegí al menos familia, subfamilia o tipo para aplicar."); return; }
+    setApplyingBulk(true);
+    const rows: FamilyRow[] = [...selectedArticulos].map(articulo => {
+      const saved = familyMap.get(articulo);
+      return {
+        articulo,
+        familia:    fam || saved?.familia || "",
+        subfamilia: sub || saved?.subfamilia || "",
+        tipo:       (bulkTipo || saved?.tipo || "") as ArticuloTipo,
+      };
+    }).filter(r => r.familia || r.subfamilia || r.tipo);
+    const err = await upsertFamiliesBulk(rows);
+    if (err) { toast.error(`Error al aplicar: ${err}`); setApplyingBulk(false); return; }
+    // Reflejar en el buffer local sin esperar el refresh
+    setLocalEdits(p => {
+      const next = { ...p };
+      for (const r of rows) next[r.articulo] = { familia: r.familia, subfamilia: r.subfamilia, tipo: r.tipo };
+      return next;
+    });
+    await refreshFamilies();
+    toast.success(`${rows.length} artículo${rows.length === 1 ? "" : "s"} actualizado${rows.length === 1 ? "" : "s"}`);
+    setSelectedArticulos(new Set());
+    setBulkFamilia(""); setBulkSubfamilia(""); setBulkTipo("");
+    setApplyingBulk(false);
+  };
+
+  const clearBulkSelection = async (deleteRows = false) => {
+    if (deleteRows && selectedArticulos.size > 0) {
+      setApplyingBulk(true);
+      const arts = [...selectedArticulos];
+      const err = await deleteFamiliesBulk(arts);
+      if (err) { toast.error(`Error al quitar: ${err}`); setApplyingBulk(false); return; }
+      setLocalEdits(p => {
+        const next = { ...p };
+        for (const a of arts) next[a] = { familia: "", subfamilia: "", tipo: "" };
+        return next;
+      });
+      await refreshFamilies();
+      toast.success(`${arts.length} asignación${arts.length === 1 ? "" : "es"} quitada${arts.length === 1 ? "" : "s"}`);
+      setApplyingBulk(false);
+    }
+    setSelectedArticulos(new Set());
+    setBulkFamilia(""); setBulkSubfamilia(""); setBulkTipo("");
+  };
+
+  const allVisibleSelected = useMemo(
+    () => filteredFamiliaArticles.length > 0 && filteredFamiliaArticles.every(a => selectedArticulos.has(a.articulo)),
+    [filteredFamiliaArticles, selectedArticulos],
+  );
+
+  const toggleSelectAll = () => {
+    setSelectedArticulos(prev => {
+      const next = new Set(prev);
+      if (filteredFamiliaArticles.length > 0 && filteredFamiliaArticles.every(a => prev.has(a.articulo))) {
+        for (const a of filteredFamiliaArticles) next.delete(a.articulo);
+      } else {
+        for (const a of filteredFamiliaArticles) next.add(a.articulo);
+      }
+      return next;
+    });
   };
 
   // ── Carga handlers ────────────────────────────────────────────────────────
@@ -592,6 +764,15 @@ export function StockZonaSection() {
                     clearable
                   />
                 )}
+
+                <BeastSelect
+                  options={TIPO_OPTIONS.map(t => ({ value: t.value, label: t.label, node: <TipoPill tipo={t.value} /> }))}
+                  value={filterTipo}
+                  onChange={v => setFilterTipo(v as ArticuloTipo)}
+                  placeholder="Servicio / Material"
+                  minWidth={170}
+                  clearable
+                />
 
                 {/* Search mode toggle */}
                 <div className="inline-flex p-[3px] rounded-[9px] bg-secondary border border-border/60">
@@ -978,8 +1159,8 @@ export function StockZonaSection() {
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 flex-1 max-w-sm h-9 px-3 rounded-lg bg-secondary border border-border">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2 flex-1 min-w-[200px] max-w-sm h-9 px-3 rounded-lg bg-secondary border border-border">
                   <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   <input
                     type="text"
@@ -994,11 +1175,100 @@ export function StockZonaSection() {
                     </button>
                   )}
                 </div>
+
+                <button
+                  onClick={() => setOnlyUnclassified(v => !v)}
+                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium transition-colors"
+                  style={{
+                    background: onlyUnclassified ? "#8B5CF6" : "hsl(var(--secondary))",
+                    color: onlyUnclassified ? "#fff" : "hsl(var(--muted-foreground))",
+                    border: `1px solid ${onlyUnclassified ? "transparent" : "hsl(var(--border))"}`,
+                    cursor: "pointer",
+                  }}
+                >
+                  <Tag className="w-3.5 h-3.5" />
+                  Sin clasificar
+                </button>
+
                 <p className="text-[12.5px] text-muted-foreground whitespace-nowrap">
                   {filteredFamiliaArticles.length} de {allArticles.length} artículos
                   {families.length > 0 && <> · <span className="text-accent">{families.length} asignados</span></>}
                 </p>
               </div>
+
+              {/* Barra de asignación masiva */}
+              {selectedArticulos.size > 0 && (
+                <div
+                  className="flex items-center gap-2.5 flex-wrap rounded-[12px] p-3"
+                  style={{ background: "oklch(0.27 0.04 295 / 0.35)", border: "1px solid oklch(0.55 0.20 295 / 0.45)" }}
+                >
+                  <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-foreground shrink-0">
+                    <span
+                      className="inline-flex items-center justify-center rounded-md"
+                      style={{ width: 22, height: 22, background: "#8B5CF6", color: "#fff", fontSize: 12, fontWeight: 700 }}
+                    >
+                      {selectedArticulos.size}
+                    </span>
+                    seleccionados
+                  </span>
+
+                  <input
+                    type="text"
+                    list="familias-list"
+                    value={bulkFamilia}
+                    onChange={e => setBulkFamilia(e.target.value)}
+                    placeholder="Familia…"
+                    className="h-9 px-3 rounded-lg bg-secondary border border-border text-[13px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent/40"
+                    style={{ minWidth: 150 }}
+                  />
+                  <input
+                    type="text"
+                    value={bulkSubfamilia}
+                    onChange={e => setBulkSubfamilia(e.target.value)}
+                    placeholder="Subfamilia…"
+                    className="h-9 px-3 rounded-lg bg-secondary border border-border text-[13px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent/40"
+                    style={{ minWidth: 150 }}
+                  />
+                  <BeastSelect
+                    options={TIPO_OPTIONS.map(t => ({ value: t.value, label: t.label, node: <TipoPill tipo={t.value} /> }))}
+                    value={bulkTipo}
+                    onChange={v => setBulkTipo(v as ArticuloTipo)}
+                    placeholder="Tipo…"
+                    minWidth={150}
+                    clearable
+                  />
+
+                  <button
+                    onClick={applyBulk}
+                    disabled={applyingBulk}
+                    className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg text-[13px] font-semibold transition-all disabled:opacity-50"
+                    style={{ background: "#8B5CF6", color: "#fff", border: "none", cursor: applyingBulk ? "wait" : "pointer" }}
+                  >
+                    {applyingBulk ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" strokeWidth={2.6} />}
+                    Aplicar
+                  </button>
+
+                  <div className="flex-1" />
+
+                  <button
+                    onClick={() => clearBulkSelection(true)}
+                    disabled={applyingBulk}
+                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium transition-colors disabled:opacity-50"
+                    style={{ background: "transparent", color: "#fca5a5", border: "1px solid oklch(0.5 0.15 25 / 0.4)", cursor: "pointer" }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Quitar asignación
+                  </button>
+                  <button
+                    onClick={() => clearBulkSelection(false)}
+                    disabled={applyingBulk}
+                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                    style={{ background: "transparent", border: "1px solid hsl(var(--border))", cursor: "pointer" }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              )}
 
               <datalist id="familias-list">
                 {familiasDisponibles.map(f => <option key={f} value={f} />)}
@@ -1009,18 +1279,35 @@ export function StockZonaSection() {
                   <table className="w-full text-sm" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
                     <thead>
                       <tr style={{ background: "hsl(var(--secondary) / 0.7)", borderBottom: "1px solid hsl(var(--border))" }}>
+                        <th style={{ padding: "14px 0 14px 14px", width: 44 }}>
+                          <button
+                            onClick={toggleSelectAll}
+                            title={allVisibleSelected ? "Deseleccionar todo" : "Seleccionar todo"}
+                            className="inline-flex items-center justify-center rounded-[5px] transition-colors"
+                            style={{
+                              width: 18, height: 18,
+                              background: allVisibleSelected ? "#8B5CF6" : "transparent",
+                              border: `1.5px solid ${allVisibleSelected ? "#8B5CF6" : "hsl(var(--border))"}`,
+                              color: "#fff", cursor: "pointer",
+                            }}
+                          >
+                            {allVisibleSelected && <Check className="w-3 h-3" strokeWidth={3} />}
+                          </button>
+                        </th>
                         <th style={{ padding: "14px 14px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 130 }}>Matrícula</th>
                         <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))" }}>Descripción</th>
                         <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160 }}>Familia</th>
                         <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160 }}>Subfamilia</th>
+                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160 }}>Tipo</th>
                         <th style={{ width: 32 }} />
                       </tr>
                     </thead>
                     <tbody>
                       {filteredFamiliaArticles.map((row, i) => {
-                        const edit    = localEdits[row.articulo] ?? { familia: "", subfamilia: "" };
+                        const edit    = localEdits[row.articulo] ?? { familia: "", subfamilia: "", tipo: "" as ArticuloTipo };
                         const isSaving   = savingArticulo === row.articulo;
                         const hasFamily  = !!(familyMap.get(row.articulo)?.familia);
+                        const isSelected = selectedArticulos.has(row.articulo);
                         const subfamiliasList = edit.familia ? subfamiliasForFamilia(edit.familia) : [];
                         const isLast = i === filteredFamiliaArticles.length - 1;
                         const bottomBorder = isLast ? {} : { borderBottom: cellBorder };
@@ -1028,10 +1315,24 @@ export function StockZonaSection() {
                         return (
                           <tr
                             key={row.articulo}
-                            style={{ opacity: hasFamily ? 1 : 0.6, transition: "opacity 0.15s" }}
-                            onMouseEnter={e => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.background = "hsl(var(--secondary) / 0.3)"; }}
-                            onMouseLeave={e => { e.currentTarget.style.opacity = hasFamily ? "1" : "0.6"; e.currentTarget.style.background = ""; }}
+                            style={{ opacity: hasFamily || isSelected ? 1 : 0.6, transition: "opacity 0.15s", background: isSelected ? "oklch(0.55 0.20 295 / 0.12)" : undefined }}
+                            onMouseEnter={e => { e.currentTarget.style.opacity = "1"; if (!isSelected) e.currentTarget.style.background = "hsl(var(--secondary) / 0.3)"; }}
+                            onMouseLeave={e => { e.currentTarget.style.opacity = hasFamily || isSelected ? "1" : "0.6"; e.currentTarget.style.background = isSelected ? "oklch(0.55 0.20 295 / 0.12)" : ""; }}
                           >
+                            <td style={{ ...bottomBorder, padding: "0 0 0 14px", textAlign: "center" }}>
+                              <button
+                                onClick={() => toggleSelect(row.articulo)}
+                                className="inline-flex items-center justify-center rounded-[5px] transition-colors"
+                                style={{
+                                  width: 18, height: 18,
+                                  background: isSelected ? "#8B5CF6" : "transparent",
+                                  border: `1.5px solid ${isSelected ? "#8B5CF6" : "hsl(var(--border))"}`,
+                                  color: "#fff", cursor: "pointer",
+                                }}
+                              >
+                                {isSelected && <Check className="w-3 h-3" strokeWidth={3} />}
+                              </button>
+                            </td>
                             <td style={{ ...bottomBorder, padding: "9px 14px", fontFamily: "ui-monospace, monospace", fontSize: 12.5, color: "#7ee2a8", whiteSpace: "nowrap" }}>{row.articulo}</td>
                             <td style={{ ...bottomBorder, padding: "9px 12px", color: "hsl(var(--foreground))", fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 280 }}>{row.descArticulo}</td>
                             <td style={{ ...bottomBorder, padding: "6px 8px" }}>
@@ -1048,7 +1349,7 @@ export function StockZonaSection() {
                                     type="text"
                                     list="familias-list"
                                     value={edit.familia}
-                                    onChange={e => setLocalEdits(p => ({ ...p, [row.articulo]: { ...p[row.articulo] ?? { subfamilia: "" }, familia: e.target.value } }))}
+                                    onChange={e => setLocalEdits(p => ({ ...p, [row.articulo]: { ...(p[row.articulo] ?? { familia: "", subfamilia: "", tipo: "" as ArticuloTipo }), familia: e.target.value } }))}
                                     onBlur={() => handleFamilyBlur(row.articulo)}
                                     placeholder="Sin familia"
                                     className="w-full h-8 px-2 rounded-md bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent/30 transition-all"
@@ -1062,11 +1363,24 @@ export function StockZonaSection() {
                                   type="text"
                                   list={`sub-${row.articulo}`}
                                   value={edit.subfamilia}
-                                  onChange={e => setLocalEdits(p => ({ ...p, [row.articulo]: { ...p[row.articulo] ?? { familia: "" }, subfamilia: e.target.value } }))}
+                                  onChange={e => setLocalEdits(p => ({ ...p, [row.articulo]: { ...(p[row.articulo] ?? { familia: "", subfamilia: "", tipo: "" as ArticuloTipo }), subfamilia: e.target.value } }))}
                                   onBlur={() => handleFamilyBlur(row.articulo)}
                                   placeholder="—"
                                   disabled={!edit.familia}
                                   className="w-full h-8 px-2 rounded-md bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent/30 transition-all disabled:opacity-30"
+                                />
+                              )}
+                            </td>
+                            <td style={{ ...bottomBorder, padding: "6px 8px" }}>
+                              {!isSaving && (
+                                <BeastSelect
+                                  options={TIPO_OPTIONS.map(t => ({ value: t.value, label: t.label, node: <TipoPill tipo={t.value} /> }))}
+                                  value={edit.tipo}
+                                  onChange={v => persistRow(row.articulo, { ...edit, tipo: v as ArticuloTipo })}
+                                  placeholder="—"
+                                  minWidth={140}
+                                  clearable
+                                  portal
                                 />
                               )}
                             </td>
@@ -1076,7 +1390,7 @@ export function StockZonaSection() {
                                   onClick={async () => {
                                     setSavingArticulo(row.articulo);
                                     await deleteFamily(row.articulo);
-                                    setLocalEdits(p => ({ ...p, [row.articulo]: { familia: "", subfamilia: "" } }));
+                                    setLocalEdits(p => ({ ...p, [row.articulo]: { familia: "", subfamilia: "", tipo: "" } }));
                                     await refreshFamilies();
                                     setSavingArticulo(null);
                                   }}
@@ -1095,7 +1409,7 @@ export function StockZonaSection() {
               </div>
 
               <p className="text-xs text-muted-foreground">
-                Los cambios se guardan automáticamente al salir del campo. Dejá Familia vacía para quitar la asignación.
+                Tildá varios artículos para asignar familia, subfamilia o tipo en lote. Los cambios individuales se guardan al salir del campo. Dejá Familia vacía para quitar la asignación.
               </p>
             </>
           )}
