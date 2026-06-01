@@ -4,8 +4,8 @@ export type ArticuloTipo = "" | "servicio" | "material";
 
 export interface FamilyRow {
   articulo:   string;
-  familia:    string | null;
-  subfamilia: string | null;
+  familia:    string;
+  subfamilia: string;
   tipo:       ArticuloTipo;
 }
 

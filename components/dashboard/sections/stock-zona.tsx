@@ -353,7 +353,7 @@ export function StockZonaSection() {
 
   // Families tab
   const [families, setFamilies]             = useState<FamilyRow[]>([]);
-  const [localEdits, setLocalEdits]         = useState<Record<string, { familia: string | null; subfamilia: string | null; tipo: ArticuloTipo }>>({});
+  const [localEdits, setLocalEdits]         = useState<Record<string, { familia: string; subfamilia: string; tipo: ArticuloTipo }>>({});
   const [savingArticulo, setSavingArticulo] = useState<string | null>(null);
   const [familiaSearch, setFamiliaSearch]   = useState("");
   const [onlyUnclassified, setOnlyUnclassified] = useState(false);
@@ -405,7 +405,7 @@ export function StockZonaSection() {
     setLocalEdits(prev => {
       const next = { ...prev };
       for (const f of families) {
-        if (!next[f.articulo]) next[f.articulo] = { familia: f.familia ?? "", subfamilia: f.subfamilia ?? "", tipo: f.tipo };
+        if (!next[f.articulo]) next[f.articulo] = { familia: f.familia, subfamilia: f.subfamilia, tipo: f.tipo };
       }
       return next;
     });
@@ -444,7 +444,8 @@ export function StockZonaSection() {
       .filter(Boolean)
   )].sort((a, b) => a.localeCompare(b, "es")), [families, filterFamilia]);
 
-  // Build pivot — solo se recalcula cuando cambian los uploads
+  // Build pivot — combina el stock cargado (uploads) con las matrículas
+  // clasificadas en Familias que aún no tienen stock (aparecen con Total 0).
   const pivotMap = useMemo(() => {
     const m = new Map<string, PivotRow>();
     for (const upload of uploads) {
@@ -458,8 +459,15 @@ export function StockZonaSection() {
         pivot.byZona[upload.zona] = (pivot.byZona[upload.zona] ?? 0) + qty;
       }
     }
+    // Matrículas clasificadas (servicio/material) sin stock cargado:
+    // se incluyen con descripción y UDM vacías para que sean visibles.
+    for (const f of families) {
+      if (!m.has(f.articulo)) {
+        m.set(f.articulo, { articulo: f.articulo, descArticulo: "", udmPrimaria: "", total: 0, byZona: {} });
+      }
+    }
     return m;
-  }, [uploads]);
+  }, [uploads, families]);
 
   const pivotRows = useMemo(() => Array.from(pivotMap.values())
     .filter(r => {
@@ -834,7 +842,7 @@ export function StockZonaSection() {
             <div className="flex items-center gap-2 text-sm text-muted-foreground py-16 justify-center">
               <Loader2 className="w-4 h-4 animate-spin" /> Cargando datos...
             </div>
-          ) : uploads.length === 0 ? (
+          ) : pivotMap.size === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground">
               <PackageOpen className="w-12 h-12 opacity-20" />
               <p className="text-sm">No hay datos cargados. Usá "Cargar datos" para importar.</p>
