@@ -2450,18 +2450,53 @@ function ItemModal({
         </div>
 
         {/* Body */}
+        <style>{`
+          .im-input {
+            width: 100%; height: 44px; padding: 0 13px; border-radius: 9px;
+            background: oklch(0.14 0.005 270); border: 1px solid oklch(1 0 0 / 0.08);
+            color: oklch(0.95 0 0); font-size: 15px; outline: none;
+            transition: border-color .15s, box-shadow .15s; box-sizing: border-box;
+          }
+          .im-input:focus {
+            border-color: oklch(0.55 0.15 155 / 0.7);
+            box-shadow: 0 0 0 3px oklch(0.55 0.15 155 / 0.12);
+          }
+          .im-input::placeholder { color: oklch(0.38 0 0); }
+          .im-input-sm {
+            width: 100%; height: 40px; padding: 0 12px; border-radius: 8px;
+            background: oklch(0.14 0.005 270); border: 1px solid oklch(1 0 0 / 0.08);
+            color: oklch(0.95 0 0); font-size: 15px; font-family: ui-monospace, monospace;
+            font-weight: 600; text-align: center; outline: none;
+            transition: border-color .15s, box-shadow .15s; box-sizing: border-box;
+          }
+          .im-input-sm:focus {
+            border-color: oklch(0.55 0.15 155 / 0.7);
+            box-shadow: 0 0 0 3px oklch(0.55 0.15 155 / 0.12);
+          }
+          .im-textarea {
+            width: 100%; padding: 10px 13px; border-radius: 9px;
+            background: oklch(0.14 0.005 270); border: 1px solid oklch(1 0 0 / 0.08);
+            color: oklch(0.95 0 0); font-size: 14px; resize: none; outline: none;
+            transition: border-color .15s, box-shadow .15s; box-sizing: border-box; line-height: 1.6;
+          }
+          .im-textarea:focus {
+            border-color: oklch(0.55 0.15 155 / 0.7);
+            box-shadow: 0 0 0 3px oklch(0.55 0.15 155 / 0.12);
+          }
+          .im-textarea::placeholder { color: oklch(0.38 0 0); }
+        `}</style>
         <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 18 }}>
 
-          {/* Nº ítem + Matrícula */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 14 }}>
-            <div>
-              <label style={S}>Nº de ítem</label>
-              <input type="number" min={1} value={numero} onChange={(e) => setNumero(e.target.value)} className="ti-input" />
-            </div>
+          {/* Matrícula (protagonista) + Nº ítem (compacto) */}
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 80px", gap: 12, alignItems: "end" }}>
             <div>
               <label style={S}>Matrícula</label>
-              <input type="text" value={matricula} onChange={(e) => setMatricula(e.target.value)} placeholder="Ej: 12345" className="ti-input" autoFocus={mode === "create"} />
-              <div style={{ marginTop: 5, minHeight: 16 }}>{lookupBadge()}</div>
+              <input type="text" value={matricula} onChange={(e) => setMatricula(e.target.value)} placeholder="Ej: 12345" className="im-input" autoFocus={mode === "create"} />
+              <div style={{ marginTop: 5, minHeight: 18 }}>{lookupBadge()}</div>
+            </div>
+            <div style={{ paddingBottom: 23 }}>
+              <label style={{ ...S, textAlign: "center", display: "block" }}>Nº ítem</label>
+              <input type="number" min={1} value={numero} onChange={(e) => setNumero(e.target.value)} className="im-input-sm" />
             </div>
           </div>
 
@@ -2476,16 +2511,12 @@ function ItemModal({
               onChange={(e) => setDescripcion(e.target.value)}
               placeholder="Se completa automáticamente al ingresar la matrícula"
               rows={3}
-              style={{ width: "100%", padding: "10px 13px", borderRadius: 9, background: "oklch(0.16 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", color: "oklch(0.92 0 0)", fontSize: 14, resize: "none", outline: "none", boxSizing: "border-box", lineHeight: 1.55 }}
+              className="im-textarea"
             />
           </div>
 
-          {/* Cantidad + Precio SIC */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 14 }}>
-            <div>
-              <label style={S}>Cantidad</label>
-              <input type="number" step="0.01" min="0" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="ti-input" />
-            </div>
+          {/* Precio SIC (protagonista) + Cantidad (compacto) */}
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 80px", gap: 12, alignItems: "end" }}>
             <div>
               <label style={S}>Precio SIC</label>
               <div style={{ display: "flex", gap: 8 }}>
@@ -2493,7 +2524,7 @@ function ItemModal({
                   type="number" step="0.01" min="0" value={precio}
                   onChange={(e) => setPrecio(e.target.value)}
                   placeholder="Ej: 1500000"
-                  className="ti-input"
+                  className="im-input"
                   style={{ flex: 1, minWidth: 0 }}
                 />
                 {/* Custom currency dropdown */}
@@ -2520,6 +2551,10 @@ function ItemModal({
                   )}
                 </div>
               </div>
+            </div>
+            <div style={{ paddingBottom: 0 }}>
+              <label style={{ ...S, textAlign: "center", display: "block" }}>Cantidad</label>
+              <input type="number" step="0.01" min="0" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="im-input-sm" />
             </div>
           </div>
         </div>
