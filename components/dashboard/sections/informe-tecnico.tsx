@@ -1965,6 +1965,41 @@ function OferentesTab({ licitacionId }: { licitacionId: string }) {
   );
 }
 
+function DivisaPicker({ value, onChange, size = "md" }: { value: Divisa; onChange: (d: Divisa) => void; size?: "sm" | "md" }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const h = size === "sm" ? 36 : 44;
+  const fs = size === "sm" ? 13 : 14;
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
+      <button type="button" onClick={() => setOpen((o) => !o)}
+        style={{ height: h, padding: "0 10px", borderRadius: 8, background: "oklch(0.16 0.005 270)", border: `1px solid ${open ? "oklch(0.55 0.15 155 / 0.6)" : "oklch(1 0 0 / 0.09)"}`, color: value === "USD" ? "#86efac" : "oklch(0.82 0 0)", fontSize: fs, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, minWidth: 68, transition: "border-color .15s" }}>
+        {value}
+        <ChevronDown className="w-3 h-3" style={{ opacity: 0.55, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 5px)", right: 0, zIndex: 200, background: "oklch(0.20 0.005 270)", border: "1px solid oklch(1 0 0 / 0.12)", borderRadius: 9, overflow: "hidden", boxShadow: "0 8px 24px -4px oklch(0 0 0 / 0.55)", minWidth: 68 }}>
+          {(["ARS", "USD"] as Divisa[]).map((d) => (
+            <button key={d} type="button"
+              onClick={() => { onChange(d); setOpen(false); }}
+              style={{ display: "block", width: "100%", padding: "9px 13px", background: d === value ? "oklch(0.27 0.005 270)" : "transparent", color: d === "USD" ? "#86efac" : "oklch(0.85 0 0)", fontSize: fs, fontWeight: 600, textAlign: "left", border: "none", cursor: "pointer" }}>
+              {d}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Tab: Ofertas ─────────────────────────────────────────────────────
 
 function OfertasTab({
@@ -2189,35 +2224,15 @@ function OfertasTab({
                             className="oferta-price-input w-full min-w-0 h-9 px-2.5 rounded border text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-ring/20"
                             style={{ background: "oklch(0.16 0.005 270)", borderColor: "oklch(1 0 0 / 0.09)", color: "oklch(0.92 0 0)", fontSize: 14.5 }}
                           />
-                          <select
-                            value={cell.divisa}
-                            onChange={(e) => {
-                              const divisa = e.target.value as Divisa;
+                          <DivisaPicker size="sm" value={cell.divisa} onChange={(divisa) => {
                               setCell(item.id, of.id, { divisa });
                               const precioStr = cell.precio.trim();
                               if (precioStr) {
                                 const n = Number(precioStr.replace(",", "."));
-                                if (Number.isFinite(n) && n >= 0) {
-                                  upsertOferta({
-                                    oferente_id: of.id,
-                                    item_id: item.id,
-                                    precio_unitario: n,
-                                    divisa,
-                                  }).catch(console.error);
-                                }
+                                if (Number.isFinite(n) && n >= 0)
+                                  upsertOferta({ oferente_id: of.id, item_id: item.id, precio_unitario: n, divisa }).catch(console.error);
                               }
-                            }}
-                            style={{
-                              height: 36, padding: "0 8px", borderRadius: 8, flexShrink: 0,
-                              background: "oklch(0.20 0.005 270)",
-                              border: "1px solid oklch(1 0 0 / 0.09)",
-                              color: "oklch(0.80 0 0)", fontSize: 13.5,
-                              cursor: "pointer", outline: "none",
-                            }}
-                          >
-                            <option value="ARS">ARS</option>
-                            <option value="USD">USD</option>
-                          </select>
+                            }} />
                           {isSaving && (
                             <span className="absolute -top-1.5 -right-1.5">
                               <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
@@ -2378,7 +2393,6 @@ function ItemModal({
   const [cantidad, setCantidad]       = useState(initialCantidad.toString());
   const [precio, setPrecio]           = useState(initialPrecio?.toString() ?? "");
   const [divisa, setDivisa]           = useState<Divisa>(initialDivisa);
-  const [divisaOpen, setDivisaOpen]   = useState(false);
   const [saving, setSaving]           = useState(false);
   const [lookupStatus, setLookupStatus] = useState<LookupStatus>("idle");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2527,29 +2541,7 @@ function ItemModal({
                   className="im-input"
                   style={{ flex: 1, minWidth: 0 }}
                 />
-                {/* Custom currency dropdown */}
-                <div style={{ position: "relative", flexShrink: 0 }}>
-                  <button
-                    type="button"
-                    onClick={() => setDivisaOpen((o) => !o)}
-                    style={{ height: 44, padding: "0 12px", borderRadius: 9, background: "oklch(0.16 0.005 270)", border: `1px solid ${divisaOpen ? "oklch(0.55 0.15 155 / 0.6)" : "oklch(1 0 0 / 0.07)"}`, color: divisa === "USD" ? "#86efac" : "oklch(0.85 0 0)", fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, minWidth: 72 }}
-                  >
-                    {divisa}
-                    <ChevronDown className="w-3.5 h-3.5" style={{ opacity: 0.6, transform: divisaOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
-                  </button>
-                  {divisaOpen && (
-                    <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100, background: "oklch(0.20 0.005 270)", border: "1px solid oklch(1 0 0 / 0.12)", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 24px -4px oklch(0 0 0 / 0.5)", minWidth: 72 }}>
-                      {(["ARS", "USD"] as Divisa[]).map((d) => (
-                        <button key={d} type="button"
-                          onClick={() => { setDivisa(d); setDivisaOpen(false); }}
-                          style={{ display: "block", width: "100%", padding: "10px 14px", background: d === divisa ? "oklch(0.27 0.005 270)" : "transparent", color: d === "USD" ? "#86efac" : "oklch(0.85 0 0)", fontSize: 14, fontWeight: 600, textAlign: "left", border: "none", cursor: "pointer" }}
-                        >
-                          {d}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <DivisaPicker value={divisa} onChange={setDivisa} />
               </div>
             </div>
             <div style={{ paddingBottom: 0 }}>
