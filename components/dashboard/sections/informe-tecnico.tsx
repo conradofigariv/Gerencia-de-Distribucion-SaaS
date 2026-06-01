@@ -2423,79 +2423,82 @@ function ItemModal({
     return null;
   };
 
+  const S: React.CSSProperties = {
+    display: "block", fontSize: 12, fontWeight: 600, color: "oklch(0.50 0 0)",
+    textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 7,
+  };
+
   return (
-    <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <Card className="w-full max-w-lg">
-        <CardHeader>
-          <div className="flex items-start justify-between gap-3">
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, background: "oklch(0 0 0 / 0.65)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ width: "100%", maxWidth: 520, background: "oklch(0.18 0.005 270)", border: "1px solid oklch(1 0 0 / 0.09)", borderRadius: 16, boxShadow: "0 24px 64px -12px oklch(0 0 0 / 0.7)", overflow: "hidden" }}>
+
+        {/* Header */}
+        <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid oklch(1 0 0 / 0.07)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "oklch(0.97 0 0)" }}>
+              {mode === "create" ? "Nuevo ítem" : "Editar ítem"}
+            </div>
+            <div style={{ fontSize: 13, color: "oklch(0.52 0 0)", marginTop: 3 }}>
+              {renglonNumero ? <><span style={{ color: "#86efac", fontFamily: "ui-monospace, monospace", fontWeight: 600 }}>Renglón {renglonNumero}</span> — </> : ""}
+              Ingresá la matrícula para autocompletar la descripción.
+            </div>
+          </div>
+          <button onClick={onClose} style={{ color: "oklch(0.45 0 0)", background: "none", border: "none", cursor: "pointer", padding: 4, borderRadius: 6, lineHeight: 1 }}>
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 18 }}>
+
+          {/* Nº ítem + Matrícula */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 14 }}>
             <div>
-              <CardTitle>{mode === "create" ? "Nuevo ítem" : "Editar ítem"}</CardTitle>
-              <CardDescription>
-                {renglonNumero ? `Renglón ${renglonNumero}. ` : ""}La descripción se completa automáticamente desde el catálogo de matrículas.
-              </CardDescription>
+              <label style={S}>Nº de ítem</label>
+              <input type="number" min={1} value={numero} onChange={(e) => setNumero(e.target.value)} className="ti-input" />
             </div>
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-xs text-muted-foreground">Número de ítem</span>
-              <input type="number" min={1} value={numero} onChange={(e) => setNumero(e.target.value)} className="mt-1 ti-input" />
-            </label>
-            <div className="block">
-              <span className="text-xs text-muted-foreground">Matrícula</span>
-              <input
-                type="text"
-                value={matricula}
-                onChange={(e) => setMatricula(e.target.value)}
-                placeholder="Ej: 12345"
-                className="mt-1 ti-input"
-                autoFocus={mode === "create"}
-              />
-              <div className="mt-1 min-h-[1rem]">{lookupBadge()}</div>
+            <div>
+              <label style={S}>Matrícula</label>
+              <input type="text" value={matricula} onChange={(e) => setMatricula(e.target.value)} placeholder="Ej: 12345" className="ti-input" autoFocus={mode === "create"} />
+              <div style={{ marginTop: 5, minHeight: 16 }}>{lookupBadge()}</div>
             </div>
           </div>
-          <label className="block">
-            <span className="text-xs text-muted-foreground">
+
+          {/* Descripción */}
+          <div>
+            <label style={S}>
               Descripción
-              {lookupStatus === "found" && <span className="ml-1 text-muted-foreground/60">(podés editarla)</span>}
-            </span>
+              {lookupStatus === "found" && <span style={{ fontSize: 11, color: "oklch(0.48 0 0)", fontWeight: 400, marginLeft: 6 }}>(podés editarla)</span>}
+            </label>
             <textarea
               value={descripcion}
               onChange={(e) => setDescripcion(e.target.value)}
               placeholder="Se completa automáticamente al ingresar la matrícula"
-              rows={2}
-              className="mt-1 w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none"
+              rows={3}
+              style={{ width: "100%", padding: "10px 13px", borderRadius: 9, background: "oklch(0.16 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", color: "oklch(0.92 0 0)", fontSize: 14, resize: "none", outline: "none", boxSizing: "border-box", lineHeight: 1.55 }}
             />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-xs text-muted-foreground">Cantidad</span>
-              <input type="number" step="0.01" min="0" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="mt-1 ti-input oferta-price-input" />
-            </label>
-            <div className="block">
-              <span className="text-xs text-muted-foreground">Precio SIC</span>
-              <div className="mt-1 flex gap-1.5">
+          </div>
+
+          {/* Cantidad + Precio SIC */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 14 }}>
+            <div>
+              <label style={S}>Cantidad</label>
+              <input type="number" step="0.01" min="0" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="ti-input" />
+            </div>
+            <div>
+              <label style={S}>Precio SIC</label>
+              <div style={{ display: "flex", gap: 8 }}>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={precio}
+                  type="number" step="0.01" min="0" value={precio}
                   onChange={(e) => setPrecio(e.target.value)}
                   placeholder="Ej: 1500000"
-                  className="ti-input oferta-price-input flex-1 min-w-0"
+                  className="ti-input"
+                  style={{ flex: 1, minWidth: 0 }}
                 />
                 <select
                   value={divisa}
                   onChange={(e) => setDivisa(e.target.value as Divisa)}
-                  style={{
-                    height: 40, padding: "0 8px", borderRadius: 9, flexShrink: 0,
-                    background: "oklch(0.20 0.005 270)",
-                    border: "1px solid oklch(1 0 0 / 0.07)",
-                    color: "oklch(0.80 0 0)", fontSize: 12.5,
-                    cursor: "pointer", outline: "none",
-                  }}
+                  style={{ height: 44, padding: "0 12px", borderRadius: 9, flexShrink: 0, background: "oklch(0.16 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", color: divisa === "USD" ? "#86efac" : "oklch(0.80 0 0)", fontSize: 14, fontWeight: 600, cursor: "pointer", outline: "none" }}
                 >
                   <option value="ARS">ARS</option>
                   <option value="USD">USD</option>
@@ -2503,19 +2506,21 @@ function ItemModal({
               </div>
             </div>
           </div>
-          <style>{`
-            .oferta-price-input::-webkit-inner-spin-button,
-            .oferta-price-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-            .oferta-price-input { -moz-appearance: textfield; }
-          `}</style>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" onClick={onClose} disabled={saving}>Cancelar</Button>
-            <Button onClick={handle} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (mode === "create" ? "Agregar" : "Guardar")}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "14px 24px 20px", borderTop: "1px solid oklch(1 0 0 / 0.07)", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} disabled={saving}
+            style={{ padding: "10px 20px", borderRadius: 9, border: "1px solid oklch(1 0 0 / 0.10)", background: "transparent", color: "oklch(0.65 0 0)", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
+            Cancelar
+          </button>
+          <button onClick={handle} disabled={saving}
+            style={{ padding: "10px 24px", borderRadius: 9, border: "none", background: saving ? "oklch(0.35 0.005 270)" : "#86efac", color: saving ? "oklch(0.60 0 0)" : "oklch(0.12 0.02 155)", fontSize: 14, fontWeight: 700, cursor: saving ? "wait" : "pointer", display: "flex", alignItems: "center", gap: 7 }}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            {mode === "create" ? "Agregar" : "Guardar"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
