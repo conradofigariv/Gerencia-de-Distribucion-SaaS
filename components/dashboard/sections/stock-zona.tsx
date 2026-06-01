@@ -353,7 +353,7 @@ export function StockZonaSection() {
 
   // Families tab
   const [families, setFamilies]             = useState<FamilyRow[]>([]);
-  const [localEdits, setLocalEdits]         = useState<Record<string, { familia: string; subfamilia: string; tipo: ArticuloTipo }>>({});
+  const [localEdits, setLocalEdits]         = useState<Record<string, { familia: string | null; subfamilia: string | null; tipo: ArticuloTipo }>>({});
   const [savingArticulo, setSavingArticulo] = useState<string | null>(null);
   const [familiaSearch, setFamiliaSearch]   = useState("");
   const [onlyUnclassified, setOnlyUnclassified] = useState(false);
@@ -405,7 +405,7 @@ export function StockZonaSection() {
     setLocalEdits(prev => {
       const next = { ...prev };
       for (const f of families) {
-        if (!next[f.articulo]) next[f.articulo] = { familia: f.familia, subfamilia: f.subfamilia, tipo: f.tipo };
+        if (!next[f.articulo]) next[f.articulo] = { familia: f.familia ?? "", subfamilia: f.subfamilia ?? "", tipo: f.tipo };
       }
       return next;
     });

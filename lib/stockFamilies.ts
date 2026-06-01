@@ -4,8 +4,8 @@ export type ArticuloTipo = "" | "servicio" | "material";
 
 export interface FamilyRow {
   articulo:   string;
-  familia:    string;
-  subfamilia: string;
+  familia:    string | null;
+  subfamilia: string | null;
   tipo:       ArticuloTipo;
 }
 
@@ -29,8 +29,8 @@ export async function upsertFamily(row: FamilyRow): Promise<string | null> {
     .upsert(
       {
         articulo:   row.articulo,
-        familia:    row.familia    || null,
-        subfamilia: row.subfamilia || null,
+        familia:    row.familia    ?? "",
+        subfamilia: row.subfamilia ?? "",
         tipo:       row.tipo       || null,
       },
       { onConflict: "articulo" }
@@ -46,8 +46,8 @@ export async function upsertFamiliesBulk(rows: FamilyRow[]): Promise<string | nu
     .upsert(
       rows.map(r => ({
         articulo:   r.articulo,
-        familia:    r.familia    || null,
-        subfamilia: r.subfamilia || null,
+        familia:    r.familia    ?? "",
+        subfamilia: r.subfamilia ?? "",
         tipo:       r.tipo       || null,
       })),
       { onConflict: "articulo" }
