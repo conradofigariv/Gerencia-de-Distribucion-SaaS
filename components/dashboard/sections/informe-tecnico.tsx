@@ -573,11 +573,13 @@ function DatosGeneralesTab({
     if (!fdOpFecha) { toast.error("Ingresá primero la Fecha de la OP"); return; }
     setFetchingOp(true);
     try {
-      // Usar el día anterior a la fecha de la OP
       const d = new Date(fdOpFecha + "T12:00:00");
       d.setDate(d.getDate() - 1);
       const prevDay = d.toISOString().slice(0, 10);
-      const v = await fetchDolarBCRA(prevDay);
+      const [v] = await Promise.all([
+        fetchDolarBCRA(prevDay),
+        new Promise<void>((r) => setTimeout(r, 1500)),
+      ]);
       if (v !== null) { setFdOpValor(v.toString()); toast.success(`Dólar OP: $${v}`); }
       else toast.error("No se encontró cotización para esa fecha");
     } catch { toast.error("Error al consultar el BCRA"); }
@@ -643,7 +645,7 @@ function DatosGeneralesTab({
             <input type="date" value={fdSicFecha} onChange={(e) => setFdSicFecha(e.target.value)} className="ti-input" />
           </FormField>
           <FormField label="Dólar de la SIC (ARS por USD)">
-            <input type="number" step="0.01" inputMode="decimal" value={fdSicValor} onChange={(e) => setFdSicValor(e.target.value)} placeholder="Ej: 1399.5" className="ti-input oferta-price-input" />
+            <input type="number" step="0.01" inputMode="decimal" value={fdSicValor} onChange={(e) => setFdSicValor(e.target.value)} placeholder="Ej: 1399.5" className="ti-input" style={{ appearance: "textfield", MozAppearance: "textfield" } as React.CSSProperties} />
           </FormField>
 
           <FormField label="Fecha de la OP">
@@ -651,7 +653,7 @@ function DatosGeneralesTab({
           </FormField>
           <FormField label="Dólar de la OP (ARS por USD)">
             <div style={{ display: "flex", gap: 8 }}>
-              <input type="number" step="0.01" inputMode="decimal" value={fdOpValor} onChange={(e) => setFdOpValor(e.target.value)} placeholder="Ej: 1398" className="ti-input oferta-price-input" style={{ flex: 1 }} />
+              <input type="number" step="0.01" inputMode="decimal" value={fdOpValor} onChange={(e) => setFdOpValor(e.target.value)} placeholder="Ej: 1398" className="ti-input" style={{ flex: 1, appearance: "textfield", MozAppearance: "textfield" } as React.CSSProperties} />
               <button onClick={handleFetchOp} disabled={fetchingOp || !fdOpFecha} title="Buscar cotización BCRA para la fecha de la OP"
                 style={{ height: 44, padding: "0 14px", borderRadius: 9, border: "1px solid oklch(1 0 0 / 0.10)", background: "oklch(0.20 0.005 270)", color: fetchingOp ? "oklch(0.50 0 0)" : "#86efac", cursor: fetchingOp || !fdOpFecha ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5, opacity: !fdOpFecha ? 0.45 : 1 }}>
                 {fetchingOp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
@@ -668,7 +670,7 @@ function DatosGeneralesTab({
       >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <FormField label="Umbral económico (%)">
-            <input type="number" step="0.1" inputMode="decimal" value={umbral} onChange={(e) => setUmbral(e.target.value)} className="ti-input oferta-price-input" />
+            <input type="number" step="0.1" inputMode="decimal" value={umbral} onChange={(e) => setUmbral(e.target.value)} className="ti-input" style={{ appearance: "textfield", MozAppearance: "textfield" } as React.CSSProperties} />
           </FormField>
         </div>
       </FormSection>
