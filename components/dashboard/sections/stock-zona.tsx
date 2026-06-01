@@ -282,7 +282,7 @@ export function StockZonaSection() {
   const [selectedRow, setSelectedRow]       = useState<string | null>(null);
 
   // Column resize & zone collapse
-  const [colWidths, setColWidths] = useState({ articulo: 140, descArticulo: 280, udmPrimaria: 84, total: 100 });
+  const [colWidths, setColWidths] = useState({ articulo: 140, descArticulo: 280, udmPrimaria: 84, tipo: 130, total: 100 });
   const [zoneWidth, setZoneWidth] = useState(120);
   const [zonesExpanded, setZonesExpanded] = useState(true);
   const resizingRef = useRef<{ col: string; startX: number; startWidth: number } | null>(null);
@@ -346,7 +346,7 @@ export function StockZonaSection() {
 
   const handleSort = (col: string) => {
     if (col === sortCol) setSortDir(d => d === "asc" ? "desc" : "asc");
-    else { setSortCol(col); setSortDir(col === "articulo" || col === "descArticulo" || col === "udmPrimaria" ? "asc" : "desc"); }
+    else { setSortCol(col); setSortDir(col === "articulo" || col === "descArticulo" || col === "udmPrimaria" || col === "tipo" ? "asc" : "desc"); }
   };
 
   // ── Derived ───────────────────────────────────────────────────────────────
@@ -409,6 +409,12 @@ export function StockZonaSection() {
     .sort((a, b) => {
       if (sortCol === "total") {
         return sortDir === "asc" ? a.total - b.total : b.total - a.total;
+      }
+      if (sortCol === "tipo") {
+        const va = familyMap.get(a.articulo)?.tipo ?? "";
+        const vb = familyMap.get(b.articulo)?.tipo ?? "";
+        const cmp = va.localeCompare(vb, "es");
+        return sortDir === "asc" ? cmp : -cmp;
       }
       if (sortCol === "articulo" || sortCol === "descArticulo" || sortCol === "udmPrimaria") {
         const va = a[sortCol as keyof Pick<PivotRow, "articulo" | "descArticulo" | "udmPrimaria">];
@@ -595,13 +601,14 @@ export function StockZonaSection() {
 
   const TOGGLE_W = zonesExpanded ? 36 : 96;
   const tableWidth =
-    colWidths.articulo + colWidths.descArticulo + colWidths.udmPrimaria + colWidths.total +
+    colWidths.articulo + colWidths.descArticulo + colWidths.udmPrimaria + colWidths.tipo + colWidths.total +
     TOGGLE_W + (zonesExpanded ? zonas.length * zoneWidth : 0);
 
   const fixedCols = [
     { col: "articulo",     label: "Matrícula",   align: "left"  as const, w: colWidths.articulo     },
     { col: "descArticulo", label: "Descripción", align: "left"  as const, w: colWidths.descArticulo },
     { col: "udmPrimaria",  label: "UDM",         align: "left"  as const, w: colWidths.udmPrimaria  },
+    { col: "tipo",         label: "Tipo",        align: "left"  as const, w: colWidths.tipo         },
     { col: "total",        label: "Total",       align: "right" as const, w: colWidths.total        },
   ];
 
@@ -942,6 +949,14 @@ export function StockZonaSection() {
                               </td>
                               <td style={{ ...bottomBorder, padding: "10px 12px", color: "hsl(var(--muted-foreground) / 0.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 {row.udmPrimaria}
+                              </td>
+                              <td style={{ ...bottomBorder, padding: "10px 12px", whiteSpace: "nowrap" }}>
+                                {(() => {
+                                  const tipo = familyMap.get(row.articulo)?.tipo ?? "";
+                                  return tipo
+                                    ? <TipoPill tipo={tipo} />
+                                    : <span style={{ opacity: 0.25, color: "hsl(var(--muted-foreground))" }}>—</span>;
+                                })()}
                               </td>
                               <td style={{ ...bottomBorder, padding: "10px 12px", textAlign: "right", fontWeight: 600, color: "hsl(var(--foreground))", fontVariantNumeric: "tabular-nums" }}>
                                 {row.total.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
