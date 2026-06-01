@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { createPortal } from "react-dom";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Trash2, Loader2, Search, X, PackageOpen, RefreshCw,
   ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight,
@@ -506,6 +507,23 @@ export function StockZonaSection() {
     [...new Set(families.filter(f => f.familia === familia).map(f => f.subfamilia).filter(Boolean))]
       .sort((a, b) => a.localeCompare(b, "es"));
 
+  // ── Virtualización de tablas (rinde solo las filas visibles) ────────────────
+  const resumenScrollRef  = useRef<HTMLDivElement>(null);
+  const familiasScrollRef = useRef<HTMLDivElement>(null);
+
+  const resumenVirtualizer = useVirtualizer({
+    count: pivotRows.length,
+    getScrollElement: () => resumenScrollRef.current,
+    estimateSize: () => 41,
+    overscan: 14,
+  });
+  const familiasVirtualizer = useVirtualizer({
+    count: filteredFamiliaArticles.length,
+    getScrollElement: () => familiasScrollRef.current,
+    estimateSize: () => 46,
+    overscan: 14,
+  });
+
   // Column detection for Cargar tab
   const REQUIRED_COLS = Object.values(COL_MAP) as string[];
   const textLines = text.split("\n").filter(l => l.trim());
@@ -897,7 +915,7 @@ export function StockZonaSection() {
 
               {/* Pivot table */}
               <div className="rounded-[14px] overflow-hidden" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}>
-                <div className="overflow-x-auto">
+                <div ref={resumenScrollRef} className="overflow-auto" style={{ maxHeight: "70vh" }}>
                   <table
                     style={zonesExpanded
                       ? { tableLayout: "fixed", width: "100%", minWidth: tableWidth, borderCollapse: "separate", borderSpacing: 0, fontSize: 13.5 }
@@ -909,7 +927,7 @@ export function StockZonaSection() {
                       {zonesExpanded && zonas.map(z => <col key={z} style={{ width: zoneWidth }} />)}
                     </colgroup>
                     <thead>
-                      <tr style={{ background: "hsl(var(--secondary) / 0.7)" }}>
+                      <tr>
                         {fixedCols.map(({ col, label, align, w }) => {
                           const active = sortCol === col;
                           const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
@@ -929,7 +947,10 @@ export function StockZonaSection() {
                                 color: active ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
                                 cursor: "pointer",
                                 userSelect: "none",
-                                position: "relative",
+                                position: "sticky",
+                                top: 0,
+                                zIndex: 2,
+                                background: "hsl(var(--secondary))",
                               }}
                             >
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 5, justifyContent: align === "right" ? "flex-end" : "flex-start" }}>
@@ -950,7 +971,10 @@ export function StockZonaSection() {
                             cursor: "pointer",
                             userSelect: "none",
                             color: "hsl(var(--muted-foreground))",
-                            position: "relative",
+                            position: "sticky",
+                            top: 0,
+                            zIndex: 2,
+                            background: "hsl(var(--secondary))",
                           }}
                         >
                           <span className="inline-flex items-center gap-1 whitespace-nowrap">
@@ -974,8 +998,10 @@ export function StockZonaSection() {
                                 cursor: "pointer",
                                 userSelect: "none",
                                 textAlign: "center",
-                                background: active ? "hsl(var(--secondary) / 0.8)" : undefined,
-                                position: "relative",
+                                position: "sticky",
+                                top: 0,
+                                zIndex: 2,
+                                background: "hsl(var(--secondary))",
                               }}
                             >
                               <span className="inline-flex items-center justify-center gap-1.5">
@@ -998,55 +1024,67 @@ export function StockZonaSection() {
                             No hay registros que coincidan con los filtros
                           </td>
                         </tr>
-                      ) : (
-                        pivotRows.map((row, i) => {
-                          const isSelected = selectedRow === row.articulo;
-                          const isLast = i === pivotRows.length - 1;
-                          const bottomBorder = isLast ? {} : { borderBottom: cellBorder };
-                          return (
-                            <tr
-                              key={row.articulo}
-                              onClick={() => setSelectedRow(isSelected ? null : row.articulo)}
-                              style={{ cursor: "pointer", background: isSelected ? "oklch(0.55 0.20 295 / 0.15)" : undefined, transition: "background 0.1s" }}
-                              onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "hsl(var(--secondary) / 0.35)"; }}
-                              onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = ""; }}
-                            >
-                              <td style={{ ...bottomBorder, padding: "10px 12px 10px 14px", fontFamily: "ui-monospace, monospace", fontSize: 12.5, color: "#7ee2a8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {row.articulo}
-                              </td>
-                              <td style={{ ...bottomBorder, padding: "10px 12px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {row.descArticulo}
-                              </td>
-                              <td style={{ ...bottomBorder, padding: "10px 12px", color: "hsl(var(--muted-foreground) / 0.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {row.udmPrimaria}
-                              </td>
-                              <td style={{ ...bottomBorder, padding: "10px 12px", whiteSpace: "nowrap" }}>
-                                {(() => {
-                                  const tipo = tipoOf(row.articulo);
-                                  return tipo
-                                    ? <TipoPill tipo={tipo} />
-                                    : <span style={{ opacity: 0.25, color: "hsl(var(--muted-foreground))" }}>—</span>;
-                                })()}
-                              </td>
-                              <td style={{ ...bottomBorder, padding: "10px 12px", textAlign: "right", fontWeight: 600, color: "hsl(var(--foreground))", fontVariantNumeric: "tabular-nums" }}>
-                                {row.total.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
-                              </td>
-                              <td style={{ ...bottomBorder }} />
-                              {zonesExpanded && zonas.map(zona => {
-                                const qty = row.byZona[zona];
-                                return (
-                                  <td key={zona} style={{ ...bottomBorder, padding: "10px 6px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
-                                    {qty != null && qty > 0
-                                      ? qty.toLocaleString("es-AR", { maximumFractionDigits: 2 })
-                                      : <span style={{ opacity: 0.25 }}>—</span>
-                                    }
+                      ) : (() => {
+                        const vItems  = resumenVirtualizer.getVirtualItems();
+                        const totalH  = resumenVirtualizer.getTotalSize();
+                        const padTop  = vItems.length ? vItems[0].start : 0;
+                        const padBot  = vItems.length ? totalH - vItems[vItems.length - 1].end : 0;
+                        const colSpan = fixedCols.length + 1 + (zonesExpanded ? zonas.length : 0);
+                        return (
+                          <>
+                            {padTop > 0 && <tr style={{ height: padTop }}><td colSpan={colSpan} style={{ padding: 0, border: "none" }} /></tr>}
+                            {vItems.map(vi => {
+                              const row = pivotRows[vi.index];
+                              const isSelected = selectedRow === row.articulo;
+                              const isLast = vi.index === pivotRows.length - 1;
+                              const bottomBorder = isLast ? {} : { borderBottom: cellBorder };
+                              return (
+                                <tr
+                                  key={row.articulo}
+                                  onClick={() => setSelectedRow(isSelected ? null : row.articulo)}
+                                  style={{ cursor: "pointer", background: isSelected ? "oklch(0.55 0.20 295 / 0.15)" : undefined, transition: "background 0.1s" }}
+                                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "hsl(var(--secondary) / 0.35)"; }}
+                                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = ""; }}
+                                >
+                                  <td style={{ ...bottomBorder, padding: "10px 12px 10px 14px", fontFamily: "ui-monospace, monospace", fontSize: 12.5, color: "#7ee2a8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {row.articulo}
                                   </td>
-                                );
-                              })}
-                            </tr>
-                          );
-                        })
-                      )}
+                                  <td style={{ ...bottomBorder, padding: "10px 12px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {row.descArticulo}
+                                  </td>
+                                  <td style={{ ...bottomBorder, padding: "10px 12px", color: "hsl(var(--muted-foreground) / 0.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {row.udmPrimaria}
+                                  </td>
+                                  <td style={{ ...bottomBorder, padding: "10px 12px", whiteSpace: "nowrap" }}>
+                                    {(() => {
+                                      const tipo = tipoOf(row.articulo);
+                                      return tipo
+                                        ? <TipoPill tipo={tipo} />
+                                        : <span style={{ opacity: 0.25, color: "hsl(var(--muted-foreground))" }}>—</span>;
+                                    })()}
+                                  </td>
+                                  <td style={{ ...bottomBorder, padding: "10px 12px", textAlign: "right", fontWeight: 600, color: "hsl(var(--foreground))", fontVariantNumeric: "tabular-nums" }}>
+                                    {row.total.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
+                                  </td>
+                                  <td style={{ ...bottomBorder }} />
+                                  {zonesExpanded && zonas.map(zona => {
+                                    const qty = row.byZona[zona];
+                                    return (
+                                      <td key={zona} style={{ ...bottomBorder, padding: "10px 6px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
+                                        {qty != null && qty > 0
+                                          ? qty.toLocaleString("es-AR", { maximumFractionDigits: 2 })
+                                          : <span style={{ opacity: 0.25 }}>—</span>
+                                        }
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
+                            {padBot > 0 && <tr style={{ height: padBot }}><td colSpan={colSpan} style={{ padding: 0, border: "none" }} /></tr>}
+                          </>
+                        );
+                      })()}
                     </tbody>
                   </table>
                 </div>
@@ -1360,11 +1398,20 @@ export function StockZonaSection() {
               </datalist>
 
               <div className="rounded-[14px] overflow-hidden" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
+                <div ref={familiasScrollRef} className="overflow-auto" style={{ maxHeight: "70vh" }}>
+                  <table className="text-sm" style={{ tableLayout: "fixed", width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
+                    <colgroup>
+                      <col style={{ width: 44 }} />
+                      <col style={{ width: 130 }} />
+                      <col />
+                      <col style={{ width: 160 }} />
+                      <col style={{ width: 160 }} />
+                      <col style={{ width: 160 }} />
+                      <col style={{ width: 32 }} />
+                    </colgroup>
                     <thead>
-                      <tr style={{ background: "hsl(var(--secondary) / 0.7)", borderBottom: "1px solid hsl(var(--border))" }}>
-                        <th style={{ padding: "14px 0 14px 14px", width: 44 }}>
+                      <tr>
+                        <th style={{ padding: "14px 0 14px 14px", width: 44, position: "sticky", top: 0, zIndex: 2, background: "hsl(var(--secondary))", borderBottom: "1px solid hsl(var(--border))" }}>
                           <button
                             onClick={toggleSelectAll}
                             title={allVisibleSelected ? "Deseleccionar todo" : "Seleccionar todo"}
@@ -1379,16 +1426,31 @@ export function StockZonaSection() {
                             {allVisibleSelected && <Check className="w-3 h-3" strokeWidth={3} />}
                           </button>
                         </th>
-                        <th style={{ padding: "14px 14px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 130 }}>Matrícula</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))" }}>Descripción</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160 }}>Familia</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160 }}>Subfamilia</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160 }}>Tipo</th>
-                        <th style={{ width: 32 }} />
+                        <th style={{ padding: "14px 14px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 130, position: "sticky", top: 0, zIndex: 2, background: "hsl(var(--secondary))", borderBottom: "1px solid hsl(var(--border))" }}>Matrícula</th>
+                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", position: "sticky", top: 0, zIndex: 2, background: "hsl(var(--secondary))", borderBottom: "1px solid hsl(var(--border))" }}>Descripción</th>
+                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160, position: "sticky", top: 0, zIndex: 2, background: "hsl(var(--secondary))", borderBottom: "1px solid hsl(var(--border))" }}>Familia</th>
+                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160, position: "sticky", top: 0, zIndex: 2, background: "hsl(var(--secondary))", borderBottom: "1px solid hsl(var(--border))" }}>Subfamilia</th>
+                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160, position: "sticky", top: 0, zIndex: 2, background: "hsl(var(--secondary))", borderBottom: "1px solid hsl(var(--border))" }}>Tipo</th>
+                        <th style={{ width: 32, position: "sticky", top: 0, zIndex: 2, background: "hsl(var(--secondary))", borderBottom: "1px solid hsl(var(--border))" }} />
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredFamiliaArticles.map((row, i) => {
+                      {filteredFamiliaArticles.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} style={{ padding: "48px 24px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 13 }}>
+                            No hay artículos que coincidan con la búsqueda
+                          </td>
+                        </tr>
+                      ) : (() => {
+                        const vItems = familiasVirtualizer.getVirtualItems();
+                        const totalH = familiasVirtualizer.getTotalSize();
+                        const padTop = vItems.length ? vItems[0].start : 0;
+                        const padBot = vItems.length ? totalH - vItems[vItems.length - 1].end : 0;
+                        return (
+                          <>
+                            {padTop > 0 && <tr style={{ height: padTop }}><td colSpan={7} style={{ padding: 0, border: "none" }} /></tr>}
+                            {vItems.map(vi => {
+                        const row = filteredFamiliaArticles[vi.index];
                         const edit    = localEdits[row.articulo] ?? { familia: "", subfamilia: "", tipo: "" as ArticuloTipo };
                         const isSaving   = savingArticulo === row.articulo;
                         const hasFamily  = !!(familyMap.get(row.articulo)?.familia);
@@ -1396,7 +1458,7 @@ export function StockZonaSection() {
                         const catalogTipo = matriculasInfo.get(row.articulo)?.tipo ?? "";
                         const isSelected = selectedArticulos.has(row.articulo);
                         const subfamiliasList = edit.familia ? subfamiliasForFamilia(edit.familia) : [];
-                        const isLast = i === filteredFamiliaArticles.length - 1;
+                        const isLast = vi.index === filteredFamiliaArticles.length - 1;
                         const bottomBorder = isLast ? {} : { borderBottom: cellBorder };
 
                         return (
@@ -1489,7 +1551,11 @@ export function StockZonaSection() {
                             </td>
                           </tr>
                         );
-                      })}
+                            })}
+                            {padBot > 0 && <tr style={{ height: padBot }}><td colSpan={7} style={{ padding: 0, border: "none" }} /></tr>}
+                          </>
+                        );
+                      })()}
                     </tbody>
                   </table>
                 </div>
