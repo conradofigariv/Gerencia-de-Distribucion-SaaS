@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import {
   Trash2, Loader2, Search, X, PackageOpen, RefreshCw,
   ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight,
@@ -16,6 +16,12 @@ import { toast } from "sonner";
 type Tab            = "resumen" | "cargar" | "familias";
 type ArticuloFiltro = "nro" | "nombre";
 type SortDir        = "asc" | "desc";
+
+const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] = [
+  { id: "resumen",  label: "Resumen de stock", icon: PackageOpen, desc: "Stock consolidado por artículo y zona de depósito." },
+  { id: "cargar",   label: "Cargar datos",     icon: Download,    desc: "Importá stock pegando los datos directamente desde el sistema." },
+  { id: "familias", label: "Familias",         icon: Tag,         desc: "Clasificá los artículos por familia y subfamilia." },
+];
 
 interface PivotRow {
   articulo:     string;
@@ -373,53 +379,116 @@ export function StockZonaSection() {
 
   const cellBorder = "1px solid hsl(var(--border) / 0.35)";
 
+  const activeTab  = TABS.find(t => t.id === tab) ?? TABS[0];
+  const ActiveIcon = activeTab.icon;
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight text-foreground">Stock por Zona</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {lastUpdate
-              ? <>Última actualización: <span className="text-foreground/80">{new Date(lastUpdate).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}</span></>
-              : "Consulta y carga de stock por organización"}
-          </p>
+    <div className="space-y-6">
+      {/* Header bar: icon + title + actions */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3">
+          <div
+            className="grid place-items-center mt-0.5"
+            style={{
+              width: 36, height: 36, borderRadius: 9,
+              background: "oklch(0.30 0.10 155 / 0.45)",
+              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
+              color: "#86efac",
+            }}
+          >
+            <PackageOpen className="w-[18px] h-[18px]" strokeWidth={2} />
+          </div>
+          <div>
+            <h2 className="text-[22px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.4, margin: 0 }}>
+              Stock por Zona
+            </h2>
+            <p className="mt-1 text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
+              {lastUpdate
+                ? <>Última actualización: <span style={{ color: "oklch(0.80 0 0)" }}>{new Date(lastUpdate).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}</span></>
+                : "Consulta y carga de stock por organización."}
+            </p>
+          </div>
         </div>
         <button
           onClick={refresh}
           disabled={loading}
-          className="flex items-center justify-center w-8 h-8 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors disabled:opacity-40"
+          className="flex items-center justify-center w-8 h-8 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors disabled:opacity-40 mt-0.5"
         >
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
         </button>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: "inline-flex", gap: 4, padding: 4, background: "oklch(0.235 0.005 270)", borderRadius: 10 }}>
-        {([
-          { id: "resumen"  as Tab, label: "Resumen de stock" },
-          { id: "cargar"   as Tab, label: "Cargar datos"     },
-          { id: "familias" as Tab, label: "Familias"         },
-        ]).map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            style={{
-              padding: "7px 14px", borderRadius: 7, border: "none", cursor: "pointer",
-              background: tab === t.id ? "oklch(0.27 0.005 270)" : "transparent",
-              color: tab === t.id ? "oklch(0.97 0 0)" : "oklch(0.60 0 0)",
-              fontSize: 13, fontWeight: tab === t.id ? 500 : 400,
-              transition: "background .15s, color .15s",
-            }}
-            onMouseEnter={e => { if (tab !== t.id) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.82 0 0)"; }}
-            onMouseLeave={e => { if (tab !== t.id) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.60 0 0)"; }}
-          >
-            {t.label}
-          </button>
-        ))}
+      {/* Tabs — beast pure pill bar */}
+      <div
+        style={{
+          display: "inline-flex", gap: 4, padding: 4,
+          background: "oklch(0.235 0.005 270)", borderRadius: 12,
+          flexWrap: "wrap", maxWidth: "100%",
+        }}
+      >
+        {TABS.map((t, idx) => {
+          const Icon = t.icon;
+          const isActive = tab === t.id;
+          return (
+            <Fragment key={t.id}>
+              {idx > 0 && (
+                <span style={{ display: "inline-flex", alignItems: "center", color: "oklch(0.38 0 0)", fontSize: 13, userSelect: "none", pointerEvents: "none" }}>
+                  →
+                </span>
+              )}
+              <button
+                onClick={() => setTab(t.id)}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 7,
+                  padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer",
+                  background: isActive ? "oklch(0.27 0.005 270)" : "transparent",
+                  color: isActive ? "oklch(0.97 0 0)" : "oklch(0.65 0 0)",
+                  fontSize: 13, fontWeight: isActive ? 500 : 400,
+                  transition: "background .15s, color .15s",
+                  boxShadow: isActive ? "0 1px 0 oklch(1 0 0 / 0.06) inset" : "none",
+                  whiteSpace: "nowrap",
+                }}
+                onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; }}
+                onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.65 0 0)"; }}
+              >
+                <Icon className="w-3.5 h-3.5" strokeWidth={1.8} />
+                {t.label}
+              </button>
+            </Fragment>
+          );
+        })}
       </div>
+
+      {/* Content card */}
+      <div
+        className="px-4 py-6 sm:px-6 overflow-hidden"
+        style={{
+          background: "oklch(0.235 0.005 270)",
+          border: "1px solid oklch(1 0 0 / 0.07)",
+          borderRadius: 14,
+        }}
+      >
+        <div className="flex items-center gap-3 mb-2">
+          <div
+            className="grid place-items-center"
+            style={{
+              width: 30, height: 30, borderRadius: 8,
+              background: "oklch(0.30 0.10 155 / 0.45)",
+              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
+              color: "#86efac",
+            }}
+          >
+            <ActiveIcon className="w-4 h-4" strokeWidth={2} />
+          </div>
+          <h2 className="text-[20px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.3, margin: 0 }}>
+            {activeTab.label}
+          </h2>
+        </div>
+        <p className="ml-[42px] mb-7 text-[14.5px]" style={{ color: "oklch(0.58 0 0)" }}>
+          {activeTab.desc}
+        </p>
 
       {/* ── RESUMEN ────────────────────────────────────────────────────────── */}
       {tab === "resumen" && (
@@ -514,7 +583,7 @@ export function StockZonaSection() {
               </div>
 
               {/* Pivot table */}
-              <div className="rounded-[14px] border border-border bg-secondary/20 overflow-hidden">
+              <div className="rounded-[14px] overflow-hidden" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}>
                 <div className="overflow-x-auto">
                   <table
                     style={zonesExpanded
@@ -690,7 +759,7 @@ export function StockZonaSection() {
       {tab === "cargar" && (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 items-start">
           {/* Main card */}
-          <div className="rounded-[14px] border border-border bg-secondary/20 p-5">
+          <div className="rounded-[14px] p-5" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}>
             {/* Card header */}
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
@@ -793,7 +862,7 @@ export function StockZonaSection() {
           {/* Sidebar */}
           <div className="flex flex-col gap-3">
             {/* Required columns */}
-            <div className="rounded-[14px] border border-border bg-secondary/20 p-4">
+            <div className="rounded-[14px] p-4" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}>
               <p className="text-[11px] text-muted-foreground uppercase tracking-[0.6px] mb-3">Columnas requeridas</p>
               <div className="flex flex-col gap-1.5">
                 {REQUIRED_COLS.map((c, i) => {
@@ -833,7 +902,7 @@ export function StockZonaSection() {
             </div>
 
             {/* Tip card */}
-            <div className="rounded-[14px] border border-border bg-secondary/20 p-4 text-[12.5px] text-muted-foreground leading-relaxed">
+            <div className="rounded-[14px] p-4 text-[12.5px] text-muted-foreground leading-relaxed" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}>
               <div className="flex items-center gap-1.5 text-foreground font-semibold mb-1.5 text-[13px]">
                 <Sparkles className="w-3.5 h-3.5" strokeWidth={2} />
                 Tip
@@ -880,7 +949,7 @@ export function StockZonaSection() {
                 {familiasDisponibles.map(f => <option key={f} value={f} />)}
               </datalist>
 
-              <div className="rounded-[14px] border border-border bg-secondary/20 overflow-hidden">
+              <div className="rounded-[14px] overflow-hidden" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
                     <thead>
@@ -977,6 +1046,7 @@ export function StockZonaSection() {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }
