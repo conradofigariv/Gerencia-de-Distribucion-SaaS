@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Gavel, Loader2, ChevronDown, ChevronRight, FileText, Layers, Users, Tag, ClipboardCheck, Trophy, Check, Pencil, Trash2, X, GripVertical, Copy } from "lucide-react";
+import { Plus, Gavel, Loader2, ChevronDown, ChevronRight, FileText, Layers, Users, Tag, ClipboardCheck, Trophy, Check, Pencil, Trash2, X, GripVertical, Copy, RefreshCw } from "lucide-react";
 import {
   listLicitaciones,
   createLicitacion,
@@ -538,6 +538,60 @@ function DatosGeneralesTab({
     return Number.isFinite(n) ? n : null;
   };
 
+  const [fetchingSic, setFetchingSic] = useState(false);
+  const [fetchingOp,  setFetchingOp]  = useState(false);
+
+  const lastWeekday = (dateStr: string): string => {
+    const d = new Date(dateStr + "T12:00:00");
+    const dow = d.getDay(); // 0=sun,6=sat
+    if (dow === 0) d.setDate(d.getDate() - 2);
+    else if (dow === 6) d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const fetchDolarBCRA = async (dateStr: string): Promise<number | null> => {
+    const d = lastWeekday(dateStr);
+    const url = `https://api.bcra.gob.ar/estadisticascambiarias/v1.0/Cotizaciones/USD?fechaDesde=${d}&fechaHasta=${d}&limit=10`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`BCRA ${res.status}`);
+    const json = await res.json();
+    // Response: { results: [{ cotizaciones: [{ codigoMoneda, descripcion, tipoPase, tipoCotizacion }] }] }
+    // or flat array [{d, v}] depending on version
+    const results = json?.results ?? json;
+    if (Array.isArray(results) && results.length > 0) {
+      const row = results[0];
+      // flat format: {d, v}
+      if (typeof row.v === "number") return row.v;
+      // nested format: {fecha, detalle: [{tipoPase, tipoCotizacion}]}
+      const detalle = row.detalle ?? row.cotizaciones ?? [];
+      const usd = detalle.find((x: { codigoMoneda?: string }) => x.codigoMoneda === "USD" || !x.codigoMoneda);
+      if (usd?.tipoCotizacion) return usd.tipoCotizacion;
+    }
+    return null;
+  };
+
+  const handleFetchSic = async () => {
+    if (!fdSicFecha) { toast.error("Ingresá primero la Fecha de la SIC"); return; }
+    setFetchingSic(true);
+    try {
+      const v = await fetchDolarBCRA(fdSicFecha);
+      if (v !== null) { setFdSicValor(v.toString()); toast.success(`Dólar SIC: $${v}`); }
+      else toast.error("No se encontró cotización para esa fecha");
+    } catch { toast.error("Error al consultar el BCRA"); }
+    finally { setFetchingSic(false); }
+  };
+
+  const handleFetchOp = async () => {
+    if (!fdOpFecha) { toast.error("Ingresá primero la Fecha de la OP"); return; }
+    setFetchingOp(true);
+    try {
+      const v = await fetchDolarBCRA(fdOpFecha);
+      if (v !== null) { setFdOpValor(v.toString()); toast.success(`Dólar OP: $${v}`); }
+      else toast.error("No se encontró cotización para esa fecha");
+    } catch { toast.error("Error al consultar el BCRA"); }
+    finally { setFetchingOp(false); }
+  };
+
   const handleSave = async () => {
     if (!numeroSic.trim() || !titulo.trim()) {
       toast.error("Número SIC y título son obligatorios");
@@ -597,14 +651,28 @@ function DatosGeneralesTab({
             <input type="date" value={fdSicFecha} onChange={(e) => setFdSicFecha(e.target.value)} className="ti-input" />
           </FormField>
           <FormField label="Dólar de la SIC (ARS por USD)">
-            <input type="number" step="0.01" inputMode="decimal" value={fdSicValor} onChange={(e) => setFdSicValor(e.target.value)} placeholder="Ej: 1399.5" className="ti-input" />
+            <div style={{ display: "flex", gap: 8 }}>
+              <input type="number" step="0.01" inputMode="decimal" value={fdSicValor} onChange={(e) => setFdSicValor(e.target.value)} placeholder="Ej: 1399.5" className="ti-input" style={{ flex: 1 }} />
+              <button onClick={handleFetchSic} disabled={fetchingSic || !fdSicFecha} title="Buscar cotización BCRA para la fecha de la SIC"
+                style={{ height: 44, padding: "0 14px", borderRadius: 9, border: "1px solid oklch(1 0 0 / 0.10)", background: "oklch(0.20 0.005 270)", color: fetchingSic ? "oklch(0.50 0 0)" : "#86efac", cursor: fetchingSic || !fdSicFecha ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5, opacity: !fdSicFecha ? 0.45 : 1 }}>
+                {fetchingSic ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                BCRA
+              </button>
+            </div>
           </FormField>
 
           <FormField label="Fecha de la OP">
             <input type="date" value={fdOpFecha} onChange={(e) => setFdOpFecha(e.target.value)} className="ti-input" />
           </FormField>
           <FormField label="Dólar de la OP (ARS por USD)">
-            <input type="number" step="0.01" inputMode="decimal" value={fdOpValor} onChange={(e) => setFdOpValor(e.target.value)} placeholder="Ej: 1398" className="ti-input" />
+            <div style={{ display: "flex", gap: 8 }}>
+              <input type="number" step="0.01" inputMode="decimal" value={fdOpValor} onChange={(e) => setFdOpValor(e.target.value)} placeholder="Ej: 1398" className="ti-input" style={{ flex: 1 }} />
+              <button onClick={handleFetchOp} disabled={fetchingOp || !fdOpFecha} title="Buscar cotización BCRA para la fecha de la OP"
+                style={{ height: 44, padding: "0 14px", borderRadius: 9, border: "1px solid oklch(1 0 0 / 0.10)", background: "oklch(0.20 0.005 270)", color: fetchingOp ? "oklch(0.50 0 0)" : "#86efac", cursor: fetchingOp || !fdOpFecha ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5, opacity: !fdOpFecha ? 0.45 : 1 }}>
+                {fetchingOp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                BCRA
+              </button>
+            </div>
           </FormField>
         </div>
       </FormSection>
