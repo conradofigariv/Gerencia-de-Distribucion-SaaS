@@ -2,24 +2,46 @@ import { supabase } from "@/lib/supabaseClient";
 
 export type ArticuloTipo = "" | "servicio" | "material";
 
+/**
+ * Una matrícula puede pertenecer a VARIAS familias (etiquetas).
+ * Se persiste en la columna `familia` de `stock_article_families` como un
+ * array JSON (p.ej. ["Cables","Aluminio"]). Las filas viejas con una sola
+ * familia en texto plano se migran solas al leerlas.
+ */
 export interface FamilyRow {
-  articulo:   string;
-  familia:    string;
-  subfamilia: string;
-  tipo:       ArticuloTipo;
+  articulo: string;
+  familias: string[];
+  tipo:     ArticuloTipo;   // override manual de Material/Servicio
+}
+
+/** Lee la columna `familia` (JSON array nuevo, o texto plano legado). */
+function parseFamilias(raw: unknown): string[] {
+  const s = String(raw ?? "").trim();
+  if (!s) return [];
+  if (s.startsWith("[")) {
+    try {
+      const arr = JSON.parse(s);
+      if (Array.isArray(arr)) return [...new Set(arr.map(x => String(x).trim()).filter(Boolean))];
+    } catch { /* cae a texto plano */ }
+  }
+  return [s];   // familia única legada
+}
+
+/** Serializa la lista de familias para guardarla; null si está vacía. */
+function serializeFamilias(familias: string[]): string | null {
+  const clean = [...new Set(familias.map(f => f.trim()).filter(Boolean))];
+  return clean.length ? JSON.stringify(clean) : null;
 }
 
 export async function getFamilies(): Promise<FamilyRow[]> {
-  // select("*") para no romper si la columna `tipo` todavía no fue creada en Supabase
   const { data, error } = await supabase
     .from("stock_article_families")
     .select("*");
   if (error || !data) return [];
   return data.map(r => ({
-    articulo:   r.articulo,
-    familia:    r.familia    ?? "",
-    subfamilia: r.subfamilia ?? "",
-    tipo:       (r.tipo      ?? "") as ArticuloTipo,
+    articulo: r.articulo,
+    familias: parseFamilias(r.familia),
+    tipo:     (r.tipo ?? "") as ArticuloTipo,
   }));
 }
 
@@ -29,9 +51,9 @@ export async function upsertFamily(row: FamilyRow): Promise<string | null> {
     .upsert(
       {
         articulo:   row.articulo,
-        familia:    row.familia    ?? "",
-        subfamilia: row.subfamilia ?? "",
-        tipo:       row.tipo       || null,
+        familia:    serializeFamilias(row.familias),
+        subfamilia: null,
+        tipo:       row.tipo || null,
       },
       { onConflict: "articulo" }
     );
@@ -46,9 +68,9 @@ export async function upsertFamiliesBulk(rows: FamilyRow[]): Promise<string | nu
     .upsert(
       rows.map(r => ({
         articulo:   r.articulo,
-        familia:    r.familia    ?? "",
-        subfamilia: r.subfamilia ?? "",
-        tipo:       r.tipo       || null,
+        familia:    serializeFamilias(r.familias),
+        subfamilia: null,
+        tipo:       r.tipo || null,
       })),
       { onConflict: "articulo" }
     );

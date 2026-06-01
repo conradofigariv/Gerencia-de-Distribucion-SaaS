@@ -6,12 +6,12 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Trash2, Loader2, Search, X, PackageOpen, RefreshCw,
   ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight,
-  Download, Sparkles, Tag, Wrench, Package, Check,
+  Download, Sparkles, Tag, Wrench, Package, Check, Plus,
 } from "lucide-react";
 import { CheckIcon } from "lucide-react";
 import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
 import type { ZonaUpload, CompraRow } from "@/lib/stockStorage";
-import { getFamilies, upsertFamily, deleteFamily, upsertFamiliesBulk, deleteFamiliesBulk, getMatriculasInfo } from "@/lib/stockFamilies";
+import { getFamilies, upsertFamiliesBulk, deleteFamiliesBulk, getMatriculasInfo } from "@/lib/stockFamilies";
 import type { FamilyRow, ArticuloTipo, MatriculaInfo } from "@/lib/stockFamilies";
 import { toast } from "sonner";
 
@@ -27,7 +27,7 @@ const COLWIDTHS_KEY = "stock-zona-colwidths";
 const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] = [
   { id: "resumen",  label: "Resumen de stock", icon: PackageOpen, desc: "Stock consolidado por artículo y zona de depósito." },
   { id: "cargar",   label: "Cargar datos",     icon: Download,    desc: "Importá stock pegando los datos directamente desde el sistema." },
-  { id: "familias", label: "Familias",         icon: Tag,         desc: "Clasificá los artículos por familia y subfamilia." },
+  { id: "familias", label: "Familias",         icon: Tag,         desc: "Clasificá las matrículas en familias (una matrícula puede tener varias)." },
 ];
 
 interface PivotRow {
@@ -279,7 +279,6 @@ export function StockZonaSection() {
   // Resumen state
   const [filterZona, setFilterZona]         = useState("todos");
   const [filterFamilia, setFilterFamilia]   = useState("");
-  const [filterSubfamilia, setFilterSubfamilia] = useState("");
   const [filterTipo, setFilterTipo]         = useState<ArticuloTipo>("");
   const [filterSearch, setFilterSearch]     = useState("");
   const [articuloFiltro, setArticuloFiltro] = useState<ArticuloFiltro>("nro");
@@ -339,15 +338,20 @@ export function StockZonaSection() {
 
   // Families tab
   const [families, setFamilies]             = useState<FamilyRow[]>([]);
-  const [localEdits, setLocalEdits]         = useState<Record<string, { familia: string; subfamilia: string; tipo: ArticuloTipo }>>({});
   const [savingArticulo, setSavingArticulo] = useState<string | null>(null);
   const [familiaSearch, setFamiliaSearch]   = useState("");
   const [onlyUnclassified, setOnlyUnclassified] = useState(false);
+  const [familiaFilter, setFamiliaFilter]   = useState("");   // filtrar la lista por una familia
+
+  // Modal "Agregar familia" (nombre + pegar lista de matrículas)
+  const [addFamilyOpen, setAddFamilyOpen]   = useState(false);
+  const [addFamilyName, setAddFamilyName]   = useState("");
+  const [addFamilyList, setAddFamilyList]   = useState("");
+  const [addingFamily, setAddingFamily]     = useState(false);
 
   // Bulk assignment
   const [selectedArticulos, setSelectedArticulos] = useState<Set<string>>(new Set());
   const [bulkFamilia, setBulkFamilia]       = useState("");
-  const [bulkSubfamilia, setBulkSubfamilia] = useState("");
   const [bulkTipo, setBulkTipo]             = useState<ArticuloTipo>("");
   const [applyingBulk, setApplyingBulk]     = useState(false);
 
@@ -399,16 +403,6 @@ export function StockZonaSection() {
   useEffect(() => { refreshFamilies(); }, [refreshFamilies]);
   useEffect(() => { refreshMatriculas(); }, [refreshMatriculas]);
 
-  useEffect(() => {
-    setLocalEdits(prev => {
-      const next = { ...prev };
-      for (const f of families) {
-        if (!next[f.articulo]) next[f.articulo] = { familia: f.familia, subfamilia: f.subfamilia, tipo: f.tipo };
-      }
-      return next;
-    });
-  }, [families]);
-
   // ── Sort ──────────────────────────────────────────────────────────────────
 
   const handleSort = (col: string) => {
@@ -430,6 +424,12 @@ export function StockZonaSection() {
 
   const familyMap = useMemo(() => new Map(families.map(f => [f.articulo, f])), [families]);
 
+  // Familias (etiquetas) de una matrícula.
+  const familiasOf = useCallback(
+    (articulo: string): string[] => familyMap.get(articulo)?.familias ?? [],
+    [familyMap],
+  );
+
   // Tipo efectivo de una matrícula: la edición manual (Familias) tiene prioridad;
   // si no hay, sale del catálogo maestro `matriculas.mat_serv` (Carga de datos).
   const tipoOf = useCallback((articulo: string): ArticuloTipo => {
@@ -438,23 +438,17 @@ export function StockZonaSection() {
     return matriculasInfo.get(articulo)?.tipo ?? "";
   }, [familyMap, matriculasInfo]);
 
+  // Todas las familias existentes (de todas las matrículas), únicas y ordenadas.
   const familiasDisponibles = useMemo(
-    () => [...new Set(families.map(f => f.familia).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es")),
+    () => [...new Set(families.flatMap(f => f.familias))].sort((a, b) => a.localeCompare(b, "es")),
     [families],
   );
 
-  // Cantidad de matrículas con familia/subfamilia asignada (asignación real).
+  // Cantidad de matrículas con al menos una familia asignada.
   const asignadosCount = useMemo(
-    () => families.filter(f => f.familia || f.subfamilia).length,
+    () => families.filter(f => f.familias.length > 0).length,
     [families],
   );
-
-  const subfamiliasDisponibles = useMemo(() => [...new Set(
-    families
-      .filter(f => !filterFamilia || f.familia === filterFamilia)
-      .map(f => f.subfamilia)
-      .filter(Boolean)
-  )].sort((a, b) => a.localeCompare(b, "es")), [families, filterFamilia]);
 
   // Build pivot — combina el stock cargado (uploads) con las matrículas
   // clasificadas en Familias que aún no tienen stock (aparecen con Total 0).
@@ -471,11 +465,10 @@ export function StockZonaSection() {
         pivot.byZona[upload.zona] = (pivot.byZona[upload.zona] ?? 0) + qty;
       }
     }
-    // Matrículas con familia/subfamilia asignada manualmente que aún no tienen
-    // stock: se incluyen para que sean visibles (su descripción/UDM se completa
-    // abajo desde el catálogo maestro).
+    // Matrículas con alguna familia asignada que aún no tienen stock: se incluyen
+    // para que sean visibles (su descripción/UDM se completa abajo desde el catálogo).
     for (const f of families) {
-      if ((f.familia || f.subfamilia) && !m.has(f.articulo)) {
+      if (f.familias.length > 0 && !m.has(f.articulo)) {
         m.set(f.articulo, { articulo: f.articulo, descArticulo: "", udmPrimaria: "", total: 0, byZona: {} });
       }
     }
@@ -503,8 +496,7 @@ export function StockZonaSection() {
   const pivotRows = useMemo(() => Array.from(pivotMap.values())
     .filter(r => {
       const zonaOk       = filterZona === "todos"    || (r.byZona[filterZona] ?? 0) > 0;
-      const familiaOk    = !filterFamilia            || (familyMap.get(r.articulo)?.familia ?? "") === filterFamilia;
-      const subfamiliaOk = !filterSubfamilia         || (familyMap.get(r.articulo)?.subfamilia ?? "") === filterSubfamilia;
+      const familiaOk    = !filterFamilia            || familiasOf(r.articulo).includes(filterFamilia);
       const tipoOk       = !filterTipo               || tipoOf(r.articulo) === filterTipo;
       const lo           = filterSearch.toLowerCase();
       const searchOk     = !filterSearch || (
@@ -512,7 +504,7 @@ export function StockZonaSection() {
           ? r.articulo.toLowerCase().includes(lo)
           : r.descArticulo.toLowerCase().includes(lo)
       );
-      return zonaOk && familiaOk && subfamiliaOk && tipoOk && searchOk;
+      return zonaOk && familiaOk && tipoOk && searchOk;
     })
     .sort((a, b) => {
       if (sortCol === "total") {
@@ -533,21 +525,19 @@ export function StockZonaSection() {
       const va = a.byZona[sortCol] ?? 0;
       const vb = b.byZona[sortCol] ?? 0;
       return sortDir === "asc" ? va - vb : vb - va;
-    }), [pivotMap, familyMap, tipoOf, filterZona, filterFamilia, filterSubfamilia, filterTipo, filterSearch, articuloFiltro, sortCol, sortDir]);
+    }), [pivotMap, familiasOf, tipoOf, filterZona, filterFamilia, filterTipo, filterSearch, articuloFiltro, sortCol, sortDir]);
 
   const allArticles = useMemo(() => Array.from(pivotMap.values())
     .sort((a, b) => a.articulo.localeCompare(b.articulo, "es", { numeric: true })), [pivotMap]);
 
   const filteredFamiliaArticles = useMemo(() => allArticles.filter(a => {
-    if (onlyUnclassified && (familyMap.get(a.articulo)?.familia ?? "")) return false;
+    const fams = familiasOf(a.articulo);
+    if (onlyUnclassified && fams.length > 0) return false;
+    if (familiaFilter && !fams.includes(familiaFilter)) return false;
     if (!familiaSearch) return true;
     const lo = familiaSearch.toLowerCase();
     return a.articulo.toLowerCase().includes(lo) || a.descArticulo.toLowerCase().includes(lo);
-  }), [allArticles, familiaSearch, onlyUnclassified, familyMap]);
-
-  const subfamiliasForFamilia = (familia: string) =>
-    [...new Set(families.filter(f => f.familia === familia).map(f => f.subfamilia).filter(Boolean))]
-      .sort((a, b) => a.localeCompare(b, "es"));
+  }), [allArticles, familiaSearch, onlyUnclassified, familiaFilter, familiasOf]);
 
   // ── Virtualización de tablas (rinde solo las filas visibles) ────────────────
   const resumenScrollRef  = useRef<HTMLDivElement>(null);
@@ -578,33 +568,73 @@ export function StockZonaSection() {
     return REQUIRED_COLS.map(c => ({ name: c, found: head.includes(c) }));
   }, [text]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Persist one article (familia / subfamilia / tipo) ───────────────────────
+  // ── Persistencia de familias (multi) y tipo ─────────────────────────────────
 
-  const persistRow = async (articulo: string, next: { familia: string; subfamilia: string; tipo: ArticuloTipo }) => {
-    setLocalEdits(p => ({ ...p, [articulo]: next }));
-    const saved = familyMap.get(articulo);
-    const savedFamilia    = saved?.familia    ?? "";
-    const savedSubfamilia = saved?.subfamilia ?? "";
-    const savedTipo       = saved?.tipo       ?? "";
-    if (next.familia.trim() === savedFamilia && next.subfamilia.trim() === savedSubfamilia && next.tipo === savedTipo) return;
-    setSavingArticulo(articulo);
-    const isEmpty = !next.familia.trim() && !next.subfamilia.trim() && !next.tipo;
-    if (isEmpty) {
-      if (saved) await deleteFamily(articulo);
-    } else {
-      const err = await upsertFamily({ articulo, familia: next.familia.trim(), subfamilia: next.subfamilia.trim(), tipo: next.tipo });
-      if (err) { toast.error(`Error al guardar: ${err}`); setSavingArticulo(null); return; }
+  /** Construye la FamilyRow resultante para un artículo a partir de su estado guardado. */
+  const buildRow = (articulo: string, familias: string[], tipo: ArticuloTipo): FamilyRow => ({ articulo, familias, tipo });
+
+  /** Guarda un conjunto de filas: las vacías (sin familias ni tipo) se borran. */
+  const persistRows = async (rows: FamilyRow[]) => {
+    const toUpsert = rows.filter(r => r.familias.length > 0 || r.tipo);
+    const toDelete = rows.filter(r => r.familias.length === 0 && !r.tipo).map(r => r.articulo);
+    if (toUpsert.length) {
+      const CHUNK = 500;
+      for (let i = 0; i < toUpsert.length; i += CHUNK) {
+        const err = await upsertFamiliesBulk(toUpsert.slice(i, i + CHUNK));
+        if (err) return err;
+      }
     }
+    if (toDelete.length) {
+      const err = await deleteFamiliesBulk(toDelete);
+      if (err) return err;
+    }
+    return null;
+  };
+
+  /** Agrega una familia a un artículo (sin pisar las demás). */
+  const addFamiliaToArticulo = async (articulo: string, familia: string) => {
+    const fam = familia.trim();
+    if (!fam) return;
+    const saved = familyMap.get(articulo);
+    if (saved?.familias.includes(fam)) return;
+    setSavingArticulo(articulo);
+    const err = await persistRows([buildRow(articulo, [...(saved?.familias ?? []), fam], saved?.tipo ?? "")]);
+    if (err) toast.error(`Error al guardar: ${err}`);
     await refreshFamilies();
     setSavingArticulo(null);
   };
 
-  const handleFamilyBlur = (articulo: string) => {
-    const local = localEdits[articulo] ?? { familia: "", subfamilia: "", tipo: "" as ArticuloTipo };
-    return persistRow(articulo, local);
+  /** Quita una familia puntual de un artículo. */
+  const removeFamiliaFromArticulo = async (articulo: string, familia: string) => {
+    const saved = familyMap.get(articulo);
+    if (!saved) return;
+    setSavingArticulo(articulo);
+    const err = await persistRows([buildRow(articulo, saved.familias.filter(f => f !== familia), saved.tipo)]);
+    if (err) toast.error(`Error al quitar: ${err}`);
+    await refreshFamilies();
+    setSavingArticulo(null);
   };
 
-  // ── Bulk assignment ─────────────────────────────────────────────────────────
+  /** Setea el tipo (override manual) de un artículo. */
+  const setArticuloTipo = async (articulo: string, tipo: ArticuloTipo) => {
+    const saved = familyMap.get(articulo);
+    setSavingArticulo(articulo);
+    const err = await persistRows([buildRow(articulo, saved?.familias ?? [], tipo)]);
+    if (err) toast.error(`Error al guardar: ${err}`);
+    await refreshFamilies();
+    setSavingArticulo(null);
+  };
+
+  /** Quita TODAS las familias y el tipo de un artículo (borra su fila). */
+  const clearArticulo = async (articulo: string) => {
+    setSavingArticulo(articulo);
+    const err = await deleteFamiliesBulk([articulo]);
+    if (err) toast.error(`Error al quitar: ${err}`);
+    await refreshFamilies();
+    setSavingArticulo(null);
+  };
+
+  // ── Selección y asignación masiva ───────────────────────────────────────────
 
   const toggleSelect = (articulo: string) => {
     setSelectedArticulos(prev => {
@@ -614,52 +644,73 @@ export function StockZonaSection() {
     });
   };
 
-  const applyBulk = async () => {
+  /** Aplica a la selección: agrega/quita familia (suma, no pisa) y/o setea tipo. */
+  const applyBulk = async (mode: "add" | "remove") => {
     const fam = bulkFamilia.trim();
-    const sub = bulkSubfamilia.trim();
-    if (!fam && !sub && !bulkTipo) { toast.error("Elegí al menos familia, subfamilia o tipo para aplicar."); return; }
+    if (!fam && !bulkTipo) { toast.error("Escribí una familia o elegí un tipo para aplicar."); return; }
+    if (mode === "remove" && !fam) { toast.error("Escribí la familia que querés quitar."); return; }
     setApplyingBulk(true);
     const rows: FamilyRow[] = [...selectedArticulos].map(articulo => {
       const saved = familyMap.get(articulo);
-      return {
-        articulo,
-        familia:    fam || saved?.familia || "",
-        subfamilia: sub || saved?.subfamilia || "",
-        tipo:       (bulkTipo || saved?.tipo || "") as ArticuloTipo,
-      };
-    }).filter(r => r.familia || r.subfamilia || r.tipo);
-    const err = await upsertFamiliesBulk(rows);
-    if (err) { toast.error(`Error al aplicar: ${err}`); setApplyingBulk(false); return; }
-    // Reflejar en el buffer local sin esperar el refresh
-    setLocalEdits(p => {
-      const next = { ...p };
-      for (const r of rows) next[r.articulo] = { familia: r.familia, subfamilia: r.subfamilia, tipo: r.tipo };
-      return next;
+      let familias = saved?.familias ?? [];
+      if (fam) {
+        familias = mode === "add"
+          ? [...new Set([...familias, fam])]
+          : familias.filter(f => f !== fam);
+      }
+      const tipo = (bulkTipo || saved?.tipo || "") as ArticuloTipo;
+      return buildRow(articulo, familias, tipo);
     });
+    const err = await persistRows(rows);
+    if (err) { toast.error(`Error al aplicar: ${err}`); setApplyingBulk(false); return; }
     await refreshFamilies();
-    toast.success(`${rows.length} artículo${rows.length === 1 ? "" : "s"} actualizado${rows.length === 1 ? "" : "s"}`);
+    const verbo = mode === "add" ? "actualizada" : "quitada";
+    toast.success(`${rows.length} matrícula${rows.length === 1 ? "" : "s"} ${verbo}${rows.length === 1 ? "" : "s"}`);
     setSelectedArticulos(new Set());
-    setBulkFamilia(""); setBulkSubfamilia(""); setBulkTipo("");
+    setBulkFamilia(""); setBulkTipo("");
     setApplyingBulk(false);
   };
 
+  /** Borra TODAS las familias/tipo de la selección. */
   const clearBulkSelection = async (deleteRows = false) => {
     if (deleteRows && selectedArticulos.size > 0) {
       setApplyingBulk(true);
       const arts = [...selectedArticulos];
       const err = await deleteFamiliesBulk(arts);
       if (err) { toast.error(`Error al quitar: ${err}`); setApplyingBulk(false); return; }
-      setLocalEdits(p => {
-        const next = { ...p };
-        for (const a of arts) next[a] = { familia: "", subfamilia: "", tipo: "" };
-        return next;
-      });
       await refreshFamilies();
       toast.success(`${arts.length} asignación${arts.length === 1 ? "" : "es"} quitada${arts.length === 1 ? "" : "s"}`);
       setApplyingBulk(false);
     }
     setSelectedArticulos(new Set());
-    setBulkFamilia(""); setBulkSubfamilia(""); setBulkTipo("");
+    setBulkFamilia(""); setBulkTipo("");
+  };
+
+  // ── Modal "Agregar familia" (nombre + pegar lista de matrículas) ─────────────
+
+  const addFamilyMatriculas = useMemo(() => {
+    // Acepta matrículas separadas por salto de línea, tab, coma o punto y coma.
+    // Respeta el formato tal cual (con el .0). No corta por espacios para no
+    // romper matrículas que pudieran tenerlos.
+    return [...new Set(
+      addFamilyList.split(/[\r\n\t,;]+/).map(s => s.trim()).filter(Boolean)
+    )];
+  }, [addFamilyList]);
+
+  const handleAddFamily = async () => {
+    const fam = addFamilyName.trim();
+    if (!fam) { toast.error("Ponele un nombre a la familia."); return; }
+    if (addFamilyMatriculas.length === 0) { toast.error("Pegá al menos una matrícula."); return; }
+    setAddingFamily(true);
+    const rows: FamilyRow[] = addFamilyMatriculas.map(articulo => {
+      const saved = familyMap.get(articulo);
+      return buildRow(articulo, [...new Set([...(saved?.familias ?? []), fam])], saved?.tipo ?? "");
+    });
+    const err = await persistRows(rows);
+    if (err) { toast.error(`Error al guardar: ${err}`); setAddingFamily(false); return; }
+    await refreshFamilies();
+    toast.success(`Familia «${fam}»: ${rows.length} matrícula${rows.length === 1 ? "" : "s"} asignada${rows.length === 1 ? "" : "s"}`);
+    setAddFamilyName(""); setAddFamilyList(""); setAddFamilyOpen(false); setAddingFamily(false);
   };
 
   const allVisibleSelected = useMemo(
@@ -882,17 +933,8 @@ export function StockZonaSection() {
                   <BeastSelect
                     options={familiasDisponibles.map(f => ({ value: f, label: f }))}
                     value={filterFamilia}
-                    onChange={v => { setFilterFamilia(v); setFilterSubfamilia(""); }}
+                    onChange={setFilterFamilia}
                     placeholder="Todas las familias"
-                    clearable
-                  />
-                )}
-                {filterFamilia && subfamiliasDisponibles.length > 0 && (
-                  <BeastSelect
-                    options={subfamiliasDisponibles.map(s => ({ value: s, label: s }))}
-                    value={filterSubfamilia}
-                    onChange={setFilterSubfamilia}
-                    placeholder="Todas las subfamilias"
                     clearable
                   />
                 )}
@@ -1327,13 +1369,22 @@ export function StockZonaSection() {
           ) : (
             <>
               <div className="flex items-center gap-3 flex-wrap">
-                <div className="flex items-center gap-2 flex-1 min-w-[200px] max-w-sm h-9 px-3 rounded-lg bg-secondary border border-border">
+                <button
+                  onClick={() => setAddFamilyOpen(true)}
+                  className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[12.5px] font-semibold transition-all"
+                  style={{ background: "#8B5CF6", color: "#fff", border: "none", boxShadow: "0 8px 16px -10px rgba(139,92,246,0.6)", cursor: "pointer" }}
+                >
+                  <Plus className="w-3.5 h-3.5" strokeWidth={2.6} />
+                  Agregar familia
+                </button>
+
+                <div className="flex items-center gap-2 flex-1 min-w-[180px] max-w-xs h-9 px-3 rounded-lg bg-secondary border border-border">
                   <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   <input
                     type="text"
                     value={familiaSearch}
                     onChange={e => setFamiliaSearch(e.target.value)}
-                    placeholder="Buscar artículo..."
+                    placeholder="Buscar matrícula..."
                     className="flex-1 bg-transparent border-none outline-none text-[13px] text-foreground placeholder:text-muted-foreground/50"
                   />
                   {familiaSearch && (
@@ -1342,6 +1393,17 @@ export function StockZonaSection() {
                     </button>
                   )}
                 </div>
+
+                {familiasDisponibles.length > 0 && (
+                  <BeastSelect
+                    options={familiasDisponibles.map(f => ({ value: f, label: f }))}
+                    value={familiaFilter}
+                    onChange={setFamiliaFilter}
+                    placeholder="Todas las familias"
+                    minWidth={170}
+                    clearable
+                  />
+                )}
 
                 <button
                   onClick={() => setOnlyUnclassified(v => !v)}
@@ -1358,8 +1420,8 @@ export function StockZonaSection() {
                 </button>
 
                 <p className="text-[12.5px] text-muted-foreground whitespace-nowrap">
-                  {filteredFamiliaArticles.length} de {allArticles.length} artículos
-                  {asignadosCount > 0 && <> · <span className="text-accent">{asignadosCount} asignados</span></>}
+                  {filteredFamiliaArticles.length} de {allArticles.length} matrículas
+                  {asignadosCount > 0 && <> · <span className="text-accent">{asignadosCount} asignadas</span></>}
                 </p>
               </div>
 
@@ -1376,7 +1438,7 @@ export function StockZonaSection() {
                     >
                       {selectedArticulos.size}
                     </span>
-                    seleccionados
+                    seleccionadas
                   </span>
 
                   <input
@@ -1386,33 +1448,47 @@ export function StockZonaSection() {
                     onChange={e => setBulkFamilia(e.target.value)}
                     placeholder="Familia…"
                     className="h-9 px-3 rounded-lg bg-secondary border border-border text-[13px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent/40"
-                    style={{ minWidth: 150 }}
+                    style={{ minWidth: 160 }}
                   />
-                  <input
-                    type="text"
-                    value={bulkSubfamilia}
-                    onChange={e => setBulkSubfamilia(e.target.value)}
-                    placeholder="Subfamilia…"
-                    className="h-9 px-3 rounded-lg bg-secondary border border-border text-[13px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent/40"
-                    style={{ minWidth: 150 }}
-                  />
+                  <button
+                    onClick={() => applyBulk("add")}
+                    disabled={applyingBulk || !bulkFamilia.trim()}
+                    className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[13px] font-semibold transition-all disabled:opacity-40"
+                    style={{ background: "#8B5CF6", color: "#fff", border: "none", cursor: applyingBulk ? "wait" : "pointer" }}
+                    title="Agregar esta familia a las seleccionadas (no pisa las que ya tengan)"
+                  >
+                    {applyingBulk ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" strokeWidth={2.6} />}
+                    Agregar
+                  </button>
+                  <button
+                    onClick={() => applyBulk("remove")}
+                    disabled={applyingBulk || !bulkFamilia.trim()}
+                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium transition-all disabled:opacity-40"
+                    style={{ background: "transparent", color: "#fca5a5", border: "1px solid oklch(0.5 0.15 25 / 0.4)", cursor: "pointer" }}
+                    title="Quitar esta familia de las seleccionadas"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    Quitar familia
+                  </button>
+
+                  <span className="w-px h-6 bg-border/60" />
+
                   <BeastSelect
                     options={TIPO_OPTIONS.map(t => ({ value: t.value, label: t.label, node: <TipoPill tipo={t.value} /> }))}
                     value={bulkTipo}
-                    onChange={v => setBulkTipo(v as ArticuloTipo)}
+                    onChange={v => { setBulkTipo(v as ArticuloTipo); }}
                     placeholder="Tipo…"
-                    minWidth={150}
+                    minWidth={140}
                     clearable
                   />
-
                   <button
-                    onClick={applyBulk}
-                    disabled={applyingBulk}
-                    className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg text-[13px] font-semibold transition-all disabled:opacity-50"
-                    style={{ background: "#8B5CF6", color: "#fff", border: "none", cursor: applyingBulk ? "wait" : "pointer" }}
+                    onClick={() => applyBulk("add")}
+                    disabled={applyingBulk || !bulkTipo}
+                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium transition-all disabled:opacity-40"
+                    style={{ background: "hsl(var(--secondary))", color: "hsl(var(--foreground))", border: "1px solid hsl(var(--border))", cursor: "pointer" }}
+                    title="Aplicar el tipo a las seleccionadas"
                   >
-                    {applyingBulk ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" strokeWidth={2.6} />}
-                    Aplicar
+                    Aplicar tipo
                   </button>
 
                   <div className="flex-1" />
@@ -1422,9 +1498,10 @@ export function StockZonaSection() {
                     disabled={applyingBulk}
                     className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium transition-colors disabled:opacity-50"
                     style={{ background: "transparent", color: "#fca5a5", border: "1px solid oklch(0.5 0.15 25 / 0.4)", cursor: "pointer" }}
+                    title="Borrar todas las familias y el tipo de las seleccionadas"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    Quitar asignación
+                    Borrar todo
                   </button>
                   <button
                     onClick={() => clearBulkSelection(false)}
@@ -1447,10 +1524,9 @@ export function StockZonaSection() {
                     <colgroup>
                       <col style={{ width: 44 }} />
                       <col style={{ width: 130 }} />
+                      <col style={{ width: 240 }} />
                       <col />
-                      <col style={{ width: 160 }} />
-                      <col style={{ width: 160 }} />
-                      <col style={{ width: 160 }} />
+                      <col style={{ width: 150 }} />
                       <col style={{ width: 32 }} />
                     </colgroup>
                     <thead>
@@ -1471,18 +1547,17 @@ export function StockZonaSection() {
                           </button>
                         </th>
                         <th style={{ padding: "14px 14px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 130, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Matrícula</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Descripción</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Familia</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Subfamilia</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 160, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Tipo</th>
+                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 240, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Descripción</th>
+                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Familias</th>
+                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 150, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Tipo</th>
                         <th style={{ width: 32, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }} />
                       </tr>
                     </thead>
                     <tbody>
                       {filteredFamiliaArticles.length === 0 ? (
                         <tr>
-                          <td colSpan={7} style={{ padding: "48px 24px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 13 }}>
-                            No hay artículos que coincidan con la búsqueda
+                          <td colSpan={6} style={{ padding: "48px 24px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 13 }}>
+                            No hay matrículas que coincidan con la búsqueda
                           </td>
                         </tr>
                       ) : (() => {
@@ -1492,25 +1567,25 @@ export function StockZonaSection() {
                         const padBot = vItems.length ? totalH - vItems[vItems.length - 1].end : 0;
                         return (
                           <>
-                            {padTop > 0 && <tr style={{ height: padTop }}><td colSpan={7} style={{ padding: 0, border: "none" }} /></tr>}
+                            {padTop > 0 && <tr style={{ height: padTop }}><td colSpan={6} style={{ padding: 0, border: "none" }} /></tr>}
                             {vItems.map(vi => {
                         const row = filteredFamiliaArticles[vi.index];
-                        const edit    = localEdits[row.articulo] ?? { familia: "", subfamilia: "", tipo: "" as ArticuloTipo };
+                        const saved      = familyMap.get(row.articulo);
+                        const fams       = saved?.familias ?? [];
                         const isSaving   = savingArticulo === row.articulo;
-                        const hasFamily  = !!(familyMap.get(row.articulo)?.familia);
+                        const hasFamily  = fams.length > 0;
                         // Tipo del catálogo maestro (Carga de datos); el manual lo pisa.
                         const catalogTipo = matriculasInfo.get(row.articulo)?.tipo ?? "";
                         const isSelected = selectedArticulos.has(row.articulo);
-                        const subfamiliasList = edit.familia ? subfamiliasForFamilia(edit.familia) : [];
                         const isLast = vi.index === filteredFamiliaArticles.length - 1;
                         const bottomBorder = isLast ? {} : { borderBottom: cellBorder };
 
                         return (
                           <tr
                             key={row.articulo}
-                            style={{ opacity: hasFamily || isSelected ? 1 : 0.6, transition: "opacity 0.15s", background: isSelected ? "oklch(0.55 0.20 295 / 0.12)" : undefined }}
+                            style={{ opacity: hasFamily || isSelected ? 1 : 0.65, transition: "opacity 0.15s", background: isSelected ? "oklch(0.55 0.20 295 / 0.12)" : undefined }}
                             onMouseEnter={e => { e.currentTarget.style.opacity = "1"; if (!isSelected) e.currentTarget.style.background = "hsl(var(--secondary) / 0.3)"; }}
-                            onMouseLeave={e => { e.currentTarget.style.opacity = hasFamily || isSelected ? "1" : "0.6"; e.currentTarget.style.background = isSelected ? "oklch(0.55 0.20 295 / 0.12)" : ""; }}
+                            onMouseLeave={e => { e.currentTarget.style.opacity = hasFamily || isSelected ? "1" : "0.65"; e.currentTarget.style.background = isSelected ? "oklch(0.55 0.20 295 / 0.12)" : ""; }}
                           >
                             <td style={{ ...bottomBorder, padding: "0 0 0 14px", textAlign: "center" }}>
                               <button
@@ -1527,51 +1602,58 @@ export function StockZonaSection() {
                               </button>
                             </td>
                             <td style={{ ...bottomBorder, padding: "9px 14px", fontFamily: "ui-monospace, monospace", fontSize: 12.5, color: "#7ee2a8", whiteSpace: "nowrap" }}>{row.articulo}</td>
-                            <td style={{ ...bottomBorder, padding: "9px 12px", color: "hsl(var(--foreground))", fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 280 }}>{row.descArticulo}</td>
+                            <td style={{ ...bottomBorder, padding: "9px 12px", color: "hsl(var(--foreground))", fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.descArticulo}</td>
                             <td style={{ ...bottomBorder, padding: "6px 8px" }}>
-                              {isSaving ? (
-                                <div className="flex items-center gap-1.5 h-8 px-2 text-xs text-muted-foreground">
-                                  <Loader2 className="w-3 h-3 animate-spin" />Guardando...
-                                </div>
-                              ) : (
-                                <>
-                                  <datalist id={`sub-${row.articulo}`}>
-                                    {subfamiliasList.map(s => <option key={s} value={s} />)}
-                                  </datalist>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {fams.map(f => (
+                                  <span
+                                    key={f}
+                                    className="inline-flex items-center gap-1"
+                                    style={{ padding: "2px 4px 2px 8px", borderRadius: 999, background: "oklch(0.30 0.06 295 / 0.5)", color: "#d6c2ff", border: "1px solid oklch(0.55 0.18 295 / 0.45)", fontSize: 11.5, fontWeight: 500, whiteSpace: "nowrap" }}
+                                  >
+                                    {f}
+                                    <button
+                                      onClick={() => removeFamiliaFromArticulo(row.articulo, f)}
+                                      disabled={isSaving}
+                                      className="inline-flex items-center justify-center rounded-full hover:bg-white/10 transition-colors disabled:opacity-40"
+                                      style={{ width: 15, height: 15, color: "#d6c2ff" }}
+                                      title={`Quitar «${f}»`}
+                                    >
+                                      <X className="w-2.5 h-2.5" strokeWidth={2.6} />
+                                    </button>
+                                  </span>
+                                ))}
+                                {isSaving ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                                ) : (
                                   <input
                                     type="text"
                                     list="familias-list"
-                                    value={edit.familia}
-                                    onChange={e => setLocalEdits(p => ({ ...p, [row.articulo]: { ...(p[row.articulo] ?? { familia: "", subfamilia: "", tipo: "" as ArticuloTipo }), familia: e.target.value } }))}
-                                    onBlur={() => handleFamilyBlur(row.articulo)}
-                                    placeholder="Sin familia"
-                                    className="w-full h-8 px-2 rounded-md bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent/30 transition-all"
+                                    placeholder="+ familia"
+                                    onKeyDown={e => {
+                                      if (e.key === "Enter") {
+                                        const v = (e.target as HTMLInputElement).value.trim();
+                                        if (v) { addFamiliaToArticulo(row.articulo, v); (e.target as HTMLInputElement).value = ""; }
+                                      }
+                                    }}
+                                    onBlur={e => {
+                                      const v = e.target.value.trim();
+                                      if (v) { addFamiliaToArticulo(row.articulo, v); e.target.value = ""; }
+                                    }}
+                                    className="h-7 px-2 rounded-md bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-accent/30 transition-all"
+                                    style={{ width: 92 }}
                                   />
-                                </>
-                              )}
-                            </td>
-                            <td style={{ ...bottomBorder, padding: "6px 8px" }}>
-                              {!isSaving && (
-                                <input
-                                  type="text"
-                                  list={`sub-${row.articulo}`}
-                                  value={edit.subfamilia}
-                                  onChange={e => setLocalEdits(p => ({ ...p, [row.articulo]: { ...(p[row.articulo] ?? { familia: "", subfamilia: "", tipo: "" as ArticuloTipo }), subfamilia: e.target.value } }))}
-                                  onBlur={() => handleFamilyBlur(row.articulo)}
-                                  placeholder="—"
-                                  disabled={!edit.familia}
-                                  className="w-full h-8 px-2 rounded-md bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent/30 transition-all disabled:opacity-30"
-                                />
-                              )}
+                                )}
+                              </div>
                             </td>
                             <td style={{ ...bottomBorder, padding: "6px 8px" }}>
                               {!isSaving && (
                                 <BeastSelect
                                   options={TIPO_OPTIONS.map(t => ({ value: t.value, label: t.label, node: <TipoPill tipo={t.value} /> }))}
-                                  value={edit.tipo || catalogTipo}
-                                  onChange={v => persistRow(row.articulo, { ...edit, tipo: v as ArticuloTipo })}
+                                  value={(saved?.tipo || catalogTipo) as string}
+                                  onChange={v => setArticuloTipo(row.articulo, v as ArticuloTipo)}
                                   placeholder="—"
-                                  minWidth={140}
+                                  minWidth={130}
                                   clearable
                                   portal
                                 />
@@ -1580,23 +1662,18 @@ export function StockZonaSection() {
                             <td style={{ ...bottomBorder, padding: "6px 4px", textAlign: "center" }}>
                               {hasFamily && !isSaving && (
                                 <button
-                                  onClick={async () => {
-                                    setSavingArticulo(row.articulo);
-                                    await deleteFamily(row.articulo);
-                                    setLocalEdits(p => ({ ...p, [row.articulo]: { familia: "", subfamilia: "", tipo: "" } }));
-                                    await refreshFamilies();
-                                    setSavingArticulo(null);
-                                  }}
+                                  onClick={() => clearArticulo(row.articulo)}
                                   className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                  title="Quitar todas las familias"
                                 >
-                                  <X className="w-3 h-3" />
+                                  <Trash2 className="w-3 h-3" />
                                 </button>
                               )}
                             </td>
                           </tr>
                         );
                             })}
-                            {padBot > 0 && <tr style={{ height: padBot }}><td colSpan={7} style={{ padding: 0, border: "none" }} /></tr>}
+                            {padBot > 0 && <tr style={{ height: padBot }}><td colSpan={6} style={{ padding: 0, border: "none" }} /></tr>}
                           </>
                         );
                       })()}
@@ -1606,13 +1683,100 @@ export function StockZonaSection() {
               </div>
 
               <p className="text-xs text-muted-foreground">
-                Tildá varios artículos para asignar familia, subfamilia o tipo en lote. Los cambios individuales se guardan al salir del campo. Dejá Familia vacía para quitar la asignación.
+                Una matrícula puede tener varias familias. Agregá familias por fila con «+ familia» (Enter), o tildá varias y usá «Agregar / Quitar familia» en lote. Para cargar muchas de una, usá «Agregar familia» y pegá la lista.
               </p>
             </>
           )}
         </div>
       )}
       </div>
+
+      {/* Modal: Agregar familia (nombre + pegar lista de matrículas) */}
+      {addFamilyOpen && createPortal(
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.55)" }}
+          onMouseDown={e => { if (e.target === e.currentTarget && !addingFamily) setAddFamilyOpen(false); }}
+        >
+          <div
+            className="w-full max-w-lg rounded-[16px] overflow-hidden"
+            style={{ background: "oklch(0.235 0.005 270)", border: "1px solid oklch(1 0 0 / 0.08)", boxShadow: "0 24px 60px -20px rgba(0,0,0,0.7)" }}
+          >
+            <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-3">
+              <div className="flex items-start gap-3">
+                <div className="grid place-items-center mt-0.5" style={{ width: 34, height: 34, borderRadius: 9, background: "oklch(0.30 0.06 295 / 0.5)", border: "1px solid oklch(0.55 0.18 295 / 0.45)", color: "#c4b5fd" }}>
+                  <Tag className="w-4 h-4" strokeWidth={2} />
+                </div>
+                <div>
+                  <h3 className="text-[16px] font-semibold tracking-tight text-foreground">Agregar familia</h3>
+                  <p className="mt-0.5 text-[12.5px] text-muted-foreground">Ponele un nombre y pegá las matrículas que la integran.</p>
+                </div>
+              </div>
+              <button onClick={() => { if (!addingFamily) setAddFamilyOpen(false); }} className="text-muted-foreground hover:text-foreground shrink-0 mt-1">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-5 pb-5 space-y-3">
+              <div>
+                <label className="block text-[11.5px] uppercase tracking-[0.5px] text-muted-foreground mb-1.5">Nombre de la familia</label>
+                <input
+                  type="text"
+                  list="familias-list"
+                  value={addFamilyName}
+                  onChange={e => setAddFamilyName(e.target.value)}
+                  placeholder="Ej: Cables, Transformadores…"
+                  autoFocus
+                  className="w-full h-10 px-3 rounded-[9px] text-[14px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+                  style={{ background: "oklch(0.16 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11.5px] uppercase tracking-[0.5px] text-muted-foreground mb-1.5">
+                  Matrículas <span className="normal-case tracking-normal text-muted-foreground/60">(una por línea, como vienen del Excel)</span>
+                </label>
+                <textarea
+                  value={addFamilyList}
+                  onChange={e => setAddFamilyList(e.target.value)}
+                  placeholder={"00000022.0\n00000023.0\n00000024.0"}
+                  rows={8}
+                  className="w-full px-3 py-2.5 rounded-[9px] outline-none resize-y text-foreground placeholder:text-muted-foreground/35"
+                  style={{ background: "oklch(0.16 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", fontFamily: "ui-monospace, monospace", fontSize: 12.5, lineHeight: 1.7 }}
+                />
+                {addFamilyMatriculas.length > 0 && (
+                  <p className="mt-1.5 text-[12px]" style={{ color: "#86efac" }}>
+                    {addFamilyMatriculas.length} matrícula{addFamilyMatriculas.length === 1 ? "" : "s"} detectada{addFamilyMatriculas.length === 1 ? "" : "s"}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2.5 pt-1">
+                <button
+                  onClick={handleAddFamily}
+                  disabled={addingFamily || !addFamilyName.trim() || addFamilyMatriculas.length === 0}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-[9px] text-[13px] font-semibold transition-all disabled:cursor-not-allowed"
+                  style={{
+                    background: (addingFamily || !addFamilyName.trim() || addFamilyMatriculas.length === 0) ? "hsl(var(--secondary))" : "#8B5CF6",
+                    color: (addingFamily || !addFamilyName.trim() || addFamilyMatriculas.length === 0) ? "hsl(var(--muted-foreground))" : "#fff",
+                    border: "none",
+                  }}
+                >
+                  {addingFamily ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" strokeWidth={2.6} />}
+                  {addingFamily ? "Guardando…" : "Crear y asignar"}
+                </button>
+                <button
+                  onClick={() => { if (!addingFamily) setAddFamilyOpen(false); }}
+                  className="px-3.5 py-2 rounded-[9px] border border-border text-[13px] font-medium transition-colors bg-transparent text-muted-foreground hover:text-foreground"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
