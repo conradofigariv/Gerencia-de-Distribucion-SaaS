@@ -1828,12 +1828,17 @@ export function StockZonaSection() {
                     <span className="inline-flex items-center justify-center shrink-0 rounded-full" style={{ width: 22, height: 22, background: "#8B5CF6", color: "#fff", fontSize: 12, fontWeight: 700 }}>{step.n}</span>
                     <p className="text-[13.5px] text-foreground leading-relaxed pt-0.5">{step.text}</p>
                   </div>
-                  <img
-                    src={step.img}
-                    alt={`Paso ${step.n}`}
-                    className="w-full rounded-[10px] border border-border/60"
-                    style={{ background: "oklch(0.16 0.005 270)" }}
-                  />
+                  <div
+                    className="rounded-[10px] border border-border/60 flex items-center justify-center"
+                    style={{ background: "oklch(0.16 0.005 270)", padding: 12 }}
+                  >
+                    <img
+                      src={step.img}
+                      alt={`Paso ${step.n}`}
+                      className="rounded-[6px]"
+                      style={{ maxHeight: 320, maxWidth: "100%", height: "auto", display: "block" }}
+                    />
+                  </div>
                 </div>
               ))}
 
