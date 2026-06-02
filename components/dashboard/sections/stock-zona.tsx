@@ -7,6 +7,7 @@ import {
   Trash2, Loader2, Search, X, PackageOpen, RefreshCw,
   ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight,
   Download, Sparkles, Tag, Wrench, Package, Check, Plus, HelpCircle,
+  ChevronLeft, ArrowRight, Lightbulb, ListChecks,
 } from "lucide-react";
 import { CheckIcon } from "lucide-react";
 import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
@@ -273,7 +274,6 @@ export function StockZonaSection() {
   const [text, setText]                     = useState("");
   const [saving, setSaving]                 = useState(false);
   const [helpOpen, setHelpOpen]             = useState(false);
-  const [helpTopic, setHelpTopic]           = useState<"cargar" | "resumen" | "familias">("cargar");
   const [deletingZona, setDeletingZona]     = useState<string | null>(null);
   const [importedAt, setImportedAt]         = useState<Date | null>(null);
   const [importedCount, setImportedCount]   = useState(0);
@@ -827,10 +827,19 @@ export function StockZonaSection() {
         <div className="flex items-center gap-2 mt-0.5">
           <button
             onClick={() => setHelpOpen(true)}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-[12.5px] font-medium text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors"
             title="Ayuda de Stock por Zona"
+            style={{
+              height: 32, padding: "0 12px", borderRadius: 9,
+              background: "oklch(0.22 0.005 270)",
+              border: "1px solid oklch(1 0 0 / 0.08)",
+              color: "oklch(0.65 0 0)", fontSize: 12.5, fontWeight: 500,
+              cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7,
+              transition: "color .15s, border-color .15s",
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.18)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.65 0 0)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.08)"; }}
           >
-            <HelpCircle className="w-3.5 h-3.5" />
+            <HelpCircle className="w-4 h-4" />
             Ayuda
           </button>
           <button
@@ -1790,162 +1799,253 @@ export function StockZonaSection() {
         document.body,
       )}
 
-      {/* Centro de ayuda (mismo lenguaje visual que Informe Técnico) */}
-      {helpOpen && createPortal(
-        <div
-          className="fixed inset-0 z-[200] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4"
-          onMouseDown={e => { if (e.target === e.currentTarget) setHelpOpen(false); }}
-        >
-          <div
-            className="w-full max-w-3xl rounded-[14px] overflow-hidden flex flex-col"
-            style={{ background: "oklch(0.235 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", boxShadow: "0 24px 60px -20px rgba(0,0,0,0.7)", maxHeight: "88vh" }}
-          >
-            {/* Header */}
-            <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-4 border-b" style={{ borderColor: "oklch(1 0 0 / 0.06)" }}>
-              <div className="flex items-start gap-3">
-                <div className="grid place-items-center mt-0.5" style={{ width: 36, height: 36, borderRadius: 9, background: "oklch(0.30 0.10 155 / 0.45)", border: "1px solid oklch(0.55 0.15 155 / 0.5)", color: "#86efac" }}>
-                  <HelpCircle className="w-[18px] h-[18px]" strokeWidth={2} />
-                </div>
-                <div>
-                  <h3 className="text-[18px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.3, margin: 0 }}>Ayuda</h3>
-                  <p className="mt-0.5 text-[12.5px]" style={{ color: "oklch(0.55 0 0)" }}>Guía de uso de Stock por Zona.</p>
-                </div>
-              </div>
-              <button onClick={() => setHelpOpen(false)} className="text-muted-foreground hover:text-foreground shrink-0 mt-1">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Body: nav de temas (izq) + contenido (der) */}
-            <div className="flex min-h-0 flex-1">
-              <div className="shrink-0 p-3 border-r flex flex-col gap-1" style={{ width: 196, borderColor: "oklch(1 0 0 / 0.06)" }}>
-                {([
-                  { id: "cargar"   as const, label: "Cómo cargar datos", icon: Download },
-                  { id: "resumen"  as const, label: "Resumen de stock",  icon: PackageOpen },
-                  { id: "familias" as const, label: "Familias",          icon: Tag },
-                ]).map(t => {
-                  const Icon = t.icon;
-                  const isActive = helpTopic === t.id;
-                  return (
-                    <button
-                      key={t.id}
-                      onClick={() => setHelpTopic(t.id)}
-                      className="inline-flex items-center gap-2.5 text-left transition-colors"
-                      style={{
-                        padding: "9px 11px", borderRadius: 8, border: "none", cursor: "pointer",
-                        background: isActive ? "oklch(0.27 0.005 270)" : "transparent",
-                        color: isActive ? "oklch(0.97 0 0)" : "oklch(0.62 0 0)",
-                        fontSize: 13, fontWeight: isActive ? 500 : 400,
-                        boxShadow: isActive ? "0 1px 0 oklch(1 0 0 / 0.06) inset" : "none",
-                      }}
-                      onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.88 0 0)"; }}
-                      onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.62 0 0)"; }}
-                    >
-                      <Icon className="w-3.5 h-3.5 shrink-0" strokeWidth={1.8} />
-                      {t.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="flex-1 min-w-0 overflow-y-auto px-5 py-5">
-                {helpTopic === "cargar" && (
-                  <div className="space-y-5">
-                    <p className="text-[13px] leading-relaxed" style={{ color: "oklch(0.62 0 0)" }}>
-                      Extraé el inventario de una zona desde <b className="text-foreground/90">SIGA</b> y pegalo en la pestaña <b className="text-foreground/90">«Cargar datos»</b>.
-                    </p>
-                    {[
-                      { n: 1, img: "/ayuda-stock/paso1.png", text: <>Ingresá tu cuenta en <b>SIEPEC</b> y entrá a <b>Siga&nbsp;-&nbsp;Compras&nbsp;-&nbsp;Solicitante</b>.</> },
-                      { n: 2, img: "/ayuda-stock/paso2.png", text: <>En la parte inferior del cuadro, en el título <b>Inventario</b>, hacé clic en <b>«Cantidad en mano»</b>.</> },
-                      { n: 3, img: "/ayuda-stock/paso3.png", text: <>Se abre una pestaña donde podés <b>seleccionar la zona</b> que querés consultar.</> },
-                      { n: 4, img: "/ayuda-stock/paso4.png", text: <>Al elegir una zona (por ej. <b>Zona A - Córdoba Capital</b>) se abre otra pestaña.</> },
-                      { n: 5, img: "/ayuda-stock/paso5.png", text: <>Presioná <b>Encontrar</b>. Sobre la tabla, hacé <b>clic derecho → «Copiar todas las filas»</b>.</> },
-                    ].map(step => (
-                      <div key={step.n} className="space-y-2">
-                        <div className="flex items-start gap-2.5">
-                          <span className="inline-flex items-center justify-center shrink-0 rounded-full" style={{ width: 22, height: 22, background: "#8B5CF6", color: "#fff", fontSize: 12, fontWeight: 700 }}>{step.n}</span>
-                          <p className="text-[13.5px] text-foreground leading-relaxed pt-0.5">{step.text}</p>
-                        </div>
-                        <div className="rounded-[10px] border border-border/60 flex items-center justify-center" style={{ background: "oklch(0.16 0.005 270)", padding: 12 }}>
-                          <img src={step.img} alt={`Paso ${step.n}`} className="rounded-[6px]" style={{ maxHeight: 320, maxWidth: "100%", height: "auto", display: "block" }} />
-                        </div>
-                      </div>
-                    ))}
-                    <div className="flex items-start gap-2.5">
-                      <span className="inline-flex items-center justify-center shrink-0 rounded-full" style={{ width: 22, height: 22, background: "oklch(0.55 0.15 155)", color: "#04210f", fontSize: 12, fontWeight: 700 }}>6</span>
-                      <p className="text-[13.5px] text-foreground leading-relaxed pt-0.5">
-                        Volvé acá, entrá a la pestaña <b>«Cargar datos»</b>, <b>pegá</b> (Ctrl+V) la tabla y tocá <b>Importar</b>. La zona se detecta sola desde la columna <i>Organización</i>; podés pegar varias zonas juntas.
-                      </p>
-                    </div>
-                    <div className="rounded-[10px] p-3 text-[12.5px] leading-relaxed" style={{ background: "oklch(0.30 0.10 155 / 0.14)", border: "1px solid oklch(0.55 0.15 155 / 0.35)", color: "#a7f3c8" }}>
-                      <b>Tip:</b> pegá la información tal cual viene, sin borrar columnas ni filas. El sistema limpia y consolida automáticamente. Volver a cargar una zona <b>reemplaza</b> los datos anteriores de esa zona.
-                    </div>
-                    <button
-                      onClick={() => { setHelpOpen(false); setTab("cargar"); }}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-[9px] text-[13px] font-semibold"
-                      style={{ background: "#8B5CF6", color: "#fff", border: "none", boxShadow: "0 1px 0 oklch(1 0 0 / 0.1) inset, 0 8px 16px -10px rgba(139,92,246,0.6)" }}
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      Ir a Cargar datos
-                    </button>
-                  </div>
-                )}
-
-                {helpTopic === "resumen" && (
-                  <div className="space-y-3.5 text-[13.5px] text-foreground leading-relaxed">
-                    <p style={{ color: "oklch(0.62 0 0)" }}>El <b className="text-foreground/90">Resumen de stock</b> consolida una fila por matrícula con el total y el detalle por zona.</p>
-                    <ul className="space-y-2.5 list-none">
-                      {[
-                        <><b>Columnas fijas:</b> Matrícula, Descripción, UDM, Tipo y Total; a la derecha, una columna por zona.</>,
-                        <><b>Colapsar zonas:</b> con la flecha del encabezado podés ocultar las columnas de zona para ver solo los totales.</>,
-                        <><b>Filtros:</b> por zona, por familia, por <b>Servicio/Material</b> y búsqueda por número o nombre de matrícula.</>,
-                        <><b>Servicios:</b> aparecen aunque no tengan stock (Total 0), porque por naturaleza no se depositan.</>,
-                        <><b>Ordenar y redimensionar:</b> clic en cualquier encabezado para ordenar; arrastrá el borde para cambiar el ancho (se guarda).</>,
-                      ].map((t, i) => (
-                        <li key={i} className="flex items-start gap-2.5">
-                          <span className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "#86efac" }} />
-                          <span>{t}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {helpTopic === "familias" && (
-                  <div className="space-y-3.5 text-[13.5px] text-foreground leading-relaxed">
-                    <p style={{ color: "oklch(0.62 0 0)" }}>Las <b className="text-foreground/90">familias</b> son etiquetas para agrupar matrículas. Una matrícula puede tener <b className="text-foreground/90">varias</b>.</p>
-                    <ul className="space-y-2.5 list-none">
-                      {[
-                        <><b>Agregar familia:</b> botón violeta → ponés un nombre y pegás una lista de matrículas (una por línea, como del Excel). Se asigna a todas.</>,
-                        <><b>Por fila:</b> cada matrícula muestra sus familias como chips; quitás con la <b>X</b> o agregás escribiendo en «+ familia» y Enter.</>,
-                        <><b>En lote:</b> tildá varias y usá <b>Agregar</b> (suma sin pisar) o <b>Quitar familia</b>; también <b>Aplicar tipo</b> Material/Servicio.</>,
-                        <><b>Tipo:</b> sale del catálogo de «Carga de datos»; podés pisarlo manualmente por matrícula.</>,
-                        <><b>Buscar:</b> filtrá por familia, por «sin clasificar» o por número/descripción.</>,
-                      ].map((t, i) => (
-                        <li key={i} className="flex items-start gap-2.5">
-                          <span className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "#86efac" }} />
-                          <span>{t}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex justify-end px-5 py-3.5 border-t" style={{ borderColor: "oklch(1 0 0 / 0.06)" }}>
-              <button
-                onClick={() => setHelpOpen(false)}
-                className="px-3.5 py-2 rounded-[9px] border border-border text-[13px] font-medium transition-colors bg-transparent text-muted-foreground hover:text-foreground"
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
+      {/* Centro de ayuda (mismo diseño y concepto que Informe Técnico) */}
+      {helpOpen && (
+        <StockHelpModal
+          onClose={() => setHelpOpen(false)}
+          onGoCargar={() => { setHelpOpen(false); setTab("cargar"); }}
+        />
       )}
     </div>
+  );
+}
+
+// ─── Centro de ayuda (réplica del diseño de Informe Técnico) ──────────────────
+
+const STOCK_HELP_META = [
+  { id: "cargar",   icon: Download,    label: "Cargar datos",     color: "#60a5fa", subtitle: "Extraer de SIGA y pegar" },
+  { id: "resumen",  icon: PackageOpen, label: "Resumen de stock", color: "#34d399", subtitle: "Consulta consolidada" },
+  { id: "familias", icon: Tag,         label: "Familias",         color: "#a78bfa", subtitle: "Etiquetas de matrículas" },
+] as const;
+
+function HelpTip({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", gap: 10, padding: "10px 14px", borderRadius: 9, background: "oklch(0.30 0.10 155 / 0.12)", border: "1px solid oklch(0.55 0.15 155 / 0.22)", marginTop: 8 }}>
+      <Lightbulb className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#86efac" }} />
+      <span style={{ fontSize: 13, color: "oklch(0.78 0 0)", lineHeight: 1.55 }}>{children}</span>
+    </div>
+  );
+}
+
+function HelpSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+        <ListChecks className="w-4 h-4" style={{ color: "oklch(0.50 0 0)" }} />
+        <span style={{ fontSize: 12.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.50 0 0)" }}>{title}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function HelpAction({ label, desc }: { label: string; desc: string }) {
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "flex-start", paddingBottom: 8 }}>
+      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 24, height: 22, borderRadius: 6, background: "oklch(0.28 0.005 270)", border: "1px solid oklch(1 0 0 / 0.08)", fontSize: 12, color: "oklch(0.80 0 0)", fontWeight: 600, paddingLeft: 7, paddingRight: 7, whiteSpace: "nowrap", marginTop: 1 }}>{label}</span>
+      <span style={{ fontSize: 13, color: "oklch(0.68 0 0)", lineHeight: 1.5 }}>{desc}</span>
+    </div>
+  );
+}
+
+function StockHelpStepContent({ step, onGoCargar }: { step: number; onGoCargar: () => void }) {
+  if (step === 0) {
+    const steps = [
+      { n: 1, img: "/ayuda-stock/paso1.png", text: <>Ingresá tu cuenta en <strong>SIEPEC</strong> y entrá a <strong>Siga&nbsp;-&nbsp;Compras&nbsp;-&nbsp;Solicitante</strong>.</> },
+      { n: 2, img: "/ayuda-stock/paso2.png", text: <>En la parte inferior del cuadro, en el título <strong>Inventario</strong>, hacé clic en <strong>«Cantidad en mano»</strong>.</> },
+      { n: 3, img: "/ayuda-stock/paso3.png", text: <>Se abre una pestaña donde podés <strong>seleccionar la zona</strong> que querés consultar.</> },
+      { n: 4, img: "/ayuda-stock/paso4.png", text: <>Al elegir una zona (por ej. <strong>Zona A - Córdoba Capital</strong>) se abre otra pestaña.</> },
+      { n: 5, img: "/ayuda-stock/paso5.png", text: <>Presioná <strong>Encontrar</strong>. Sobre la tabla, hacé <strong>clic derecho → «Copiar todas las filas»</strong>.</> },
+    ];
+    return (
+      <>
+        <p style={{ fontSize: 14, color: "oklch(0.72 0 0)", lineHeight: 1.65, marginBottom: 4 }}>
+          Extraé el inventario de una zona desde <strong>SIGA</strong> y pegalo en la pestaña <strong>«Cargar datos»</strong>. La zona se detecta sola desde la columna <em>Organización</em>.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 18, marginTop: 16 }}>
+          {steps.map(s => (
+            <div key={s.n} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 999, background: "#60a5fa", color: "oklch(0.12 0 0)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{s.n}</span>
+                <span style={{ fontSize: 13.5, color: "oklch(0.85 0 0)", lineHeight: 1.55, paddingTop: 1 }}>{s.text}</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 10, border: "1px solid oklch(1 0 0 / 0.07)", background: "oklch(0.11 0.005 270)", padding: 12 }}>
+                <img src={s.img} alt={`Paso ${s.n}`} style={{ maxHeight: 300, maxWidth: "100%", height: "auto", display: "block", borderRadius: 6 }} />
+              </div>
+            </div>
+          ))}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 999, background: "#86efac", color: "oklch(0.12 0 0)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>6</span>
+            <span style={{ fontSize: 13.5, color: "oklch(0.85 0 0)", lineHeight: 1.55, paddingTop: 1 }}>
+              Volvé acá, entrá a <strong>«Cargar datos»</strong>, <strong>pegá</strong> (Ctrl+V) la tabla y tocá <strong>Importar</strong>. Podés pegar varias zonas juntas.
+            </span>
+          </div>
+        </div>
+        <HelpTip>Pegá la información tal cual viene, sin borrar columnas ni filas: el sistema limpia y consolida solo. Volver a cargar una zona <strong>reemplaza</strong> sus datos anteriores.</HelpTip>
+        <button
+          onClick={onGoCargar}
+          style={{ marginTop: 16, display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 14px", borderRadius: 9, border: "none", background: "#8B5CF6", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: "0 1px 0 oklch(1 0 0 / 0.1) inset, 0 8px 16px -10px rgba(139,92,246,0.6)" }}
+        >
+          <Download className="w-3.5 h-3.5" /> Ir a Cargar datos
+        </button>
+      </>
+    );
+  }
+  if (step === 1) {
+    return (
+      <>
+        <p style={{ fontSize: 14, color: "oklch(0.72 0 0)", lineHeight: 1.65, marginBottom: 4 }}>
+          El Resumen consolida una fila por matrícula con el total y el detalle por zona de depósito.
+        </p>
+        <HelpSection title="Qué muestra">
+          <HelpAction label="Columnas" desc="Matrícula, Descripción, UDM, Tipo y Total; a la derecha, una columna por cada zona cargada." />
+          <HelpAction label="Servicios" desc="Aparecen aunque no tengan stock (Total 0), porque por naturaleza no se depositan en zona." />
+        </HelpSection>
+        <HelpSection title="Acciones">
+          <HelpAction label="Colapsar" desc="La flecha del encabezado oculta/expande las columnas de zona para ver solo los totales." />
+          <HelpAction label="Filtrar" desc="Por zona, por familia, por Servicio/Material y búsqueda por número o nombre de matrícula." />
+          <HelpAction label="Ordenar" desc="Clic en cualquier encabezado para ordenar ascendente/descendente." />
+          <HelpAction label="Redimensionar" desc="Arrastrá el borde de una columna para cambiar su ancho. Se guarda para la próxima vez." />
+        </HelpSection>
+        <HelpTip>La descripción y la UDM salen del catálogo de «Carga de datos» (la lista de matrículas más actualizada).</HelpTip>
+      </>
+    );
+  }
+  return (
+    <>
+      <p style={{ fontSize: 14, color: "oklch(0.72 0 0)", lineHeight: 1.65, marginBottom: 4 }}>
+        Las familias son etiquetas para agrupar matrículas. Una matrícula puede pertenecer a <strong>varias</strong> a la vez.
+      </p>
+      <HelpSection title="Cómo asignar">
+        <HelpAction label="Agregar familia" desc="Botón violeta: ponés un nombre y pegás una lista de matrículas (una por línea, como del Excel). Se asigna a todas." />
+        <HelpAction label="Por fila" desc="Cada matrícula muestra sus familias como chips: quitás con la X, o agregás escribiendo en «+ familia» y Enter." />
+        <HelpAction label="En lote" desc="Tildá varias y usá «Agregar» (suma sin pisar) o «Quitar familia». También «Aplicar tipo» Material/Servicio." />
+      </HelpSection>
+      <HelpSection title="Buscar y filtrar">
+        <HelpAction label="Filtros" desc="Por familia, por «sin clasificar» (las que no tienen ninguna) o por número/descripción." />
+        <HelpAction label="Tipo" desc="Material/Servicio sale del catálogo; podés pisarlo manualmente por matrícula." />
+      </HelpSection>
+      <HelpTip>El número de matrícula se respeta tal cual (con el punto y los ceros). Pegá las matrículas en el mismo formato que en el catálogo.</HelpTip>
+    </>
+  );
+}
+
+function StockHelpModal({ onClose, onGoCargar }: { onClose: () => void; onGoCargar: () => void }) {
+  const [step, setStep] = useState(0);
+  const current = STOCK_HELP_META[step];
+  const Icon = current.icon;
+  const total = STOCK_HELP_META.length;
+
+  return createPortal(
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 9000, background: "oklch(0 0 0 / 0.65)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        style={{ width: "100%", maxWidth: 860, height: "min(90vh, 660px)", display: "flex", flexDirection: "column", borderRadius: 16, overflow: "hidden", background: "oklch(0.15 0.005 270)", border: "1px solid oklch(1 0 0 / 0.09)", boxShadow: "0 24px 64px -20px oklch(0 0 0 / 0.8)" }}
+        onMouseDown={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid oklch(1 0 0 / 0.07)", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 8, background: "oklch(0.30 0.10 155 / 0.35)", border: "1px solid oklch(0.55 0.15 155 / 0.45)", color: "#86efac" }}>
+              <HelpCircle className="w-4 h-4" />
+            </div>
+            <span style={{ fontSize: 17, fontWeight: 600, color: "oklch(0.95 0 0)", letterSpacing: -0.3 }}>Guía de uso — Stock por Zona</span>
+          </div>
+          <button onClick={onClose} style={{ display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 7, background: "transparent", border: "1px solid oklch(1 0 0 / 0.08)", color: "oklch(0.60 0 0)", cursor: "pointer", transition: "color .15s, background .15s" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; (e.currentTarget as HTMLButtonElement).style.background = "oklch(0.22 0.005 270)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.60 0 0)"; (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body: sidebar + content */}
+        <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+          <div style={{ width: 220, flexShrink: 0, borderRight: "1px solid oklch(1 0 0 / 0.06)", padding: "14px 10px", overflowY: "auto", background: "oklch(0.13 0.005 270)" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "oklch(0.38 0 0)", padding: "0 8px 10px" }}>Temas</div>
+            {STOCK_HELP_META.map((s, idx) => {
+              const SIcon = s.icon;
+              const isActive = idx === step;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setStep(idx)}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 9, marginBottom: 2,
+                    background: isActive ? `${s.color}18` : "transparent",
+                    border: isActive ? `1px solid ${s.color}40` : "1px solid transparent",
+                    cursor: "pointer", textAlign: "left", transition: "background .12s, border .12s",
+                  }}
+                  onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "oklch(0.20 0.005 270)"; }}
+                  onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, borderRadius: 7, background: isActive ? `${s.color}22` : "oklch(0.20 0.005 270)", border: `1px solid ${isActive ? s.color + "55" : "oklch(1 0 0 / 0.06)"}`, flexShrink: 0, color: isActive ? s.color : "oklch(0.45 0 0)", transition: "color .12s, border-color .12s" }}>
+                    <SIcon className="w-3.5 h-3.5" />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: isActive ? 600 : 400, color: isActive ? "oklch(0.95 0 0)" : "oklch(0.65 0 0)", lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.label}</div>
+                    <div style={{ fontSize: 11, color: isActive ? "oklch(0.55 0 0)" : "oklch(0.40 0 0)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.subtitle}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18, paddingBottom: 18, borderBottom: "1px solid oklch(1 0 0 / 0.06)" }}>
+              <div style={{ display: "grid", placeItems: "center", width: 40, height: 40, borderRadius: 10, background: `${current.color}18`, border: `1px solid ${current.color}44`, color: current.color, flexShrink: 0 }}>
+                <Icon className="w-5 h-5" />
+              </div>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "oklch(0.42 0 0)" }}>Tema {step + 1} de {total}</span>
+                  <ArrowRight className="w-3 h-3" style={{ color: "oklch(0.30 0 0)" }} />
+                  <span style={{ fontSize: 11, fontWeight: 600, color: current.color, textTransform: "uppercase", letterSpacing: "0.05em" }}>{current.subtitle}</span>
+                </div>
+                <div style={{ fontSize: 19, fontWeight: 700, color: "oklch(0.95 0 0)", letterSpacing: -0.3, marginTop: 2 }}>{current.label}</div>
+              </div>
+            </div>
+            <StockHelpStepContent step={step} onGoCargar={onGoCargar} />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderTop: "1px solid oklch(1 0 0 / 0.07)", flexShrink: 0 }}>
+          <button
+            onClick={() => setStep(s => Math.max(0, s - 1))}
+            disabled={step === 0}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "1px solid oklch(1 0 0 / 0.09)", background: "oklch(0.20 0.005 270)", color: step === 0 ? "oklch(0.35 0 0)" : "oklch(0.78 0 0)", fontSize: 13, fontWeight: 500, cursor: step === 0 ? "not-allowed" : "pointer" }}
+          >
+            <ChevronLeft className="w-4 h-4" /> Anterior
+          </button>
+          <div style={{ display: "flex", gap: 5 }}>
+            {STOCK_HELP_META.map((s, idx) => (
+              <button
+                key={s.id}
+                onClick={() => setStep(idx)}
+                style={{ width: idx === step ? 20 : 7, height: 7, borderRadius: 4, border: "none", background: idx === step ? current.color : "oklch(0.30 0.005 270)", cursor: "pointer", transition: "width .2s, background .2s", padding: 0 }}
+              />
+            ))}
+          </div>
+          {step < total - 1 ? (
+            <button
+              onClick={() => setStep(s => Math.min(total - 1, s + 1))}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "none", background: current.color, color: "oklch(0.10 0 0)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+            >
+              Siguiente <ChevronRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              onClick={onClose}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "none", background: "#86efac", color: "oklch(0.10 0 0)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+            >
+              <Check className="w-4 h-4" /> Entendido
+            </button>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
