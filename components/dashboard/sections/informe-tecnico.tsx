@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Gavel, Loader2, ChevronDown, ChevronRight, FileText, Layers, Users, Tag, ClipboardCheck, Trophy, Check, Pencil, Trash2, X, GripVertical, Copy, RefreshCw } from "lucide-react";
+import { Plus, Gavel, Loader2, ChevronDown, ChevronRight, FileText, Layers, Users, Tag, ClipboardCheck, Trophy, Check, Pencil, Trash2, X, GripVertical, Copy, RefreshCw, HelpCircle, ChevronLeft, AlertTriangle, Lightbulb, ListChecks, ArrowRight } from "lucide-react";
 import {
   listLicitaciones,
   createLicitacion,
@@ -56,6 +57,7 @@ export function InformeTecnicoSection() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [tab, setTab] = useState<WizardTab>("datos");
 
   const refresh = async () => {
@@ -120,6 +122,22 @@ export function InformeTecnicoSection() {
               onSelect={setSelectedId}
             />
           )}
+          <button
+            onClick={() => setShowHelp(true)}
+            style={{
+              height: 38, padding: "0 13px", borderRadius: 9,
+              background: "oklch(0.22 0.005 270)",
+              border: "1px solid oklch(1 0 0 / 0.08)",
+              color: "oklch(0.65 0 0)", fontSize: 13, fontWeight: 500,
+              cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7,
+              transition: "color .15s, border-color .15s",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.18)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.65 0 0)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.08)"; }}
+          >
+            <HelpCircle className="w-4 h-4" />
+            Ayuda
+          </button>
           <BeastPrimaryButton onClick={() => setShowCreate(true)} icon={<Plus className="w-3.5 h-3.5" strokeWidth={2.4} />}>
             Nueva licitación
           </BeastPrimaryButton>
@@ -268,6 +286,9 @@ export function InformeTecnicoSection() {
           </div>
         </>
       )}
+
+      {/* Modal de ayuda */}
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
 
       {/* Modal de creación */}
       {showCreate && (
@@ -2607,5 +2628,335 @@ function ItemModal({
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Help Modal ──────────────────────────────────────────────────────
+
+const HELP_STEPS_META = [
+  { id: "datos",        icon: FileText,      label: "Datos generales",     color: "#60a5fa", subtitle: "Identificación y tipo de cambio" },
+  { id: "renglones",    icon: Layers,        label: "Renglones e Ítems",   color: "#34d399", subtitle: "Estructura del pliego y precios SIC" },
+  { id: "oferentes",    icon: Users,         label: "Oferentes",           color: "#a78bfa", subtitle: "Registro de participantes" },
+  { id: "ofertas",      icon: Tag,           label: "Ofertas",             color: "#fbbf24", subtitle: "Carga de precios por oferente" },
+  { id: "evaluacion",   icon: ClipboardCheck,label: "Evaluación técnica",  color: "#f87171", subtitle: "Aptitud técnica por renglón" },
+  { id: "adjudicacion", icon: Trophy,        label: "Adjudicación",        color: "#86efac", subtitle: "Comparativa y selección final" },
+] as const;
+
+function HelpTip({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", gap: 10, padding: "10px 14px", borderRadius: 9, background: "oklch(0.30 0.10 155 / 0.12)", border: "1px solid oklch(0.55 0.15 155 / 0.22)", marginTop: 8 }}>
+      <Lightbulb className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#86efac" }} />
+      <span style={{ fontSize: 13, color: "oklch(0.78 0 0)", lineHeight: 1.55 }}>{children}</span>
+    </div>
+  );
+}
+
+function HelpWarning({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", gap: 10, padding: "10px 14px", borderRadius: 9, background: "oklch(0.35 0.12 55 / 0.15)", border: "1px solid oklch(0.65 0.15 55 / 0.25)", marginTop: 8 }}>
+      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#fcd34d" }} />
+      <span style={{ fontSize: 13, color: "oklch(0.78 0 0)", lineHeight: 1.55 }}>{children}</span>
+    </div>
+  );
+}
+
+function HelpSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+        <ListChecks className="w-4 h-4" style={{ color: "oklch(0.50 0 0)" }} />
+        <span style={{ fontSize: 12.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "oklch(0.50 0 0)" }}>{title}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function HelpField({ name, desc }: { name: string; desc: string }) {
+  return (
+    <div style={{ display: "flex", gap: 8, paddingBottom: 7, borderBottom: "1px solid oklch(1 0 0 / 0.04)", alignItems: "flex-start" }}>
+      <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5, fontWeight: 600, color: "#86efac", paddingTop: 1, minWidth: 160, flexShrink: 0 }}>{name}</span>
+      <span style={{ fontSize: 13, color: "oklch(0.68 0 0)", lineHeight: 1.5 }}>{desc}</span>
+    </div>
+  );
+}
+
+function HelpAction({ label, desc }: { label: string; desc: string }) {
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "flex-start", paddingBottom: 8 }}>
+      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 24, height: 22, borderRadius: 6, background: "oklch(0.28 0.005 270)", border: "1px solid oklch(1 0 0 / 0.08)", fontSize: 12, color: "oklch(0.80 0 0)", fontWeight: 600, paddingLeft: 5, paddingRight: 5, whiteSpace: "nowrap", marginTop: 1 }}>{label}</span>
+      <span style={{ fontSize: 13, color: "oklch(0.68 0 0)", lineHeight: 1.5 }}>{desc}</span>
+    </div>
+  );
+}
+
+function HelpStepContent({ step }: { step: number }) {
+  switch (step) {
+    case 0:
+      return (
+        <>
+          <p style={{ fontSize: 14, color: "oklch(0.72 0 0)", lineHeight: 1.65, marginBottom: 4 }}>
+            Configurá los datos identificatorios de la licitación y los tipos de cambio que se usan para normalizar los precios en toda la comparativa.
+          </p>
+          <HelpSection title="Campos">
+            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              <HelpField name="Número SIC" desc="Código único del proceso en el sistema SIC. Ej: 2024-0001." />
+              <HelpField name="Título" desc="Nombre descriptivo de la licitación." />
+              <HelpField name="Fecha SIC" desc="Fecha de referencia del pliego original." />
+              <HelpField name="Dólar SIC" desc="Tipo de cambio a la Fecha SIC. Se ingresa manualmente." />
+              <HelpField name="Fecha de la OP" desc="Fecha del Acta de Apertura de las ofertas." />
+              <HelpField name="Dólar OP" desc='Tipo de cambio al día de la OP. Usá el botón "BCRA" para consultar automáticamente.' />
+              <HelpField name="Umbral económico (%)" desc="Porcentaje máximo sobre el precio SIC que se acepta sin marcar en rojo." />
+            </div>
+          </HelpSection>
+          <HelpSection title="Acciones">
+            <HelpAction label="BCRA" desc="Consulta la cotización oficial del dólar en el BCRA para el día hábil anterior a la Fecha de la OP." />
+            <HelpAction label="Guardar cambios" desc="Persiste todos los campos en la base de datos." />
+          </HelpSection>
+          <HelpTip>El Dólar SIC se usa para convertir <strong>tanto los precios SIC como las ofertas</strong> a ARS. Usar el mismo dólar para ambas conversiones garantiza una comparación consistente.</HelpTip>
+          <HelpTip>Si la Fecha de la OP cae en sábado o domingo, el sistema retrocede automáticamente al viernes para consultar el BCRA.</HelpTip>
+        </>
+      );
+    case 1:
+      return (
+        <>
+          <p style={{ fontSize: 14, color: "oklch(0.72 0 0)", lineHeight: 1.65, marginBottom: 4 }}>
+            Cargá la estructura del pliego: los renglones a adjudicar y los ítems que componen cada uno con sus precios de referencia SIC.
+          </p>
+          <HelpSection title="Acciones sobre renglones">
+            <HelpAction label="+ Renglón" desc="Crea un nuevo renglón numerado (Renglón 1, 2…)." />
+            <HelpAction label="⧉ Duplicar" desc="Copia el renglón completo con todos sus ítems. Ícono de papeles en el encabezado del card." />
+            <HelpAction label="🗑 Eliminar" desc="Borra el renglón y todos sus ítems, ofertas y evaluaciones asociadas." />
+          </HelpSection>
+          <HelpSection title="Acciones sobre ítems">
+            <HelpAction label="+ Ítem" desc="Abre el modal de carga con los campos del ítem." />
+            <HelpAction label="✏ Editar" desc="Modifica un ítem existente." />
+            <HelpAction label="Drag & drop" desc="Arrastrá un ítem desde un renglón hacia otro para copiarlo." />
+          </HelpSection>
+          <HelpSection title="Campos del ítem">
+            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              <HelpField name="Matrícula" desc="Código del artículo. El sistema completa la descripción automáticamente desde el catálogo." />
+              <HelpField name="Nº ítem" desc="Número de orden dentro del renglón." />
+              <HelpField name="Descripción" desc="Descripción del artículo. Se auto-completa si hay matrícula; podés editarla." />
+              <HelpField name="Precio SIC" desc="Precio unitario de referencia del pliego." />
+              <HelpField name="Divisa" desc="ARS o USD. Si es USD se convierte con el Dólar SIC para los cálculos." />
+              <HelpField name="Cantidad" desc="Cantidad requerida (informativa; no afecta el cálculo de totales)." />
+            </div>
+          </HelpSection>
+          <HelpTip>El <strong>Total SIC del Renglón</strong> es la suma de los precios unitarios SIC de todos los ítems, sin multiplicar por cantidad.</HelpTip>
+          <HelpWarning>La cantidad se registra pero <strong>no se multiplica</strong> en los totales de la comparativa — el análisis es sobre precios unitarios.</HelpWarning>
+        </>
+      );
+    case 2:
+      return (
+        <>
+          <p style={{ fontSize: 14, color: "oklch(0.72 0 0)", lineHeight: 1.65, marginBottom: 4 }}>
+            Registrá todas las empresas o personas que presentaron ofertas válidas en la licitación.
+          </p>
+          <HelpSection title="Acciones">
+            <HelpAction label="+ Agregar" desc="Escribí el nombre del oferente en el campo y presioná Enter o el botón +." />
+            <HelpAction label="🗑 Eliminar" desc="Borra el oferente y todas sus ofertas y evaluaciones." />
+          </HelpSection>
+          <HelpTip>Agregá todos los oferentes antes de pasar a la pestaña de Ofertas — sus nombres van a aparecer como columnas en las tablas.</HelpTip>
+          <HelpWarning>Eliminar un oferente borra también todos sus precios registrados en Ofertas y sus evaluaciones técnicas. Esta acción no se puede deshacer.</HelpWarning>
+        </>
+      );
+    case 3:
+      return (
+        <>
+          <p style={{ fontSize: 14, color: "oklch(0.72 0 0)", lineHeight: 1.65, marginBottom: 4 }}>
+            Ingresá el precio unitario ofertado por cada proveedor para cada ítem de la licitación.
+          </p>
+          <HelpSection title="Estructura de la tabla">
+            <HelpField name="Filas" desc="Ítems de la licitación, agrupados por renglón." />
+            <HelpField name="Columnas" desc="Un bloque precio + divisa por cada oferente registrado." />
+          </HelpSection>
+          <HelpSection title="Acciones">
+            <HelpAction label="Precio" desc="Escribí el precio unitario ofertado en el campo correspondiente." />
+            <HelpAction label="ARS / USD" desc="Selector de divisa por celda. Podés mezclar divisas entre oferentes." />
+            <HelpAction label="Botón USD" desc="Cambia la divisa de todas las celdas a USD con un solo clic." />
+            <HelpAction label="Botón ARS" desc="Cambia la divisa de todas las celdas a ARS con un solo clic." />
+          </HelpSection>
+          <HelpTip>El precio <strong>se guarda automáticamente</strong> al salir del campo (sin necesidad de botón Guardar).</HelpTip>
+          <HelpTip>Los campos en blanco se interpretan como "sin oferta" para ese ítem, lo que resulta en cobertura Parcial en la Adjudicación.</HelpTip>
+          <HelpWarning>Si hay precios en USD, se convierten a ARS con el Dólar SIC para la comparativa. Verificá que el dólar SIC esté cargado en Datos generales.</HelpWarning>
+        </>
+      );
+    case 4:
+      return (
+        <>
+          <p style={{ fontSize: 14, color: "oklch(0.72 0 0)", lineHeight: 1.65, marginBottom: 4 }}>
+            Evaluá si cada oferente cumple los requisitos técnicos del pliego para cada renglón.
+          </p>
+          <HelpSection title="Estructura de la tabla">
+            <HelpField name="Filas" desc="Un renglón de la licitación por fila." />
+            <HelpField name="Columnas" desc="Un bloque de evaluación por cada oferente registrado." />
+          </HelpSection>
+          <HelpSection title="Estados posibles">
+            <HelpAction label="✓ Cumple" desc="El oferente cumplió todos los requisitos técnicos del renglón. Se muestra en verde." />
+            <HelpAction label="⏳ Pendiente" desc="La evaluación está en curso o requiere más análisis. Se muestra en amarillo." />
+            <HelpAction label="✗ No cumple" desc="El oferente no cumplió los requisitos técnicos. Se muestra en rojo." />
+            <HelpAction label="Sin evaluar" desc="No se registró ninguna evaluación (celda vacía / sin color)." />
+          </HelpSection>
+          <HelpSection title="Observaciones">
+            <HelpAction label="Campo de texto" desc="Podés escribir observaciones adicionales en cada celda. Se guardan junto al estado." />
+          </HelpSection>
+          <HelpTip>Hacé clic en el <strong>mismo botón activo</strong> para quitar la evaluación y dejarla en estado "Sin evaluar".</HelpTip>
+          <HelpTip>El estado de la evaluación aparece en la columna "Técnica" dentro de la pestaña Adjudicación para ayudar en la decisión.</HelpTip>
+        </>
+      );
+    case 5:
+      return (
+        <>
+          <p style={{ fontSize: 14, color: "oklch(0.72 0 0)", lineHeight: 1.65, marginBottom: 4 }}>
+            Vista comparativa final para seleccionar el oferente a adjudicar en cada renglón. Se muestra un card por renglón con la tabla de comparación.
+          </p>
+          <HelpSection title="Datos por renglón">
+            <HelpField name="Total SIC del Renglón" desc="Suma de precios unitarios SIC (en ARS con Dólar SIC). Es la referencia de comparación." />
+            <HelpField name="Precio total ofertado" desc="Suma de precios unitarios del oferente (en ARS usando Dólar SIC). Sin cantidad." />
+            <HelpField name="% vs. SIC" desc="Diferencia porcentual entre el precio ofertado y el SIC. Negativo = más barato." />
+            <HelpField name="Técnica" desc="Estado de la evaluación técnica para ese renglón." />
+            <HelpField name="Cobertura" desc="Completo = ofertó todos los ítems. Parcial = le falta alguno. Sin ofertar = no hay precios." />
+          </HelpSection>
+          <HelpSection title="Código de colores (% vs. SIC)">
+            <HelpAction label="🟢 Verde" desc="El oferente más económico del renglón." />
+            <HelpAction label="🟡 Amarillo" desc="El segundo más económico del renglón." />
+            <HelpAction label="⚪ Blanco" desc="Demás oferentes." />
+            <HelpAction label="🔴 Rojo" desc="Supera el umbral económico configurado en Datos generales." />
+          </HelpSection>
+          <HelpSection title="Adjudicar">
+            <HelpAction label="Adjudicar" desc="Marca al oferente como adjudicado para ese renglón. Es un toggle — hacé clic de nuevo para desadjudicar." />
+          </HelpSection>
+          <HelpTip>El ranking de colores es <strong>automático</strong>: se recalcula en tiempo real según los precios ingresados.</HelpTip>
+          <HelpWarning>Un oferente puede adjudicarse aunque tenga evaluación "Pendiente" o "Sin evaluar". El sistema no bloquea la adjudicación por estado técnico.</HelpWarning>
+        </>
+      );
+    default:
+      return null;
+  }
+}
+
+function HelpModal({ onClose }: { onClose: () => void }) {
+  const [step, setStep] = useState(0);
+  const current = HELP_STEPS_META[step];
+  const Icon = current.icon;
+  const total = HELP_STEPS_META.length;
+
+  return createPortal(
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 9000, background: "oklch(0 0 0 / 0.65)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        style={{ width: "100%", maxWidth: 860, maxHeight: "90vh", display: "flex", flexDirection: "column", borderRadius: 16, overflow: "hidden", background: "oklch(0.15 0.005 270)", border: "1px solid oklch(1 0 0 / 0.09)", boxShadow: "0 24px 64px -20px oklch(0 0 0 / 0.8)" }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {/* Modal header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid oklch(1 0 0 / 0.07)", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 8, background: "oklch(0.30 0.10 155 / 0.35)", border: "1px solid oklch(0.55 0.15 155 / 0.45)", color: "#86efac" }}>
+              <HelpCircle className="w-4 h-4" />
+            </div>
+            <span style={{ fontSize: 17, fontWeight: 600, color: "oklch(0.95 0 0)", letterSpacing: -0.3 }}>Guía de uso — Informe Técnico</span>
+          </div>
+          <button onClick={onClose} style={{ display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 7, background: "transparent", border: "1px solid oklch(1 0 0 / 0.08)", color: "oklch(0.60 0 0)", cursor: "pointer", transition: "color .15s, background .15s" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; (e.currentTarget as HTMLButtonElement).style.background = "oklch(0.22 0.005 270)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.60 0 0)"; (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body: sidebar + content */}
+        <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+          {/* Step sidebar */}
+          <div style={{ width: 220, flexShrink: 0, borderRight: "1px solid oklch(1 0 0 / 0.06)", padding: "14px 10px", overflowY: "auto", background: "oklch(0.13 0.005 270)" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "oklch(0.38 0 0)", padding: "0 8px 10px" }}>Pasos</div>
+            {HELP_STEPS_META.map((s, idx) => {
+              const SIcon = s.icon;
+              const isActive = idx === step;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setStep(idx)}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 9, marginBottom: 2,
+                    background: isActive ? `${s.color}18` : "transparent",
+                    border: isActive ? `1px solid ${s.color}40` : "1px solid transparent",
+                    cursor: "pointer", textAlign: "left", transition: "background .12s, border .12s",
+                  }}
+                  onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "oklch(0.20 0.005 270)"; }}
+                  onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, borderRadius: 7, background: isActive ? `${s.color}22` : "oklch(0.20 0.005 270)", border: `1px solid ${isActive ? s.color + "55" : "oklch(1 0 0 / 0.06)"}`, flexShrink: 0, color: isActive ? s.color : "oklch(0.45 0 0)", transition: "color .12s, border-color .12s" }}>
+                    <SIcon className="w-3.5 h-3.5" />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: isActive ? 600 : 400, color: isActive ? "oklch(0.95 0 0)" : "oklch(0.65 0 0)", lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.label}</div>
+                    <div style={{ fontSize: 11, color: isActive ? "oklch(0.55 0 0)" : "oklch(0.40 0 0)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.subtitle}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Content area */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px" }}>
+            {/* Step header */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18, paddingBottom: 18, borderBottom: "1px solid oklch(1 0 0 / 0.06)" }}>
+              <div style={{ display: "grid", placeItems: "center", width: 40, height: 40, borderRadius: 10, background: `${current.color}18`, border: `1px solid ${current.color}44`, color: current.color, flexShrink: 0 }}>
+                <Icon className="w-5 h-5" />
+              </div>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "oklch(0.42 0 0)" }}>Paso {step + 1} de {total}</span>
+                  <ArrowRight className="w-3 h-3" style={{ color: "oklch(0.30 0 0)" }} />
+                  <span style={{ fontSize: 11, fontWeight: 600, color: current.color, textTransform: "uppercase", letterSpacing: "0.05em" }}>{current.subtitle}</span>
+                </div>
+                <div style={{ fontSize: 19, fontWeight: 700, color: "oklch(0.95 0 0)", letterSpacing: -0.3, marginTop: 2 }}>{current.label}</div>
+              </div>
+            </div>
+
+            {/* Dynamic content */}
+            <HelpStepContent step={step} />
+          </div>
+        </div>
+
+        {/* Footer navigation */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderTop: "1px solid oklch(1 0 0 / 0.07)", flexShrink: 0 }}>
+          <button
+            onClick={() => setStep((s) => Math.max(0, s - 1))}
+            disabled={step === 0}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "1px solid oklch(1 0 0 / 0.09)", background: "oklch(0.20 0.005 270)", color: step === 0 ? "oklch(0.35 0 0)" : "oklch(0.78 0 0)", fontSize: 13, fontWeight: 500, cursor: step === 0 ? "not-allowed" : "pointer" }}
+          >
+            <ChevronLeft className="w-4 h-4" /> Anterior
+          </button>
+          <div style={{ display: "flex", gap: 5 }}>
+            {HELP_STEPS_META.map((s, idx) => (
+              <button
+                key={s.id}
+                onClick={() => setStep(idx)}
+                style={{ width: idx === step ? 20 : 7, height: 7, borderRadius: 4, border: "none", background: idx === step ? current.color : "oklch(0.30 0.005 270)", cursor: "pointer", transition: "width .2s, background .2s", padding: 0 }}
+              />
+            ))}
+          </div>
+          {step < total - 1 ? (
+            <button
+              onClick={() => setStep((s) => Math.min(total - 1, s + 1))}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "none", background: current.color === "#86efac" ? "#86efac" : current.color, color: "oklch(0.10 0 0)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+            >
+              Siguiente <ChevronRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              onClick={onClose}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "none", background: "#86efac", color: "oklch(0.10 0 0)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+            >
+              <Check className="w-4 h-4" /> Entendido
+            </button>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
