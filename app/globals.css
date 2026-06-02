@@ -208,3 +208,32 @@ input[type="number"] { -moz-appearance: textfield; }
 }
 .sz-zone-in  { animation: sz-zone-in  .24s ease-out both; }
 .sz-zone-out { animation: sz-zone-out .22s ease-in  both; }
+
+/* ── Scrollbar global (sutil, alineada a la UI oscura) ───────────────────────── */
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.5 0.01 270 / 0.45) transparent;
+}
+/* WebKit / Chromium / Edge / Safari */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(0.5 0.01 270 / 0.4);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.62 0.02 270 / 0.6);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
