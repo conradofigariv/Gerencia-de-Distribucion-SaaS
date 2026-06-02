@@ -273,6 +273,7 @@ export function StockZonaSection() {
   const [text, setText]                     = useState("");
   const [saving, setSaving]                 = useState(false);
   const [helpOpen, setHelpOpen]             = useState(false);
+  const [helpTopic, setHelpTopic]           = useState<"cargar" | "resumen" | "familias">("cargar");
   const [deletingZona, setDeletingZona]     = useState<string | null>(null);
   const [importedAt, setImportedAt]         = useState<Date | null>(null);
   const [importedCount, setImportedCount]   = useState(0);
@@ -827,10 +828,10 @@ export function StockZonaSection() {
           <button
             onClick={() => setHelpOpen(true)}
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-[12.5px] font-medium text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors"
-            title="Cómo cargar los datos de stock"
+            title="Ayuda de Stock por Zona"
           >
             <HelpCircle className="w-3.5 h-3.5" />
-            Cómo cargar datos
+            Ayuda
           </button>
           <button
             onClick={() => { refresh(); refreshFamilies(); refreshMatriculas(); }}
@@ -1789,25 +1790,25 @@ export function StockZonaSection() {
         document.body,
       )}
 
-      {/* Modal: Cómo cargar datos (extracción desde SIGA) */}
+      {/* Centro de ayuda (mismo lenguaje visual que Informe Técnico) */}
       {helpOpen && createPortal(
         <div
-          className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-          style={{ background: "rgba(0,0,0,0.6)" }}
+          className="fixed inset-0 z-[200] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4"
           onMouseDown={e => { if (e.target === e.currentTarget) setHelpOpen(false); }}
         >
           <div
-            className="w-full max-w-2xl rounded-[16px] overflow-hidden flex flex-col"
-            style={{ background: "oklch(0.235 0.005 270)", border: "1px solid oklch(1 0 0 / 0.08)", boxShadow: "0 24px 60px -20px rgba(0,0,0,0.7)", maxHeight: "88vh" }}
+            className="w-full max-w-3xl rounded-[14px] overflow-hidden flex flex-col"
+            style={{ background: "oklch(0.235 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", boxShadow: "0 24px 60px -20px rgba(0,0,0,0.7)", maxHeight: "88vh" }}
           >
-            <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-3 border-b border-border/50">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-4 border-b" style={{ borderColor: "oklch(1 0 0 / 0.06)" }}>
               <div className="flex items-start gap-3">
-                <div className="grid place-items-center mt-0.5" style={{ width: 34, height: 34, borderRadius: 9, background: "oklch(0.30 0.10 155 / 0.45)", border: "1px solid oklch(0.55 0.15 155 / 0.5)", color: "#86efac" }}>
-                  <HelpCircle className="w-4 h-4" strokeWidth={2} />
+                <div className="grid place-items-center mt-0.5" style={{ width: 36, height: 36, borderRadius: 9, background: "oklch(0.30 0.10 155 / 0.45)", border: "1px solid oklch(0.55 0.15 155 / 0.5)", color: "#86efac" }}>
+                  <HelpCircle className="w-[18px] h-[18px]" strokeWidth={2} />
                 </div>
                 <div>
-                  <h3 className="text-[16px] font-semibold tracking-tight text-foreground">Cómo cargar los datos de stock</h3>
-                  <p className="mt-0.5 text-[12.5px] text-muted-foreground">Extraé el inventario de una zona desde SIGA y pegalo en «Cargar datos».</p>
+                  <h3 className="text-[18px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.3, margin: 0 }}>Ayuda</h3>
+                  <p className="mt-0.5 text-[12.5px]" style={{ color: "oklch(0.55 0 0)" }}>Guía de uso de Stock por Zona.</p>
                 </div>
               </div>
               <button onClick={() => setHelpOpen(false)} className="text-muted-foreground hover:text-foreground shrink-0 mt-1">
@@ -1815,56 +1816,125 @@ export function StockZonaSection() {
               </button>
             </div>
 
-            <div className="overflow-y-auto px-5 py-4 space-y-5">
-              {[
-                { n: 1, img: "/ayuda-stock/paso1.png", text: <>Ingresá tu cuenta en <b>SIEPEC</b> y entrá a <b>Siga&nbsp;-&nbsp;Compras&nbsp;-&nbsp;Solicitante</b>.</> },
-                { n: 2, img: "/ayuda-stock/paso2.png", text: <>En la parte inferior del cuadro, en el título <b>Inventario</b>, hacé clic en <b>«Cantidad en mano»</b>.</> },
-                { n: 3, img: "/ayuda-stock/paso3.png", text: <>Se abre una pestaña donde podés <b>seleccionar la zona</b> que querés consultar.</> },
-                { n: 4, img: "/ayuda-stock/paso4.png", text: <>Al elegir una zona (por ej. <b>Zona A - Córdoba Capital</b>) se abre otra pestaña.</> },
-                { n: 5, img: "/ayuda-stock/paso5.png", text: <>Presioná <b>Encontrar</b>. Sobre la tabla, hacé <b>clic derecho → «Copiar todas las filas»</b>.</> },
-              ].map(step => (
-                <div key={step.n} className="space-y-2">
-                  <div className="flex items-start gap-2.5">
-                    <span className="inline-flex items-center justify-center shrink-0 rounded-full" style={{ width: 22, height: 22, background: "#8B5CF6", color: "#fff", fontSize: 12, fontWeight: 700 }}>{step.n}</span>
-                    <p className="text-[13.5px] text-foreground leading-relaxed pt-0.5">{step.text}</p>
-                  </div>
-                  <div
-                    className="rounded-[10px] border border-border/60 flex items-center justify-center"
-                    style={{ background: "oklch(0.16 0.005 270)", padding: 12 }}
-                  >
-                    <img
-                      src={step.img}
-                      alt={`Paso ${step.n}`}
-                      className="rounded-[6px]"
-                      style={{ maxHeight: 320, maxWidth: "100%", height: "auto", display: "block" }}
-                    />
-                  </div>
-                </div>
-              ))}
-
-              <div className="space-y-2">
-                <div className="flex items-start gap-2.5">
-                  <span className="inline-flex items-center justify-center shrink-0 rounded-full" style={{ width: 22, height: 22, background: "oklch(0.55 0.15 155)", color: "#04210f", fontSize: 12, fontWeight: 700 }}>6</span>
-                  <p className="text-[13.5px] text-foreground leading-relaxed pt-0.5">
-                    Volvé acá, entrá a la pestaña <b>«Cargar datos»</b>, <b>pegá</b> (Ctrl+V) la tabla en el recuadro y tocá <b>Importar</b>. La zona se detecta sola desde la columna <i>Organización</i>; podés pegar varias zonas juntas.
-                  </p>
-                </div>
+            {/* Body: nav de temas (izq) + contenido (der) */}
+            <div className="flex min-h-0 flex-1">
+              <div className="shrink-0 p-3 border-r flex flex-col gap-1" style={{ width: 196, borderColor: "oklch(1 0 0 / 0.06)" }}>
+                {([
+                  { id: "cargar"   as const, label: "Cómo cargar datos", icon: Download },
+                  { id: "resumen"  as const, label: "Resumen de stock",  icon: PackageOpen },
+                  { id: "familias" as const, label: "Familias",          icon: Tag },
+                ]).map(t => {
+                  const Icon = t.icon;
+                  const isActive = helpTopic === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setHelpTopic(t.id)}
+                      className="inline-flex items-center gap-2.5 text-left transition-colors"
+                      style={{
+                        padding: "9px 11px", borderRadius: 8, border: "none", cursor: "pointer",
+                        background: isActive ? "oklch(0.27 0.005 270)" : "transparent",
+                        color: isActive ? "oklch(0.97 0 0)" : "oklch(0.62 0 0)",
+                        fontSize: 13, fontWeight: isActive ? 500 : 400,
+                        boxShadow: isActive ? "0 1px 0 oklch(1 0 0 / 0.06) inset" : "none",
+                      }}
+                      onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.88 0 0)"; }}
+                      onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.62 0 0)"; }}
+                    >
+                      <Icon className="w-3.5 h-3.5 shrink-0" strokeWidth={1.8} />
+                      {t.label}
+                    </button>
+                  );
+                })}
               </div>
 
-              <div className="rounded-[10px] p-3 text-[12.5px] leading-relaxed" style={{ background: "oklch(0.30 0.10 155 / 0.14)", border: "1px solid oklch(0.55 0.15 155 / 0.35)", color: "#a7f3c8" }}>
-                <b>Tip:</b> pegá la información tal cual viene, sin borrar columnas ni filas. El sistema limpia y consolida automáticamente. Volver a cargar una zona <b>reemplaza</b> los datos anteriores de esa zona.
+              <div className="flex-1 min-w-0 overflow-y-auto px-5 py-5">
+                {helpTopic === "cargar" && (
+                  <div className="space-y-5">
+                    <p className="text-[13px] leading-relaxed" style={{ color: "oklch(0.62 0 0)" }}>
+                      Extraé el inventario de una zona desde <b className="text-foreground/90">SIGA</b> y pegalo en la pestaña <b className="text-foreground/90">«Cargar datos»</b>.
+                    </p>
+                    {[
+                      { n: 1, img: "/ayuda-stock/paso1.png", text: <>Ingresá tu cuenta en <b>SIEPEC</b> y entrá a <b>Siga&nbsp;-&nbsp;Compras&nbsp;-&nbsp;Solicitante</b>.</> },
+                      { n: 2, img: "/ayuda-stock/paso2.png", text: <>En la parte inferior del cuadro, en el título <b>Inventario</b>, hacé clic en <b>«Cantidad en mano»</b>.</> },
+                      { n: 3, img: "/ayuda-stock/paso3.png", text: <>Se abre una pestaña donde podés <b>seleccionar la zona</b> que querés consultar.</> },
+                      { n: 4, img: "/ayuda-stock/paso4.png", text: <>Al elegir una zona (por ej. <b>Zona A - Córdoba Capital</b>) se abre otra pestaña.</> },
+                      { n: 5, img: "/ayuda-stock/paso5.png", text: <>Presioná <b>Encontrar</b>. Sobre la tabla, hacé <b>clic derecho → «Copiar todas las filas»</b>.</> },
+                    ].map(step => (
+                      <div key={step.n} className="space-y-2">
+                        <div className="flex items-start gap-2.5">
+                          <span className="inline-flex items-center justify-center shrink-0 rounded-full" style={{ width: 22, height: 22, background: "#8B5CF6", color: "#fff", fontSize: 12, fontWeight: 700 }}>{step.n}</span>
+                          <p className="text-[13.5px] text-foreground leading-relaxed pt-0.5">{step.text}</p>
+                        </div>
+                        <div className="rounded-[10px] border border-border/60 flex items-center justify-center" style={{ background: "oklch(0.16 0.005 270)", padding: 12 }}>
+                          <img src={step.img} alt={`Paso ${step.n}`} className="rounded-[6px]" style={{ maxHeight: 320, maxWidth: "100%", height: "auto", display: "block" }} />
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex items-start gap-2.5">
+                      <span className="inline-flex items-center justify-center shrink-0 rounded-full" style={{ width: 22, height: 22, background: "oklch(0.55 0.15 155)", color: "#04210f", fontSize: 12, fontWeight: 700 }}>6</span>
+                      <p className="text-[13.5px] text-foreground leading-relaxed pt-0.5">
+                        Volvé acá, entrá a la pestaña <b>«Cargar datos»</b>, <b>pegá</b> (Ctrl+V) la tabla y tocá <b>Importar</b>. La zona se detecta sola desde la columna <i>Organización</i>; podés pegar varias zonas juntas.
+                      </p>
+                    </div>
+                    <div className="rounded-[10px] p-3 text-[12.5px] leading-relaxed" style={{ background: "oklch(0.30 0.10 155 / 0.14)", border: "1px solid oklch(0.55 0.15 155 / 0.35)", color: "#a7f3c8" }}>
+                      <b>Tip:</b> pegá la información tal cual viene, sin borrar columnas ni filas. El sistema limpia y consolida automáticamente. Volver a cargar una zona <b>reemplaza</b> los datos anteriores de esa zona.
+                    </div>
+                    <button
+                      onClick={() => { setHelpOpen(false); setTab("cargar"); }}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-[9px] text-[13px] font-semibold"
+                      style={{ background: "#8B5CF6", color: "#fff", border: "none", boxShadow: "0 1px 0 oklch(1 0 0 / 0.1) inset, 0 8px 16px -10px rgba(139,92,246,0.6)" }}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Ir a Cargar datos
+                    </button>
+                  </div>
+                )}
+
+                {helpTopic === "resumen" && (
+                  <div className="space-y-3.5 text-[13.5px] text-foreground leading-relaxed">
+                    <p style={{ color: "oklch(0.62 0 0)" }}>El <b className="text-foreground/90">Resumen de stock</b> consolida una fila por matrícula con el total y el detalle por zona.</p>
+                    <ul className="space-y-2.5 list-none">
+                      {[
+                        <><b>Columnas fijas:</b> Matrícula, Descripción, UDM, Tipo y Total; a la derecha, una columna por zona.</>,
+                        <><b>Colapsar zonas:</b> con la flecha del encabezado podés ocultar las columnas de zona para ver solo los totales.</>,
+                        <><b>Filtros:</b> por zona, por familia, por <b>Servicio/Material</b> y búsqueda por número o nombre de matrícula.</>,
+                        <><b>Servicios:</b> aparecen aunque no tengan stock (Total 0), porque por naturaleza no se depositan.</>,
+                        <><b>Ordenar y redimensionar:</b> clic en cualquier encabezado para ordenar; arrastrá el borde para cambiar el ancho (se guarda).</>,
+                      ].map((t, i) => (
+                        <li key={i} className="flex items-start gap-2.5">
+                          <span className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "#86efac" }} />
+                          <span>{t}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {helpTopic === "familias" && (
+                  <div className="space-y-3.5 text-[13.5px] text-foreground leading-relaxed">
+                    <p style={{ color: "oklch(0.62 0 0)" }}>Las <b className="text-foreground/90">familias</b> son etiquetas para agrupar matrículas. Una matrícula puede tener <b className="text-foreground/90">varias</b>.</p>
+                    <ul className="space-y-2.5 list-none">
+                      {[
+                        <><b>Agregar familia:</b> botón violeta → ponés un nombre y pegás una lista de matrículas (una por línea, como del Excel). Se asigna a todas.</>,
+                        <><b>Por fila:</b> cada matrícula muestra sus familias como chips; quitás con la <b>X</b> o agregás escribiendo en «+ familia» y Enter.</>,
+                        <><b>En lote:</b> tildá varias y usá <b>Agregar</b> (suma sin pisar) o <b>Quitar familia</b>; también <b>Aplicar tipo</b> Material/Servicio.</>,
+                        <><b>Tipo:</b> sale del catálogo de «Carga de datos»; podés pisarlo manualmente por matrícula.</>,
+                        <><b>Buscar:</b> filtrá por familia, por «sin clasificar» o por número/descripción.</>,
+                      ].map((t, i) => (
+                        <li key={i} className="flex items-start gap-2.5">
+                          <span className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "#86efac" }} />
+                          <span>{t}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="flex justify-end gap-2.5 px-5 py-3.5 border-t border-border/50">
-              <button
-                onClick={() => { setHelpOpen(false); setTab("cargar"); }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-[9px] text-[13px] font-semibold transition-all"
-                style={{ background: "#8B5CF6", color: "#fff", border: "none" }}
-              >
-                <Download className="w-3.5 h-3.5" />
-                Ir a Cargar datos
-              </button>
+            {/* Footer */}
+            <div className="flex justify-end px-5 py-3.5 border-t" style={{ borderColor: "oklch(1 0 0 / 0.06)" }}>
               <button
                 onClick={() => setHelpOpen(false)}
                 className="px-3.5 py-2 rounded-[9px] border border-border text-[13px] font-medium transition-colors bg-transparent text-muted-foreground hover:text-foreground"
