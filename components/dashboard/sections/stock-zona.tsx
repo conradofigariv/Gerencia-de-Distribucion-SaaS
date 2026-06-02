@@ -6,7 +6,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Trash2, Loader2, Search, X, PackageOpen, RefreshCw,
   ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight,
-  Download, Sparkles, Tag, Wrench, Package, Check, Plus,
+  Download, Sparkles, Tag, Wrench, Package, Check, Plus, HelpCircle,
 } from "lucide-react";
 import { CheckIcon } from "lucide-react";
 import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
@@ -272,6 +272,7 @@ export function StockZonaSection() {
   const [loading, setLoading]               = useState(true);
   const [text, setText]                     = useState("");
   const [saving, setSaving]                 = useState(false);
+  const [helpOpen, setHelpOpen]             = useState(false);
   const [deletingZona, setDeletingZona]     = useState<string | null>(null);
   const [importedAt, setImportedAt]         = useState<Date | null>(null);
   const [importedCount, setImportedCount]   = useState(0);
@@ -822,13 +823,23 @@ export function StockZonaSection() {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => { refresh(); refreshFamilies(); refreshMatriculas(); }}
-          disabled={loading}
-          className="flex items-center justify-center w-8 h-8 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors disabled:opacity-40 mt-0.5"
-        >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-        </button>
+        <div className="flex items-center gap-2 mt-0.5">
+          <button
+            onClick={() => setHelpOpen(true)}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-[12.5px] font-medium text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors"
+            title="Cómo cargar los datos de stock"
+          >
+            <HelpCircle className="w-3.5 h-3.5" />
+            Cómo cargar datos
+          </button>
+          <button
+            onClick={() => { refresh(); refreshFamilies(); refreshMatriculas(); }}
+            disabled={loading}
+            className="flex items-center justify-center w-8 h-8 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors disabled:opacity-40"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+          </button>
+        </div>
       </div>
 
       {/* Tabs — beast pure pill bar */}
@@ -1772,6 +1783,89 @@ export function StockZonaSection() {
                   Cancelar
                 </button>
               </div>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      {/* Modal: Cómo cargar datos (extracción desde SIGA) */}
+      {helpOpen && createPortal(
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.6)" }}
+          onMouseDown={e => { if (e.target === e.currentTarget) setHelpOpen(false); }}
+        >
+          <div
+            className="w-full max-w-2xl rounded-[16px] overflow-hidden flex flex-col"
+            style={{ background: "oklch(0.235 0.005 270)", border: "1px solid oklch(1 0 0 / 0.08)", boxShadow: "0 24px 60px -20px rgba(0,0,0,0.7)", maxHeight: "88vh" }}
+          >
+            <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-3 border-b border-border/50">
+              <div className="flex items-start gap-3">
+                <div className="grid place-items-center mt-0.5" style={{ width: 34, height: 34, borderRadius: 9, background: "oklch(0.30 0.10 155 / 0.45)", border: "1px solid oklch(0.55 0.15 155 / 0.5)", color: "#86efac" }}>
+                  <HelpCircle className="w-4 h-4" strokeWidth={2} />
+                </div>
+                <div>
+                  <h3 className="text-[16px] font-semibold tracking-tight text-foreground">Cómo cargar los datos de stock</h3>
+                  <p className="mt-0.5 text-[12.5px] text-muted-foreground">Extraé el inventario de una zona desde SIGA y pegalo en «Cargar datos».</p>
+                </div>
+              </div>
+              <button onClick={() => setHelpOpen(false)} className="text-muted-foreground hover:text-foreground shrink-0 mt-1">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto px-5 py-4 space-y-5">
+              {[
+                { n: 1, img: "/ayuda-stock/paso1.png", text: <>Ingresá tu cuenta en <b>SIEPEC</b> y entrá a <b>Siga&nbsp;-&nbsp;Compras&nbsp;-&nbsp;Solicitante</b>.</> },
+                { n: 2, img: "/ayuda-stock/paso2.png", text: <>En la parte inferior del cuadro, en el título <b>Inventario</b>, hacé clic en <b>«Cantidad en mano»</b>.</> },
+                { n: 3, img: "/ayuda-stock/paso3.png", text: <>Se abre una pestaña donde podés <b>seleccionar la zona</b> que querés consultar.</> },
+                { n: 4, img: "/ayuda-stock/paso4.png", text: <>Al elegir una zona (por ej. <b>Zona A - Córdoba Capital</b>) se abre otra pestaña.</> },
+                { n: 5, img: "/ayuda-stock/paso5.png", text: <>Presioná <b>Encontrar</b>. Sobre la tabla, hacé <b>clic derecho → «Copiar todas las filas»</b>.</> },
+              ].map(step => (
+                <div key={step.n} className="space-y-2">
+                  <div className="flex items-start gap-2.5">
+                    <span className="inline-flex items-center justify-center shrink-0 rounded-full" style={{ width: 22, height: 22, background: "#8B5CF6", color: "#fff", fontSize: 12, fontWeight: 700 }}>{step.n}</span>
+                    <p className="text-[13.5px] text-foreground leading-relaxed pt-0.5">{step.text}</p>
+                  </div>
+                  <img
+                    src={step.img}
+                    alt={`Paso ${step.n}`}
+                    className="w-full rounded-[10px] border border-border/60"
+                    style={{ background: "oklch(0.16 0.005 270)" }}
+                  />
+                </div>
+              ))}
+
+              <div className="space-y-2">
+                <div className="flex items-start gap-2.5">
+                  <span className="inline-flex items-center justify-center shrink-0 rounded-full" style={{ width: 22, height: 22, background: "oklch(0.55 0.15 155)", color: "#04210f", fontSize: 12, fontWeight: 700 }}>6</span>
+                  <p className="text-[13.5px] text-foreground leading-relaxed pt-0.5">
+                    Volvé acá, entrá a la pestaña <b>«Cargar datos»</b>, <b>pegá</b> (Ctrl+V) la tabla en el recuadro y tocá <b>Importar</b>. La zona se detecta sola desde la columna <i>Organización</i>; podés pegar varias zonas juntas.
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-[10px] p-3 text-[12.5px] leading-relaxed" style={{ background: "oklch(0.30 0.10 155 / 0.14)", border: "1px solid oklch(0.55 0.15 155 / 0.35)", color: "#a7f3c8" }}>
+                <b>Tip:</b> pegá la información tal cual viene, sin borrar columnas ni filas. El sistema limpia y consolida automáticamente. Volver a cargar una zona <b>reemplaza</b> los datos anteriores de esa zona.
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2.5 px-5 py-3.5 border-t border-border/50">
+              <button
+                onClick={() => { setHelpOpen(false); setTab("cargar"); }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-[9px] text-[13px] font-semibold transition-all"
+                style={{ background: "#8B5CF6", color: "#fff", border: "none" }}
+              >
+                <Download className="w-3.5 h-3.5" />
+                Ir a Cargar datos
+              </button>
+              <button
+                onClick={() => setHelpOpen(false)}
+                className="px-3.5 py-2 rounded-[9px] border border-border text-[13px] font-medium transition-colors bg-transparent text-muted-foreground hover:text-foreground"
+              >
+                Cerrar
+              </button>
             </div>
           </div>
         </div>,
