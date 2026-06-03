@@ -1,120 +1,162 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
-  UploadCloud, FileSpreadsheet, Loader2, Save, RefreshCw,
-  CheckCircle2, AlertCircle, Calendar, Trash2,
+  UploadCloud, Loader2, Save, RefreshCw, Calendar, Trash2, Plus, Info,
 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  parseBlock, getRows, saveRows, deleteRow, mergeRows,
-  TECNICO_FIELDS, POVA_FIELDS, MANT_FIELDS,
-} from "@/lib/idoStorage";
-import type { IdoRow, ParsedBlock, Bloque } from "@/lib/idoStorage";
+import { parseNum, getRows, saveRows, deleteRow } from "@/lib/idoStorage";
+import type { IdoRow } from "@/lib/idoStorage";
 
-interface BlockDef {
-  id: Bloque;
-  title: string;
-  hint: string;
-  cols: string;
+// Orden canónico de zonas (igual que las tablas de origen FMIK/DMIK) para que
+// al pegar una columna de valores se alineen fila por fila.
+const DEFAULT_ZONAS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "EPEC"];
+
+interface Group {
+  label: string;
+  fields: { key: string; label: string }[];
 }
 
-const BLOCKS: BlockDef[] = [
+const GROUPS: Group[] = [
   {
-    id: "tecnico",
-    title: "Técnico — FMIK / DMIK",
-    hint: "Pegá la tabla con las columnas Zona, FMIK S1, FMIK S2, DMIK S1, DMIK S2 (las columnas de KPI se ignoran).",
-    cols: "Zona · FMIK S1 · FMIK S2 · DMIK S1 · DMIK S2",
+    label: "Técnico — FMIK / DMIK",
+    fields: [
+      { key: "fmik_s1", label: "FMIK S1" },
+      { key: "fmik_s2", label: "FMIK S2" },
+      { key: "dmik_s1", label: "DMIK S1" },
+      { key: "dmik_s2", label: "DMIK S2" },
+    ],
   },
   {
-    id: "pova",
-    title: "POVA — Obras",
-    hint: "Pegá la tabla de Obras con Zona, Transferido, Fin de obra, Creadas, Total obras.",
-    cols: "Zona · Transferido · Fin de obra · Creadas · Total obras",
+    label: "POVA — Obras",
+    fields: [
+      { key: "pova_transferido", label: "Transferido" },
+      { key: "pova_fin_obra", label: "Fin de obra" },
+      { key: "pova_creadas", label: "Creadas" },
+      { key: "pova_total", label: "Total obras" },
+    ],
   },
   {
-    id: "mant",
-    title: "Mantenimiento",
-    hint: "Pegá la tabla con Zona, Poda BT, Poda MT, Termografía (en %).",
-    cols: "Zona · Poda BT · Poda MT · Termografía",
+    label: "Mantenimiento",
+    fields: [
+      { key: "mant_poda_bt", label: "Poda BT" },
+      { key: "mant_poda_mt", label: "Poda MT" },
+      { key: "mant_termografia", label: "Termografía" },
+    ],
   },
 ];
 
-const FIELD_LABELS: Record<string, string> = {
-  fmik_s1: "FMIK S1", fmik_s2: "FMIK S2", dmik_s1: "DMIK S1", dmik_s2: "DMIK S2",
-  pova_transferido: "Transf.", pova_fin_obra: "Fin obra", pova_creadas: "Creadas", pova_total: "Total",
-  mant_poda_bt: "Poda BT", mant_poda_mt: "Poda MT", mant_termografia: "Termog.",
-};
+const FLAT_FIELDS: string[] = GROUPS.flatMap((g) => g.fields.map((f) => f.key));
 
-const ALL_FIELDS = [...TECNICO_FIELDS, ...POVA_FIELDS, ...MANT_FIELDS];
+interface GridRow {
+  zona: string;
+  cells: Record<string, string>;
+}
 
-function fmt(v: number | null | undefined): string {
-  if (v === null || v === undefined) return "—";
-  return Number.isInteger(v) ? String(v) : v.toLocaleString("es-AR", { maximumFractionDigits: 2 });
+function numToStr(v: number | null | undefined): string {
+  return v === null || v === undefined ? "" : String(v);
+}
+
+function emptyCells(): Record<string, string> {
+  return Object.fromEntries(FLAT_FIELDS.map((f) => [f, ""]));
 }
 
 export function IndiceIdoCargaSection() {
   const [periodo, setPeriodo] = useState(String(new Date().getFullYear()));
-  const [texts, setTexts] = useState<Record<Bloque, string>>({ tecnico: "", pova: "", mant: "" });
-  const [existing, setExisting] = useState<IdoRow[]>([]);
+  const [grid, setGrid] = useState<GridRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [newZona, setNewZona] = useState("");
 
   const load = useCallback(async (p: string) => {
     setLoading(true);
     const rows = await getRows(p);
-    setExisting(rows);
+    const byZona = new Map<string, IdoRow>();
+    for (const r of rows) byZona.set(r.zona, r);
+
+    // Siempre mostramos las zonas por defecto + cualquier extra ya guardada
+    const zonas = [...DEFAULT_ZONAS];
+    for (const z of byZona.keys()) if (!zonas.includes(z)) zonas.push(z);
+
+    const next: GridRow[] = zonas.map((zona) => {
+      const r = byZona.get(zona);
+      const cells = emptyCells();
+      if (r) {
+        for (const f of FLAT_FIELDS) {
+          cells[f] = numToStr((r as unknown as Record<string, number | null>)[f]);
+        }
+      }
+      return { zona, cells };
+    });
+    setGrid(next);
     setLoading(false);
   }, []);
 
   useEffect(() => { load(periodo); }, [periodo, load]);
 
-  // Parseo en vivo de cada bloque
-  const parsed = useMemo(() => {
-    const out: Partial<Record<Bloque, ParsedBlock>> = {};
-    for (const b of BLOCKS) {
-      if (texts[b.id].trim()) out[b.id] = parseBlock(texts[b.id], b.id);
-    }
-    return out;
-  }, [texts]);
-
-  // Vista previa: existentes + lo recién parseado (sin errores)
-  const preview = useMemo(() => {
-    const valid: Partial<Record<Bloque, ParsedBlock>> = {};
-    for (const [k, v] of Object.entries(parsed)) {
-      if (v && !v.error) valid[k as Bloque] = v;
-    }
-    return mergeRows(periodo, existing, valid);
-  }, [periodo, existing, parsed]);
-
-  const hasNewData = Object.values(parsed).some((p) => p && !p.error);
-
-  async function handleSave() {
-    const valid: Partial<Record<Bloque, ParsedBlock>> = {};
-    for (const [k, v] of Object.entries(parsed)) {
-      if (v && !v.error) valid[k as Bloque] = v;
-    }
-    if (Object.keys(valid).length === 0) {
-      toast.error("No hay datos válidos para guardar.");
-      return;
-    }
-    setSaving(true);
-    const merged = mergeRows(periodo, existing, valid);
-    const err = await saveRows(merged);
-    setSaving(false);
-    if (err) {
-      toast.error(`Error al guardar: ${err}`);
-      return;
-    }
-    toast.success(`Datos guardados para el período ${periodo}.`);
-    setTexts({ tecnico: "", pova: "", mant: "" });
-    load(periodo);
+  function setCell(rowIdx: number, field: string, value: string) {
+    setGrid((prev) => {
+      const next = prev.map((r) => ({ ...r, cells: { ...r.cells } }));
+      next[rowIdx].cells[field] = value;
+      return next;
+    });
   }
 
-  async function handleDelete(zona: string) {
-    const err = await deleteRow(periodo, zona);
-    if (err) { toast.error(`Error: ${err}`); return; }
-    toast.success(`Zona ${zona} eliminada.`);
+  // Pegar desde Excel: rellena hacia abajo (y a la derecha si hay tabs)
+  function handlePaste(e: React.ClipboardEvent, rowIdx: number, fieldIdx: number) {
+    const text = e.clipboardData.getData("text");
+    if (!text) return;
+    const lines = text.replace(/\r/g, "").split("\n");
+    while (lines.length && lines[lines.length - 1] === "") lines.pop();
+    // Una sola celda sin tabs → comportamiento normal de pegado
+    if (lines.length <= 1 && !text.includes("\t")) return;
+    e.preventDefault();
+    setGrid((prev) => {
+      const next = prev.map((r) => ({ ...r, cells: { ...r.cells } }));
+      lines.forEach((line, i) => {
+        const r = rowIdx + i;
+        if (r >= next.length) return;
+        line.split("\t").forEach((val, j) => {
+          const f = FLAT_FIELDS[fieldIdx + j];
+          if (f) next[r].cells[f] = val.trim();
+        });
+      });
+      return next;
+    });
+  }
+
+  function addZona() {
+    const z = newZona.trim().toUpperCase();
+    if (!z) return;
+    if (grid.some((r) => r.zona === z)) { toast.error(`La zona ${z} ya existe.`); return; }
+    setGrid((prev) => [...prev, { zona: z, cells: emptyCells() }]);
+    setNewZona("");
+  }
+
+  async function removeZona(zona: string) {
+    setGrid((prev) => prev.filter((r) => r.zona !== zona));
+    await deleteRow(periodo, zona);
+  }
+
+  async function handleSave() {
+    const rows: IdoRow[] = [];
+    for (const r of grid) {
+      const parsedCells: Record<string, number | null> = {};
+      let hasData = false;
+      for (const f of FLAT_FIELDS) {
+        const n = parseNum(r.cells[f] ?? "");
+        parsedCells[f] = n;
+        if (n !== null) hasData = true;
+      }
+      if (!hasData) continue;
+      rows.push({ periodo, zona: r.zona, ...parsedCells } as unknown as IdoRow);
+    }
+    if (rows.length === 0) { toast.error("No hay datos para guardar."); return; }
+    setSaving(true);
+    const err = await saveRows(rows);
+    setSaving(false);
+    if (err) { toast.error(`Error al guardar: ${err}`); return; }
+    toast.success(`Guardado: ${rows.length} zona(s) para el período ${periodo}.`);
     load(periodo);
   }
 
@@ -129,7 +171,7 @@ export function IndiceIdoCargaSection() {
           <div>
             <h2 className="text-lg font-semibold text-foreground">Índice IDO — Carga de datos</h2>
             <p className="text-sm text-muted-foreground">
-              Pegá las planillas del otro sistema. Se guardan los valores crudos; los KPIs e IDO se calculan en el Resumen.
+              Completá la tabla con los valores crudos. Los KPIs e IDO se calculan en el Resumen.
             </p>
           </div>
         </div>
@@ -146,48 +188,90 @@ export function IndiceIdoCargaSection() {
         </div>
       </div>
 
-      {/* Bloques de pegado */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {BLOCKS.map((b) => {
-          const p = parsed[b.id];
-          return (
-            <div key={b.id} className="rounded-xl border border-border bg-card/40 p-4 flex flex-col gap-3">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">{b.title}</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">{b.hint}</p>
-                <p className="text-[11px] text-muted-foreground/70 mt-1 font-mono">{b.cols}</p>
-              </div>
-              <textarea
-                value={texts[b.id]}
-                onChange={(e) => setTexts((t) => ({ ...t, [b.id]: e.target.value }))}
-                placeholder={`Pegá acá la tabla "${b.title}"…`}
-                rows={6}
-                className="w-full rounded-lg bg-secondary border border-border text-xs text-foreground p-2.5 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent placeholder:text-muted-foreground"
-              />
-              {/* Estado del parseo */}
-              {p && (
-                p.error ? (
-                  <div className="flex items-start gap-2 text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg px-2.5 py-2">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                    <span>{p.error}</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-2.5 py-2">
-                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                    <span>{p.zonas.length} zona(s) detectada(s): {p.zonas.join(", ")}</span>
-                  </div>
-                )
+      {/* Ayuda */}
+      <div className="flex items-start gap-2 text-xs text-muted-foreground bg-secondary/40 border border-border rounded-lg px-3 py-2.5">
+        <Info className="w-4 h-4 shrink-0 mt-0.5 text-accent" />
+        <span>
+          Copiá una columna desde Excel (ej. FMIK <strong>2026 S1</strong>) y pegala sobre la primera celda
+          de la columna correspondiente: se completa hacia abajo automáticamente. Las zonas están en el orden
+          de origen (A, B, C, …, EPEC). También podés escribir valores a mano. Decimales con coma o punto.
+        </span>
+      </div>
+
+      {/* Tabla editable */}
+      <div className="rounded-xl border border-border bg-card/40 overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="border-b border-border">
+              <th rowSpan={2} className="text-left font-medium px-3 py-2 sticky left-0 bg-card/90 z-10 align-bottom">
+                Zona
+              </th>
+              {GROUPS.map((g) => (
+                <th
+                  key={g.label}
+                  colSpan={g.fields.length}
+                  className="text-center font-semibold text-foreground/80 px-3 py-1.5 border-l border-border"
+                >
+                  {g.label}
+                </th>
+              ))}
+              <th rowSpan={2} className="px-2 py-2" />
+            </tr>
+            <tr className="border-b border-border text-muted-foreground">
+              {GROUPS.flatMap((g) =>
+                g.fields.map((f, fi) => (
+                  <th
+                    key={f.key}
+                    className={`text-right font-medium px-3 py-1.5 whitespace-nowrap ${fi === 0 ? "border-l border-border" : ""}`}
+                    title={`${g.label} · ${f.label}`}
+                  >
+                    {f.label}
+                  </th>
+                ))
               )}
-            </div>
-          );
-        })}
+            </tr>
+          </thead>
+          <tbody>
+            {grid.map((row, rowIdx) => (
+              <tr key={row.zona} className="border-b border-border/50 hover:bg-secondary/20">
+                <td className="px-3 py-1.5 font-semibold text-foreground sticky left-0 bg-card/90 z-10">
+                  {row.zona}
+                </td>
+                {FLAT_FIELDS.map((f, fieldIdx) => {
+                  const isGroupStart = [0, 4, 8].includes(fieldIdx);
+                  return (
+                    <td key={f} className={`px-1 py-1 ${isGroupStart ? "border-l border-border" : ""}`}>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={row.cells[f]}
+                        onChange={(e) => setCell(rowIdx, f, e.target.value)}
+                        onPaste={(e) => handlePaste(e, rowIdx, fieldIdx)}
+                        className="w-20 px-2 py-1 rounded bg-secondary/60 border border-transparent text-right font-mono text-foreground/90 focus:outline-none focus:border-accent focus:bg-secondary"
+                      />
+                    </td>
+                  );
+                })}
+                <td className="px-2 py-1.5 text-right">
+                  <button
+                    onClick={() => removeZona(row.zona)}
+                    title="Eliminar zona"
+                    className="text-muted-foreground hover:text-red-400 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {/* Acciones */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <button
           onClick={handleSave}
-          disabled={!hasNewData || saving}
+          disabled={saving || loading}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -201,59 +285,23 @@ export function IndiceIdoCargaSection() {
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
           Recargar
         </button>
-      </div>
 
-      {/* Vista previa / datos guardados */}
-      <div className="rounded-xl border border-border bg-card/40 overflow-hidden">
-        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-          <FileSpreadsheet className="w-4 h-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold text-foreground">
-            Datos del período {periodo}
-            {hasNewData && <span className="ml-2 text-xs text-accent font-normal">(incluye cambios sin guardar)</span>}
-          </h3>
-          <span className="ml-auto text-xs text-muted-foreground">{preview.length} zona(s)</span>
+        {/* Agregar zona */}
+        <div className="flex items-center gap-2 ml-auto">
+          <input
+            value={newZona}
+            onChange={(e) => setNewZona(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addZona()}
+            placeholder="Nueva zona"
+            className="w-28 h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent placeholder:text-muted-foreground"
+          />
+          <button
+            onClick={addZona}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Agregar
+          </button>
         </div>
-
-        {preview.length === 0 ? (
-          <div className="p-10 text-center text-sm text-muted-foreground">
-            {loading ? "Cargando…" : "Sin datos para este período. Pegá las planillas y guardá."}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-muted-foreground border-b border-border">
-                  <th className="text-left font-medium px-3 py-2 sticky left-0 bg-card/80">Zona</th>
-                  {ALL_FIELDS.map((f) => (
-                    <th key={f} className="text-right font-medium px-3 py-2 whitespace-nowrap">{FIELD_LABELS[f]}</th>
-                  ))}
-                  <th className="px-3 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {preview.map((row) => (
-                  <tr key={row.zona} className="border-b border-border/50 hover:bg-secondary/30">
-                    <td className="px-3 py-2 font-semibold text-foreground sticky left-0 bg-card/80">{row.zona}</td>
-                    {ALL_FIELDS.map((f) => (
-                      <td key={f} className="px-3 py-2 text-right font-mono text-foreground/90 whitespace-nowrap">
-                        {fmt((row as unknown as Record<string, number | null>)[f])}
-                      </td>
-                    ))}
-                    <td className="px-3 py-2 text-right">
-                      <button
-                        onClick={() => handleDelete(row.zona)}
-                        title="Eliminar zona"
-                        className="text-muted-foreground hover:text-red-400 transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
     </div>
   );
