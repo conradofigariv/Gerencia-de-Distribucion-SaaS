@@ -25,6 +25,8 @@ import { TransformadoresTablaSection } from "@/components/dashboard/sections/tra
 import { TransformadoresResumenSection } from "@/components/dashboard/sections/transformadores-resumen";
 import { StockZonaSection } from "@/components/dashboard/sections/stock-zona";
 import { InformeTecnicoSection } from "@/components/dashboard/sections/informe-tecnico";
+import { IndiceIdoResumenSection } from "@/components/dashboard/sections/indice-ido-resumen";
+import { IndiceIdoCargaSection } from "@/components/dashboard/sections/indice-ido-carga";
 import { LoginPage } from "@/components/auth/login";
 import { Loader2 } from "lucide-react";
 
@@ -41,7 +43,8 @@ export type Section =
   | "sic-diagrama"
   | "transformadores-carga" | "transformadores-tabla" | "transformadores-resumen"
   | "stock-zona"
-  | "informe-tecnico";
+  | "informe-tecnico"
+  | "indice-ido-resumen" | "indice-ido-carga";
 
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
@@ -104,6 +107,8 @@ export default function Dashboard() {
       case "transformadores-resumen": return <TransformadoresResumenSection />;
       case "stock-zona":              return <StockZonaSection />;
       case "informe-tecnico":         return <InformeTecnicoSection />;
+      case "indice-ido-resumen":      return <IndiceIdoResumenSection />;
+      case "indice-ido-carga":        return <IndiceIdoCargaSection />;
       default:                       return <OverviewSection />;
     }
   };
