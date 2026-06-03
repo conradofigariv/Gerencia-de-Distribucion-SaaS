@@ -12,9 +12,36 @@ import type { IdoRow } from "@/lib/idoStorage";
 // al pegar una columna de valores se alineen fila por fila.
 const DEFAULT_ZONAS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "EPEC"];
 
+interface Field {
+  key: string;
+  label: string;
+}
+
+interface DerivedCol {
+  key: string;
+  label: string;
+  compute: (cells: Record<string, string>) => number | null;
+}
+
 interface Group {
   label: string;
-  fields: { key: string; label: string }[];
+  fields: Field[];
+  derived?: DerivedCol[];
+}
+
+// POVA — cálculos provisorios (no se persisten; el valor oficial sale en el Resumen)
+const POVA_OBJETIVO = 95; // %
+function povaEjecutado(cells: Record<string, string>): number | null {
+  const t = parseNum(cells.pova_transferido ?? "");
+  const f = parseNum(cells.pova_fin_obra ?? "");
+  const tot = parseNum(cells.pova_total ?? "");
+  if (t === null || f === null || tot === null || tot === 0) return null;
+  return ((t + f) / tot) * 100;
+}
+function povaResultado(cells: Record<string, string>): number | null {
+  const e = povaEjecutado(cells);
+  if (e === null) return null;
+  return Math.min(100, (e / POVA_OBJETIVO) * 100);
 }
 
 const GROUPS: Group[] = [
@@ -35,6 +62,10 @@ const GROUPS: Group[] = [
       { key: "pova_creadas", label: "Creadas" },
       { key: "pova_total", label: "Total obras" },
     ],
+    derived: [
+      { key: "pova_ejecutado", label: "Ejecutado", compute: povaEjecutado },
+      { key: "pova_resultado", label: "Result. s/obj", compute: povaResultado },
+    ],
   },
   {
     label: "Mantenimiento",
@@ -46,7 +77,28 @@ const GROUPS: Group[] = [
   },
 ];
 
+// Solo los campos editables se mapean a la base y al pegado de columnas.
 const FLAT_FIELDS: string[] = GROUPS.flatMap((g) => g.fields.map((f) => f.key));
+
+// Layout de columnas (editables + derivadas) con índice de pegado y borde de grupo.
+type Col =
+  | { kind: "input"; field: string; label: string; fieldIdx: number; groupStart: boolean }
+  | { kind: "derived"; key: string; label: string; compute: DerivedCol["compute"]; groupStart: boolean };
+
+const COLUMNS: Col[] = (() => {
+  const cols: Col[] = [];
+  let ei = 0;
+  for (const g of GROUPS) {
+    g.fields.forEach((f, idx) => {
+      cols.push({ kind: "input", field: f.key, label: f.label, fieldIdx: ei, groupStart: idx === 0 });
+      ei++;
+    });
+    (g.derived ?? []).forEach((d, idx) => {
+      cols.push({ kind: "derived", key: d.key, label: d.label, compute: d.compute, groupStart: g.fields.length === 0 && idx === 0 });
+    });
+  }
+  return cols;
+})();
 
 interface GridRow {
   zona: string;
@@ -55,6 +107,10 @@ interface GridRow {
 
 function numToStr(v: number | null | undefined): string {
   return v === null || v === undefined ? "" : String(v);
+}
+
+function fmtPct(v: number | null): string {
+  return v === null ? "—" : `${Math.round(v)}%`;
 }
 
 function emptyCells(): Record<string, string> {
@@ -209,7 +265,7 @@ export function IndiceIdoCargaSection() {
               {GROUPS.map((g) => (
                 <th
                   key={g.label}
-                  colSpan={g.fields.length}
+                  colSpan={g.fields.length + (g.derived?.length ?? 0)}
                   className="text-center font-semibold text-foreground/80 px-3 py-1.5 border-l border-border"
                 >
                   {g.label}
@@ -218,17 +274,14 @@ export function IndiceIdoCargaSection() {
               <th rowSpan={2} className="px-2 py-2" />
             </tr>
             <tr className="border-b border-border text-muted-foreground">
-              {GROUPS.flatMap((g) =>
-                g.fields.map((f, fi) => (
-                  <th
-                    key={f.key}
-                    className={`text-right font-medium px-3 py-1.5 whitespace-nowrap ${fi === 0 ? "border-l border-border" : ""}`}
-                    title={`${g.label} · ${f.label}`}
-                  >
-                    {f.label}
-                  </th>
-                ))
-              )}
+              {COLUMNS.map((col) => (
+                <th
+                  key={col.kind === "input" ? col.field : col.key}
+                  className={`text-right font-medium px-3 py-1.5 whitespace-nowrap ${col.groupStart ? "border-l border-border" : ""} ${col.kind === "derived" ? "text-accent/70 italic" : ""}`}
+                >
+                  {col.label}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -237,18 +290,24 @@ export function IndiceIdoCargaSection() {
                 <td className="px-3 py-1.5 font-semibold text-foreground sticky left-0 bg-card/90 z-10">
                   {row.zona}
                 </td>
-                {FLAT_FIELDS.map((f, fieldIdx) => {
-                  const isGroupStart = [0, 4, 8].includes(fieldIdx);
+                {COLUMNS.map((col) => {
+                  if (col.kind === "input") {
+                    return (
+                      <td key={col.field} className={`px-1 py-1 ${col.groupStart ? "border-l border-border" : ""}`}>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={row.cells[col.field]}
+                          onChange={(e) => setCell(rowIdx, col.field, e.target.value)}
+                          onPaste={(e) => handlePaste(e, rowIdx, col.fieldIdx)}
+                          className="w-20 px-2 py-1 rounded bg-secondary/60 border border-transparent text-right font-mono text-foreground/90 focus:outline-none focus:border-accent focus:bg-secondary"
+                        />
+                      </td>
+                    );
+                  }
                   return (
-                    <td key={f} className={`px-1 py-1 ${isGroupStart ? "border-l border-border" : ""}`}>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={row.cells[f]}
-                        onChange={(e) => setCell(rowIdx, f, e.target.value)}
-                        onPaste={(e) => handlePaste(e, rowIdx, fieldIdx)}
-                        className="w-20 px-2 py-1 rounded bg-secondary/60 border border-transparent text-right font-mono text-foreground/90 focus:outline-none focus:border-accent focus:bg-secondary"
-                      />
+                    <td key={col.key} className={`px-2 py-1.5 text-right ${col.groupStart ? "border-l border-border" : ""}`}>
+                      <span className="font-mono text-accent/80" title="Calculado (provisorio)">{fmtPct(col.compute(row.cells))}</span>
                     </td>
                   );
                 })}
