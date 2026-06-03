@@ -244,6 +244,14 @@ export function IndiceIdoCargaSection() {
         </div>
       </div>
 
+      {/* Alcance */}
+      <div className="text-xs text-muted-foreground bg-secondary/30 border border-border rounded-lg px-3 py-2.5">
+        <strong className="text-foreground/80">Alcance:</strong> se consideran únicamente las{" "}
+        <strong className="text-foreground/80">Obras Vía Administrativa</strong> y las{" "}
+        <strong className="text-foreground/80">Obras de mantenimiento</strong>. No se tienen en cuenta las
+        obras a cargo del cliente.
+      </div>
+
       {/* Ayuda */}
       <div className="flex items-start gap-2 text-xs text-muted-foreground bg-secondary/40 border border-border rounded-lg px-3 py-2.5">
         <Info className="w-4 h-4 shrink-0 mt-0.5 text-accent" />
