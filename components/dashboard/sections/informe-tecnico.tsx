@@ -1071,6 +1071,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
   const [evalsMap, setEvalsMap] = useState<Map<string, { cumple: boolean | null }>>(new Map());
   const [adjMap, setAdjMap] = useState<Map<string, string>>(new Map()); // renglonId → oferenteId
   const [saving, setSaving] = useState<Set<string>>(new Set());
+  const [showUSD, setShowUSD] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -1098,41 +1099,73 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
       .finally(() => setLoading(false));
   }, [licitacionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const fdOp = licitacion.fd_op_valor;
+  const fdOp  = licitacion.fd_op_valor;
   const fdSic = licitacion.fd_sic_valor;
   const umbral = licitacion.umbral_economico_pct;
+  const canShowUSD = !!fdOp;
 
-  const calcSicARS = (r: RenglonConItems): number | null => {
-    let t = 0;
+  // Returns unitario and ×cantidad totals in both ARS (using fdSic) and USD (using fdOp)
+  const calcSicTotals = (r: RenglonConItems) => {
+    let arsUnit = 0, arsQty = 0, usdUnit = 0, usdQty = 0;
+    let arsOk = true, usdOk = true;
     for (const it of r.items) {
       if (it.precio_sic_pesos === null) return null;
-      const enARS = (it.precio_sic_divisa ?? "ARS") === "USD"
-        ? (fdSic ? it.precio_sic_pesos * fdSic : null)
-        : it.precio_sic_pesos;
-      if (enARS === null) return null;
-      t += enARS;
+      const qty = it.cantidad ?? 1;
+      if ((it.precio_sic_divisa ?? "ARS") === "USD") {
+        if (fdSic) { arsUnit += it.precio_sic_pesos * fdSic; arsQty += it.precio_sic_pesos * qty * fdSic; }
+        else arsOk = false;
+        usdUnit += it.precio_sic_pesos; usdQty += it.precio_sic_pesos * qty;
+      } else {
+        arsUnit += it.precio_sic_pesos; arsQty += it.precio_sic_pesos * qty;
+        if (fdOp) { usdUnit += it.precio_sic_pesos / fdOp; usdQty += (it.precio_sic_pesos * qty) / fdOp; }
+        else usdOk = false;
+      }
     }
-    return t;
+    return {
+      arsUnit: arsOk ? arsUnit : null,
+      arsQty:  arsOk ? arsQty  : null,
+      usdUnit: usdOk ? usdUnit : null,
+      usdQty:  usdOk ? usdQty  : null,
+    };
   };
 
-  const calcOferta = (r: RenglonConItems, ofId: string): { totalARS: number | null; cobertura: number } => {
-    let t = 0;
-    let cnt = 0;
+  // Returns unitario and ×cantidad totals in ARS (fdSic) and USD (fdOp), plus cobertura count
+  const calcOfertaTotals = (r: RenglonConItems, ofId: string) => {
+    let arsUnit = 0, arsQty = 0, usdUnit = 0, usdQty = 0, cnt = 0;
+    let arsOk = true, usdOk = true;
     for (const it of r.items) {
       const o = ofertasMap.get(`${it.id}|${ofId}`);
       if (!o) continue;
-      const p = o.divisa === "ARS" ? o.precio : fdSic ? o.precio * fdSic : null;
-      if (p === null) return { totalARS: null, cobertura: cnt };
-      t += p;
+      const qty = it.cantidad ?? 1;
+      if (o.divisa === "ARS") {
+        arsUnit += o.precio; arsQty += o.precio * qty;
+        if (fdOp) { usdUnit += o.precio / fdOp; usdQty += (o.precio * qty) / fdOp; }
+        else usdOk = false;
+      } else {
+        if (fdSic) { arsUnit += o.precio * fdSic; arsQty += o.precio * qty * fdSic; }
+        else arsOk = false;
+        usdUnit += o.precio; usdQty += o.precio * qty;
+      }
       cnt++;
     }
-    return { totalARS: cnt > 0 ? t : null, cobertura: cnt };
+    return {
+      arsUnit: cnt > 0 && arsOk ? arsUnit : null,
+      arsQty:  cnt > 0 && arsOk ? arsQty  : null,
+      usdUnit: cnt > 0 && usdOk ? usdUnit : null,
+      usdQty:  cnt > 0 && usdOk ? usdQty  : null,
+      cobertura: cnt,
+    };
   };
 
   const calcPct = (ofARS: number | null, sicARS: number | null): number | null => {
     if (ofARS === null || sicARS === null || sicARS === 0 || !fdSic) return null;
     return (ofARS / sicARS - 1) * 100;
   };
+
+  const fmtARS = (v: number) => `${v.toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS`;
+  const fmtUSD = (v: number) => `${v.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
+  const fmt = (ars: number | null, usd: number | null) =>
+    showUSD ? (usd !== null ? fmtUSD(usd) : null) : (ars !== null ? fmtARS(ars) : null);
 
   const handleAdjudicar = async (renglonId: string, ofId: string) => {
     setSaving((p) => new Set(p).add(renglonId));
@@ -1176,24 +1209,54 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
         </div>
       )}
 
+      {/* Currency toggle */}
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+        {!canShowUSD && (
+          <span style={{ fontSize: 12, color: "oklch(0.40 0 0)" }}>Cargá el Dólar OP para ver en USD</span>
+        )}
+        <div style={{ display: "inline-flex", borderRadius: 8, border: "1px solid oklch(1 0 0 / 0.10)", overflow: "hidden" }}>
+          {(["ARS", "USD"] as const).map((cur) => {
+            const isActive = cur === (showUSD ? "USD" : "ARS");
+            const disabled = cur === "USD" && !canShowUSD;
+            return (
+              <button key={cur}
+                onClick={() => !disabled && setShowUSD(cur === "USD")}
+                style={{
+                  padding: "6px 18px", border: "none", fontSize: 13, fontWeight: 600,
+                  cursor: disabled ? "not-allowed" : "pointer",
+                  background: isActive ? "oklch(0.28 0.005 270)" : "transparent",
+                  color: isActive ? "oklch(0.92 0 0)" : disabled ? "oklch(0.30 0 0)" : "oklch(0.52 0 0)",
+                  transition: "background .15s, color .15s",
+                }}
+                onMouseEnter={(e) => { if (!disabled && !isActive) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.75 0 0)"; }}
+                onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = disabled ? "oklch(0.30 0 0)" : "oklch(0.52 0 0)"; }}
+              >
+                {cur}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {renglones.map((r) => {
-        const sicARS = calcSicARS(r);
+        const sic = calcSicTotals(r);
+        const sicARS = sic?.arsUnit ?? null; // unitario ARS used for % comparison
         const adjOfId = adjMap.get(r.id);
         const isSaving = saving.has(r.id);
 
-        // Ranking de % vs SIC: más barato (menor %) → verde, siguiente → amarillo, resto → blanco
+        // Ranking: use arsUnit for consistent comparison
         const pctByOf = new Map<string, number>();
-        for (const of of oferentes) {
-          const { totalARS, cobertura } = calcOferta(r, of.id);
-          const pct = cobertura === r.items.length ? calcPct(totalARS, sicARS) : null;
-          if (pct !== null) pctByOf.set(of.id, pct);
+        for (const of_ of oferentes) {
+          const tot = calcOfertaTotals(r, of_.id);
+          const pct = tot.cobertura === r.items.length ? calcPct(tot.arsUnit, sicARS) : null;
+          if (pct !== null) pctByOf.set(of_.id, pct);
         }
         const rankedOfIds = [...pctByOf.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id);
         const rankColor = (ofId: string): string => {
           const idx = rankedOfIds.indexOf(ofId);
-          if (idx === 0) return "#86efac";       // más barato → verde
-          if (idx === 1) return "#fcd34d";       // siguiente → amarillo
-          return "oklch(0.92 0 0)";              // resto → blanco
+          if (idx === 0) return "#86efac";
+          if (idx === 1) return "#fcd34d";
+          return "oklch(0.92 0 0)";
         };
 
         return (
@@ -1205,13 +1268,34 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
               {r.condicion_adjudicacion && (
                 <span style={{ fontSize: 12.5, color: "oklch(0.58 0 0)" }}>{r.condicion_adjudicacion}</span>
               )}
-              {sicARS !== null && (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "oklch(0.60 0 0)", background: "oklch(0.18 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", borderRadius: 6, padding: "2px 9px" }}>
-                  <span style={{ color: "oklch(0.48 0 0)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", fontSize: 10.5 }}>Total SIC del Renglón</span>
-                  <span style={{ fontFamily: "ui-monospace, monospace", fontWeight: 600, color: "oklch(0.72 0 0)" }}>
-                    {sicARS.toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS
-                  </span>
-                </span>
+              {/* SIC totals: unitario + ×cantidad, clickeable para toggle divisa */}
+              {sic !== null && (
+                <button
+                  onClick={() => canShowUSD && setShowUSD((v) => !v)}
+                  title={canShowUSD ? `Clic para ver en ${showUSD ? "ARS" : "USD"}` : undefined}
+                  style={{
+                    display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 3,
+                    background: "oklch(0.18 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)",
+                    borderRadius: 7, padding: "5px 10px",
+                    cursor: canShowUSD ? "pointer" : "default",
+                    transition: "background .15s",
+                  }}
+                  onMouseEnter={(e) => { if (canShowUSD) (e.currentTarget as HTMLButtonElement).style.background = "oklch(0.23 0.005 270)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "oklch(0.18 0.005 270)"; }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 700, color: "oklch(0.38 0 0)", textTransform: "uppercase", letterSpacing: "0.06em", minWidth: 58 }}>SIC unitario</span>
+                    <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, fontWeight: 600, color: "oklch(0.62 0 0)" }}>
+                      {fmt(sic.arsUnit, sic.usdUnit) ?? "—"}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 700, color: "oklch(0.38 0 0)", textTransform: "uppercase", letterSpacing: "0.06em", minWidth: 58 }}>SIC ×cant.</span>
+                    <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5, fontWeight: 700, color: "oklch(0.72 0 0)" }}>
+                      {fmt(sic.arsQty, sic.usdQty) ?? "—"}
+                    </span>
+                  </div>
+                </button>
               )}
               {adjOfId && (
                 <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "oklch(0.30 0.10 155 / 0.45)", border: "1px solid oklch(0.55 0.15 155 / 0.5)", color: "#86efac" }}>
@@ -1231,7 +1315,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                     {oferentes.map((of) => {
                       const isAdj = adjOfId === of.id;
                       return (
-                        <th key={of.id} style={{ textAlign: "center", padding: "11px 16px", fontSize: 15.5, fontWeight: 600, minWidth: 190, color: isAdj ? "#86efac" : "oklch(0.85 0 0)", background: isAdj ? "oklch(0.24 0.04 155 / 0.20)" : "transparent", borderBottom: isAdj ? "2px solid oklch(0.55 0.15 155 / 0.55)" : "none" }}>
+                        <th key={of.id} style={{ textAlign: "center", padding: "11px 16px", fontSize: 15.5, fontWeight: 600, minWidth: 200, color: isAdj ? "#86efac" : "oklch(0.85 0 0)", background: isAdj ? "oklch(0.24 0.04 155 / 0.20)" : "transparent", borderBottom: isAdj ? "2px solid oklch(0.55 0.15 155 / 0.55)" : "none" }}>
                           {of.nombre}
                         </th>
                       );
@@ -1239,19 +1323,39 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Precio total ofertado */}
+                  {/* Precio total ofertado: unitario + ×cantidad, celdas clickeables para toggle */}
                   <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.04)" }}>
-                    <td style={{ padding: "9px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500 }}>Precio total ofertado</td>
+                    <td style={{ padding: "10px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500, verticalAlign: "top" }}>
+                      Precio total<br />
+                      <span style={{ fontSize: 11, color: "oklch(0.40 0 0)", fontWeight: 400 }}>unitario / ×cant.</span>
+                    </td>
                     {oferentes.map((of) => {
-                      const { totalARS, cobertura } = calcOferta(r, of.id);
+                      const tot = calcOfertaTotals(r, of.id);
                       const isAdj = adjOfId === of.id;
+                      const complete = tot.cobertura === r.items.length;
+                      const unitStr = fmt(tot.arsUnit, tot.usdUnit);
+                      const qtyStr  = fmt(tot.arsQty,  tot.usdQty);
                       return (
-                        <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
-                          {totalARS !== null && cobertura === r.items.length ? (
-                            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 14.5, color: "oklch(0.90 0 0)", fontWeight: 500 }}>
-                              {totalARS.toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS
-                            </span>
-                          ) : cobertura > 0 ? (
+                        <td key={of.id}
+                          onClick={() => canShowUSD && setShowUSD((v) => !v)}
+                          style={{
+                            textAlign: "center", padding: "10px 12px", verticalAlign: "top",
+                            background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent",
+                            cursor: canShowUSD ? "pointer" : "default",
+                          }}
+                          title={canShowUSD ? `Clic para ver en ${showUSD ? "ARS" : "USD"}` : undefined}
+                        >
+                          {complete && unitStr !== null ? (
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                              <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 13, color: "oklch(0.68 0 0)", fontWeight: 400 }}>
+                                {unitStr}
+                              </span>
+                              <div style={{ width: "100%", height: 1, background: "oklch(1 0 0 / 0.06)" }} />
+                              <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 15, color: "oklch(0.92 0 0)", fontWeight: 600 }}>
+                                {qtyStr ?? "—"}
+                              </span>
+                            </div>
+                          ) : tot.cobertura > 0 ? (
                             <span style={{ fontSize: 13.5, color: "oklch(0.52 0 0)" }}>parcial</span>
                           ) : (
                             <span style={{ fontSize: 14.5, color: "oklch(0.33 0 0)" }}>—</span>
@@ -1261,12 +1365,12 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                     })}
                   </tr>
 
-                  {/* % vs SIC */}
+                  {/* % vs SIC (based on arsUnit for consistency) */}
                   <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.04)" }}>
                     <td style={{ padding: "9px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500 }}>% vs. SIC</td>
                     {oferentes.map((of) => {
-                      const { totalARS, cobertura } = calcOferta(r, of.id);
-                      const pct = cobertura === r.items.length ? calcPct(totalARS, sicARS) : null;
+                      const tot = calcOfertaTotals(r, of.id);
+                      const pct = tot.cobertura === r.items.length ? calcPct(tot.arsUnit, sicARS) : null;
                       const isAdj = adjOfId === of.id;
                       const over = pct !== null && pct > umbral;
                       return (
@@ -1309,7 +1413,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                   <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.06)" }}>
                     <td style={{ padding: "9px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500 }}>Cobertura</td>
                     {oferentes.map((of) => {
-                      const { cobertura } = calcOferta(r, of.id);
+                      const { cobertura } = calcOfertaTotals(r, of.id);
                       const total = r.items.length;
                       const isAdj = adjOfId === of.id;
                       return (
@@ -1372,16 +1476,17 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
             {renglones.map((r) => {
               const adjOfId = adjMap.get(r.id);
               const adjOf = adjOfId ? oferentes.find((o) => o.id === adjOfId) : null;
-              const { totalARS, cobertura } = adjOfId ? calcOferta(r, adjOfId) : { totalARS: null, cobertura: 0 };
+              const tot = adjOfId ? calcOfertaTotals(r, adjOfId) : null;
+              const complete = tot && tot.cobertura === r.items.length;
               return (
                 <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14.5 }}>
                   <span style={{ fontFamily: "ui-monospace, monospace", color: "#86efac", fontWeight: 600, width: 96, flexShrink: 0 }}>Renglón {r.numero}</span>
                   {adjOf ? (
                     <>
                       <span style={{ color: "oklch(0.88 0 0)", fontWeight: 500 }}>{adjOf.nombre}</span>
-                      {totalARS !== null && cobertura === r.items.length && (
+                      {complete && tot && (
                         <span style={{ marginLeft: "auto", fontFamily: "ui-monospace, monospace", fontSize: 14, color: "oklch(0.65 0 0)" }}>
-                          {totalARS.toLocaleString("es-AR", { maximumFractionDigits: 0 })} ARS
+                          {fmt(tot.arsQty, tot.usdQty) ?? ""}
                         </span>
                       )}
                     </>
