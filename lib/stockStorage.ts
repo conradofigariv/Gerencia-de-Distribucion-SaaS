@@ -73,6 +73,11 @@ export function parseTSV(text: string): { rows: CompraRow[]; error?: string } {
     indices[key] = idx;
   }
 
+  // Normaliza para detectar encabezados repetidos (sin acentos, minúsculas).
+  const norm = (s: string) => s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const articuloHdr = norm(COL_MAP.articulo);
+  const orgHdr      = norm(COL_MAP.organizacion);
+
   const rows: CompraRow[] = lines.slice(1).map(line => {
     const cols = line.split("\t");
     return {
@@ -82,7 +87,13 @@ export function parseTSV(text: string): { rows: CompraRow[]; error?: string } {
       enMano:       cols[indices.enMano]?.trim()       ?? "",
       organizacion: cols[indices.organizacion]?.trim() ?? "",
     };
-  }).filter(r => r.articulo);
+  }).filter(r =>
+    r.articulo &&
+    // Descartar filas de encabezado repetidas al pegar varias zonas juntas
+    // (la celda Artículo dice "Artículo" y la de Organización dice "Organización").
+    norm(r.articulo) !== articuloHdr &&
+    norm(r.organizacion) !== orgHdr
+  );
 
   return { rows };
 }
