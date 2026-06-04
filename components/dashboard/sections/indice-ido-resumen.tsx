@@ -198,7 +198,7 @@ export function IndiceIdoResumenSection() {
           <SlidersHorizontal className="w-4 h-4 text-accent" />
           Criterios / metas usadas
           <span className="text-xs text-muted-foreground font-normal">
-            (FMIK S1 ≤ {metas.fmikS1} · DMIK S1 ≤ {metas.dmikS1} · POVA ≥ {metas.povaTransferido}%)
+            (FMIK S1 ≤ {metas.fmikS1} · DMIK S1 ≤ {metas.dmikS1} · Obj. POVA {metas.povaTransferido}%)
           </span>
           <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${metasOpen ? "rotate-180" : ""}`} />
         </button>
@@ -207,9 +207,8 @@ export function IndiceIdoResumenSection() {
             {([
               ["FMIK S1 ≤", metas.fmikS1], ["FMIK S2 ≤", metas.fmikS2],
               ["DMIK S1 ≤", metas.dmikS1], ["DMIK S2 ≤", metas.dmikS2],
-              ["POVA Transf. ≥", `${metas.povaTransferido}%`],
+              ["Objetivo POVA", `${metas.povaTransferido}%`],
               ["POVA Fin obra", `${metas.povaFinObra}%`], ["POVA Creados =", metas.povaCreados],
-              ["Poda MT ≥", `${metas.podaMt}%`], ["Poda BT ≥", `${metas.podaBt}%`], ["Termografía", `${metas.termografia}%`],
             ] as [string, string | number][]).map(([label, val]) => (
               <div key={label} className="flex flex-col">
                 <span className="text-muted-foreground">{label}</span>

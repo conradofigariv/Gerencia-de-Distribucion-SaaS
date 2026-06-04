@@ -17,13 +17,14 @@ const META_FIELDS: { key: keyof IdoMetas; label: string; calc?: boolean }[] = [
   { key: "fmikS2", label: "FMIK S2 ≤", calc: true },
   { key: "dmikS1", label: "DMIK S1 ≤", calc: true },
   { key: "dmikS2", label: "DMIK S2 ≤", calc: true },
-  { key: "povaTransferido", label: "POVA Transferido ≥ (%)", calc: true },
+  { key: "povaTransferido", label: "Objetivo POVA (%)", calc: true },
   { key: "povaFinObra", label: "POVA Fin de obra (%)" },
   { key: "povaCreados", label: "POVA Creados/demás =" },
-  { key: "podaMt", label: "Poda MT ≥ (%)" },
-  { key: "podaBt", label: "Poda BT ≥ (%)" },
-  { key: "termografia", label: "Termografía (%)" },
 ];
+
+// Buffer de texto para editar metas (permite escribir decimales como "0,77")
+const metaToInputs = (m: IdoMetas): Record<keyof IdoMetas, string> =>
+  Object.fromEntries(Object.entries(m).map(([k, v]) => [k, String(v)])) as Record<keyof IdoMetas, string>;
 
 // Orden canónico de zonas (igual que las tablas de origen FMIK/DMIK) para que
 // al pegar una columna de valores se alineen fila por fila.
@@ -152,13 +153,13 @@ export function IndiceIdoCargaSection() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [newZona, setNewZona] = useState("");
-  const [metas, setMetas] = useState<IdoMetas>(DEFAULT_METAS);
+  const [metaInputs, setMetaInputs] = useState<Record<keyof IdoMetas, string>>(metaToInputs(DEFAULT_METAS));
   const [metasOpen, setMetasOpen] = useState(false);
   const [metasSaving, setMetasSaving] = useState(false);
 
   const load = useCallback(async (p: string) => {
     setLoading(true);
-    getMetas(p).then(setMetas);
+    getMetas(p).then((m) => setMetaInputs(metaToInputs(m)));
     const rows = await getRows(p);
     const byZona = new Map<string, IdoRow>();
     for (const r of rows) byZona.set(r.zona, r);
@@ -228,13 +229,15 @@ export function IndiceIdoCargaSection() {
   }
 
   function setMeta(key: keyof IdoMetas, value: string) {
-    const n = parseNum(value);
-    setMetas((m) => ({ ...m, [key]: n ?? 0 }));
+    setMetaInputs((m) => ({ ...m, [key]: value }));
   }
 
   async function handleSaveMetas() {
     setMetasSaving(true);
-    const err = await saveMetas(periodo, metas);
+    const parsed = Object.fromEntries(
+      (Object.keys(metaInputs) as (keyof IdoMetas)[]).map((k) => [k, parseNum(metaInputs[k]) ?? 0])
+    ) as unknown as IdoMetas;
+    const err = await saveMetas(periodo, parsed);
     setMetasSaving(false);
     if (err) { toast.error(`Error al guardar criterios: ${err}`); return; }
     toast.success(`Criterios guardados para el período ${periodo}.`);
@@ -307,7 +310,7 @@ export function IndiceIdoCargaSection() {
           <SlidersHorizontal className="w-4 h-4 text-accent" />
           Criterios estratégicos / metas internas
           <span className="text-xs text-muted-foreground font-normal">
-            (FMIK S1 ≤ {metas.fmikS1} · DMIK S1 ≤ {metas.dmikS1} · POVA ≥ {metas.povaTransferido}%)
+            (FMIK S1 ≤ {metaInputs.fmikS1} · DMIK S1 ≤ {metaInputs.dmikS1} · Obj. POVA {metaInputs.povaTransferido}%)
           </span>
           <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${metasOpen ? "rotate-180" : ""}`} />
         </button>
@@ -323,7 +326,7 @@ export function IndiceIdoCargaSection() {
                   <input
                     type="text"
                     inputMode="decimal"
-                    value={String(metas[key])}
+                    value={metaInputs[key]}
                     onChange={(e) => setMeta(key, e.target.value)}
                     className="h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent"
                   />
