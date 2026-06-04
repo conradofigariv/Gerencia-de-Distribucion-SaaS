@@ -190,17 +190,25 @@ export function mergeRows(
   return [...byZona.values()].sort((a, b) => a.zona.localeCompare(b.zona));
 }
 
-// ─── Cálculo del IDO ──────────────────────────────────────────────────────────────────
+// ─── Cálculo del IDO ──────────────────────────────────────────────────────────────────────
 // KPI semestral binario (valor ≤ meta → 100%). KPI final = promedio de los
 // semestres cargados. Resultado Técnico: ambos 100% → 100%, uno → 50%, ninguno → 0%.
 // IDO = Técnico×0,5 + POVA×0,25 + Mantenimiento×0,25.
 
 export interface IdoMetas {
+  // Umbrales técnicos (usados en el KPI binario)
   fmikS1: number;
   fmikS2: number;
   dmikS1: number;
   dmikS2: number;
-  povaObjetivo: number; // en %
+  // POVA — el objetivo de Transferido (≥) es el que usa el cálculo; el resto es referencia
+  povaTransferido: number;
+  povaFinObra: number;
+  povaCreados: number;
+  // Mantenimiento — metas de referencia (no alteran el cálculo: Mant = promedio)
+  podaMt: number;
+  podaBt: number;
+  termografia: number;
 }
 
 export const DEFAULT_METAS: IdoMetas = {
@@ -208,7 +216,12 @@ export const DEFAULT_METAS: IdoMetas = {
   fmikS2: 2.58,
   dmikS1: 1.1,
   dmikS2: 0.66,
-  povaObjetivo: 95,
+  povaTransferido: 95,
+  povaFinObra: 100,
+  povaCreados: 0,
+  podaMt: 95,
+  podaBt: 80,
+  termografia: 100,
 };
 
 export interface IdoCalc {
@@ -263,7 +276,7 @@ export function computeIdo(row: IdoRow, metas: IdoMetas = DEFAULT_METAS): IdoCal
   let pova: number | null = null;
   if (row.pova_transferido !== null && row.pova_fin_obra !== null && row.pova_total) {
     const ejec = (row.pova_transferido + row.pova_fin_obra) / row.pova_total;
-    pova = Math.min(1, ejec / (metas.povaObjetivo / 100));
+    pova = Math.min(1, ejec / (metas.povaTransferido / 100));
   }
 
   // Mantenimiento = promedio de Poda BT, Poda MT y Termografía (de los cargados)
@@ -285,4 +298,53 @@ export function computeIdo(row: IdoRow, metas: IdoMetas = DEFAULT_METAS): IdoCal
     kpiDmikS1, kpiDmikS2, kpiDmik,
     resultadoTecnico, pova, mantenimiento, ido,
   };
+}
+
+// ─── Metas persistidas (tabla ido_metas, una fila por periodo) ────────────────
+
+function pick(v: unknown, def: number): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : def;
+}
+
+export async function getMetas(periodo: string): Promise<IdoMetas> {
+  const { data, error } = await supabase
+    .from("ido_metas")
+    .select("*")
+    .eq("periodo", periodo)
+    .maybeSingle();
+  if (error || !data) return { ...DEFAULT_METAS };
+  const d = data as Record<string, unknown>;
+  return {
+    fmikS1: pick(d.fmik_s1, DEFAULT_METAS.fmikS1),
+    fmikS2: pick(d.fmik_s2, DEFAULT_METAS.fmikS2),
+    dmikS1: pick(d.dmik_s1, DEFAULT_METAS.dmikS1),
+    dmikS2: pick(d.dmik_s2, DEFAULT_METAS.dmikS2),
+    povaTransferido: pick(d.pova_transferido, DEFAULT_METAS.povaTransferido),
+    povaFinObra: pick(d.pova_fin_obra, DEFAULT_METAS.povaFinObra),
+    povaCreados: pick(d.pova_creados, DEFAULT_METAS.povaCreados),
+    podaMt: pick(d.poda_mt, DEFAULT_METAS.podaMt),
+    podaBt: pick(d.poda_bt, DEFAULT_METAS.podaBt),
+    termografia: pick(d.termografia, DEFAULT_METAS.termografia),
+  };
+}
+
+export async function saveMetas(periodo: string, m: IdoMetas): Promise<string | null> {
+  const { error } = await supabase.from("ido_metas").upsert(
+    {
+      periodo,
+      fmik_s1: m.fmikS1, fmik_s2: m.fmikS2,
+      dmik_s1: m.dmikS1, dmik_s2: m.dmikS2,
+      pova_transferido: m.povaTransferido, pova_fin_obra: m.povaFinObra, pova_creados: m.povaCreados,
+      poda_mt: m.podaMt, poda_bt: m.podaBt, termografia: m.termografia,
+    },
+    { onConflict: "periodo" }
+  );
+  return error?.message ?? null;
+}
+
+// Lista de períodos con datos cargados (para el desplegable de años).
+export async function listPeriodos(): Promise<string[]> {
+  const { data, error } = await supabase.from("ido_datos").select("periodo");
+  if (error || !data) return [];
+  return [...new Set((data as { periodo: string }[]).map((r) => r.periodo))].sort().reverse();
 }

@@ -3,10 +3,27 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   UploadCloud, Loader2, Save, RefreshCw, Calendar, Trash2, Plus, Info,
+  SlidersHorizontal, ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
-import { parseNum, getRows, saveRows, deleteRow } from "@/lib/idoStorage";
-import type { IdoRow } from "@/lib/idoStorage";
+import {
+  parseNum, getRows, saveRows, deleteRow, getMetas, saveMetas, DEFAULT_METAS,
+} from "@/lib/idoStorage";
+import type { IdoRow, IdoMetas } from "@/lib/idoStorage";
+
+// Criterios estratégicos / metas internas (editables y persistidos por período).
+const META_FIELDS: { key: keyof IdoMetas; label: string; calc?: boolean }[] = [
+  { key: "fmikS1", label: "FMIK S1 ≤", calc: true },
+  { key: "fmikS2", label: "FMIK S2 ≤", calc: true },
+  { key: "dmikS1", label: "DMIK S1 ≤", calc: true },
+  { key: "dmikS2", label: "DMIK S2 ≤", calc: true },
+  { key: "povaTransferido", label: "POVA Transferido ≥ (%)", calc: true },
+  { key: "povaFinObra", label: "POVA Fin de obra (%)" },
+  { key: "povaCreados", label: "POVA Creados/demás =" },
+  { key: "podaMt", label: "Poda MT ≥ (%)" },
+  { key: "podaBt", label: "Poda BT ≥ (%)" },
+  { key: "termografia", label: "Termografía (%)" },
+];
 
 // Orden canónico de zonas (igual que las tablas de origen FMIK/DMIK) para que
 // al pegar una columna de valores se alineen fila por fila.
@@ -135,9 +152,13 @@ export function IndiceIdoCargaSection() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [newZona, setNewZona] = useState("");
+  const [metas, setMetas] = useState<IdoMetas>(DEFAULT_METAS);
+  const [metasOpen, setMetasOpen] = useState(false);
+  const [metasSaving, setMetasSaving] = useState(false);
 
   const load = useCallback(async (p: string) => {
     setLoading(true);
+    getMetas(p).then(setMetas);
     const rows = await getRows(p);
     const byZona = new Map<string, IdoRow>();
     for (const r of rows) byZona.set(r.zona, r);
@@ -206,6 +227,19 @@ export function IndiceIdoCargaSection() {
     await deleteRow(periodo, zona);
   }
 
+  function setMeta(key: keyof IdoMetas, value: string) {
+    const n = parseNum(value);
+    setMetas((m) => ({ ...m, [key]: n ?? 0 }));
+  }
+
+  async function handleSaveMetas() {
+    setMetasSaving(true);
+    const err = await saveMetas(periodo, metas);
+    setMetasSaving(false);
+    if (err) { toast.error(`Error al guardar criterios: ${err}`); return; }
+    toast.success(`Criterios guardados para el período ${periodo}.`);
+  }
+
   async function handleSave() {
     const rows: IdoRow[] = [];
     for (const r of grid) {
@@ -262,6 +296,55 @@ export function IndiceIdoCargaSection() {
         <strong className="text-foreground/80">Obras Vía Administrativa</strong> y las{" "}
         <strong className="text-foreground/80">Obras de mantenimiento</strong>. No se tienen en cuenta las
         obras a cargo del cliente.
+      </div>
+
+      {/* Criterios estratégicos / metas internas (editables, persistidos por período) */}
+      <div className="rounded-xl border border-border bg-card/40">
+        <button
+          onClick={() => setMetasOpen((o) => !o)}
+          className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-foreground"
+        >
+          <SlidersHorizontal className="w-4 h-4 text-accent" />
+          Criterios estratégicos / metas internas
+          <span className="text-xs text-muted-foreground font-normal">
+            (FMIK S1 ≤ {metas.fmikS1} · DMIK S1 ≤ {metas.dmikS1} · POVA ≥ {metas.povaTransferido}%)
+          </span>
+          <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${metasOpen ? "rotate-180" : ""}`} />
+        </button>
+        {metasOpen && (
+          <div className="px-4 pb-4 space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {META_FIELDS.map(({ key, label, calc }) => (
+                <label key={key} className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    {label}
+                    {calc && <span className="text-accent" title="Afecta el cálculo del IDO">•</span>}
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={String(metas[key])}
+                    onChange={(e) => setMeta(key, e.target.value)}
+                    className="h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent"
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={handleSaveMetas}
+                disabled={metasSaving}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-40 transition-colors"
+              >
+                {metasSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Guardar criterios
+              </button>
+              <p className="text-[11px] text-muted-foreground/70">
+                Los marcados con <span className="text-accent">•</span> afectan el cálculo del IDO (umbrales de FMIK/DMIK y objetivo de POVA). El resto son de referencia.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Ayuda */}
