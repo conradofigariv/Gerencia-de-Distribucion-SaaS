@@ -44,6 +44,15 @@ function povaResultado(cells: Record<string, string>): number | null {
   return Math.min(100, (e / POVA_OBJETIVO) * 100);
 }
 
+// Mantenimiento — promedio de Poda BT, Poda MT y Termografía (de los que tengan dato)
+function mantPromedio(cells: Record<string, string>): number | null {
+  const vals = [cells.mant_poda_bt, cells.mant_poda_mt, cells.mant_termografia]
+    .map((v) => parseNum(v ?? ""))
+    .filter((n): n is number => n !== null);
+  if (vals.length === 0) return null;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
 const GROUPS: Group[] = [
   {
     label: "Técnico — FMIK / DMIK",
@@ -64,7 +73,7 @@ const GROUPS: Group[] = [
     ],
     derived: [
       { key: "pova_ejecutado", label: "Ejecutado", compute: povaEjecutado },
-      { key: "pova_resultado", label: "Result. s/obj", compute: povaResultado },
+      { key: "pova_resultado", label: "Result. sobre Objetivo", compute: povaResultado },
     ],
   },
   {
@@ -73,6 +82,9 @@ const GROUPS: Group[] = [
       { key: "mant_poda_bt", label: "Poda BT" },
       { key: "mant_poda_mt", label: "Poda MT" },
       { key: "mant_termografia", label: "Termografía" },
+    ],
+    derived: [
+      { key: "mant_promedio", label: "Mantenimiento", compute: mantPromedio },
     ],
   },
 ];
