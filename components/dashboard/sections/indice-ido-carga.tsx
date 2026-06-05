@@ -62,13 +62,13 @@ function povaResultado(cells: Record<string, string>): number | null {
   return Math.min(100, (e / POVA_OBJETIVO) * 100);
 }
 
-// Mantenimiento — promedio de Poda BT, Poda MT y Termografía (de los que tengan dato)
+// Mantenimiento — promedio de Poda BT, Poda MT y Termografía. Siempre divide por 3
+// (los valores faltantes cuentan como 0, igual que en el cálculo oficial del IDO).
 function mantPromedio(cells: Record<string, string>): number | null {
   const vals = [cells.mant_poda_bt, cells.mant_poda_mt, cells.mant_termografia]
-    .map((v) => parseNum(v ?? ""))
-    .filter((n): n is number => n !== null);
-  if (vals.length === 0) return null;
-  return vals.reduce((a, b) => a + b, 0) / vals.length;
+    .map((v) => parseNum(v ?? ""));
+  if (vals.every((n) => n === null)) return null;
+  return vals.reduce((a, b) => a + (b ?? 0), 0) / 3;
 }
 
 const GROUPS: Group[] = [

@@ -279,11 +279,12 @@ export function computeIdo(row: IdoRow, metas: IdoMetas = DEFAULT_METAS): IdoCal
     pova = Math.min(1, ejec / (metas.povaTransferido / 100));
   }
 
-  // Mantenimiento = promedio de Poda BT, Poda MT y Termografía (de los cargados)
-  const mantVals = [row.mant_poda_bt, row.mant_poda_mt, row.mant_termografia]
-    .filter((x): x is number => x !== null)
-    .map(toFrac);
-  const mantenimiento = mantVals.length ? mantVals.reduce((a, b) => a + b, 0) / mantVals.length : null;
+  // Mantenimiento = promedio de Poda BT, Poda MT y Termografía. Siempre divide por 3
+  // (valores faltantes cuentan como 0).
+  const mantRaw = [row.mant_poda_bt, row.mant_poda_mt, row.mant_termografia];
+  const mantenimiento = mantRaw.every((x) => x === null)
+    ? null
+    : mantRaw.reduce((a, x) => a + (x !== null ? toFrac(x) : 0), 0) / 3;
 
   let ido: number | null = null;
   if (resultadoTecnico !== null && pova !== null && mantenimiento !== null) {
