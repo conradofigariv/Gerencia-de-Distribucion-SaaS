@@ -189,3 +189,100 @@ export function mergeRows(
 
   return [...byZona.values()].sort((a, b) => a.zona.localeCompare(b.zona));
 }
+
+// ─── Cálculo del IDO ──────────────────────────────────────────────────────────────────
+// KPI semestral binario (valor ≤ meta → 100%). KPI final = promedio de los
+// semestres cargados. Resultado Técnico: ambos 100% → 100%, uno → 50%, ninguno → 0%.
+// IDO = Técnico×0,5 + POVA×0,25 + Mantenimiento×0,25.
+
+export interface IdoMetas {
+  fmikS1: number;
+  fmikS2: number;
+  dmikS1: number;
+  dmikS2: number;
+  povaObjetivo: number; // en %
+}
+
+export const DEFAULT_METAS: IdoMetas = {
+  fmikS1: 3.16,
+  fmikS2: 2.58,
+  dmikS1: 1.1,
+  dmikS2: 0.66,
+  povaObjetivo: 95,
+};
+
+export interface IdoCalc {
+  zona: string;
+  fmikS1: number | null;
+  fmikS2: number | null;
+  dmikS1: number | null;
+  dmikS2: number | null;
+  kpiFmikS1: number | null; // 1 | 0 | null
+  kpiFmikS2: number | null;
+  kpiFmik: number | null;    // promedio de los semestres cargados (0..1)
+  kpiDmikS1: number | null;
+  kpiDmikS2: number | null;
+  kpiDmik: number | null;
+  resultadoTecnico: number | null; // 0 | 0.5 | 1
+  pova: number | null;             // 0..1
+  mantenimiento: number | null;    // 0..1
+  ido: number | null;              // 0..1
+}
+
+function kpiBin(value: number | null, meta: number): number | null {
+  if (value === null) return null;
+  return value <= meta ? 1 : 0;
+}
+
+function avgDefined(...xs: (number | null)[]): number | null {
+  const v = xs.filter((x): x is number => x !== null);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+}
+
+// Normaliza un porcentaje a fracción 0..1 (acepta puntos 0–100 o fracción 0–1).
+function toFrac(v: number): number {
+  return v > 1 ? v / 100 : v;
+}
+
+export function computeIdo(row: IdoRow, metas: IdoMetas = DEFAULT_METAS): IdoCalc {
+  const kpiFmikS1 = kpiBin(row.fmik_s1, metas.fmikS1);
+  const kpiFmikS2 = kpiBin(row.fmik_s2, metas.fmikS2);
+  const kpiDmikS1 = kpiBin(row.dmik_s1, metas.dmikS1);
+  const kpiDmikS2 = kpiBin(row.dmik_s2, metas.dmikS2);
+  const kpiFmik = avgDefined(kpiFmikS1, kpiFmikS2);
+  const kpiDmik = avgDefined(kpiDmikS1, kpiDmikS2);
+
+  let resultadoTecnico: number | null = null;
+  if (kpiFmik !== null && kpiDmik !== null) {
+    const cF = kpiFmik === 1;
+    const cD = kpiDmik === 1;
+    resultadoTecnico = cF && cD ? 1 : cF || cD ? 0.5 : 0;
+  }
+
+  // POVA = mín(100%, Ejecutado / objetivo); Ejecutado = (Transferido + Fin de obra) / Total
+  let pova: number | null = null;
+  if (row.pova_transferido !== null && row.pova_fin_obra !== null && row.pova_total) {
+    const ejec = (row.pova_transferido + row.pova_fin_obra) / row.pova_total;
+    pova = Math.min(1, ejec / (metas.povaObjetivo / 100));
+  }
+
+  // Mantenimiento = promedio de Poda BT, Poda MT y Termografía (de los cargados)
+  const mantVals = [row.mant_poda_bt, row.mant_poda_mt, row.mant_termografia]
+    .filter((x): x is number => x !== null)
+    .map(toFrac);
+  const mantenimiento = mantVals.length ? mantVals.reduce((a, b) => a + b, 0) / mantVals.length : null;
+
+  let ido: number | null = null;
+  if (resultadoTecnico !== null && pova !== null && mantenimiento !== null) {
+    ido = resultadoTecnico * 0.5 + pova * 0.25 + mantenimiento * 0.25;
+  }
+
+  return {
+    zona: row.zona,
+    fmikS1: row.fmik_s1, fmikS2: row.fmik_s2,
+    dmikS1: row.dmik_s1, dmikS2: row.dmik_s2,
+    kpiFmikS1, kpiFmikS2, kpiFmik,
+    kpiDmikS1, kpiDmikS2, kpiDmik,
+    resultadoTecnico, pova, mantenimiento, ido,
+  };
+}
