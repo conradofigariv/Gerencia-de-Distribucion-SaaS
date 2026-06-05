@@ -10,7 +10,7 @@ import type { IdoRow } from "@/lib/idoStorage";
 
 // Orden canónico de zonas (igual que las tablas de origen FMIK/DMIK) para que
 // al pegar una columna de valores se alineen fila por fila.
-const DEFAULT_ZONAS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "EPEC"];
+const DEFAULT_ZONAS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
 
 interface Field {
   key: string;
@@ -250,7 +250,7 @@ export function IndiceIdoCargaSection() {
         <span>
           Copiá una columna desde Excel (ej. FMIK <strong>2026 S1</strong>) y pegala sobre la primera celda
           de la columna correspondiente: se completa hacia abajo automáticamente. Las zonas están en el orden
-          de origen (A, B, C, …, EPEC). También podés escribir valores a mano. Decimales con coma o punto.
+          de origen (A, B, C, …, I). También podés escribir valores a mano. Decimales con coma o punto.
         </span>
       </div>
 
