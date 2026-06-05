@@ -419,6 +419,12 @@ export function StockZonaSection() {
     [uploads],
   );
 
+  // Columnas de zona visibles en la tabla: si hay una zona filtrada, solo esa.
+  const visibleZonas = useMemo(
+    () => (filterZona === "todos" ? zonas : zonas.filter(z => z === filterZona)),
+    [zonas, filterZona],
+  );
+
   const lastUpdate = useMemo(() => uploads.reduce<string | null>((latest, u) => {
     if (!latest || u.uploadedAt > latest) return u.uploadedAt;
     return latest;
@@ -780,7 +786,7 @@ export function StockZonaSection() {
   const TOGGLE_W = zonesExpanded ? 36 : 96;
   const tableWidth =
     colWidths.articulo + colWidths.descArticulo + colWidths.udmPrimaria + colWidths.tipo + colWidths.total +
-    TOGGLE_W + (zonesExpanded ? zonas.length * zoneWidth : 0);
+    TOGGLE_W + (zonesExpanded ? visibleZonas.length * zoneWidth : 0);
 
   const fixedCols = [
     { col: "articulo",     label: "Matrícula",   align: "left"  as const, w: colWidths.articulo     },
@@ -1029,7 +1035,7 @@ export function StockZonaSection() {
                     <colgroup>
                       {fixedCols.map(c => <col key={c.col} style={{ width: c.w }} />)}
                       <col style={{ width: TOGGLE_W }} />
-                      {zonesExpanded && zonas.map(z => <col key={z} style={{ width: zoneWidth }} />)}
+                      {zonesExpanded && visibleZonas.map(z => <col key={z} style={{ width: zoneWidth }} />)}
                     </colgroup>
                     <thead>
                       <tr>
@@ -1089,7 +1095,7 @@ export function StockZonaSection() {
                             )}
                           </span>
                         </th>
-                        {zonesExpanded && zonas.map(zona => {
+                        {zonesExpanded && visibleZonas.map(zona => {
                           const active = sortCol === zona;
                           const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
                           return (
@@ -1123,7 +1129,7 @@ export function StockZonaSection() {
                       {pivotRows.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={fixedCols.length + 1 + (zonesExpanded ? zonas.length : 0)}
+                            colSpan={fixedCols.length + 1 + (zonesExpanded ? visibleZonas.length : 0)}
                             style={{ padding: "48px 24px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 13 }}
                           >
                             No hay registros que coincidan con los filtros
@@ -1134,7 +1140,7 @@ export function StockZonaSection() {
                         const totalH  = resumenVirtualizer.getTotalSize();
                         const padTop  = vItems.length ? vItems[0].start : 0;
                         const padBot  = vItems.length ? totalH - vItems[vItems.length - 1].end : 0;
-                        const colSpan = fixedCols.length + 1 + (zonesExpanded ? zonas.length : 0);
+                        const colSpan = fixedCols.length + 1 + (zonesExpanded ? visibleZonas.length : 0);
                         return (
                           <>
                             {padTop > 0 && <tr style={{ height: padTop }}><td colSpan={colSpan} style={{ padding: 0, border: "none" }} /></tr>}
@@ -1172,7 +1178,7 @@ export function StockZonaSection() {
                                     {row.total.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
                                   </td>
                                   <td style={{ ...bottomBorder }} />
-                                  {zonesExpanded && zonas.map(zona => {
+                                  {zonesExpanded && visibleZonas.map(zona => {
                                     const qty = row.byZona[zona];
                                     return (
                                       <td key={zona} style={{ ...bottomBorder, padding: "10px 6px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
