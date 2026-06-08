@@ -27,6 +27,7 @@ import {
   Package,
   Gavel,
   Gauge,
+  ClipboardList,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 
@@ -99,6 +100,16 @@ const navItems: NavItemDef[] = [
       { id: "indice-ido-carga",   label: "Carga de datos", icon: UploadCloud },
     ],
   },
+  {
+    kind: "group",
+    id: "tablero-op",
+    label: "Tablero OP",
+    icon: ClipboardList,
+    children: [
+      { id: "tablero-op-resumen", label: "Resumen",        icon: LayoutGrid },
+      { id: "tablero-op-carga",   label: "Carga de datos", icon: UploadCloud },
+    ],
+  },
   { kind: "link", id: "overview", label: "Overview", icon: LayoutDashboard },
   { kind: "link", id: "pipeline", label: "Pipeline", icon: GitBranch },
   { kind: "link", id: "deals", label: "Deals", icon: Handshake },
@@ -128,6 +139,11 @@ const INDICE_IDO_SECTIONS: Section[] = [
   "indice-ido-carga",
 ];
 
+const TABLERO_OP_SECTIONS: Section[] = [
+  "tablero-op-resumen",
+  "tablero-op-carga",
+];
+
 export function Sidebar({
   activeSection,
   onSectionChange,
@@ -139,6 +155,7 @@ export function Sidebar({
     ...(SIC_SECTIONS.includes(activeSection)            ? ["sic"]            : []),
     ...(TRANSFORMADORES_SECTIONS.includes(activeSection)? ["transformadores"] : []),
     ...(INDICE_IDO_SECTIONS.includes(activeSection)     ? ["indice-ido"]      : []),
+    ...(TABLERO_OP_SECTIONS.includes(activeSection)     ? ["tablero-op"]      : []),
   ];
   const [expandedGroups, setExpandedGroups] = useState<string[]>(initialGroups);
 
@@ -155,6 +172,9 @@ export function Sidebar({
     }
     if (INDICE_IDO_SECTIONS.includes(activeSection)) {
       setExpandedGroups((prev) => prev.includes("indice-ido") ? prev : [...prev, "indice-ido"]);
+    }
+    if (TABLERO_OP_SECTIONS.includes(activeSection)) {
+      setExpandedGroups((prev) => prev.includes("tablero-op") ? prev : [...prev, "tablero-op"]);
     }
   }, [activeSection]);
 
