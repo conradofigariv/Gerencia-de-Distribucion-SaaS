@@ -31,6 +31,10 @@ interface ParsedRow<T> {
   row: T;
   display: string[];
   errors: string[];
+  // Motivo de exclusión intencional (no es un error de datos — ej. movimiento
+  // interno sin Número Pedido). Se excluye del guardado igual que un error,
+  // pero se muestra distinto (gris, no rojo) para no alarmar al usuario.
+  omitted?: string;
 }
 
 function splitLines(text: string): string[] {
@@ -435,7 +439,7 @@ function ImportPanel<T extends Record<string, unknown>>({
 
   const handleReplace = async () => {
     if (!preview) return;
-    const valid = preview.filter((r) => r.errors.length === 0);
+    const valid = preview.filter((r) => r.errors.length === 0 && !r.omitted);
     if (!valid.length) { toast.error("No hay filas válidas para guardar."); return; }
     setSaving(true);
     try {
@@ -482,8 +486,9 @@ function ImportPanel<T extends Record<string, unknown>>({
       )}
 
       {preview && (() => {
-        const errCount = preview.filter((r) => r.errors.length > 0).length;
-        const okCount  = preview.length - errCount;
+        const errCount     = preview.filter((r) => r.errors.length > 0).length;
+        const omittedCount = preview.filter((r) => r.errors.length === 0 && r.omitted).length;
+        const okCount      = preview.length - errCount - omittedCount;
         return (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
@@ -498,6 +503,11 @@ function ImportPanel<T extends Record<string, unknown>>({
               <span className="flex items-center gap-1.5 text-xs text-success bg-success/10 border border-success/20 px-3 py-1.5 rounded-lg">
                 <CheckCircle2 className="w-3.5 h-3.5" />{okCount} válida(s)
               </span>
+              {omittedCount > 0 && (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary/60 border border-border px-3 py-1.5 rounded-lg">
+                  <Info className="w-3.5 h-3.5" />{omittedCount} movimiento(s) interno(s) (se omiten)
+                </span>
+              )}
               {errCount > 0 && (
                 <span className="flex items-center gap-1.5 text-xs text-destructive bg-destructive/10 border border-destructive/20 px-3 py-1.5 rounded-lg">
                   <AlertCircle className="w-3.5 h-3.5" />{errCount} con errores (se omiten)
@@ -528,10 +538,14 @@ function ImportPanel<T extends Record<string, unknown>>({
                   </thead>
                   <tbody>
                     {preview.map((r, i) => {
-                      const hasErr = r.errors.length > 0;
+                      const hasErr    = r.errors.length > 0;
+                      const isOmitted = !hasErr && !!r.omitted;
                       return (
                         <React.Fragment key={i}>
-                          <tr className={cn("border-b border-border/50", hasErr ? "bg-destructive/5" : "hover:bg-secondary/20")}>
+                          <tr className={cn(
+                            "border-b border-border/50",
+                            hasErr ? "bg-destructive/5" : isOmitted ? "bg-secondary/20 opacity-70" : "hover:bg-secondary/20"
+                          )}>
                             <td className="py-2 px-3 text-muted-foreground">{i + 1}</td>
                             {r.display.map((v, j) => (
                               <td key={j} className="py-2 px-3 max-w-[220px] truncate font-mono" title={v}>{v || "—"}</td>
@@ -543,6 +557,16 @@ function ImportPanel<T extends Record<string, unknown>>({
                                 <div className="flex items-start gap-1.5">
                                   <AlertCircle className="w-3 h-3 text-destructive shrink-0 mt-0.5" />
                                   <span className="text-[11px] text-destructive">{r.errors.join(" · ")}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          {isOmitted && (
+                            <tr className="bg-secondary/10 border-b border-border/30">
+                              <td colSpan={columns.length + 1} className="px-4 py-1.5">
+                                <div className="flex items-start gap-1.5">
+                                  <Info className="w-3 h-3 text-muted-foreground shrink-0 mt-0.5" />
+                                  <span className="text-[11px] text-muted-foreground">{r.omitted}</span>
                                 </div>
                               </td>
                             </tr>
@@ -666,13 +690,25 @@ const parseTransacciones = (text: string): ParsedRow<TransaccionRow>[] =>
       const importe       = parseNum(get("importe"));
       const fecha         = parseFechaArg(get("fecha"));
       const articulo      = normArticulo(get("articulo"));
-      const numero_pedido = parseEntero(get("numero_pedido"));
+      const numeroPedidoRaw = get("numero_pedido");
+      const numero_pedido   = parseEntero(numeroPedidoRaw);
       const errors: string[] = [];
-      if (!tipo)                  errors.push("Tipo vacío");
-      if (importe === null)       errors.push("Importe inválido");
-      if (!fecha)                 errors.push("Fecha inválida");
-      if (!articulo)              errors.push("Artículo vacío");
-      if (numero_pedido === null) errors.push("Número de pedido inválido");
+      if (!tipo)            errors.push("Tipo vacío");
+      if (importe === null) errors.push("Importe inválido");
+      if (!fecha)           errors.push("Fecha inválida");
+      if (!articulo)        errors.push("Artículo vacío");
+
+      let omitted: string | undefined;
+      if (numero_pedido === null) {
+        if (!numeroPedidoRaw.trim() && errors.length === 0) {
+          // Sin Número Pedido y el resto de la fila es válida → movimiento
+          // interno (transferencia entre zonas, sin OP asociada). No se puede
+          // cruzar con ninguna SIC → se omite a propósito, no es un error.
+          omitted = "Movimiento interno (sin Número Pedido) — se omite";
+        } else {
+          errors.push("Número de pedido inválido");
+        }
+      }
       const row: TransaccionRow = {
         tipo,
         importe: importe ?? 0,
@@ -684,8 +720,9 @@ const parseTransacciones = (text: string): ParsedRow<TransaccionRow>[] =>
       };
       return {
         row,
-        display: [tipo, importe != null ? String(importe) : "", fecha ?? "", articulo, String(numero_pedido ?? ""), row.linea ?? "", row.proveedor ?? ""],
+        display: [tipo, importe != null ? String(importe) : "", fecha ?? "", articulo, numeroPedidoRaw || "—", row.linea ?? "", row.proveedor ?? ""],
         errors,
+        omitted,
       };
     }
   );
