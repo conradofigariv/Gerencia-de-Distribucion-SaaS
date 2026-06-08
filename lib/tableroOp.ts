@@ -13,6 +13,20 @@ export interface SeguimientoRow {
   numero_op:     number | null;
 }
 
+// Planilla maestra de SIC: fuente de datos completa. "SIC a seguir" pega solo
+// números y se cruza contra esta tabla. Una SIC (numero) puede tener varias
+// líneas (una por artículo) → PK uuid, numero indexado.
+export interface SicMaestroRow {
+  numero:        number;
+  linea:         string | null;
+  articulo:      string | null;
+  descripcion:   string | null;
+  cantidad:      number | null;
+  udm:           string | null;
+  ctd_entregada: number;
+  numero_pedido: number | null;
+}
+
 export interface OpRow {
   numero:      number;
   linea:       string | null;

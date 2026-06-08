@@ -5,21 +5,22 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   UploadCloud, Loader2, Plus, Trash2, AlertCircle, CheckCircle2,
-  ChevronLeft, ArrowRight, X, Info, ClipboardList, FileText, ArrowLeftRight, Package, Database,
+  ChevronLeft, ArrowRight, X, Info, ClipboardList, FileText, ArrowLeftRight, Package, Database, Table2,
 } from "lucide-react";
 import {
   getSeguimiento, upsertSeguimiento, deleteSeguimiento, deleteSeguimientoBulk, clearSeguimiento,
   getTableCount, replaceTable,
   normArticulo, parseNum, parseEntero, parseFechaArg,
 } from "@/lib/tableroOp";
-import type { SeguimientoRow, OpRow, TransaccionRow, StockRow } from "@/lib/tableroOp";
+import type { SeguimientoRow, SicMaestroRow, OpRow, TransaccionRow, StockRow } from "@/lib/tableroOp";
 
 // ─── Pestañas ────────────────────────────────────────────────────────────────
 
-type Tab = "seguimiento" | "op" | "transacciones" | "stock";
+type Tab = "seguimiento" | "sic" | "op" | "transacciones" | "stock";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "seguimiento",   label: "SIC a seguir",  icon: ClipboardList },
+  { id: "sic",           label: "Planilla SIC",  icon: Table2 },
   { id: "op",            label: "OP's",          icon: FileText },
   { id: "transacciones", label: "Transacciones", icon: ArrowLeftRight },
   { id: "stock",         label: "Stock",         icon: Package },
@@ -626,6 +627,46 @@ function parseByHeader<T>(
   });
 }
 
+// ─── Planilla SIC (maestro) ──────────────────────────────────────────────────
+
+const SIC_COLS = ["Número", "Línea", "Artículo", "Descripción", "Cantidad", "UDM", "Ctd Entregada", "Número Pedido"];
+
+const SIC_SPECS: Spec = {
+  numero:        (h) => /^n[uú]mero$/i.test(h) || /^n[uú]mero sic$/i.test(h) || /^sic$/i.test(h),
+  linea:         (h) => /^l[ií]nea$/i.test(h),
+  articulo:      (h) => /art[ií]culo/i.test(h),
+  descripcion:   (h) => /descrip/i.test(h),
+  cantidad:      (h) => /^cantidad$/i.test(h),
+  udm:           (h) => /^udm$/i.test(h) || /^unidad( primaria)?$/i.test(h),
+  ctd_entregada: (h) => /entregad/i.test(h),
+  numero_pedido: (h) => /pedido/i.test(h),
+};
+const SIC_DEFAULT_IDX = { numero: 0, linea: 1, articulo: 2, descripcion: 3, cantidad: 4, udm: 5, ctd_entregada: 6, numero_pedido: 7 };
+
+const parseSicMaestro = (text: string): ParsedRow<SicMaestroRow>[] =>
+  parseByHeader<SicMaestroRow>(text, SIC_SPECS, ["numero", "articulo"], SIC_DEFAULT_IDX, (get) => {
+    const numero   = parseEntero(get("numero"));
+    const articulo = get("articulo").trim() ? normArticulo(get("articulo")) : null;
+    const errors: string[] = [];
+    if (numero === null) errors.push("Número de SIC inválido o vacío");
+    if (!articulo)       errors.push("Artículo vacío");
+    const row: SicMaestroRow = {
+      numero:        numero ?? 0,
+      linea:         get("linea") || null,
+      articulo,
+      descripcion:   get("descripcion") || null,
+      cantidad:      parseNum(get("cantidad")),
+      udm:           get("udm") || null,
+      ctd_entregada: parseNum(get("ctd_entregada")) ?? 0,
+      numero_pedido: parseEntero(get("numero_pedido")),
+    };
+    return {
+      row,
+      display: [String(row.numero || ""), row.linea ?? "", row.articulo ?? "", row.descripcion ?? "", row.cantidad != null ? String(row.cantidad) : "", row.udm ?? "", String(row.ctd_entregada), row.numero_pedido != null ? String(row.numero_pedido) : ""],
+      errors,
+    };
+  });
+
 // ─── OP's ────────────────────────────────────────────────────────────────────
 
 const OP_COLS = ["Número", "Línea", "Artículo", "Descripción", "UDM", "Cantidad", "Proveedor"];
@@ -798,6 +839,25 @@ export function TableroOpCargaSection() {
       </div>
 
       {tab === "seguimiento" && <SeguimientoTab />}
+
+      {tab === "sic" && (
+        <ImportPanel
+          table="tablero_op_sic"
+          notNullCol="numero"
+          columns={SIC_COLS}
+          countLabel={(n) => `${n.toLocaleString("es-AR")} línea(s) de SIC cargadas`}
+          placeholder={`Pegá con encabezado:\nNúmero\tLínea\tArtículo\tDescripción\tCantidad\tUDM\tCtd Entregada\tNúmero Pedido\n102345\t1\t00013242.0\tCABLE PREENS 3X95\t100\tMT\t40\t900123`}
+          parse={parseSicMaestro}
+          hint={
+            <span>
+              Pegá la <strong className="text-foreground/80">planilla de SIC</strong> <strong className="text-foreground/80">incluyendo la fila de encabezado</strong> —
+              se usan solo las columnas <strong className="text-foreground/80">{SIC_COLS.join(" · ")}</strong> (las demás se descartan), reconocidas por
+              su nombre sin importar el orden. Es la fuente de datos: en «SIC a seguir» vas a pegar solo los números y se cruzan contra esta planilla.{" "}
+              <strong className="text-foreground/80">Reemplaza la tabla completa</strong> — subí siempre la planilla entera y actualizada.
+            </span>
+          }
+        />
+      )}
 
       {tab === "op" && (
         <ImportPanel
