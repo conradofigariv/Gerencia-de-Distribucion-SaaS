@@ -5,22 +5,21 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   UploadCloud, Loader2, Plus, Trash2, AlertCircle, CheckCircle2,
-  ChevronLeft, ArrowRight, X, Info, ClipboardList, FileText, ArrowLeftRight, Package, Database, Table2,
+  ChevronLeft, ArrowRight, X, Info, ClipboardList, FileText, ArrowLeftRight, Package, Database,
 } from "lucide-react";
 import {
   getSeguimiento, upsertSeguimiento, deleteSeguimiento, deleteSeguimientoBulk, clearSeguimiento,
   getTableCount, replaceTable,
   normArticulo, parseNum, parseEntero, parseFechaArg,
 } from "@/lib/tableroOp";
-import type { SeguimientoRow, SicMaestroRow, OpRow, TransaccionRow, StockRow } from "@/lib/tableroOp";
+import type { SeguimientoRow, OpRow, TransaccionRow, StockRow } from "@/lib/tableroOp";
 
 // ─── Pestañas ────────────────────────────────────────────────────────────────
 
-type Tab = "seguimiento" | "sic" | "op" | "transacciones" | "stock";
+type Tab = "seguimiento" | "op" | "transacciones" | "stock";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "seguimiento",   label: "SIC a seguir",  icon: ClipboardList },
-  { id: "sic",           label: "Planilla SIC",  icon: Table2 },
   { id: "op",            label: "OP's",          icon: FileText },
   { id: "transacciones", label: "Transacciones", icon: ArrowLeftRight },
   { id: "stock",         label: "Stock",         icon: Package },
@@ -42,45 +41,106 @@ function splitLines(text: string): string[] {
   return text.replace(/\r/g, "").split("\n").filter((l) => l.trim() !== "");
 }
 
+// ─── Parser por encabezado (mapea columnas por NOMBRE, robusto al orden) ─────
+// Los exports de SIGA traen muchas columnas extra y en otro orden. Detectamos
+// la fila de encabezado y mapeamos cada campo por el nombre de su columna. Si
+// no se reconoce el encabezado, se cae a posiciones fijas (orden documentado).
+
+type Spec = Record<string, (h: string) => boolean>;
+
+function buildHeaderIndex(headerCells: string[], specs: Spec): Record<string, number> {
+  const idx: Record<string, number> = {};
+  headerCells.forEach((cell, i) => {
+    for (const key in specs) {
+      if (idx[key] === undefined && specs[key](cell)) idx[key] = i;
+    }
+  });
+  return idx;
+}
+
+// Recorre las filas con un accessor get(key) que resuelve la columna por
+// nombre (si hay encabezado) o por posición fija (fallback). `required` define
+// qué columnas deben existir para considerar la 1ª fila como encabezado.
+function parseByHeader<T>(
+  text: string,
+  specs: Spec,
+  required: string[],
+  defaultIdx: Record<string, number>,
+  build: (get: (key: string) => string) => ParsedRow<T>
+): ParsedRow<T>[] {
+  const lines = splitLines(text);
+  if (!lines.length) return [];
+  const header = lines[0].split("\t").map((c) => c.trim());
+  const hidx = buildHeaderIndex(header, specs);
+  const headerOk = required.every((k) => hidx[k] !== undefined);
+  const idx = headerOk ? hidx : defaultIdx;
+  const dataLines = headerOk ? lines.slice(1) : lines;
+  return dataLines.map((line) => {
+    const cells = line.split("\t").map((c) => c.trim());
+    const get = (key: string) => (idx[key] === undefined ? "" : (cells[idx[key]] ?? ""));
+    return build(get);
+  });
+}
+
 // ════════════════════════════════════════════════════════════════
 // SIC a seguir — pegado manual con clave numero_sic (upsert / replace)
+//
+// El usuario pega directamente su planilla de seguimiento (ej. la pestaña
+// "GD" del Excel del sistema), que trae las 8 columnas fuente MÁS columnas
+// calculadas (Proveedor, Control, STOCK, Recibido, ..., DESDE/HASTA) que ya
+// resuelve gd_tablero(). Se reconocen por encabezado y se descartan las extra.
 // ════════════════════════════════════════════════════════════════
 
 const SEG_COLS = [
-  "SIC", "Línea", "Artículo", "Descripción", "Cantidad", "UDM", "Ctd. Entregada", "OP",
+  "Número", "Línea", "Artículo", "Descripción", "Cantidad", "UDM", "Ctd Entregada", "Número Pedido",
 ] as const;
 
-function looksLikeSicHeader(cells: string[]): boolean {
-  const first = (cells[0] ?? "").toLowerCase();
-  return first.includes("sic") || first.includes("solicitud") || first === "numero_sic";
-}
+const SEG_SPECS: Spec = {
+  numero_sic:    (h) => /^n[uú]mero( sic)?$/i.test(h) || /^sic$/i.test(h),
+  linea:         (h) => /^l[ií]nea$/i.test(h),
+  articulo:      (h) => /art[ií]culo/i.test(h),
+  descripcion:   (h) => /descrip/i.test(h),
+  cantidad:      (h) => /^cantidad$/i.test(h),
+  udm:           (h) => /^udm$/i.test(h) || /^unidad( primaria)?$/i.test(h),
+  ctd_entregada: (h) => /entregad/i.test(h),
+  numero_op:     (h) => /pedido/i.test(h),
+};
+const SEG_DEFAULT_IDX = { numero_sic: 0, linea: 1, articulo: 2, descripcion: 3, cantidad: 4, udm: 5, ctd_entregada: 6, numero_op: 7 };
 
-function mapSeguimientoRow(cells: string[]): SeguimientoRow & { _errors: string[] } {
-  const numero_sic = parseEntero(cells[0]);
-  const articulo   = normArticulo(cells[2]);
-  const errors: string[] = [];
-  if (numero_sic === null) errors.push("SIC inválido o vacío");
-  if (!articulo)           errors.push("Artículo vacío");
-  return {
-    numero_sic:    numero_sic ?? 0,
-    linea:         cells[1]?.trim() || null,
-    articulo,
-    descripcion:   cells[3]?.trim() || null,
-    cantidad:      parseNum(cells[4]),
-    udm:           cells[5]?.trim() || null,
-    ctd_entregada: parseNum(cells[6]) ?? 0,
-    numero_op:     parseEntero(cells[7]),
-    _errors:       errors,
-  };
-}
+const parseSeguimiento = (text: string): ParsedRow<SeguimientoRow>[] =>
+  parseByHeader<SeguimientoRow>(text, SEG_SPECS, ["numero_sic", "articulo"], SEG_DEFAULT_IDX, (get) => {
+    const numero_sic = parseEntero(get("numero_sic"));
+    const articulo   = normArticulo(get("articulo"));
+    const errors: string[] = [];
+    if (numero_sic === null) errors.push("SIC inválido o vacío");
+    if (!articulo)           errors.push("Artículo vacío");
+    const row: SeguimientoRow = {
+      numero_sic:    numero_sic ?? 0,
+      linea:         get("linea") || null,
+      articulo,
+      descripcion:   get("descripcion") || null,
+      cantidad:      parseNum(get("cantidad")),
+      udm:           get("udm") || null,
+      ctd_entregada: parseNum(get("ctd_entregada")) ?? 0,
+      numero_op:     parseEntero(get("numero_op")),
+    };
+    return {
+      row,
+      display: [
+        String(row.numero_sic || ""), row.linea ?? "", row.articulo, row.descripcion ?? "",
+        row.cantidad != null ? String(row.cantidad) : "", row.udm ?? "", String(row.ctd_entregada),
+        row.numero_op != null ? String(row.numero_op) : "",
+      ],
+      errors,
+    };
+  });
 
 function SeguimientoTab() {
   type Step = "input" | "preview";
-  type PreviewRow = SeguimientoRow & { _errors: string[] };
 
   const [step, setStep]       = useState<Step>("input");
   const [raw, setRaw]         = useState("");
-  const [preview, setPreview] = useState<PreviewRow[]>([]);
+  const [preview, setPreview] = useState<ParsedRow<SeguimientoRow>[]>([]);
   const [rows, setRows]       = useState<SeguimientoRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
@@ -103,22 +163,23 @@ function SeguimientoTab() {
 
   const handlePreview = () => {
     if (!raw.trim()) { toast.error("Pegá la lista de SIC primero."); return; }
-    const lines = splitLines(raw);
-    const parsed = lines.flatMap((line, idx) => {
-      const cells = line.split("\t").map((c) => c.trim());
-      if (idx === 0 && looksLikeSicHeader(cells)) return [];
-      return [mapSeguimientoRow(cells)];
-    });
+    let parsed: ParsedRow<SeguimientoRow>[];
+    try {
+      parsed = parseSeguimiento(raw);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+      return;
+    }
     if (!parsed.length) { toast.error("No se detectaron filas."); return; }
 
     // Detecta SIC duplicados dentro del pegado (la PK los colapsaría).
     const seen = new Map<number, number>();
     parsed.forEach((r) => {
-      if (r.numero_sic) seen.set(r.numero_sic, (seen.get(r.numero_sic) ?? 0) + 1);
+      if (r.row.numero_sic) seen.set(r.row.numero_sic, (seen.get(r.row.numero_sic) ?? 0) + 1);
     });
     parsed.forEach((r) => {
-      if (r.numero_sic && (seen.get(r.numero_sic) ?? 0) > 1) {
-        r._errors.push("SIC duplicado en el pegado");
+      if (r.row.numero_sic && (seen.get(r.row.numero_sic) ?? 0) > 1) {
+        r.errors.push("SIC duplicado en el pegado");
       }
     });
 
@@ -127,12 +188,12 @@ function SeguimientoTab() {
   };
 
   const handleSave = async (mode: "replace" | "accumulate") => {
-    const valid = preview.filter((r) => r._errors.length === 0);
+    const valid = preview.filter((r) => r.errors.length === 0);
     if (!valid.length) { toast.error("No hay filas válidas para guardar."); return; }
     setSaving(true);
     try {
       if (mode === "replace") await clearSeguimiento();
-      const toSave: SeguimientoRow[] = valid.map(({ _errors: _e, ...r }) => r);
+      const toSave: SeguimientoRow[] = valid.map((r) => r.row);
       await upsertSeguimiento(toSave);
       toast.success(`${toSave.length} fila(s) guardada(s) en seguimiento.`);
       setRaw("");
@@ -187,7 +248,7 @@ function SeguimientoTab() {
   };
 
   if (step === "preview") {
-    const errCount = preview.filter((r) => r._errors.length > 0).length;
+    const errCount = preview.filter((r) => r.errors.length > 0).length;
     const okCount  = preview.length - errCount;
 
     return (
@@ -236,26 +297,27 @@ function SeguimientoTab() {
               </thead>
               <tbody>
                 {preview.map((r, i) => {
-                  const hasErr = r._errors.length > 0;
+                  const hasErr = r.errors.length > 0;
+                  const row = r.row;
                   return (
                     <React.Fragment key={i}>
                       <tr className={cn("border-b border-border/50", hasErr ? "bg-destructive/5" : "hover:bg-secondary/20")}>
                         <td className="py-2 px-3 text-muted-foreground">{i + 1}</td>
-                        <td className="py-2 px-3 font-mono">{r.numero_sic || "—"}</td>
-                        <td className="py-2 px-3">{r.linea ?? "—"}</td>
-                        <td className="py-2 px-3 font-mono">{r.articulo || "—"}</td>
-                        <td className="py-2 px-3 max-w-[200px] truncate" title={r.descripcion ?? ""}>{r.descripcion ?? "—"}</td>
-                        <td className="py-2 px-3 text-right font-mono">{r.cantidad ?? "—"}</td>
-                        <td className="py-2 px-3">{r.udm ?? "—"}</td>
-                        <td className="py-2 px-3 text-right font-mono">{r.ctd_entregada}</td>
-                        <td className="py-2 px-3 font-mono">{r.numero_op ?? "—"}</td>
+                        <td className="py-2 px-3 font-mono">{row.numero_sic || "—"}</td>
+                        <td className="py-2 px-3">{row.linea ?? "—"}</td>
+                        <td className="py-2 px-3 font-mono">{row.articulo || "—"}</td>
+                        <td className="py-2 px-3 max-w-[200px] truncate" title={row.descripcion ?? ""}>{row.descripcion ?? "—"}</td>
+                        <td className="py-2 px-3 text-right font-mono">{row.cantidad ?? "—"}</td>
+                        <td className="py-2 px-3">{row.udm ?? "—"}</td>
+                        <td className="py-2 px-3 text-right font-mono">{row.ctd_entregada}</td>
+                        <td className="py-2 px-3 font-mono">{row.numero_op ?? "—"}</td>
                       </tr>
                       {hasErr && (
                         <tr className="bg-destructive/5 border-b border-destructive/10">
                           <td colSpan={SEG_COLS.length + 1} className="px-4 py-1.5">
                             <div className="flex items-start gap-1.5">
                               <AlertCircle className="w-3 h-3 text-destructive shrink-0 mt-0.5" />
-                              <span className="text-[11px] text-destructive">{r._errors.join(" · ")}</span>
+                              <span className="text-[11px] text-destructive">{r.errors.join(" · ")}</span>
                             </div>
                           </td>
                         </tr>
@@ -276,9 +338,12 @@ function SeguimientoTab() {
       <div className="flex items-start gap-2 text-xs text-muted-foreground bg-secondary/40 border border-border rounded-lg px-3 py-2.5">
         <Info className="w-4 h-4 shrink-0 mt-0.5 text-accent" />
         <span>
-          Pegá las filas desde Excel (tab-separado), una por línea, en este orden:{" "}
-          <strong className="text-foreground/80">{SEG_COLS.join(" · ")}</strong>. El sufijo «.0» del artículo se quita
-          automáticamente. Se guarda por <strong className="text-foreground/80">SIC</strong> (clave única).
+          Pegá tu planilla de seguimiento <strong className="text-foreground/80">incluyendo la fila de encabezado</strong> —
+          las columnas se reconocen por su nombre (<strong className="text-foreground/80">{SEG_COLS.join(" · ")}</strong>),
+          sin importar el orden ni las columnas extra que traiga el export (Proveedor, Control, STOCK, Recibido, etc. se
+          descartan automáticamente — son las que calcula el Resumen). El sufijo «.0» del artículo se quita
+          automáticamente. Se guarda por <strong className="text-foreground/80">Número (SIC)</strong> — clave única; una
+          fila por artículo/línea de cada SIC.
         </span>
       </div>
 
@@ -286,7 +351,7 @@ function SeguimientoTab() {
         <textarea
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
-          placeholder={`Ej.:\n102345\t1\t00013242.0\tCABLE PREENS 3X95\t100\tMT\t40\t900123\n102346\t1\t00099887.0\tMORSETO\t50\tUN\t0\t`}
+          placeholder={`Pegá con encabezado:\nNúmero\tLínea\tArtículo\tDescripción\tCantidad\tUDM\tCtd Entregada\tNúmero Pedido\n102345\t1\t00013242.0\tCABLE PREENS 3X95\t100\tMT\t40\t900123`}
           rows={10}
           className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent resize-y transition-all font-mono"
         />
@@ -586,87 +651,6 @@ function ImportPanel<T extends Record<string, unknown>>({
   );
 }
 
-// ─── Parser por encabezado (mapea columnas por NOMBRE, robusto al orden) ─────
-// Los exports de SIGA traen muchas columnas extra y en otro orden. Detectamos
-// la fila de encabezado y mapeamos cada campo por el nombre de su columna. Si
-// no se reconoce el encabezado, se cae a posiciones fijas (orden documentado).
-
-type Spec = Record<string, (h: string) => boolean>;
-
-function buildHeaderIndex(headerCells: string[], specs: Spec): Record<string, number> {
-  const idx: Record<string, number> = {};
-  headerCells.forEach((cell, i) => {
-    for (const key in specs) {
-      if (idx[key] === undefined && specs[key](cell)) idx[key] = i;
-    }
-  });
-  return idx;
-}
-
-// Recorre las filas con un accessor get(key) que resuelve la columna por
-// nombre (si hay encabezado) o por posición fija (fallback). `required` define
-// qué columnas deben existir para considerar la 1ª fila como encabezado.
-function parseByHeader<T>(
-  text: string,
-  specs: Spec,
-  required: string[],
-  defaultIdx: Record<string, number>,
-  build: (get: (key: string) => string) => ParsedRow<T>
-): ParsedRow<T>[] {
-  const lines = splitLines(text);
-  if (!lines.length) return [];
-  const header = lines[0].split("\t").map((c) => c.trim());
-  const hidx = buildHeaderIndex(header, specs);
-  const headerOk = required.every((k) => hidx[k] !== undefined);
-  const idx = headerOk ? hidx : defaultIdx;
-  const dataLines = headerOk ? lines.slice(1) : lines;
-  return dataLines.map((line) => {
-    const cells = line.split("\t").map((c) => c.trim());
-    const get = (key: string) => (idx[key] === undefined ? "" : (cells[idx[key]] ?? ""));
-    return build(get);
-  });
-}
-
-// ─── Planilla SIC (maestro) ──────────────────────────────────────────────────
-
-const SIC_COLS = ["Número", "Línea", "Artículo", "Descripción", "Cantidad", "UDM", "Ctd Entregada", "Número Pedido"];
-
-const SIC_SPECS: Spec = {
-  numero:        (h) => /^n[uú]mero$/i.test(h) || /^n[uú]mero sic$/i.test(h) || /^sic$/i.test(h),
-  linea:         (h) => /^l[ií]nea$/i.test(h),
-  articulo:      (h) => /art[ií]culo/i.test(h),
-  descripcion:   (h) => /descrip/i.test(h),
-  cantidad:      (h) => /^cantidad$/i.test(h),
-  udm:           (h) => /^udm$/i.test(h) || /^unidad( primaria)?$/i.test(h),
-  ctd_entregada: (h) => /entregad/i.test(h),
-  numero_pedido: (h) => /pedido/i.test(h),
-};
-const SIC_DEFAULT_IDX = { numero: 0, linea: 1, articulo: 2, descripcion: 3, cantidad: 4, udm: 5, ctd_entregada: 6, numero_pedido: 7 };
-
-const parseSicMaestro = (text: string): ParsedRow<SicMaestroRow>[] =>
-  parseByHeader<SicMaestroRow>(text, SIC_SPECS, ["numero", "articulo"], SIC_DEFAULT_IDX, (get) => {
-    const numero   = parseEntero(get("numero"));
-    const articulo = get("articulo").trim() ? normArticulo(get("articulo")) : null;
-    const errors: string[] = [];
-    if (numero === null) errors.push("Número de SIC inválido o vacío");
-    if (!articulo)       errors.push("Artículo vacío");
-    const row: SicMaestroRow = {
-      numero:        numero ?? 0,
-      linea:         get("linea") || null,
-      articulo,
-      descripcion:   get("descripcion") || null,
-      cantidad:      parseNum(get("cantidad")),
-      udm:           get("udm") || null,
-      ctd_entregada: parseNum(get("ctd_entregada")) ?? 0,
-      numero_pedido: parseEntero(get("numero_pedido")),
-    };
-    return {
-      row,
-      display: [String(row.numero || ""), row.linea ?? "", row.articulo ?? "", row.descripcion ?? "", row.cantidad != null ? String(row.cantidad) : "", row.udm ?? "", String(row.ctd_entregada), row.numero_pedido != null ? String(row.numero_pedido) : ""],
-      errors,
-    };
-  });
-
 // ─── OP's ────────────────────────────────────────────────────────────────────
 
 const OP_COLS = ["Número", "Línea", "Artículo", "Descripción", "UDM", "Cantidad", "Proveedor"];
@@ -839,25 +823,6 @@ export function TableroOpCargaSection() {
       </div>
 
       {tab === "seguimiento" && <SeguimientoTab />}
-
-      {tab === "sic" && (
-        <ImportPanel
-          table="tablero_op_sic"
-          notNullCol="numero"
-          columns={SIC_COLS}
-          countLabel={(n) => `${n.toLocaleString("es-AR")} línea(s) de SIC cargadas`}
-          placeholder={`Pegá con encabezado:\nNúmero\tLínea\tArtículo\tDescripción\tCantidad\tUDM\tCtd Entregada\tNúmero Pedido\n102345\t1\t00013242.0\tCABLE PREENS 3X95\t100\tMT\t40\t900123`}
-          parse={parseSicMaestro}
-          hint={
-            <span>
-              Pegá la <strong className="text-foreground/80">planilla de SIC</strong> <strong className="text-foreground/80">incluyendo la fila de encabezado</strong> —
-              se usan solo las columnas <strong className="text-foreground/80">{SIC_COLS.join(" · ")}</strong> (las demás se descartan), reconocidas por
-              su nombre sin importar el orden. Es la fuente de datos: en «SIC a seguir» vas a pegar solo los números y se cruzan contra esta planilla.{" "}
-              <strong className="text-foreground/80">Reemplaza la tabla completa</strong> — subí siempre la planilla entera y actualizada.
-            </span>
-          }
-        />
-      )}
 
       {tab === "op" && (
         <ImportPanel
