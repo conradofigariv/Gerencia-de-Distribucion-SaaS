@@ -13,6 +13,14 @@ export interface SeguimientoRow {
   numero_op:     number | null;
 }
 
+// Fila tal cual sale de la base — incluye `id` (PK uuid). `numero_sic` NO es
+// único: una SIC puede traer varias líneas (distintos artículos pedidos juntos)
+// e incluso líneas "ampliadas" (recompra/recontratación) con notación 1,1 / 2,2.
+// La clave real es (numero_sic, linea).
+export interface SeguimientoDbRow extends SeguimientoRow {
+  id: string;
+}
+
 export interface OpRow {
   numero:      number;
   linea:       string | null;
@@ -108,38 +116,40 @@ export async function replaceTable<T extends Record<string, unknown>>(
 
 // ─── CRUD de tablero_op_seguimiento ──────────────────────────────────────────
 
-export async function getSeguimiento(): Promise<SeguimientoRow[]> {
+export async function getSeguimiento(): Promise<SeguimientoDbRow[]> {
   const { data, error } = await supabase
     .from("tablero_op_seguimiento")
-    .select("numero_sic, linea, articulo, descripcion, cantidad, udm, ctd_entregada, numero_op")
-    .order("numero_sic", { ascending: true });
+    .select("id, numero_sic, linea, articulo, descripcion, cantidad, udm, ctd_entregada, numero_op")
+    .order("numero_sic", { ascending: true })
+    .order("linea", { ascending: true });
   if (error) throw new Error(error.message);
-  return (data ?? []) as SeguimientoRow[];
+  return (data ?? []) as SeguimientoDbRow[];
 }
 
-// Upsert por numero_sic (PK). Inserta nuevas y pisa existentes.
+// Upsert por (numero_sic, linea) — clave única real. Inserta líneas nuevas y
+// pisa existentes; numero_sic solo no alcanza porque una SIC trae varias líneas.
 export async function upsertSeguimiento(rows: SeguimientoRow[]): Promise<void> {
   for (let i = 0; i < rows.length; i += 500) {
     const { error } = await supabase
       .from("tablero_op_seguimiento")
-      .upsert(rows.slice(i, i + 500), { onConflict: "numero_sic" });
+      .upsert(rows.slice(i, i + 500), { onConflict: "numero_sic,linea" });
     if (error) throw new Error(error.message);
   }
 }
 
-export async function deleteSeguimiento(numeroSic: number): Promise<void> {
+export async function deleteSeguimiento(id: string): Promise<void> {
   const { error } = await supabase
     .from("tablero_op_seguimiento")
     .delete()
-    .eq("numero_sic", numeroSic);
+    .eq("id", id);
   if (error) throw new Error(error.message);
 }
 
-export async function deleteSeguimientoBulk(numeros: number[]): Promise<void> {
+export async function deleteSeguimientoBulk(ids: string[]): Promise<void> {
   const { error } = await supabase
     .from("tablero_op_seguimiento")
     .delete()
-    .in("numero_sic", numeros);
+    .in("id", ids);
   if (error) throw new Error(error.message);
 }
 
