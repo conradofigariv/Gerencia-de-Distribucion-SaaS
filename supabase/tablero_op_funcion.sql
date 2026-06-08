@@ -43,7 +43,10 @@ AS $$
     s.numero_op,
 
     -- Proveedor (sin filtro de fecha): primera transacción de la OP con
-    -- proveedor cargado → fallback op.proveedor → 'Sin Datos'.
+    -- proveedor cargado → fallback al maestro de OP → 'Sin Datos'.
+    -- La OP tiene varias líneas por numero, así que se resuelve por subquery
+    -- (no por JOIN, que multiplicaría filas). Se prioriza la línea del mismo
+    -- artículo y se cae a cualquier línea de la OP con proveedor cargado.
     COALESCE(
       (SELECT t.proveedor
          FROM tablero_op_transaccion t
@@ -52,7 +55,13 @@ AS $$
           AND t.proveedor <> ''
         ORDER BY t.fecha ASC
         LIMIT 1),
-      NULLIF(o.proveedor, ''),
+      (SELECT o.proveedor
+         FROM tablero_op_op o
+        WHERE o.numero = s.numero_op
+          AND o.proveedor IS NOT NULL
+          AND o.proveedor <> ''
+        ORDER BY (o.articulo = s.articulo) DESC
+        LIMIT 1),
       'Sin Datos'
     ) AS proveedor,
 
@@ -81,8 +90,6 @@ AS $$
     END AS control2
 
   FROM tablero_op_seguimiento s
-  LEFT JOIN tablero_op_op o
-    ON o.numero = s.numero_op
   LEFT JOIN tablero_op_stock st
     ON st.articulo = s.articulo
    AND st.organizacion = p_zona
