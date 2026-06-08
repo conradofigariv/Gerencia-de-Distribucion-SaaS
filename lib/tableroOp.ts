@@ -13,6 +13,32 @@ export interface SeguimientoRow {
   numero_op:     number | null;
 }
 
+export interface OpRow {
+  numero:      number;
+  linea:       string | null;
+  articulo:    string | null;
+  descripcion: string | null;
+  udm:         string | null;
+  cantidad:    number | null;
+  proveedor:   string | null;
+}
+
+export interface TransaccionRow {
+  tipo:          string;
+  importe:       number;
+  fecha:         string; // ISO timestamp
+  articulo:      string;
+  numero_pedido: number;
+  linea:         string | null;
+  proveedor:     string | null;
+}
+
+export interface StockRow {
+  organizacion: string;
+  articulo:     string;
+  en_mano:      number;
+}
+
 // ─── Helpers de normalización ────────────────────────────────────────────────
 
 // Normaliza el código de artículo: quita el sufijo ".0" que agrega el export de
@@ -41,6 +67,43 @@ export function parseEntero(raw: unknown): number | null {
   const n = parseNum(raw);
   if (n === null) return null;
   return Math.trunc(n);
+}
+
+// Parsea fecha en formato "dd/mm/yyyy" o "dd/mm/yyyy hh:mm:ss" (es-AR / SIGA).
+// Si no matchea, intenta Date nativo (acepta ISO). Devuelve timestamp ISO o null.
+export function parseFechaArg(raw: unknown): string | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (m) {
+    const [, d, mo, y, h = "0", mi = "0", se = "0"] = m;
+    return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}T${h.padStart(2, "0")}:${mi.padStart(2, "0")}:${se.padStart(2, "0")}`;
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+// ─── Helpers genéricos de import (reemplazar todo) ───────────────────────────
+
+export async function getTableCount(table: string): Promise<number> {
+  const { count, error } = await supabase.from(table).select("*", { count: "exact", head: true });
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
+// Borra todas las filas de `table` (vía `notNullCol IS NOT NULL`, siempre cierto
+// para una columna NOT NULL) e inserta `rows` en lotes de 500.
+export async function replaceTable<T extends Record<string, unknown>>(
+  table: string,
+  notNullCol: string,
+  rows: T[]
+): Promise<void> {
+  const { error: delErr } = await supabase.from(table).delete().not(notNullCol, "is", null);
+  if (delErr) throw new Error(delErr.message);
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await supabase.from(table).insert(rows.slice(i, i + 500));
+    if (error) throw new Error(error.message);
+  }
 }
 
 // ─── CRUD de tablero_op_seguimiento ──────────────────────────────────────────
