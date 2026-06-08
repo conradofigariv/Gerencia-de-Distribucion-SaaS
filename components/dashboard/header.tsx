@@ -35,6 +35,8 @@ const sectionTitles: Record<Section, string> = {
   "informe-tecnico":          "Informe Técnico",
   "indice-ido-resumen":       "Índice IDO — Resumen",
   "indice-ido-carga":         "Índice IDO — Carga de datos",
+  "tablero-op-resumen":       "Tablero OP — Resumen",
+  "tablero-op-carga":         "Tablero OP — Carga de datos",
 };
 
 export function Header({ activeSection, bgEffect = "pipeline", onBgChange }: HeaderProps) {

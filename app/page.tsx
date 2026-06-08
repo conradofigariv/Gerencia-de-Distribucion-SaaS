@@ -27,6 +27,8 @@ import { StockZonaSection } from "@/components/dashboard/sections/stock-zona";
 import { InformeTecnicoSection } from "@/components/dashboard/sections/informe-tecnico";
 import { IndiceIdoResumenSection } from "@/components/dashboard/sections/indice-ido-resumen";
 import { IndiceIdoCargaSection } from "@/components/dashboard/sections/indice-ido-carga";
+import { TableroOpResumenSection } from "@/components/dashboard/sections/tablero-op-resumen";
+import { TableroOpCargaSection } from "@/components/dashboard/sections/tablero-op-carga";
 import { LoginPage } from "@/components/auth/login";
 import { Loader2 } from "lucide-react";
 
@@ -44,7 +46,8 @@ export type Section =
   | "transformadores-carga" | "transformadores-tabla" | "transformadores-resumen"
   | "stock-zona"
   | "informe-tecnico"
-  | "indice-ido-resumen" | "indice-ido-carga";
+  | "indice-ido-resumen" | "indice-ido-carga"
+  | "tablero-op-resumen" | "tablero-op-carga";
 
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
@@ -109,6 +112,8 @@ export default function Dashboard() {
       case "informe-tecnico":         return <InformeTecnicoSection />;
       case "indice-ido-resumen":      return <IndiceIdoResumenSection />;
       case "indice-ido-carga":        return <IndiceIdoCargaSection />;
+      case "tablero-op-resumen":      return <TableroOpResumenSection />;
+      case "tablero-op-carga":        return <TableroOpCargaSection />;
       default:                       return <OverviewSection />;
     }
   };
