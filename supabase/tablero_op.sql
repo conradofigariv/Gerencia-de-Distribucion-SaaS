@@ -26,8 +26,11 @@ CREATE TABLE IF NOT EXISTS tablero_op_seguimiento (
 );
 
 -- OP: maestro de líneas, importado desde la pestaña "OP's" del Excel.
+-- Una OP (numero) tiene MÚLTIPLES líneas (una por artículo) → numero NO es
+-- único. Se usa un uuid como PK y se indexa numero para el cruce.
 CREATE TABLE IF NOT EXISTS tablero_op_op (
-  numero       bigint PRIMARY KEY,   -- Número Pedido
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  numero       bigint NOT NULL,      -- Número Pedido (se repite por línea)
   linea        text,
   articulo     text,                 -- normalizado: sin sufijo .0
   descripcion  text,
@@ -73,6 +76,8 @@ CREATE INDEX IF NOT EXISTS idx_tablero_op_seguimiento_numero_op
   ON tablero_op_seguimiento (numero_op);
 CREATE INDEX IF NOT EXISTS idx_tablero_op_op_articulo
   ON tablero_op_op (articulo);
+CREATE INDEX IF NOT EXISTS idx_tablero_op_op_numero
+  ON tablero_op_op (numero);
 
 -- ─── updated_at automático ──────────────────────────────────────────────────
 -- Reutiliza/crea la función set_updated_at (ya definida en ido_datos.sql);
