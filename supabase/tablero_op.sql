@@ -10,10 +10,14 @@
 -- ============================================================================
 
 -- Seguimiento: carga manual — lista de SIC (líneas) a seguir.
--- numero_sic identifica la línea a seguir; numero_op puede ser null hasta
--- que la SIC se apruebe y se genere la Orden de Provisión.
+-- Una SIC (solicitud interna de compra) puede traer VARIAS líneas — distintos
+-- artículos pedidos juntos (línea 1, línea 2, ...) — e incluso líneas
+-- "ampliadas" cuando se vuelve a pedir/recontratar (notación 1,1 / 2,2).
+-- numero_sic NO es único → PK uuid, clave real (numero_sic, linea).
+-- numero_op puede ser null hasta que la SIC se apruebe y se genere la OP.
 CREATE TABLE IF NOT EXISTS tablero_op_seguimiento (
-  numero_sic     bigint PRIMARY KEY,
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  numero_sic     bigint NOT NULL,
   linea          text,
   articulo       text NOT NULL,   -- normalizado: sin sufijo .0, zero-padding original
   descripcion    text,
@@ -22,7 +26,8 @@ CREATE TABLE IF NOT EXISTS tablero_op_seguimiento (
   ctd_entregada  numeric NOT NULL DEFAULT 0,
   numero_op      bigint,
   created_at     timestamptz NOT NULL DEFAULT now(),
-  updated_at     timestamptz NOT NULL DEFAULT now()
+  updated_at     timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (numero_sic, linea)
 );
 
 -- OP: maestro de líneas, importado desde la pestaña "OP's" del Excel.
@@ -74,6 +79,8 @@ CREATE INDEX IF NOT EXISTS idx_tablero_op_transaccion_articulo
   ON tablero_op_transaccion (articulo);
 CREATE INDEX IF NOT EXISTS idx_tablero_op_seguimiento_numero_op
   ON tablero_op_seguimiento (numero_op);
+CREATE INDEX IF NOT EXISTS idx_tablero_op_seguimiento_numero_sic
+  ON tablero_op_seguimiento (numero_sic);
 CREATE INDEX IF NOT EXISTS idx_tablero_op_op_articulo
   ON tablero_op_op (articulo);
 CREATE INDEX IF NOT EXISTS idx_tablero_op_op_numero
