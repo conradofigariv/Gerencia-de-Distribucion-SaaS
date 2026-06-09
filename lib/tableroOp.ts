@@ -198,17 +198,17 @@ export async function getZonas(): Promise<string[]> {
 }
 
 // Ejecuta el cruce gd_tablero(p_desde, p_hasta, p_zona). La zona solo afecta la
-// columna de stock; si se pasa "" no matchea ninguna zona y stock queda en 0.
+// columna de stock: "" (o null) suma el stock de todas las zonas; una zona
+// concreta filtra por esa zona. Se pide un rango amplio porque PostgREST corta
+// en 1000 filas por defecto y el seguimiento puede tener más.
 export async function runTablero(
   desde: string,
   hasta: string,
   zona: string
 ): Promise<TableroRow[]> {
-  const { data, error } = await supabase.rpc("gd_tablero", {
-    p_desde: desde,
-    p_hasta: hasta,
-    p_zona: zona,
-  });
+  const { data, error } = await supabase
+    .rpc("gd_tablero", { p_desde: desde, p_hasta: hasta, p_zona: zona })
+    .range(0, 99999);
   if (error) throw new Error(error.message);
   return (data ?? []) as TableroRow[];
 }
