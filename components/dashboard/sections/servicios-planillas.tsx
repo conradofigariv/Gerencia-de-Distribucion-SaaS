@@ -16,16 +16,42 @@ import { markUpdated, fetchReminders, upsertConfig } from "@/lib/reminders";
 const str   = (v: unknown): string => String(v ?? "").trim();
 const BATCH = 500;
 
-const parseFile = async (file: File, headerRow = 1): Promise<Record<string, unknown>[]> => {
+// Normaliza un encabezado para comparar sin tildes, mayúsculas ni espacios.
+const normHeader = (h: unknown): string =>
+  str(h).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+
+// Lee la primera hoja y detecta la fila de encabezados automáticamente.
+// `anchors`: nombres de columna esperados (sin tildes/case). Se escanean las
+// primeras filas y se elige como header la que contenga MÁS anchors. Si no se
+// pasan anchors (o ninguna fila matchea), cae al `headerRow` fijo (default 1).
+const parseFile = async (
+  file: File,
+  headerRow = 1,
+  anchors: string[] = [],
+): Promise<Record<string, unknown>[]> => {
   const XLSX = await import("xlsx");
   const buf  = await file.arrayBuffer();
   const wb   = XLSX.read(buf, { type: "array", cellDates: true });
   const ws   = wb.Sheets[wb.SheetNames[0]];
   const raw  = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null, raw: true });
-  if (raw.length <= headerRow) return [];
-  const hdrs = (raw[headerRow] as unknown[]).map(h => str(h));
+
+  let hdrIdx = headerRow;
+  if (anchors.length) {
+    const wanted = anchors.map(normHeader);
+    let bestIdx = -1, bestHits = 0;
+    const scan = Math.min(raw.length, 10);
+    for (let i = 0; i < scan; i++) {
+      const cells = (raw[i] as unknown[] ?? []).map(normHeader);
+      const hits  = wanted.filter(w => cells.includes(w)).length;
+      if (hits > bestHits) { bestHits = hits; bestIdx = i; }
+    }
+    if (bestIdx >= 0 && bestHits > 0) hdrIdx = bestIdx;
+  }
+
+  if (raw.length <= hdrIdx) return [];
+  const hdrs = (raw[hdrIdx] as unknown[]).map(h => str(h));
   return raw
-    .slice(headerRow + 1)
+    .slice(hdrIdx + 1)
     .filter(row => (row as unknown[]).some(c => c != null && c !== ""))
     .map(row => {
       const arr = row as unknown[];
@@ -269,8 +295,10 @@ export function ServiciosPlanillasSection() {
   const uploadOP = async (file: File) => {
     setS("OP", { uploading: true });
     try {
-      const rows = await parseFile(file);
-      if (!rows.length) { toast.error("OP: sin datos (headers en fila 2)"); return; }
+      // La planilla OP puede traer (o no) una fila de título arriba de los
+      // encabezados; se autodetecta la fila de headers buscando estas columnas.
+      const rows = await parseFile(file, 1, ["Número", "Artículo", "Proveedor", "Cantidad"]);
+      if (!rows.length) { toast.error("OP: sin datos"); return; }
       const now = new Date().toISOString();
       const mapped = rows.map(r => ({
         relacion:             str(r["Relación"]            ?? r["Relacion"]),
