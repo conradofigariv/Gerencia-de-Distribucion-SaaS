@@ -47,6 +47,27 @@ export interface StockRow {
   en_mano:      number;
 }
 
+// Fila calculada que devuelve la RPC gd_tablero (cruce de seguimiento +
+// transacciones + stock por zona). Ver supabase/tablero_op_funcion.sql.
+export interface TableroRow {
+  numero_sic:    number;
+  linea:         string | null;
+  articulo:      string;
+  descripcion:   string | null;
+  cantidad:      number | null;
+  udm:           string | null;
+  ctd_entregada: number;
+  numero_op:     number | null;
+  proveedor:     string;
+  control:       string;       // TOTAL ADEUDADO | TOTAL ENTREGADO | ENTREGA PARCIAL
+  stock:         number;
+  recibido:      number;
+  devoluciones:  number;
+  aceptado:      number;
+  entregado:     number;
+  control2:      string;       // OK | VER
+}
+
 // ─── Helpers de normalización ────────────────────────────────────────────────
 
 // Normaliza el código de artículo: quita el sufijo ".0" que agrega el export de
@@ -159,4 +180,35 @@ export async function clearSeguimiento(): Promise<void> {
     .delete()
     .not("numero_sic", "is", null);
   if (error) throw new Error(error.message);
+}
+
+// ─── Resumen / RPC ───────────────────────────────────────────────────────────
+
+// Lista de zonas (organizacion) cargadas en stock, para el selector del resumen.
+export async function getZonas(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("tablero_op_stock")
+    .select("organizacion");
+  if (error) throw new Error(error.message);
+  const set = new Set<string>();
+  for (const r of (data ?? []) as { organizacion: string }[]) {
+    if (r.organizacion) set.add(r.organizacion);
+  }
+  return [...set].sort();
+}
+
+// Ejecuta el cruce gd_tablero(p_desde, p_hasta, p_zona). La zona solo afecta la
+// columna de stock; si se pasa "" no matchea ninguna zona y stock queda en 0.
+export async function runTablero(
+  desde: string,
+  hasta: string,
+  zona: string
+): Promise<TableroRow[]> {
+  const { data, error } = await supabase.rpc("gd_tablero", {
+    p_desde: desde,
+    p_hasta: hasta,
+    p_zona: zona,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as TableroRow[];
 }
