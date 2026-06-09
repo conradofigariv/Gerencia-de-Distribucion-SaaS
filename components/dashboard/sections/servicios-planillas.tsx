@@ -294,8 +294,8 @@ export function ServiciosPlanillasSection() {
         estado_autorizacion:  str(r["Estado Autorización"] ?? r["Estado Autorizacion"]),
         estado_cierre:        str(r["Estado Cierre"]),
         uploaded_at:          now,
-      })).filter(r => r.relacion);
-      if (!mapped.length) { toast.error("OP: no se encontró columna 'Relación'"); return; }
+      })).filter(r => r.numero);
+      if (!mapped.length) { toast.error("OP: no se encontró columna 'Número'"); return; }
       const { error: del } = await supabase.from("planillas_op").delete().not("id", "is", null);
       if (del) { toast.error(`Error limpiando OP: ${del.message}`); return; }
       for (let i = 0; i < mapped.length; i += BATCH) {
