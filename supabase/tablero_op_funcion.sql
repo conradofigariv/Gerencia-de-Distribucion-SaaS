@@ -142,7 +142,7 @@ AS $$
     ON agg.numero_op = s.numero_op
    AND agg.articulo  = s.articulo
    AND agg.linea IS NOT DISTINCT FROM s.linea
-  ORDER BY s.numero_sic;
+  ORDER BY s.numero_sic DESC;
 $$;
 
 -- Exponer la función como RPC para el cliente (anon key) y usuarios logueados.
