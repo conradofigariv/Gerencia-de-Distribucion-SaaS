@@ -79,10 +79,11 @@ export function TableroOpResumenSection() {
   const [zona, setZona]   = useState("");
   const [zonas, setZonas] = useState<string[]>([]);
 
-  const [rows, setRows]       = useState<TableroRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loaded, setLoaded]   = useState(false);
-  const [query, setQuery]     = useState("");
+  const [rows, setRows]           = useState<TableroRow[]>([]);
+  const [loading, setLoading]     = useState(false);
+  const [loaded, setLoaded]       = useState(false);
+  const [query, setQuery]         = useState("");
+  const [soloConRecibido, setSoloConRecibido] = useState(false);
 
   // Carga las zonas disponibles para el selector de stock.
   useEffect(() => {
@@ -108,18 +109,21 @@ export function TableroOpResumenSection() {
   // Calcula automáticamente al abrir (año actual → hoy).
   useEffect(() => { calcular(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
-  // Filtro de texto local (SIC, artículo, descripción, OP, proveedor).
+  // Filtro de texto local (SIC, artículo, descripción, OP, proveedor) + filtro de recibido.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) =>
-      String(r.numero_sic).includes(q) ||
-      (r.articulo ?? "").toLowerCase().includes(q) ||
-      (r.descripcion ?? "").toLowerCase().includes(q) ||
-      String(r.numero_op ?? "").includes(q) ||
-      (r.proveedor ?? "").toLowerCase().includes(q)
-    );
-  }, [rows, query]);
+    return rows.filter((r) => {
+      if (soloConRecibido && (r.recibido ?? 0) === 0) return false;
+      if (!q) return true;
+      return (
+        String(r.numero_sic).includes(q) ||
+        (r.articulo ?? "").toLowerCase().includes(q) ||
+        (r.descripcion ?? "").toLowerCase().includes(q) ||
+        String(r.numero_op ?? "").includes(q) ||
+        (r.proveedor ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [rows, query, soloConRecibido]);
 
   const exportCSV = useCallback(() => {
     if (!filtered.length) { toast.error("No hay datos para exportar."); return; }
@@ -188,6 +192,18 @@ export function TableroOpResumenSection() {
         >
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
           Calcular
+        </button>
+
+        <button
+          onClick={() => setSoloConRecibido((v) => !v)}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors",
+            soloConRecibido
+              ? "bg-success/15 border-success/40 text-success hover:bg-success/25"
+              : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+          )}
+        >
+          Material recibido
         </button>
 
         {/* Búsqueda + export, alineados a la derecha */}
