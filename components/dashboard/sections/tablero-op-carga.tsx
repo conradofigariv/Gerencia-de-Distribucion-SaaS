@@ -172,9 +172,9 @@ function SeguimientoTab() {
     }
     if (!parsed.length) { toast.error("No se detectaron filas."); return; }
 
-    // Detecta duplicados dentro del pegado. La clave única es (numero_sic, linea).
-    // Una SIC puede traer varias líneas (distintos artículos) o líneas ampliadas
-    // (1,1 / 2,2) — eso NO es error.
+    // Detecta duplicados dentro del pegado. La clave única es
+    // (numero_sic, linea, numero_op). Una SIC puede traer varias líneas
+    // (distintos artículos) o líneas ampliadas (1,1 / 2,2) — eso NO es error.
     // Si SIC+línea se repiten con distinta OP → el sistema generó dos OPs para
     // la misma línea; no es error del pegado, se importa la última.
     // Si SIC+línea+OP son idénticos → error del sistema de origen (EPEC): la
@@ -205,8 +205,8 @@ function SeguimientoTab() {
     setStep("preview");
   };
 
-  // El import SOLO agrega/actualiza (upsert por numero_sic + linea). Nunca
-  // borra: así las entradas manuales (SIC que no salen del export) conviven
+  // El import SOLO agrega/actualiza (upsert por numero_sic + linea + numero_op).
+  // Nunca borra: así las entradas manuales (SIC que no salen del export) conviven
   // con las importadas y no se pisan al volver a pegar. El borrado es siempre
   // explícito (por fila / selección / "Limpiar todo").
   const handleSave = async () => {
@@ -214,12 +214,14 @@ function SeguimientoTab() {
     if (!valid.length) { toast.error("No hay filas válidas para guardar."); return; }
     setSaving(true);
     try {
-      // Deduplicar por (numero_sic, linea) antes del upsert: si hay dos filas
-      // válidas con la misma clave (distinta OP), Postgres rechaza el batch con
-      // "cannot affect row a second time". Quedamos con la última ocurrencia.
+      // Deduplicar por (numero_sic, linea, numero_op) antes del upsert: si hay
+      // dos filas válidas con la MISMA clave completa, Postgres rechaza el batch
+      // con "cannot affect row a second time". Quedamos con la última ocurrencia.
+      // OJO: distinta OP = clave distinta = NO se deduplica (una línea puede
+      // estar cubierta por varias OPs — ampliación/recompra).
       const deduped = new Map<string, SeguimientoRow>();
       for (const r of valid) {
-        deduped.set(`${r.row.numero_sic}|${r.row.linea ?? ""}`, r.row);
+        deduped.set(`${r.row.numero_sic}|${r.row.linea ?? ""}|${r.row.numero_op ?? ""}`, r.row);
       }
       const toSave = [...deduped.values()];
       await upsertSeguimiento(toSave);

@@ -142,18 +142,21 @@ export async function getSeguimiento(): Promise<SeguimientoDbRow[]> {
     .from("tablero_op_seguimiento")
     .select("id, numero_sic, linea, articulo, descripcion, cantidad, udm, ctd_entregada, numero_op")
     .order("numero_sic", { ascending: true })
-    .order("linea", { ascending: true });
+    .order("linea", { ascending: true })
+    .order("numero_op", { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []) as SeguimientoDbRow[];
 }
 
-// Upsert por (numero_sic, linea) — clave única real. Inserta líneas nuevas y
-// pisa existentes; numero_sic solo no alcanza porque una SIC trae varias líneas.
+// Upsert por (numero_sic, linea, numero_op) — clave única real. Una SIC trae
+// varias líneas y una misma línea puede estar cubierta por varias OPs
+// (ampliación/recompra); cada combinación (SIC, línea, OP) es una fila distinta.
+// numero_sic+linea solo no alcanza: colapsaría las OPs y se perderían filas.
 export async function upsertSeguimiento(rows: SeguimientoRow[]): Promise<void> {
   for (let i = 0; i < rows.length; i += 500) {
     const { error } = await supabase
       .from("tablero_op_seguimiento")
-      .upsert(rows.slice(i, i + 500), { onConflict: "numero_sic,linea" });
+      .upsert(rows.slice(i, i + 500), { onConflict: "numero_sic,linea,numero_op" });
     if (error) throw new Error(error.message);
   }
 }
