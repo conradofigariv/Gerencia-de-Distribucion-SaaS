@@ -43,10 +43,13 @@ AS $$
     s.numero_op,
 
     -- Proveedor (sin filtro de fecha): primera transacción de la OP con
-    -- proveedor cargado → fallback al maestro de OP → 'Sin Datos'.
-    -- La OP tiene varias líneas por numero, así que se resuelve por subquery
+    -- proveedor cargado → fallback a la planilla OP de «Carga de datos»
+    -- (planillas_op) → 'Sin Datos'.
+    -- planillas_op tiene varias líneas por OP, así que se resuelve por subquery
     -- (no por JOIN, que multiplicaría filas). Se prioriza la línea del mismo
     -- artículo y se cae a cualquier línea de la OP con proveedor cargado.
+    -- En planillas_op `numero` es text y `articulo` NO está normalizado (.0),
+    -- por eso se castea numero_op a text y se normaliza el articulo al comparar.
     COALESCE(
       (SELECT t.proveedor
          FROM tablero_op_transaccion t
@@ -56,11 +59,11 @@ AS $$
         ORDER BY t.fecha ASC
         LIMIT 1),
       (SELECT o.proveedor
-         FROM tablero_op_op o
-        WHERE o.numero = s.numero_op
+         FROM planillas_op o
+        WHERE o.numero = s.numero_op::text
           AND o.proveedor IS NOT NULL
           AND o.proveedor <> ''
-        ORDER BY (o.articulo = s.articulo) DESC
+        ORDER BY (regexp_replace(o.articulo, '\.0+$', '') = s.articulo) DESC
         LIMIT 1),
       'Sin Datos'
     ) AS proveedor,
