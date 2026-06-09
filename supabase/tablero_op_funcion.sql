@@ -8,6 +8,19 @@
 --   const { data } = await supabase.rpc('gd_tablero', {
 --     p_desde: '2026-01-01', p_hasta: '2026-03-26', p_zona: 'ZA'
 --   });
+--
+-- ── Performance ─────────────────────────────────────────────────────────────
+-- La versión anterior usaba subqueries correlacionados por fila (uno de ellos
+-- con regexp_replace en el ORDER BY sobre toda planillas_op), lo que provocaba
+-- "statement timeout". Esta versión precalcula todo en CTEs con una sola pasada
+-- por tabla y luego hace LEFT JOINs:
+--   • prov_tx : proveedor por OP desde la transacción más antigua.
+--   • prov_op : proveedor por OP desde planillas_op (una OP = un proveedor, así
+--               que se toma cualquier línea con proveedor cargado — sin el
+--               desempate por artículo, que era lo caro).
+--   • agg     : movimientos agregados por (OP, artículo) en el rango de fechas.
+-- Para que prov_op sea rápida conviene un índice en planillas_op(numero)
+-- (ver tablero_op_indices_planillas.sql).
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION gd_tablero(p_desde date, p_hasta date, p_zona text)
@@ -32,6 +45,49 @@ RETURNS TABLE (
 LANGUAGE sql
 STABLE
 AS $$
+  WITH ops AS (
+    -- OPs distintas presentes en el seguimiento (acota el trabajo de las CTEs).
+    SELECT DISTINCT numero_op
+      FROM tablero_op_seguimiento
+     WHERE numero_op IS NOT NULL
+  ),
+  prov_tx AS (
+    -- Proveedor por OP: el de la transacción más antigua con proveedor cargado.
+    SELECT DISTINCT ON (t.numero_pedido)
+           t.numero_pedido AS numero_op,
+           t.proveedor
+      FROM tablero_op_transaccion t
+      JOIN ops ON ops.numero_op = t.numero_pedido
+     WHERE t.proveedor IS NOT NULL AND t.proveedor <> ''
+     ORDER BY t.numero_pedido, t.fecha ASC
+  ),
+  prov_op AS (
+    -- Proveedor por OP desde planillas_op (una OP = un proveedor). numero es text.
+    SELECT DISTINCT ON (o.numero)
+           o.numero AS numero_op_txt,
+           o.proveedor
+      FROM planillas_op o
+      JOIN ops ON ops.numero_op::text = o.numero
+     WHERE o.proveedor IS NOT NULL AND o.proveedor <> ''
+     ORDER BY o.numero
+  ),
+  agg AS (
+    -- Movimientos por (OP, artículo) dentro del rango de fechas.
+    SELECT
+      t.numero_pedido AS numero_op,
+      t.articulo,
+      SUM(CASE WHEN t.tipo = 'Recibir'  THEN t.importe ELSE 0 END) AS recibido,
+      SUM(CASE WHEN t.tipo = 'Aceptar'  THEN t.importe ELSE 0 END) AS aceptado,
+      SUM(CASE WHEN t.tipo = 'Entregar' THEN t.importe ELSE 0 END) AS entregado,
+      SUM(CASE WHEN t.tipo IN (
+            'Rechazar', 'Devolver a Proveedor', 'Devolver a Recepción', 'Corregir'
+          ) THEN t.importe ELSE 0 END) AS devoluciones
+    FROM tablero_op_transaccion t
+    JOIN ops ON ops.numero_op = t.numero_pedido
+    WHERE t.fecha >= p_desde::timestamptz
+      AND t.fecha <  (p_hasta + 1)::timestamptz   -- incluye todo el día p_hasta
+    GROUP BY t.numero_pedido, t.articulo
+  )
   SELECT
     s.numero_sic,
     s.linea,
@@ -42,31 +98,7 @@ AS $$
     s.ctd_entregada,
     s.numero_op,
 
-    -- Proveedor (sin filtro de fecha): primera transacción de la OP con
-    -- proveedor cargado → fallback a la planilla OP de «Carga de datos»
-    -- (planillas_op) → 'Sin Datos'.
-    -- planillas_op tiene varias líneas por OP, así que se resuelve por subquery
-    -- (no por JOIN, que multiplicaría filas). Se prioriza la línea del mismo
-    -- artículo y se cae a cualquier línea de la OP con proveedor cargado.
-    -- En planillas_op `numero` es text y `articulo` NO está normalizado (.0),
-    -- por eso se castea numero_op a text y se normaliza el articulo al comparar.
-    COALESCE(
-      (SELECT t.proveedor
-         FROM tablero_op_transaccion t
-        WHERE t.numero_pedido = s.numero_op
-          AND t.proveedor IS NOT NULL
-          AND t.proveedor <> ''
-        ORDER BY t.fecha ASC
-        LIMIT 1),
-      (SELECT o.proveedor
-         FROM planillas_op o
-        WHERE o.numero = s.numero_op::text
-          AND o.proveedor IS NOT NULL
-          AND o.proveedor <> ''
-        ORDER BY (regexp_replace(o.articulo, '\.0+$', '') = s.articulo) DESC
-        LIMIT 1),
-      'Sin Datos'
-    ) AS proveedor,
+    COALESCE(ptx.proveedor, pop.proveedor, 'Sin Datos') AS proveedor,
 
     -- Control: cantidad vs ctd_entregada (histórico acumulado).
     CASE
@@ -96,20 +128,11 @@ AS $$
   LEFT JOIN tablero_op_stock st
     ON st.articulo = s.articulo
    AND st.organizacion = p_zona
-  LEFT JOIN LATERAL (
-    SELECT
-      SUM(CASE WHEN t.tipo = 'Recibir'  THEN t.importe ELSE 0 END) AS recibido,
-      SUM(CASE WHEN t.tipo = 'Aceptar'  THEN t.importe ELSE 0 END) AS aceptado,
-      SUM(CASE WHEN t.tipo = 'Entregar' THEN t.importe ELSE 0 END) AS entregado,
-      SUM(CASE WHEN t.tipo IN (
-            'Rechazar', 'Devolver a Proveedor', 'Devolver a Recepción', 'Corregir'
-          ) THEN t.importe ELSE 0 END) AS devoluciones
-    FROM tablero_op_transaccion t
-    WHERE t.numero_pedido = s.numero_op
-      AND t.articulo = s.articulo
-      AND t.fecha >= p_desde::timestamptz
-      AND t.fecha <  (p_hasta + 1)::timestamptz   -- incluye todo el día p_hasta
-  ) agg ON true
+  LEFT JOIN prov_tx ptx ON ptx.numero_op = s.numero_op
+  LEFT JOIN prov_op pop ON pop.numero_op_txt = s.numero_op::text
+  LEFT JOIN agg
+    ON agg.numero_op = s.numero_op
+   AND agg.articulo  = s.articulo
   ORDER BY s.numero_sic;
 $$;
 
