@@ -72,10 +72,13 @@ AS $$
      ORDER BY o.numero
   ),
   agg AS (
-    -- Movimientos por (OP, artículo) dentro del rango de fechas.
+    -- Movimientos por (OP, artículo, línea) dentro del rango de fechas.
+    -- El Excel matchea las transacciones por Número Pedido + Artículo + LÍNEA
+    -- (SUMIFS), así que la línea forma parte de la clave del agregado.
     SELECT
       t.numero_pedido AS numero_op,
       t.articulo,
+      t.linea,
       SUM(CASE WHEN t.tipo = 'Recibir'  THEN t.importe ELSE 0 END) AS recibido,
       SUM(CASE WHEN t.tipo = 'Aceptar'  THEN t.importe ELSE 0 END) AS aceptado,
       SUM(CASE WHEN t.tipo = 'Entregar' THEN t.importe ELSE 0 END) AS entregado,
@@ -86,7 +89,7 @@ AS $$
     JOIN ops ON ops.numero_op = t.numero_pedido
     WHERE t.fecha >= p_desde::timestamptz
       AND t.fecha <  (p_hasta + 1)::timestamptz   -- incluye todo el día p_hasta
-    GROUP BY t.numero_pedido, t.articulo
+    GROUP BY t.numero_pedido, t.articulo, t.linea
   )
   SELECT
     s.numero_sic,
@@ -107,7 +110,9 @@ AS $$
       ELSE 'ENTREGA PARCIAL'
     END AS control,
 
-    -- Stock: en_mano del artículo en la zona elegida (0 si no hay).
+    -- Stock: en_mano del artículo. El Excel lo busca solo por artículo (sin
+    -- zona). Acá: si p_zona viene vacío ("— Todas —") se suma el stock de todas
+    -- las zonas; si viene una zona, se filtra por esa zona.
     COALESCE(st.en_mano, 0) AS stock,
 
     COALESCE(agg.recibido, 0)     AS recibido,
@@ -125,14 +130,18 @@ AS $$
     END AS control2
 
   FROM tablero_op_seguimiento s
-  LEFT JOIN tablero_op_stock st
-    ON st.articulo = s.articulo
-   AND st.organizacion = p_zona
+  LEFT JOIN LATERAL (
+    SELECT COALESCE(SUM(x.en_mano), 0) AS en_mano
+      FROM tablero_op_stock x
+     WHERE x.articulo = s.articulo
+       AND (p_zona = '' OR p_zona IS NULL OR x.organizacion = p_zona)
+  ) st ON true
   LEFT JOIN prov_tx ptx ON ptx.numero_op = s.numero_op
   LEFT JOIN prov_op pop ON pop.numero_op_txt = s.numero_op::text
   LEFT JOIN agg
     ON agg.numero_op = s.numero_op
    AND agg.articulo  = s.articulo
+   AND agg.linea IS NOT DISTINCT FROM s.linea
   ORDER BY s.numero_sic;
 $$;
 
