@@ -214,7 +214,14 @@ function SeguimientoTab() {
     if (!valid.length) { toast.error("No hay filas válidas para guardar."); return; }
     setSaving(true);
     try {
-      const toSave: SeguimientoRow[] = valid.map((r) => r.row);
+      // Deduplicar por (numero_sic, linea) antes del upsert: si hay dos filas
+      // válidas con la misma clave (distinta OP), Postgres rechaza el batch con
+      // "cannot affect row a second time". Quedamos con la última ocurrencia.
+      const deduped = new Map<string, SeguimientoRow>();
+      for (const r of valid) {
+        deduped.set(`${r.row.numero_sic}|${r.row.linea ?? ""}`, r.row);
+      }
+      const toSave = [...deduped.values()];
       await upsertSeguimiento(toSave);
       toast.success(`${toSave.length} fila(s) agregada(s) / actualizada(s) en seguimiento.`);
       setRaw("");
