@@ -1,10 +1,64 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from "react";
-import { ClipboardList, Loader2, RefreshCw, Search, Download, AlertTriangle } from "lucide-react";
+import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode, type CSSProperties } from "react";
+import {
+  ClipboardList, Loader2, RefreshCw, Search, X, Download, AlertTriangle,
+  ChevronDown, ChevronUp, ChevronsUpDown, PackageCheck,
+} from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { BeastSelect } from "@/components/dashboard/beast-select";
 import { runTablero, getZonas, type TableroRow } from "@/lib/tableroOp";
+
+// ─── Estilos beast pure (alineados con Stock por Zona) ──────────────────────
+
+const CARD_BG      = "oklch(0.235 0.005 270)";
+const PANEL_BG     = "oklch(0.205 0.005 270)";
+const PANEL_BORDER = "1px solid oklch(1 0 0 / 0.07)";
+const STICKY_BG    = "oklch(0.255 0.006 270)";
+
+const beastInput: CSSProperties = {
+  height: 38, padding: "0 12px", borderRadius: 9,
+  background: "oklch(0.16 0.005 270)",
+  border: "1px solid oklch(1 0 0 / 0.07)",
+  color: "oklch(0.95 0 0)", fontSize: 13,
+  outline: "none",
+  colorScheme: "dark",
+};
+
+type PillTone = "green" | "amber" | "red" | "gray";
+
+const PILL_STYLES: Record<PillTone, CSSProperties> = {
+  green: { background: "oklch(0.30 0.10 155 / 0.45)", color: "#86efac", border: "1px solid oklch(0.55 0.15 155 / 0.5)" },
+  amber: { background: "oklch(0.30 0.10 50 / 0.4)",   color: "#fcd34d", border: "1px solid oklch(0.6 0.15 60 / 0.5)" },
+  red:   { background: "oklch(0.28 0.10 25 / 0.45)",  color: "#fca5a5", border: "1px solid oklch(0.55 0.15 25 / 0.5)" },
+  gray:  { background: "oklch(0.25 0.005 270)",        color: "oklch(0.65 0 0)", border: "1px solid oklch(1 0 0 / 0.08)" },
+};
+
+function BeastPill({ tone, children }: { tone: PillTone; children: ReactNode }) {
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 5,
+      padding: "3px 9px", borderRadius: 999,
+      fontSize: 11, fontWeight: 600, letterSpacing: 0.2, whiteSpace: "nowrap",
+      ...PILL_STYLES[tone],
+    }}>
+      {children}
+    </span>
+  );
+}
+
+function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
+  return (
+    <div
+      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none group/rh"
+      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onStart(e.nativeEvent); }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="absolute right-0 top-1/4 h-1/2 w-px bg-border group-hover/rh:bg-accent/60 transition-colors" />
+    </div>
+  );
+}
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -16,13 +70,13 @@ const today = () => isoDate(new Date());
 const fmtNum = (n: number | null | undefined) =>
   n == null ? "" : Number(n).toLocaleString("es-AR", { maximumFractionDigits: 2 });
 
-// Color del badge según el estado de "Control".
-const controlClass = (c: string) => {
+// Tono del pill según el estado de "Control".
+const controlTone = (c: string): PillTone => {
   switch (c) {
-    case "TOTAL ENTREGADO": return "bg-success/15 text-success";
-    case "ENTREGA PARCIAL": return "bg-warning/15 text-warning";
-    case "TOTAL ADEUDADO":  return "bg-destructive/15 text-destructive";
-    default:                return "bg-secondary text-muted-foreground";
+    case "TOTAL ENTREGADO": return "green";
+    case "ENTREGA PARCIAL": return "amber";
+    case "TOTAL ADEUDADO":  return "red";
+    default:                return "gray";
   }
 };
 
@@ -47,11 +101,7 @@ const COLS: ColDef[] = [
   { key: "proveedor",     label: "Proveedor" },
   {
     key: "control", label: "Control",
-    render: (r) => (
-      <span className={cn("px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap", controlClass(r.control))}>
-        {r.control}
-      </span>
-    ),
+    render: (r) => <BeastPill tone={controlTone(r.control)}>{r.control}</BeastPill>,
   },
   { key: "stock",        label: "Stock",       num: true },
   { key: "recibido",     label: "Recibido",    num: true },
@@ -60,14 +110,7 @@ const COLS: ColDef[] = [
   { key: "entregado",    label: "Entregado",   num: true },
   {
     key: "control2", label: "Control 2",
-    render: (r) => (
-      <span className={cn(
-        "px-2 py-0.5 rounded-full text-[11px] font-medium",
-        r.control2 === "OK" ? "bg-success/15 text-success" : "bg-warning/15 text-warning"
-      )}>
-        {r.control2}
-      </span>
-    ),
+    render: (r) => <BeastPill tone={r.control2 === "OK" ? "green" : "amber"}>{r.control2}</BeastPill>,
   },
 ];
 
@@ -85,31 +128,18 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   ctd_entregada: 100,
   numero_op:     90,
   proveedor:     160,
-  control:       140,
+  control:       150,
   stock:         90,
-  recibido:      90,
-  devoluciones:  90,
-  aceptado:      90,
-  entregado:     90,
-  control2:      100,
+  recibido:      95,
+  devoluciones:  95,
+  aceptado:      95,
+  entregado:     95,
+  control2:      105,
 };
 
-// Header sticky: bg-card tiene alpha → transparente al hacer scroll. Fondo opaco propio.
-const STICKY_BG = "oklch(0.16 0.01 260)";
-
-function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
-  return (
-    <div
-      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none group/rh"
-      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onStart(e.nativeEvent); }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="absolute right-0 top-1/4 h-1/2 w-px bg-border group-hover/rh:bg-accent/60 transition-colors" />
-    </div>
-  );
-}
-
 // ─── Componente ──────────────────────────────────────────────────────────────
+
+type SortDir = "asc" | "desc";
 
 export function TableroOpResumenSection() {
   const [desde, setDesde] = useState(yearStart());
@@ -122,6 +152,8 @@ export function TableroOpResumenSection() {
   const [loaded, setLoaded]       = useState(false);
   const [query, setQuery]         = useState("");
   const [soloConRecibido, setSoloConRecibido] = useState(false);
+  const [sortCol, setSortCol]     = useState<keyof TableroRow>("numero_sic");
+  const [sortDir, setSortDir]     = useState<SortDir>("asc");
 
   const [colWidths, setColWidths] = useState<Record<string, number>>(DEFAULT_COL_WIDTHS);
   const colWidthsLoaded = useRef(false);
@@ -193,10 +225,29 @@ export function TableroOpResumenSection() {
     });
   }, [rows, query, soloConRecibido]);
 
+  // Orden por columna (clic en el encabezado, como Stock por Zona).
+  const sorted = useMemo(() => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      const va = a[sortCol];
+      const vb = b[sortCol];
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+      return String(va).localeCompare(String(vb), "es", { numeric: true, sensitivity: "base" }) * dir;
+    });
+  }, [filtered, sortCol, sortDir]);
+
+  const handleSort = (col: keyof TableroRow) => {
+    if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortCol(col); setSortDir("asc"); }
+  };
+
   const exportCSV = useCallback(() => {
-    if (!filtered.length) { toast.error("No hay datos para exportar."); return; }
+    if (!sorted.length) { toast.error("No hay datos para exportar."); return; }
     const head = COLS.map((c) => c.label).join(";");
-    const body = filtered.map((r) =>
+    const body = sorted.map((r) =>
       COLS.map((c) => {
         const v = r[c.key];
         const s = v == null ? "" : String(v);
@@ -210,162 +261,234 @@ export function TableroOpResumenSection() {
     a.download = `tablero-op_${desde}_${hasta}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [filtered, desde, hasta]);
+  }, [sorted, desde, hasta]);
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-11 h-11 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center">
-          <ClipboardList className="w-5 h-5 text-accent" />
+      {/* Header bar: ícono + título + acciones */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3">
+          <div
+            className="grid place-items-center mt-0.5"
+            style={{
+              width: 36, height: 36, borderRadius: 9,
+              background: "oklch(0.30 0.10 155 / 0.45)",
+              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
+              color: "#86efac",
+            }}
+          >
+            <ClipboardList className="w-[18px] h-[18px]" strokeWidth={2} />
+          </div>
+          <div>
+            <h2 className="text-[22px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.4, margin: 0 }}>
+              Tablero OP — Resumen
+            </h2>
+            <p className="mt-1 text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
+              Cruce de SIC a seguir con transacciones y stock en el rango de fechas elegido.
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">Tablero OP — Resumen</h2>
-          <p className="text-sm text-muted-foreground">
-            Cruce de SIC a seguir con transacciones y stock en el rango de fechas elegido.
-          </p>
-        </div>
+        <button
+          onClick={calcular}
+          disabled={loading}
+          title="Recalcular"
+          className="flex items-center justify-center w-8 h-8 mt-0.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors disabled:opacity-40"
+        >
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+        </button>
       </div>
 
-      {/* Filtros */}
-      <div className="rounded-xl border border-border bg-card p-4 flex flex-wrap items-end gap-4">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-muted-foreground">Desde</label>
-          <input
-            type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
-            className="bg-secondary/40 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent/40"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-muted-foreground">Hasta</label>
-          <input
-            type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
-            className="bg-secondary/40 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent/40"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-muted-foreground">Zona (stock)</label>
-          <select
-            value={zona} onChange={(e) => setZona(e.target.value)}
-            className="bg-secondary/40 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent/40 min-w-[120px]"
-          >
-            <option value="">— Todas —</option>
-            {zonas.map((z) => <option key={z} value={z}>{z}</option>)}
-          </select>
-        </div>
-
-        <button
-          onClick={calcular} disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-colors"
-        >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          Calcular
-        </button>
-
-        <button
-          onClick={() => setSoloConRecibido((v) => !v)}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors",
-            soloConRecibido
-              ? "bg-success/15 border-success/40 text-success hover:bg-success/25"
-              : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary/60"
-          )}
-        >
-          Material recibido
-        </button>
-
-        {/* Búsqueda + export, alineados a la derecha */}
-        <div className="flex items-center gap-2 ml-auto">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              value={query} onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar en cualquier columna…"
-              className="bg-secondary/40 border border-border rounded-lg pl-8 pr-3 py-2 text-sm text-foreground w-64 focus:outline-none focus:ring-2 focus:ring-accent/40"
+      {/* Content card */}
+      <div
+        className="px-4 py-6 sm:px-6 overflow-hidden space-y-5"
+        style={{ background: CARD_BG, border: PANEL_BORDER, borderRadius: 14 }}
+      >
+        {/* Filter bar */}
+        <div className="flex items-end gap-3 flex-wrap">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] uppercase tracking-[0.6px]" style={{ color: "oklch(0.55 0 0)" }}>Desde</label>
+            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} style={beastInput} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] uppercase tracking-[0.6px]" style={{ color: "oklch(0.55 0 0)" }}>Hasta</label>
+            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} style={beastInput} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] uppercase tracking-[0.6px]" style={{ color: "oklch(0.55 0 0)" }}>Zona (stock)</label>
+            <BeastSelect
+              value={zona}
+              onChange={setZona}
+              placeholder="Todas las zonas"
+              clearable
+              minWidth={170}
+              options={zonas.map((z) => ({ value: z, label: `Zona ${z}` }))}
             />
           </div>
+
           <button
-            onClick={exportCSV} disabled={!filtered.length}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/60 disabled:opacity-40 transition-colors"
+            onClick={calcular}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-4 rounded-[9px] text-[13px] font-semibold transition-all disabled:cursor-not-allowed"
+            style={{
+              height: 38,
+              background: loading ? "oklch(0.25 0.005 270)" : "#8B5CF6",
+              color: loading ? "oklch(0.55 0 0)" : "#fff",
+              border: "none",
+              boxShadow: loading ? "none" : "0 1px 0 rgba(255,255,255,0.1) inset, 0 8px 16px -10px rgba(139,92,246,0.6)",
+            }}
           >
-            <Download className="w-4 h-4" />CSV
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Calcular
           </button>
-        </div>
-      </div>
 
-      {/* Contador */}
-      {loaded && (
-        <div className="text-xs text-muted-foreground">
-          {filtered.length.toLocaleString("es-AR")}
-          {query && ` de ${rows.length.toLocaleString("es-AR")}`} fila(s)
-        </div>
-      )}
+          <button
+            onClick={() => setSoloConRecibido((v) => !v)}
+            className="inline-flex items-center gap-2 px-3.5 rounded-[9px] text-[13px] font-medium transition-all"
+            style={{
+              height: 38,
+              background: soloConRecibido ? "#8B5CF6" : "oklch(0.16 0.005 270)",
+              color: soloConRecibido ? "#fff" : "oklch(0.65 0 0)",
+              border: soloConRecibido ? "1px solid transparent" : "1px solid oklch(1 0 0 / 0.07)",
+              boxShadow: soloConRecibido ? "0 8px 16px -10px rgba(139,92,246,0.6)" : "none",
+              cursor: "pointer",
+            }}
+          >
+            <PackageCheck className="w-3.5 h-3.5" strokeWidth={2} />
+            Material recibido
+          </button>
 
-      {/* Tabla */}
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
-            <Loader2 className="w-4 h-4 animate-spin" />Calculando cruce…
+          {/* Búsqueda + export, alineados a la derecha */}
+          <div className="flex items-end gap-2 ml-auto">
+            <div
+              className="flex items-center gap-2 px-3"
+              style={{ ...beastInput, width: 260, display: "flex" }}
+            >
+              <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "oklch(0.55 0 0)" }} />
+              <input
+                value={query} onChange={(e) => setQuery(e.target.value)}
+                placeholder="Buscar en cualquier columna…"
+                className="flex-1 bg-transparent border-none outline-none text-[13px] text-foreground placeholder:text-muted-foreground/50"
+              />
+              {query && (
+                <button onClick={() => setQuery("")} className="text-muted-foreground hover:text-foreground">
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={exportCSV} disabled={!sorted.length}
+              className="inline-flex items-center gap-2 px-3.5 rounded-[9px] text-[13px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                height: 38,
+                background: "oklch(0.16 0.005 270)",
+                border: "1px solid oklch(1 0 0 / 0.07)",
+                color: "oklch(0.65 0 0)",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.65 0 0)"; }}
+            >
+              <Download className="w-3.5 h-3.5" />CSV
+            </button>
           </div>
-        ) : !filtered.length ? (
-          <div className="flex flex-col items-center gap-2 p-10 text-sm text-muted-foreground">
-            <AlertTriangle className="w-5 h-5 text-warning" />
-            {loaded ? "Sin resultados para los filtros actuales." : "Elegí filtros y calculá."}
-          </div>
-        ) : (
-          <div className="overflow-auto" style={{ maxHeight: "70vh" }}>
-            <table style={{ tableLayout: "fixed", width: "100%", borderCollapse: "separate", borderSpacing: 0 }} className="text-sm">
-              <colgroup>
-                {COLS.map((c) => (
-                  <col key={c.key} style={{ width: colWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] }} />
-                ))}
-              </colgroup>
-              <thead>
-                <tr>
-                  {COLS.map((c) => (
-                    <th
-                      key={c.key}
-                      className={cn(
-                        "relative px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border",
-                        c.num ? "text-right" : "text-left"
-                      )}
-                      style={{ position: "sticky", top: 0, zIndex: 2, background: STICKY_BG }}
-                    >
-                      <span className="block truncate">{c.label}</span>
-                      <ResizeHandle
-                        onStart={(e) => {
-                          resizingRef.current = { col: c.key, startX: e.clientX, startWidth: colWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] };
-                        }}
-                      />
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((r, i) => (
-                  <tr
-                    key={`${r.numero_sic}|${r.linea ?? ""}|${i}`}
-                    className="border-b border-border/50 hover:bg-secondary/30 transition-colors"
-                  >
-                    {COLS.map((c) => (
-                      <td
-                        key={c.key}
-                        className={cn(
-                          "px-3 py-2 truncate",
-                          c.num ? "text-right tabular-nums" : "text-left",
-                          c.key === "numero_sic" && "font-medium text-foreground"
-                        )}
-                        title={c.key === "descripcion" ? (r.descripcion ?? "") : undefined}
-                      >
-                        {c.render ? c.render(r) : c.num ? fmtNum(r[c.key] as number) : (r[c.key] ?? "") as ReactNode}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        </div>
+
+        {/* Contador */}
+        {loaded && (
+          <p className="text-[12.5px]" style={{ color: "oklch(0.55 0 0)", margin: 0 }}>
+            <span className="text-foreground font-medium">{sorted.length.toLocaleString("es-AR")}</span>
+            {(query || soloConRecibido) && <> de {rows.length.toLocaleString("es-AR")}</>} fila(s)
+          </p>
         )}
+
+        {/* Tabla */}
+        <div className="rounded-[14px] overflow-hidden" style={{ background: PANEL_BG, border: PANEL_BORDER }}>
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />Calculando cruce…
+            </div>
+          ) : !sorted.length ? (
+            <div className="flex flex-col items-center gap-3 py-20 text-sm text-muted-foreground">
+              <AlertTriangle className="w-10 h-10 opacity-20" />
+              {loaded ? "Sin resultados para los filtros actuales." : "Elegí filtros y calculá."}
+            </div>
+          ) : (
+            <div className="overflow-auto" style={{ maxHeight: "70vh" }}>
+              <table style={{ tableLayout: "fixed", width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 13 }}>
+                <colgroup>
+                  {COLS.map((c) => (
+                    <col key={c.key} style={{ width: colWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] }} />
+                  ))}
+                </colgroup>
+                <thead>
+                  <tr>
+                    {COLS.map((c) => {
+                      const active = sortCol === c.key;
+                      const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
+                      return (
+                        <th
+                          key={c.key}
+                          onClick={() => handleSort(c.key)}
+                          style={{
+                            padding: "12px 14px",
+                            textAlign: c.num ? "right" : "left",
+                            fontSize: 12, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase",
+                            color: active ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
+                            cursor: "pointer", userSelect: "none",
+                            position: "sticky", top: 0, zIndex: 2,
+                            background: STICKY_BG,
+                            borderBottom: "1px solid hsl(var(--border))",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%", justifyContent: c.num ? "flex-end" : "flex-start" }}>
+                            <span className="truncate">{c.label}</span>
+                            <SortIcon className={`w-3.5 h-3.5 shrink-0 transition-opacity ${active ? "opacity-100" : "opacity-30"}`} />
+                          </span>
+                          <ResizeHandle
+                            onStart={(e) => {
+                              resizingRef.current = { col: c.key, startX: e.clientX, startWidth: colWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] };
+                            }}
+                          />
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((r, i) => (
+                    <tr
+                      key={`${r.numero_sic}|${r.linea ?? ""}|${i}`}
+                      className="transition-colors"
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = "oklch(0.25 0.005 270 / 0.5)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = ""; }}
+                    >
+                      {COLS.map((c) => (
+                        <td
+                          key={c.key}
+                          className={cn(
+                            "truncate",
+                            c.num ? "text-right tabular-nums" : "text-left",
+                            c.key === "numero_sic" && "font-medium text-foreground"
+                          )}
+                          style={{
+                            padding: "10px 14px",
+                            borderBottom: i === sorted.length - 1 ? "none" : "1px solid oklch(1 0 0 / 0.05)",
+                            fontFamily: (c.num || c.key === "numero_sic" || c.key === "articulo" || c.key === "numero_op")
+                              ? "ui-monospace, monospace" : undefined,
+                          }}
+                          title={c.key === "descripcion" ? (r.descripcion ?? "") : undefined}
+                        >
+                          {c.render ? c.render(r) : c.num ? fmtNum(r[c.key] as number) : (r[c.key] ?? "") as ReactNode}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
