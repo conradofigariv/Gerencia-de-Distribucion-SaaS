@@ -21,16 +21,6 @@ export interface SeguimientoDbRow extends SeguimientoRow {
   id: string;
 }
 
-export interface OpRow {
-  numero:      number;
-  linea:       string | null;
-  articulo:    string | null;
-  descripcion: string | null;
-  udm:         string | null;
-  cantidad:    number | null;
-  proveedor:   string | null;
-}
-
 export interface TransaccionRow {
   tipo:          string;
   importe:       number;
