@@ -30,22 +30,6 @@ CREATE TABLE IF NOT EXISTS tablero_op_seguimiento (
   UNIQUE (numero_sic, linea)
 );
 
--- OP: maestro de líneas, importado desde la pestaña "OP's" del Excel.
--- Una OP (numero) tiene MÚLTIPLES líneas (una por artículo) → numero NO es
--- único. Se usa un uuid como PK y se indexa numero para el cruce.
-CREATE TABLE IF NOT EXISTS tablero_op_op (
-  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  numero       bigint NOT NULL,      -- Número Pedido (se repite por línea)
-  linea        text,
-  articulo     text,                 -- normalizado: sin sufijo .0
-  descripcion  text,
-  udm          text,
-  cantidad     numeric,
-  proveedor    text,
-  created_at   timestamptz NOT NULL DEFAULT now(),
-  updated_at   timestamptz NOT NULL DEFAULT now()
-);
-
 -- Transacción: log de movimientos, importado desde la pestaña "Transacciones".
 -- Crece rápido (60k+ filas) — sin PK natural, se usa uuid + índices para que
 -- la carga incremental y el cruce de gd_tablero() sean eficientes.
@@ -81,10 +65,6 @@ CREATE INDEX IF NOT EXISTS idx_tablero_op_seguimiento_numero_op
   ON tablero_op_seguimiento (numero_op);
 CREATE INDEX IF NOT EXISTS idx_tablero_op_seguimiento_numero_sic
   ON tablero_op_seguimiento (numero_sic);
-CREATE INDEX IF NOT EXISTS idx_tablero_op_op_articulo
-  ON tablero_op_op (articulo);
-CREATE INDEX IF NOT EXISTS idx_tablero_op_op_numero
-  ON tablero_op_op (numero);
 
 -- ─── updated_at automático ──────────────────────────────────────────────────
 -- Reutiliza/crea la función set_updated_at (ya definida en ido_datos.sql);
@@ -102,11 +82,6 @@ CREATE TRIGGER trg_tablero_op_seguimiento_updated_at
   BEFORE UPDATE ON tablero_op_seguimiento
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
-DROP TRIGGER IF EXISTS trg_tablero_op_op_updated_at ON tablero_op_op;
-CREATE TRIGGER trg_tablero_op_op_updated_at
-  BEFORE UPDATE ON tablero_op_op
-  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
 DROP TRIGGER IF EXISTS trg_tablero_op_stock_updated_at ON tablero_op_stock;
 CREATE TRIGGER trg_tablero_op_stock_updated_at
   BEFORE UPDATE ON tablero_op_stock
@@ -116,15 +91,11 @@ CREATE TRIGGER trg_tablero_op_stock_updated_at
 -- Policy permisiva, igual que el resto de las tablas que opera la app con la
 -- anon key (ver ido_datos.sql / stock_article_families).
 ALTER TABLE tablero_op_seguimiento ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tablero_op_op          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tablero_op_transaccion ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tablero_op_stock       ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "tablero_op_seguimiento_all" ON tablero_op_seguimiento;
 CREATE POLICY "tablero_op_seguimiento_all" ON tablero_op_seguimiento FOR ALL USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "tablero_op_op_all" ON tablero_op_op;
-CREATE POLICY "tablero_op_op_all" ON tablero_op_op FOR ALL USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "tablero_op_transaccion_all" ON tablero_op_transaccion;
 CREATE POLICY "tablero_op_transaccion_all" ON tablero_op_transaccion FOR ALL USING (true) WITH CHECK (true);

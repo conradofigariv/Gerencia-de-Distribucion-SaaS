@@ -5,22 +5,21 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   UploadCloud, Loader2, Plus, Trash2, AlertCircle, CheckCircle2,
-  ChevronLeft, ArrowRight, X, Info, ClipboardList, FileText, ArrowLeftRight, Package, Database,
+  ChevronLeft, ArrowRight, X, Info, ClipboardList, ArrowLeftRight, Package, Database,
 } from "lucide-react";
 import {
   getSeguimiento, upsertSeguimiento, deleteSeguimiento, deleteSeguimientoBulk, clearSeguimiento,
   getTableCount, replaceTable,
   normArticulo, parseNum, parseEntero, parseFechaArg,
 } from "@/lib/tableroOp";
-import type { SeguimientoRow, SeguimientoDbRow, OpRow, TransaccionRow, StockRow } from "@/lib/tableroOp";
+import type { SeguimientoRow, SeguimientoDbRow, TransaccionRow, StockRow } from "@/lib/tableroOp";
 
 // ─── Pestañas ────────────────────────────────────────────────────────────────
 
-type Tab = "seguimiento" | "op" | "transacciones" | "stock";
+type Tab = "seguimiento" | "transacciones" | "stock";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "seguimiento",   label: "SIC a seguir",  icon: ClipboardList },
-  { id: "op",            label: "OP's",          icon: FileText },
   { id: "transacciones", label: "Transacciones", icon: ArrowLeftRight },
   { id: "stock",         label: "Stock",         icon: Package },
 ];
@@ -679,43 +678,6 @@ function ImportPanel<T extends Record<string, unknown>>({
   );
 }
 
-// ─── OP's ────────────────────────────────────────────────────────────────────
-
-const OP_COLS = ["Número", "Línea", "Artículo", "Descripción", "UDM", "Cantidad", "Proveedor"];
-
-const OP_SPECS: Spec = {
-  numero:      (h) => /pedido/i.test(h) || /^n[uú]mero$/i.test(h),
-  linea:       (h) => /^l[ií]nea$/i.test(h),
-  articulo:    (h) => /art[ií]culo/i.test(h),
-  descripcion: (h) => /descrip/i.test(h),
-  udm:         (h) => /^udm$/i.test(h) || /^unidad( primaria)?$/i.test(h),
-  cantidad:    (h) => /cantidad/i.test(h),
-  proveedor:   (h) => /^proveedor$/i.test(h),
-};
-const OP_DEFAULT_IDX = { numero: 0, linea: 1, articulo: 2, descripcion: 3, udm: 4, cantidad: 5, proveedor: 6 };
-
-const parseOp = (text: string): ParsedRow<OpRow>[] =>
-  parseByHeader<OpRow>(text, OP_SPECS, ["numero", "articulo"], OP_DEFAULT_IDX, (get) => {
-    const numero   = parseEntero(get("numero"));
-    const articulo = get("articulo").trim() ? normArticulo(get("articulo")) : null;
-    const errors: string[] = [];
-    if (numero === null) errors.push("Número inválido o vacío");
-    const row: OpRow = {
-      numero:      numero ?? 0,
-      linea:       get("linea") || null,
-      articulo,
-      descripcion: get("descripcion") || null,
-      udm:         get("udm") || null,
-      cantidad:    parseNum(get("cantidad")),
-      proveedor:   get("proveedor") || null,
-    };
-    return {
-      row,
-      display: [String(row.numero || ""), row.linea ?? "", row.articulo ?? "", row.descripcion ?? "", row.udm ?? "", row.cantidad != null ? String(row.cantidad) : "", row.proveedor ?? ""],
-      errors,
-    };
-  });
-
 // ─── Transacciones ───────────────────────────────────────────────────────────
 
 const TRANSACCION_COLS = ["Tipo", "Importe", "Fecha", "Artículo", "Número Pedido", "Línea", "Proveedor"];
@@ -852,26 +814,6 @@ export function TableroOpCargaSection() {
 
       {tab === "seguimiento" && <SeguimientoTab />}
 
-      {tab === "op" && (
-        <ImportPanel
-          table="tablero_op_op"
-          notNullCol="numero"
-          columns={OP_COLS}
-          countLabel={(n) => `${n.toLocaleString("es-AR")} línea(s) de OP cargadas`}
-          placeholder={`Ej.:\n900123\t1\t00013242.0\tCABLE PREENS 3X95\tMT\t100\tACME S.A.`}
-          parse={parseOp}
-          hint={
-            <span>
-              <strong className="text-foreground/80">Opcional.</strong> El Resumen ya toma la OP (y el proveedor) desde la
-              planilla <strong className="text-foreground/80">OP que cargás en «Carga de datos»</strong>, así que normalmente
-              no necesitás cargar nada acá. Esta pestaña queda como import manual por si querés pegar OP sueltas: pegá la
-              pestaña <strong className="text-foreground/80">OP&apos;s</strong> <strong className="text-foreground/80">con su encabezado</strong> —
-              las columnas se reconocen por su nombre (Número Pedido, Artículo, Descripción, Unidad, Cantidad, Proveedor…), sin importar el orden ni
-              las columnas extra. <strong className="text-foreground/80">Reemplaza la tabla completa</strong> — subí siempre el archivo entero.
-            </span>
-          }
-        />
-      )}
 
       {tab === "transacciones" && (
         <ImportPanel
