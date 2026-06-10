@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Fragment } from "react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -18,11 +18,119 @@ import type { SeguimientoRow, SeguimientoDbRow, TransaccionRow, StockRow } from 
 
 type Tab = "seguimiento" | "transacciones" | "stock";
 
-const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
-  { id: "seguimiento",   label: "SIC a seguir",  icon: ClipboardList },
-  { id: "transacciones", label: "Transacciones", icon: ArrowLeftRight },
-  { id: "stock",         label: "Stock",         icon: Package },
+const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] = [
+  { id: "seguimiento",   label: "SIC a seguir",  icon: ClipboardList,  desc: "Lista de SIC (líneas) a controlar — el import agrega o actualiza, nunca borra." },
+  { id: "transacciones", label: "Transacciones", icon: ArrowLeftRight, desc: "Log de movimientos (Recibir / Aceptar / Entregar / devoluciones) — reemplaza la tabla completa." },
+  { id: "stock",         label: "Stock",         icon: Package,        desc: "Saldo actual por artículo y zona — reemplaza la tabla completa." },
 ];
+
+// ─── Estilos beast pure (alineados con Stock por Zona) ───────────────────────
+
+const CARD_BG      = "oklch(0.235 0.005 270)";
+const PANEL_BG     = "oklch(0.205 0.005 270)";
+const PANEL_BORDER = "1px solid oklch(1 0 0 / 0.07)";
+const STICKY_BG    = "oklch(0.255 0.006 270)";
+
+// Botón primario violeta (mismo que «Importar» de Stock por Zona).
+const violetBtn = (disabled: boolean): React.CSSProperties => ({
+  background: disabled ? "oklch(0.25 0.005 270)" : "#8B5CF6",
+  color: disabled ? "oklch(0.55 0 0)" : "#fff",
+  border: "none",
+  boxShadow: disabled ? "none" : "0 1px 0 rgba(255,255,255,0.1) inset, 0 8px 16px -10px rgba(139,92,246,0.6)",
+});
+
+// Encabezado de tabla sticky (fondo opaco — ver nota en CLAUDE.md sobre
+// hsl(var(--secondary)) con alpha).
+function Th({ children, right, width }: { children?: React.ReactNode; right?: boolean; width?: number }) {
+  return (
+    <th style={{
+      padding: "12px 14px", width,
+      textAlign: right ? "right" : "left",
+      fontSize: 11.5, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase",
+      color: "hsl(var(--muted-foreground))",
+      position: "sticky", top: 0, zIndex: 2,
+      background: STICKY_BG,
+      borderBottom: "1px solid hsl(var(--border))",
+      whiteSpace: "nowrap",
+    }}>
+      {children}
+    </th>
+  );
+}
+
+// Panel de aviso/tip (reemplaza los hint bars genéricos).
+function HintPanel({ icon: Icon = Info, children }: { icon?: React.ElementType; children: React.ReactNode }) {
+  return (
+    <div
+      className="flex items-start gap-2.5 px-4 py-3 text-[12.5px] leading-relaxed rounded-[12px]"
+      style={{ background: PANEL_BG, border: PANEL_BORDER, color: "hsl(var(--muted-foreground))" }}
+    >
+      <Icon className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#86efac" }} />
+      <div>{children}</div>
+    </div>
+  );
+}
+
+// Textarea estilo terminal con barra macOS (mismo concepto que «Cargar datos»
+// de Stock por Zona).
+function TerminalBox({
+  value, onChange, placeholder, fileName, rows = 10,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  fileName: string;
+  rows?: number;
+}) {
+  const lineCount = value ? value.replace(/\r/g, "").split("\n").filter((l) => l.trim() !== "").length : 0;
+  return (
+    <div className="rounded-[10px] overflow-hidden" style={{ background: "oklch(0.12 0.005 260)", border: PANEL_BORDER }}>
+      {/* Barra estilo macOS */}
+      <div
+        className="flex items-center gap-2 px-3 py-2"
+        style={{ background: "oklch(0.18 0.005 260 / 0.6)", borderBottom: "1px solid oklch(1 0 0 / 0.05)" }}
+      >
+        <div className="flex gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ background: "oklch(0.60 0.15 25 / 0.65)" }} />
+          <span className="w-2.5 h-2.5 rounded-full" style={{ background: "oklch(0.70 0.13 75 / 0.65)" }} />
+          <span className="w-2.5 h-2.5 rounded-full" style={{ background: "oklch(0.70 0.13 145 / 0.65)" }} />
+        </div>
+        <span className="ml-1.5 text-[11.5px] text-muted-foreground/60">{fileName}</span>
+        <div className="flex-1" />
+        <span className="text-[11px] text-muted-foreground/45 tabular-nums">
+          {value.length.toLocaleString("es-AR")} car. · {lineCount} línea{lineCount === 1 ? "" : "s"}
+        </span>
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={rows}
+        className="w-full px-4 py-3.5 bg-transparent border-none outline-none resize-y text-foreground leading-[1.7] placeholder:text-muted-foreground/35"
+        style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, monospace", fontSize: 12.5 }}
+      />
+    </div>
+  );
+}
+
+// Chip de estado del preview (válidas / omitidas / con errores).
+function StatusChip({ tone, icon: Icon, children }: { tone: "green" | "amber" | "red" | "gray"; icon: React.ElementType; children: React.ReactNode }) {
+  const styles: Record<string, React.CSSProperties> = {
+    green: { background: "oklch(0.30 0.10 155 / 0.45)", color: "#86efac", border: "1px solid oklch(0.55 0.15 155 / 0.5)" },
+    amber: { background: "oklch(0.30 0.10 50 / 0.4)",   color: "#fcd34d", border: "1px solid oklch(0.6 0.15 60 / 0.5)" },
+    red:   { background: "oklch(0.28 0.10 25 / 0.45)",  color: "#fca5a5", border: "1px solid oklch(0.55 0.15 25 / 0.5)" },
+    gray:  { background: "oklch(0.25 0.005 270)",        color: "oklch(0.65 0 0)", border: "1px solid oklch(1 0 0 / 0.08)" },
+  };
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-semibold"
+      style={styles[tone]}
+    >
+      <Icon className="w-3.5 h-3.5" strokeWidth={2.2} />
+      {children}
+    </span>
+  );
+}
 
 // ─── Helpers de pegado tab-separado ──────────────────────────────────────────
 
@@ -281,7 +389,7 @@ function SeguimientoTab() {
     const okCount  = preview.length - errCount;
 
     return (
-      <div className="space-y-5">
+      <div className="space-y-5 animate-in fade-in slide-in-from-bottom-1 duration-200">
         <div className="flex items-center gap-3">
           <button onClick={() => setStep("input")}
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -291,32 +399,27 @@ function SeguimientoTab() {
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="flex items-center gap-1.5 text-xs text-success bg-success/10 border border-success/20 px-3 py-1.5 rounded-lg">
-            <CheckCircle2 className="w-3.5 h-3.5" />{okCount} válida(s)
-          </span>
+          <StatusChip tone="green" icon={CheckCircle2}>{okCount} válida(s)</StatusChip>
           {errCount > 0 && (
-            <span className="flex items-center gap-1.5 text-xs text-destructive bg-destructive/10 border border-destructive/20 px-3 py-1.5 rounded-lg">
-              <AlertCircle className="w-3.5 h-3.5" />{errCount} con errores (se omiten)
-            </span>
+            <StatusChip tone="red" icon={AlertCircle}>{errCount} con errores (se omiten)</StatusChip>
           )}
           <div className="ml-auto flex items-center gap-2">
             <button onClick={() => handleSave()} disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-medium transition-all disabled:opacity-50">
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-[9px] text-[13px] font-semibold transition-all disabled:cursor-not-allowed"
+              style={violetBtn(saving)}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
               Agregar a seguimiento
             </button>
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-secondary/50 border-b border-border">
+        <div className="rounded-[14px] overflow-hidden" style={{ background: PANEL_BG, border: PANEL_BORDER }}>
+          <div className="overflow-auto" style={{ maxHeight: "60vh" }}>
+            <table className="w-full text-xs" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
+              <thead>
                 <tr>
-                  <th className="py-2 px-3 text-left text-muted-foreground font-medium">#</th>
-                  {SEG_COLS.map((h) => (
-                    <th key={h} className="py-2 px-3 text-left text-muted-foreground font-medium whitespace-nowrap">{h}</th>
-                  ))}
+                  <Th>#</Th>
+                  {SEG_COLS.map((h) => <Th key={h}>{h}</Th>)}
                 </tr>
               </thead>
               <tbody>
@@ -326,15 +429,15 @@ function SeguimientoTab() {
                   return (
                     <React.Fragment key={i}>
                       <tr className={cn("border-b border-border/50", hasErr ? "bg-destructive/5" : "hover:bg-secondary/20")}>
-                        <td className="py-2 px-3 text-muted-foreground">{i + 1}</td>
-                        <td className="py-2 px-3 font-mono">{row.numero_sic || "—"}</td>
-                        <td className="py-2 px-3">{row.linea ?? "—"}</td>
-                        <td className="py-2 px-3 font-mono">{row.articulo || "—"}</td>
-                        <td className="py-2 px-3 max-w-[200px] truncate" title={row.descripcion ?? ""}>{row.descripcion ?? "—"}</td>
-                        <td className="py-2 px-3 text-right font-mono">{row.cantidad ?? "—"}</td>
-                        <td className="py-2 px-3">{row.udm ?? "—"}</td>
-                        <td className="py-2 px-3 text-right font-mono">{row.ctd_entregada}</td>
-                        <td className="py-2 px-3 font-mono">{row.numero_op ?? "—"}</td>
+                        <td className="py-2 px-3.5 text-muted-foreground">{i + 1}</td>
+                        <td className="py-2 px-3.5 font-mono">{row.numero_sic || "—"}</td>
+                        <td className="py-2 px-3.5">{row.linea ?? "—"}</td>
+                        <td className="py-2 px-3.5 font-mono">{row.articulo || "—"}</td>
+                        <td className="py-2 px-3.5 max-w-[200px] truncate" title={row.descripcion ?? ""}>{row.descripcion ?? "—"}</td>
+                        <td className="py-2 px-3.5 text-right font-mono">{row.cantidad ?? "—"}</td>
+                        <td className="py-2 px-3.5">{row.udm ?? "—"}</td>
+                        <td className="py-2 px-3.5 text-right font-mono">{row.ctd_entregada}</td>
+                        <td className="py-2 px-3.5 font-mono">{row.numero_op ?? "—"}</td>
                       </tr>
                       {hasErr && (
                         <tr className="bg-destructive/5 border-b border-destructive/10">
@@ -358,46 +461,57 @@ function SeguimientoTab() {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-start gap-2 text-xs text-muted-foreground bg-secondary/40 border border-border rounded-lg px-3 py-2.5">
-        <Info className="w-4 h-4 shrink-0 mt-0.5 text-accent" />
-        <span>
-          Pegá las SIC que querés seguir <strong className="text-foreground/80">incluyendo la fila de encabezado</strong> —
-          las columnas se reconocen por su nombre (<strong className="text-foreground/80">{SEG_COLS.join(" · ")}</strong>),
-          sin importar el orden ni las columnas extra que traiga el export (Proveedor, Control, STOCK, Recibido, etc. se
-          descartan automáticamente — son las que calcula el Resumen). El sufijo «.0» del artículo se quita
-          automáticamente. Se guarda por <strong className="text-foreground/80">Número + Línea</strong> — una SIC puede
-          traer varias líneas (distintos artículos pedidos juntos) o líneas «ampliadas» al recomprar/recontratar
-          (ej. 1,1 / 2,2); eso no es un duplicado. El import <strong className="text-foreground/80">solo agrega o
-          actualiza</strong>: nunca borra, así tus <strong className="text-foreground/80">entradas manuales</strong> (SIC
-          que no salen del export) quedan siempre a salvo. Para quitar filas, usá el borrado por fila o «Limpiar todo».
-        </span>
-      </div>
+    <div className="space-y-5 animate-in fade-in slide-in-from-bottom-1 duration-200">
+      <HintPanel>
+        Pegá las SIC que querés seguir <strong className="text-foreground/80">incluyendo la fila de encabezado</strong> —
+        las columnas se reconocen por su nombre (<strong className="text-foreground/80">{SEG_COLS.join(" · ")}</strong>),
+        sin importar el orden ni las columnas extra que traiga el export (Proveedor, Control, STOCK, Recibido, etc. se
+        descartan automáticamente — son las que calcula el Resumen). El sufijo «.0» del artículo se quita
+        automáticamente. Se guarda por <strong className="text-foreground/80">Número + Línea</strong> — una SIC puede
+        traer varias líneas (distintos artículos pedidos juntos) o líneas «ampliadas» al recomprar/recontratar
+        (ej. 1,1 / 2,2); eso no es un duplicado. El import <strong className="text-foreground/80">solo agrega o
+        actualiza</strong>: nunca borra, así tus <strong className="text-foreground/80">entradas manuales</strong> (SIC
+        que no salen del export) quedan siempre a salvo. Para quitar filas, usá el borrado por fila o «Limpiar todo».
+      </HintPanel>
 
-      <div className="bg-card border border-border rounded-xl p-5 space-y-4">
-        <textarea
+      <div className="rounded-[14px] p-5 space-y-4" style={{ background: PANEL_BG, border: PANEL_BORDER }}>
+        <div>
+          <h3 className="text-[16px] font-semibold tracking-tight text-foreground">Pegar datos</h3>
+          <p className="mt-1 text-[13px] text-muted-foreground leading-relaxed">
+            Copiá la lista desde tu planilla o del sistema y pegala acá, con encabezado.
+          </p>
+        </div>
+        <TerminalBox
           value={raw}
-          onChange={(e) => setRaw(e.target.value)}
+          onChange={setRaw}
+          fileName="sic_a_seguir.tsv"
           placeholder={`Pegá con encabezado:\nNúmero\tLínea\tArtículo\tDescripción\tCantidad\tUDM\tCtd Entregada\tNúmero Pedido\n102345\t1\t00013242.0\tCABLE PREENS 3X95\t100\tMT\t40\t900123`}
-          rows={10}
-          className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent resize-y transition-all font-mono"
         />
-        <div className="flex justify-end">
+        <div className="flex items-center gap-2.5">
           <button onClick={handlePreview}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-medium transition-all">
-            <ArrowRight className="w-4 h-4" />Previsualizar
+            disabled={!raw.trim()}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-[9px] text-[13px] font-semibold transition-all disabled:cursor-not-allowed"
+            style={violetBtn(!raw.trim())}>
+            <ArrowRight className="w-3.5 h-3.5" />Previsualizar
+          </button>
+          <button
+            onClick={() => setRaw("")}
+            disabled={!raw}
+            className="px-3.5 py-2 rounded-[9px] border border-border text-[13px] font-medium transition-colors bg-transparent text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            Limpiar
           </button>
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary/30">
+      <div className="rounded-[14px] overflow-hidden" style={{ background: PANEL_BG, border: PANEL_BORDER }}>
+        <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid oklch(1 0 0 / 0.05)" }}>
           <span className="text-xs text-muted-foreground">
             {loading
               ? "Cargando…"
               : selected.size > 0
                 ? `${selected.size} seleccionada(s)`
-                : `${rows.length} SIC en seguimiento`}
+                : <><span className="text-foreground font-medium">{rows.length}</span> SIC en seguimiento</>}
           </span>
           <div className="flex items-center gap-2">
             {selected.size > 0 && (
@@ -418,33 +532,39 @@ function SeguimientoTab() {
         </div>
 
         {!loading && rows.length === 0 ? (
-          <div className="p-10 text-center text-sm text-muted-foreground">
+          <div className="flex flex-col items-center gap-3 py-16 text-sm text-muted-foreground">
+            <ClipboardList className="w-10 h-10 opacity-20" />
             Sin SIC cargadas. Pegá la lista arriba para empezar.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-secondary/50 border-b border-border">
+          <div className="overflow-auto" style={{ maxHeight: "60vh" }}>
+            <table className="w-full text-xs" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
+              <thead>
                 <tr>
-                  <th className="py-2 px-3 w-8">
+                  <Th width={36}>
                     <input
                       type="checkbox"
                       checked={selected.size === rows.length && rows.length > 0}
                       ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < rows.length; }}
                       onChange={(e) => setSelected(e.target.checked ? new Set(rows.map((r) => r.id)) : new Set())}
-                      className="accent-accent w-3.5 h-3.5 cursor-pointer"
+                      className="w-3.5 h-3.5 cursor-pointer"
+                      style={{ accentColor: "#8B5CF6" }}
                     />
-                  </th>
-                  {SEG_COLS.map((h) => (
-                    <th key={h} className="py-2 px-3 text-left text-muted-foreground font-medium whitespace-nowrap">{h}</th>
-                  ))}
-                  <th className="py-2 px-3" />
+                  </Th>
+                  {SEG_COLS.map((h) => <Th key={h}>{h}</Th>)}
+                  <Th width={40} />
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id} className={cn("border-b border-border/50 transition-colors", selected.has(r.id) ? "bg-accent/5" : "hover:bg-secondary/20")}>
-                    <td className="py-2 px-3">
+                  <tr
+                    key={r.id}
+                    className="border-b border-border/50 transition-colors"
+                    style={{ background: selected.has(r.id) ? "oklch(0.55 0.20 295 / 0.12)" : undefined }}
+                    onMouseEnter={(e) => { if (!selected.has(r.id)) (e.currentTarget as HTMLTableRowElement).style.background = "oklch(0.25 0.005 270 / 0.5)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = selected.has(r.id) ? "oklch(0.55 0.20 295 / 0.12)" : ""; }}
+                  >
+                    <td className="py-2 px-3.5">
                       <input
                         type="checkbox"
                         checked={selected.has(r.id)}
@@ -453,18 +573,19 @@ function SeguimientoTab() {
                           if (e.target.checked) s.add(r.id); else s.delete(r.id);
                           return s;
                         })}
-                        className="accent-accent w-3.5 h-3.5 cursor-pointer"
+                        className="w-3.5 h-3.5 cursor-pointer"
+                        style={{ accentColor: "#8B5CF6" }}
                       />
                     </td>
-                    <td className="py-2 px-3 font-mono">{r.numero_sic}</td>
-                    <td className="py-2 px-3">{r.linea ?? "—"}</td>
-                    <td className="py-2 px-3 font-mono">{r.articulo}</td>
-                    <td className="py-2 px-3 max-w-[200px] truncate" title={r.descripcion ?? ""}>{r.descripcion ?? "—"}</td>
-                    <td className="py-2 px-3 text-right font-mono">{r.cantidad ?? "—"}</td>
-                    <td className="py-2 px-3">{r.udm ?? "—"}</td>
-                    <td className="py-2 px-3 text-right font-mono">{r.ctd_entregada}</td>
-                    <td className="py-2 px-3 font-mono">{r.numero_op ?? "—"}</td>
-                    <td className="py-2 px-3">
+                    <td className="py-2 px-3.5 font-mono">{r.numero_sic}</td>
+                    <td className="py-2 px-3.5">{r.linea ?? "—"}</td>
+                    <td className="py-2 px-3.5 font-mono">{r.articulo}</td>
+                    <td className="py-2 px-3.5 max-w-[200px] truncate" title={r.descripcion ?? ""}>{r.descripcion ?? "—"}</td>
+                    <td className="py-2 px-3.5 text-right font-mono">{r.cantidad ?? "—"}</td>
+                    <td className="py-2 px-3.5">{r.udm ?? "—"}</td>
+                    <td className="py-2 px-3.5 text-right font-mono">{r.ctd_entregada}</td>
+                    <td className="py-2 px-3.5 font-mono">{r.numero_op ?? "—"}</td>
+                    <td className="py-2 px-3.5">
                       <button onClick={() => handleDelete(r.id)}
                         className="text-muted-foreground hover:text-destructive transition-colors">
                         <Trash2 className="w-3.5 h-3.5" />
@@ -488,7 +609,7 @@ function SeguimientoTab() {
 // ════════════════════════════════════════════════════════════════
 
 function ImportPanel<T extends Record<string, unknown>>({
-  table, notNullCol, columns, placeholder, hint, countLabel, parse,
+  table, notNullCol, columns, placeholder, hint, countLabel, parse, fileName,
 }: {
   table:       string;
   notNullCol:  string;
@@ -497,6 +618,7 @@ function ImportPanel<T extends Record<string, unknown>>({
   hint:        React.ReactNode;
   countLabel:  (n: number) => string;
   parse:       (text: string) => ParsedRow<T>[];
+  fileName:    string;
 }) {
   const [raw, setRaw]                   = useState("");
   const [preview, setPreview]           = useState<ParsedRow<T>[] | null>(null);
@@ -549,30 +671,39 @@ function ImportPanel<T extends Record<string, unknown>>({
   };
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary/30 border border-border rounded-lg px-3 py-2.5">
-        <Database className="w-3.5 h-3.5 text-accent shrink-0" />
+    <div className="space-y-5 animate-in fade-in slide-in-from-bottom-1 duration-200">
+      <div
+        className="flex items-center gap-2.5 px-4 py-3 text-[12.5px] rounded-[12px]"
+        style={{ background: PANEL_BG, border: PANEL_BORDER, color: "hsl(var(--muted-foreground))" }}
+      >
+        <Database className="w-3.5 h-3.5 shrink-0" style={{ color: "#86efac" }} />
         {loadingCount ? "Consultando estado actual…" : countLabel(count ?? 0)}
       </div>
 
-      <div className="flex items-start gap-2 text-xs text-muted-foreground bg-secondary/40 border border-border rounded-lg px-3 py-2.5">
-        <Info className="w-4 h-4 shrink-0 mt-0.5 text-accent" />
-        <div>{hint}</div>
-      </div>
+      <HintPanel>{hint}</HintPanel>
 
       {!preview && (
-        <div className="bg-card border border-border rounded-xl p-5 space-y-4">
-          <textarea
-            value={raw}
-            onChange={(e) => setRaw(e.target.value)}
-            placeholder={placeholder}
-            rows={10}
-            className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent resize-y transition-all font-mono"
-          />
-          <div className="flex justify-end">
+        <div className="rounded-[14px] p-5 space-y-4" style={{ background: PANEL_BG, border: PANEL_BORDER }}>
+          <div>
+            <h3 className="text-[16px] font-semibold tracking-tight text-foreground">Pegar datos</h3>
+            <p className="mt-1 text-[13px] text-muted-foreground leading-relaxed">
+              Copiá el contenido desde el Excel o el sistema y pegalo acá, con encabezado.
+            </p>
+          </div>
+          <TerminalBox value={raw} onChange={setRaw} fileName={fileName} placeholder={placeholder} />
+          <div className="flex items-center gap-2.5">
             <button onClick={handlePreview}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-medium transition-all">
-              <ArrowRight className="w-4 h-4" />Previsualizar
+              disabled={!raw.trim()}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-[9px] text-[13px] font-semibold transition-all disabled:cursor-not-allowed"
+              style={violetBtn(!raw.trim())}>
+              <ArrowRight className="w-3.5 h-3.5" />Previsualizar
+            </button>
+            <button
+              onClick={() => setRaw("")}
+              disabled={!raw}
+              className="px-3.5 py-2 rounded-[9px] border border-border text-[13px] font-medium transition-colors bg-transparent text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              Limpiar
             </button>
           </div>
         </div>
@@ -583,7 +714,7 @@ function ImportPanel<T extends Record<string, unknown>>({
         const omittedCount = preview.filter((r) => r.errors.length === 0 && r.omitted).length;
         const okCount      = preview.length - errCount - omittedCount;
         return (
-          <div className="space-y-4">
+          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-1 duration-200">
             <div className="flex items-center gap-3">
               <button onClick={() => setPreview(null)}
                 className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -593,22 +724,17 @@ function ImportPanel<T extends Record<string, unknown>>({
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="flex items-center gap-1.5 text-xs text-success bg-success/10 border border-success/20 px-3 py-1.5 rounded-lg">
-                <CheckCircle2 className="w-3.5 h-3.5" />{okCount} válida(s)
-              </span>
+              <StatusChip tone="green" icon={CheckCircle2}>{okCount} válida(s)</StatusChip>
               {omittedCount > 0 && (
-                <span className="flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary/60 border border-border px-3 py-1.5 rounded-lg">
-                  <Info className="w-3.5 h-3.5" />{omittedCount} movimiento(s) interno(s) (se omiten)
-                </span>
+                <StatusChip tone="gray" icon={Info}>{omittedCount} movimiento(s) interno(s) (se omiten)</StatusChip>
               )}
               {errCount > 0 && (
-                <span className="flex items-center gap-1.5 text-xs text-destructive bg-destructive/10 border border-destructive/20 px-3 py-1.5 rounded-lg">
-                  <AlertCircle className="w-3.5 h-3.5" />{errCount} con errores (se omiten)
-                </span>
+                <StatusChip tone="red" icon={AlertCircle}>{errCount} con errores (se omiten)</StatusChip>
               )}
               <div className="ml-auto">
                 <button onClick={handleReplace} disabled={saving}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-medium transition-all disabled:opacity-50">
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-[9px] text-[13px] font-semibold transition-all disabled:cursor-not-allowed"
+                  style={violetBtn(saving)}>
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
                   Reemplazar todo
                 </button>
@@ -618,15 +744,13 @@ function ImportPanel<T extends Record<string, unknown>>({
               «Reemplazar todo» borra los datos actuales de esta tabla y carga el pegado completo — subí siempre el archivo entero, no incrementos.
             </p>
 
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-secondary/50 border-b border-border">
+            <div className="rounded-[14px] overflow-hidden" style={{ background: PANEL_BG, border: PANEL_BORDER }}>
+              <div className="overflow-auto" style={{ maxHeight: "60vh" }}>
+                <table className="w-full text-xs" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
+                  <thead>
                     <tr>
-                      <th className="py-2 px-3 text-left text-muted-foreground font-medium">#</th>
-                      {columns.map((h) => (
-                        <th key={h} className="py-2 px-3 text-left text-muted-foreground font-medium whitespace-nowrap">{h}</th>
-                      ))}
+                      <Th>#</Th>
+                      {columns.map((h) => <Th key={h}>{h}</Th>)}
                     </tr>
                   </thead>
                   <tbody>
@@ -777,82 +901,143 @@ const parseStock = (text: string): ParsedRow<StockRow>[] =>
 export function TableroOpCargaSection() {
   const [tab, setTab] = useState<Tab>("seguimiento");
 
+  const activeTab  = TABS.find((t) => t.id === tab) ?? TABS[0];
+  const ActiveIcon = activeTab.icon;
+
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-11 h-11 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center">
-          <UploadCloud className="w-5 h-5 text-accent" />
+    <div className="space-y-6">
+      {/* Header bar: ícono + título */}
+      <div className="flex items-start gap-3">
+        <div
+          className="grid place-items-center mt-0.5"
+          style={{
+            width: 36, height: 36, borderRadius: 9,
+            background: "oklch(0.30 0.10 155 / 0.45)",
+            border: "1px solid oklch(0.55 0.15 155 / 0.5)",
+            color: "#86efac",
+          }}
+        >
+          <UploadCloud className="w-[18px] h-[18px]" strokeWidth={2} />
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-foreground">Tablero OP — Carga de datos</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-[22px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.4, margin: 0 }}>
+            Tablero OP — Carga de datos
+          </h2>
+          <p className="mt-1 text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
             SIC a seguir + datos fuente (Transacciones, Stock). La OP la toma de «Carga de datos». El cruce se calcula en el Resumen.
           </p>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-border pb-3 flex-wrap">
-        {TABS.map((t) => {
+      {/* Tabs — beast pure pill bar */}
+      <div
+        style={{
+          display: "inline-flex", gap: 4, padding: 4,
+          background: CARD_BG, borderRadius: 12,
+          flexWrap: "wrap", maxWidth: "100%",
+        }}
+      >
+        {TABS.map((t, idx) => {
           const Icon = t.icon;
-          const active = tab === t.id;
+          const isActive = tab === t.id;
           return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                active ? "bg-accent/15 text-accent" : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+            <Fragment key={t.id}>
+              {idx > 0 && (
+                <span style={{ display: "inline-flex", alignItems: "center", color: "oklch(0.38 0 0)", fontSize: 13, userSelect: "none", pointerEvents: "none" }}>
+                  →
+                </span>
               )}
-            >
-              <Icon className="w-4 h-4" />{t.label}
-            </button>
+              <button
+                onClick={() => setTab(t.id)}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 7,
+                  padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer",
+                  background: isActive ? "oklch(0.27 0.005 270)" : "transparent",
+                  color: isActive ? "oklch(0.97 0 0)" : "oklch(0.65 0 0)",
+                  fontSize: 13, fontWeight: isActive ? 500 : 400,
+                  transition: "background .15s, color .15s",
+                  boxShadow: isActive ? "0 1px 0 oklch(1 0 0 / 0.06) inset" : "none",
+                  whiteSpace: "nowrap",
+                }}
+                onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; }}
+                onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.65 0 0)"; }}
+              >
+                <Icon className="w-3.5 h-3.5" strokeWidth={1.8} />
+                {t.label}
+              </button>
+            </Fragment>
           );
         })}
       </div>
 
-      {tab === "seguimiento" && <SeguimientoTab />}
+      {/* Content card */}
+      <div
+        className="px-4 py-6 sm:px-6 overflow-hidden"
+        style={{ background: CARD_BG, border: PANEL_BORDER, borderRadius: 14 }}
+      >
+        <div className="flex items-center gap-3 mb-2">
+          <div
+            className="grid place-items-center"
+            style={{
+              width: 30, height: 30, borderRadius: 8,
+              background: "oklch(0.30 0.10 155 / 0.45)",
+              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
+              color: "#86efac",
+            }}
+          >
+            <ActiveIcon className="w-4 h-4" strokeWidth={2} />
+          </div>
+          <h2 className="text-[20px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.3, margin: 0 }}>
+            {activeTab.label}
+          </h2>
+        </div>
+        <p className="ml-[42px] mb-7 text-[14.5px]" style={{ color: "oklch(0.58 0 0)" }}>
+          {activeTab.desc}
+        </p>
 
+        {tab === "seguimiento" && <SeguimientoTab />}
 
-      {tab === "transacciones" && (
-        <ImportPanel
-          table="tablero_op_transaccion"
-          notNullCol="id"
-          columns={TRANSACCION_COLS}
-          countLabel={(n) => `${n.toLocaleString("es-AR")} transacción(es) cargadas`}
-          placeholder={`Ej.:\nRecibir\t100\t15/04/2026 11:59:58\t00013242.0\t900123\t1\tACME S.A.`}
-          parse={parseTransacciones}
-          hint={
-            <span>
-              Pegá la pestaña <strong className="text-foreground/80">Transacciones</strong> del Excel <strong className="text-foreground/80">incluyendo la fila de encabezado</strong> —
-              las columnas se reconocen por su nombre (Tipo Transacción, Importe, Fecha, Artículo, Número Pedido, Línea, Proveedor…), sin importar el
-              orden ni las columnas extra. Tipos relevantes: Recibir, Aceptar, Entregar, y devoluciones (
-              {[...TIPOS_DEVOLUCION].join(", ")}). Fecha en formato <code className="text-foreground/80">dd/mm/aaaa hh:mm:ss</code>.{" "}
-              <strong className="text-foreground/80">Reemplaza la tabla completa</strong> — al ser un log que crece rápido (60k+ filas),
-              subí siempre el export completo y actualizado.
-            </span>
-          }
-        />
-      )}
+        {tab === "transacciones" && (
+          <ImportPanel
+            table="tablero_op_transaccion"
+            notNullCol="id"
+            columns={TRANSACCION_COLS}
+            fileName="transacciones.tsv"
+            countLabel={(n) => `${n.toLocaleString("es-AR")} transacción(es) cargadas`}
+            placeholder={`Ej.:\nRecibir\t100\t15/04/2026 11:59:58\t00013242.0\t900123\t1\tACME S.A.`}
+            parse={parseTransacciones}
+            hint={
+              <span>
+                Pegá la pestaña <strong className="text-foreground/80">Transacciones</strong> del Excel <strong className="text-foreground/80">incluyendo la fila de encabezado</strong> —
+                las columnas se reconocen por su nombre (Tipo Transacción, Importe, Fecha, Artículo, Número Pedido, Línea, Proveedor…), sin importar el
+                orden ni las columnas extra. Tipos relevantes: Recibir, Aceptar, Entregar, y devoluciones (
+                {[...TIPOS_DEVOLUCION].join(", ")}). Fecha en formato <code className="text-foreground/80">dd/mm/aaaa hh:mm:ss</code>.{" "}
+                <strong className="text-foreground/80">Reemplaza la tabla completa</strong> — al ser un log que crece rápido (60k+ filas),
+                subí siempre el export completo y actualizado.
+              </span>
+            }
+          />
+        )}
 
-      {tab === "stock" && (
-        <ImportPanel
-          table="tablero_op_stock"
-          notNullCol="organizacion"
-          columns={STOCK_COLS}
-          countLabel={(n) => `${n.toLocaleString("es-AR")} fila(s) de stock cargadas`}
-          placeholder={`Ej.:\nZA\t00013242.0\t250`}
-          parse={parseStock}
-          hint={
-            <span>
-              Pegá la pestaña <strong className="text-foreground/80">Stock</strong> del Excel <strong className="text-foreground/80">incluyendo la fila de encabezado</strong> —
-              las columnas se reconocen por su nombre (Organización, Artículo, En Mano/Cantidad…), sin importar el orden ni las columnas extra
-              (Organización = zona, ej. ZA). <strong className="text-foreground/80">Reemplaza la tabla completa</strong> — subí siempre el saldo actual completo.
-            </span>
-          }
-        />
-      )}
+        {tab === "stock" && (
+          <ImportPanel
+            table="tablero_op_stock"
+            notNullCol="organizacion"
+            columns={STOCK_COLS}
+            fileName="stock.tsv"
+            countLabel={(n) => `${n.toLocaleString("es-AR")} fila(s) de stock cargadas`}
+            placeholder={`Ej.:\nZA\t00013242.0\t250`}
+            parse={parseStock}
+            hint={
+              <span>
+                Pegá la pestaña <strong className="text-foreground/80">Stock</strong> del Excel <strong className="text-foreground/80">incluyendo la fila de encabezado</strong> —
+                las columnas se reconocen por su nombre (Organización, Artículo, En Mano/Cantidad…), sin importar el orden ni las columnas extra
+                (Organización = zona, ej. ZA). <strong className="text-foreground/80">Reemplaza la tabla completa</strong> — subí siempre el saldo actual completo.
+              </span>
+            }
+          />
+        )}
+      </div>
     </div>
   );
 }
