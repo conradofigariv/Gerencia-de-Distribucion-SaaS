@@ -10,7 +10,14 @@ import {
 import {
   CheckCircle2, RefreshCw, Loader2, ChevronDown,
   Bell, BellRing, Plus, Trash2, X, Package, TrendingUp, TrendingDown, Clock,
+  LayoutGrid, GripVertical,
 } from "lucide-react";
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent, type DraggableAttributes, type DraggableSyntheticListeners,
+} from "@dnd-kit/core";
+import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const POT_13 = [5,10,16,25,50,63,80,100,125,160,200,250,315,500,630,800,1000];
 const POT_33 = [25,63,160,250,315,500,630];
@@ -91,6 +98,32 @@ function loadAlarms(): AlarmRule[] {
 }
 function saveAlarms(rules: AlarmRule[]) {
   localStorage.setItem(ALARM_KEY, JSON.stringify(rules));
+}
+
+// ── Reorder persistence (drag & drop) ─────────────────────────────────────────
+
+function useOrder(key: string, defaultOrder: string[]) {
+  const [order, setOrderState] = useState<string[]>(defaultOrder);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(key) ?? "null") as string[] | null;
+      if (saved && saved.length === defaultOrder.length && defaultOrder.every(id => saved.includes(id))) {
+        setOrderState(saved);
+      }
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const setOrder = useCallback((updater: string[] | ((prev: string[]) => string[])) => {
+    setOrderState(prev => {
+      const next = typeof updater === "function" ? (updater as (p: string[]) => string[])(prev) : updater;
+      localStorage.setItem(key, JSON.stringify(next));
+      return next;
+    });
+  }, [key]);
+
+  return [order, setOrder] as const;
 }
 
 // ── FilterSelect ──────────────────────────────────────────────────────────────
@@ -213,8 +246,14 @@ const KPI_TONE: Record<KpiTone, { color: string; soft: string }> = {
   delta:   { color: "oklch(0.74 0.16 152)",  soft: "oklch(0.74 0.16 152 / 0.14)"  },
 };
 
-function KpiStatCard({ label, value, tone, sub, showSign = false, idx = 0 }: {
+interface DragHandle {
+  attributes: DraggableAttributes;
+  listeners: DraggableSyntheticListeners;
+}
+
+function KpiStatCard({ label, value, tone, sub, showSign = false, idx = 0, dragHandle }: {
   label: string; value: number; tone: KpiTone; sub: string; showSign?: boolean; idx?: number;
+  dragHandle?: DragHandle;
 }) {
   const animated   = useCountUp(Math.abs(value), 1100, 100 + idx * 80);
   const isNeg      = value < 0;
@@ -259,12 +298,24 @@ function KpiStatCard({ label, value, tone, sub, showSign = false, idx = 0 }: {
     >
       {/* top row: label + icon */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <span style={{
-          fontSize: 10, fontWeight: 700, letterSpacing: ".1em",
-          textTransform: "uppercase", color: "oklch(0.55 0.018 265)",
-        }}>
-          {label}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {dragHandle && (
+            <span
+              {...dragHandle.attributes}
+              {...dragHandle.listeners}
+              className="touch-none"
+              style={{ display: "flex", color: "oklch(0.45 0.018 265)", cursor: "grab" }}
+            >
+              <GripVertical size={12} />
+            </span>
+          )}
+          <span style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: ".1em",
+            textTransform: "uppercase", color: "oklch(0.55 0.018 265)",
+          }}>
+            {label}
+          </span>
+        </div>
         <div style={{
           width: 30, height: 30, borderRadius: 8,
           background: soft, color,
@@ -301,6 +352,42 @@ function KpiStatCard({ label, value, tone, sub, showSign = false, idx = 0 }: {
     </div>
   );
 }
+
+// ── Sortable wrapper (drag & drop reordering) ─────────────────────────────────
+
+function SortableItem({ id, children }: {
+  id: string;
+  children: (handle: DragHandle) => React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+        zIndex: isDragging ? 10 : "auto",
+        position: "relative",
+      }}
+    >
+      {children({ attributes, listeners })}
+    </div>
+  );
+}
+
+// ── KPI definitions (id, metadata) ────────────────────────────────────────────
+
+const KPI_ORDER_KEY = "transformadores_kpi_order";
+
+const KPI_DEFS: { id: string; label: string; tone: KpiTone; sub: string; showSign?: boolean }[] = [
+  { id: "bruto",      label: "Stock Bruto",            tone: "neutral", sub: "Inventario total registrado" },
+  { id: "pendientes", label: "Pendientes de Retiro",   tone: "warn",    sub: "En cola de retiro" },
+  { id: "neto",       label: "Stock Neto",             tone: "pos",     sub: "Disponible neto" },
+  { id: "variacion",  label: "Variación Neta Mensual", tone: "delta",   sub: "vs. planilla anterior", showSign: true },
+];
+
+const DEFAULT_KPI_ORDER = KPI_DEFS.map(k => k.id);
 
 // ── Animated pie slice on hover ───────────────────────────────────────────────
 
@@ -363,6 +450,19 @@ export function TransformadoresResumenSection() {
 
   const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null);
   const [visibleLines, setVisibleLines] = useState<Set<string>>(new Set(["neto", "neto13", "neto33"]));
+
+  // KPI drag & drop order
+  const [kpiOrder, setKpiOrder] = useOrder(KPI_ORDER_KEY, DEFAULT_KPI_ORDER);
+  const kpiSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const handleKpiDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setKpiOrder(prev => {
+      const oldIndex = prev.indexOf(String(active.id));
+      const newIndex = prev.indexOf(String(over.id));
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+  }, [setKpiOrder]);
 
   // Filters
   const [filterAno,      setFilterAno]      = useState("");
@@ -640,6 +740,14 @@ export function TransformadoresResumenSection() {
   const availableYears = [...new Set(planillas.map(p => p.fecha.slice(0, 4)))].sort((a, b) => b.localeCompare(a));
   const availableZonas = [...new Set(planillas.map(p => p.datos.deposito ?? "").filter(Boolean))].sort();
 
+  // KPI values keyed by id (for drag & drop ordering)
+  const kpiValues: Record<string, number> = {
+    bruto: stockBruto,
+    pendientes,
+    neto: stockNeto,
+    variacion,
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24 text-muted-foreground">
@@ -652,19 +760,69 @@ export function TransformadoresResumenSection() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">Resumen del inventario de transformadores</p>
-        <button
-          onClick={fetchData}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Actualizar
-        </button>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3">
+          <div
+            className="grid place-items-center mt-0.5"
+            style={{
+              width: 36, height: 36, borderRadius: 9,
+              background: "oklch(0.30 0.10 155 / 0.45)",
+              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
+              color: "#86efac",
+            }}
+          >
+            <LayoutGrid className="w-[18px] h-[18px]" strokeWidth={2} />
+          </div>
+          <div>
+            <h2 className="text-[22px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.4, margin: 0 }}>
+              Resumen de Transformadores
+            </h2>
+            <p className="mt-1 text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
+              Resumen del inventario de transformadores
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 mt-0.5">
+          <button
+            onClick={fetchData}
+            disabled={loading}
+            className="flex items-center justify-center w-8 h-8 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors disabled:opacity-40"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+          </button>
+        </div>
       </div>
 
-      {/* ── Filters + Reserve KPIs ── */}
-      <div className="bg-card border border-border rounded-xl p-4 shadow-sm space-y-4">
+      {/* ── Filtros y Stock de Reserva ── */}
+      <div
+        className="px-4 py-6 sm:px-6 overflow-hidden"
+        style={{
+          background: "oklch(0.235 0.005 270)",
+          border: "1px solid oklch(1 0 0 / 0.07)",
+          borderRadius: 14,
+        }}
+      >
+        <div className="flex items-center gap-3 mb-2">
+          <div
+            className="grid place-items-center"
+            style={{
+              width: 30, height: 30, borderRadius: 8,
+              background: "oklch(0.30 0.10 155 / 0.45)",
+              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
+              color: "#86efac",
+            }}
+          >
+            <Package className="w-4 h-4" strokeWidth={2} />
+          </div>
+          <h2 className="text-[20px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.3, margin: 0 }}>
+            Stock de Reserva
+          </h2>
+        </div>
+        <p className="ml-[42px] mb-7 text-[14.5px]" style={{ color: "oklch(0.58 0 0)" }}>
+          Filtrá por año, mes, potencia, relación, fases o zona para ver los indicadores actuales.
+        </p>
+
+        <div className="space-y-4">
 
         {/* Filters row */}
         <div className="flex flex-wrap items-center gap-2">
@@ -807,44 +965,39 @@ export function TransformadoresResumenSection() {
           </div>
         </div>
 
-        {/* 4 KPI cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <KpiStatCard
-            label="Stock Bruto"
-            value={stockBruto}
-            tone="neutral"
-            sub="Inventario total registrado"
-            idx={0}
-          />
-          <KpiStatCard
-            label="Pendientes de Retiro"
-            value={pendientes}
-            tone="warn"
-            sub="En cola de retiro"
-            idx={1}
-          />
-          <KpiStatCard
-            label="Stock Neto"
-            value={stockNeto}
-            tone="pos"
-            sub="Disponible neto"
-            idx={2}
-          />
-          <KpiStatCard
-            label="Variación Neta Mensual"
-            value={variacion}
-            tone="delta"
-            sub="vs. planilla anterior"
-            showSign
-            idx={3}
-          />
-        </div>
+        {/* 4 KPI cards — drag & drop reordering */}
+        <DndContext sensors={kpiSensors} collisionDetection={closestCenter} onDragEnd={handleKpiDragEnd}>
+          <SortableContext items={kpiOrder} strategy={rectSortingStrategy}>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {kpiOrder.map((id, idx) => {
+                const def = KPI_DEFS.find(k => k.id === id);
+                if (!def) return null;
+                return (
+                  <SortableItem key={id} id={id}>
+                    {handle => (
+                      <KpiStatCard
+                        label={def.label}
+                        value={kpiValues[id] ?? 0}
+                        tone={def.tone}
+                        sub={def.sub}
+                        showSign={def.showSign}
+                        idx={idx}
+                        dragHandle={handle}
+                      />
+                    )}
+                  </SortableItem>
+                );
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
 
         {currentLabel && (
           <p className="text-[11px] text-slate-500 text-right">
             Planilla: {currentLabel}
           </p>
         )}
+        </div>
       </div>
 
       {/* ── Gráfico de Variación Neta ── */}
