@@ -10,13 +10,15 @@ import {
 import {
   CheckCircle2, RefreshCw, Loader2, ChevronDown,
   Bell, BellRing, Plus, Trash2, X, Package, TrendingUp, TrendingDown, Clock,
-  LayoutGrid, GripVertical,
+  LayoutGrid, GripVertical, GripHorizontal,
 } from "lucide-react";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent, type DraggableAttributes, type DraggableSyntheticListeners,
 } from "@dnd-kit/core";
-import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 const POT_13 = [5,10,16,25,50,63,80,100,125,160,200,250,315,500,630,800,1000];
@@ -389,6 +391,40 @@ const KPI_DEFS: { id: string; label: string; tone: KpiTone; sub: string; showSig
 
 const DEFAULT_KPI_ORDER = KPI_DEFS.map(k => k.id);
 
+// ── Chart block definitions (drag & drop order) ───────────────────────────────
+
+const BLOCK_ORDER_KEY = "transformadores_block_order";
+
+const DEFAULT_BLOCK_ORDER = ["variacion", "evolucion", "distribucion", "stockKva", "ultimaPlanilla"];
+
+function SortableBlock({ id, children }: { id: string; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+        zIndex: isDragging ? 10 : "auto",
+        position: "relative",
+      }}
+    >
+      <div className="flex justify-center mb-1.5">
+        <span
+          {...attributes}
+          {...listeners}
+          className="touch-none flex items-center justify-center w-10 h-4 rounded-full"
+          style={{ cursor: "grab", color: "oklch(0.45 0.018 265)", background: "oklch(0.235 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}
+        >
+          <GripHorizontal size={12} />
+        </span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 // ── Animated pie slice on hover ───────────────────────────────────────────────
 
 function renderActiveSlice(props: {
@@ -500,6 +536,19 @@ export function TransformadoresResumenSection() {
       return arrayMove(prev, oldIndex, newIndex);
     });
   }, [setKpiOrder]);
+
+  // Chart block drag & drop order
+  const [blockOrder, setBlockOrder] = useOrder(BLOCK_ORDER_KEY, DEFAULT_BLOCK_ORDER);
+  const blockSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const handleBlockDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setBlockOrder(prev => {
+      const oldIndex = prev.indexOf(String(active.id));
+      const newIndex = prev.indexOf(String(over.id));
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+  }, [setBlockOrder]);
 
   // Filters
   const [filterAno,      setFilterAno]      = useState("");
@@ -794,6 +843,394 @@ export function TransformadoresResumenSection() {
     );
   }
 
+  // ── Reorderable chart blocks ──────────────────────────────────────────────
+  const blockContent: Record<string, React.ReactNode> = {
+    variacion: (
+      <div className="space-y-6">
+        <ChartPanel title="Gráfico de Variación Neta" subtitle="Stock neto en comparación con el mes anterior">
+          {variacionData.length < 2 ? (
+            <p className="text-sm text-muted-foreground">Se necesitan al menos 2 planillas para calcular la variación.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={variacionData} margin={{ top: 28, right: 16, left: 0, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} label={{ value: "Variación neta", angle: -90, position: "insideLeft", offset: 10, style: { fontSize: 11, fill: "#64748b" } }} />
+                <Tooltip
+                  cursor={false}
+                  contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+                  labelStyle={{ color: "#94a3b8" }}
+                  itemStyle={{ color: "#f1f5f9" }}
+                  formatter={(v: number) => [v, "Variación"]}
+                />
+                <Bar
+                  dataKey="variacion"
+                  radius={[3, 3, 0, 0]}
+                  maxBarSize={48}
+                  activeBar={false}
+                  onMouseEnter={(_: unknown, index: number) => setActiveBarIndex(index)}
+                  onMouseLeave={() => setActiveBarIndex(null)}
+                >
+                  <LabelList dataKey="variacion" content={VariacionLabel} />
+                  {variacionData.map((d, i) => {
+                    const baseColor = d.variacion >= 0 ? "#16a34a" : "#dc2626";
+                    const isActive  = activeBarIndex === i;
+                    const isDimmed  = activeBarIndex !== null && !isActive;
+                    return (
+                      <Cell
+                        key={i}
+                        fill={baseColor}
+                        fillOpacity={isDimmed ? 0.35 : 1}
+                        style={isActive ? { filter: "brightness(1.45)" } : undefined}
+                      />
+                    );
+                  })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartPanel>
+
+        {variacionData.length > 0 && (
+          <details className="shadow-sm" style={PANEL_STYLE}>
+            <summary className="px-5 py-3 text-xs font-semibold text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">
+              Ver detalle del cálculo
+            </summary>
+            <div className="overflow-x-auto px-5 pb-4">
+              <table className="w-full text-xs mt-2">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="pb-2 text-left font-medium">Mes</th>
+                    <th className="pb-2 text-right font-medium">Stock Bruto</th>
+                    <th className="pb-2 text-right font-medium">Autorizados</th>
+                    <th className="pb-2 text-right font-medium">Stock Neto</th>
+                    <th className="pb-2 text-right font-medium">Variación</th>
+                    <th className="pb-2 text-left font-medium pl-4">Zonas incluidas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {variacionData.map((d, i) => (
+                    <tr key={i} className="border-b border-border/50 last:border-0">
+                      <td className="py-1.5 text-foreground font-medium">{d.mes}</td>
+                      <td className="py-1.5 text-right text-foreground">{d.bruto}</td>
+                      <td className="py-1.5 text-right text-amber-400">{d.auto}</td>
+                      <td className="py-1.5 text-right text-foreground">{d.neto}</td>
+                      <td className={`py-1.5 text-right font-semibold ${d.variacion > 0 ? "text-green-400" : d.variacion < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                        {i === 0 ? "—" : d.variacion > 0 ? `+${d.variacion}` : d.variacion}
+                      </td>
+                      <td className="py-1.5 text-muted-foreground pl-4">{d.zonas}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        )}
+      </div>
+    ),
+
+    evolucion: (
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <ChartPanel title="Evolución Mensual — 13,2 / 0,4 kV" subtitle="Stock neto al cierre de cada mes">
+          {variacionData.length < 2 ? (
+            <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+                  labelStyle={{ color: "#94a3b8" }}
+                  itemStyle={{ color: "#f1f5f9" }}
+                />
+                <Line type="monotone" dataKey="neto13" name="13,2 / 0,4 kV" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </ChartPanel>
+
+        <ChartPanel title="Evolución Mensual — 33 / 0,4 kV" subtitle="Stock neto al cierre de cada mes">
+          {variacionData.length < 2 ? (
+            <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+                  labelStyle={{ color: "#94a3b8" }}
+                  itemStyle={{ color: "#f1f5f9" }}
+                />
+                <Line type="monotone" dataKey="neto33" name="33 / 0,4 kV" stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </ChartPanel>
+      </div>
+    ),
+
+    distribucion: (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <ChartPanel title="Stock por Zona" subtitle="Distribución actual entre depósitos">
+          {zonaPieData.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sin datos.</p>
+          ) : (
+            <HoverPie
+              data={zonaPieData}
+              colors={["#6366f1","#38bdf8","#a78bfa","#34d399"]}
+              formatter={(v: number, n: string) => [v, n]}
+            />
+          )}
+        </ChartPanel>
+
+        <ChartPanel title="Nuevos vs Reparados — 13,2 kV" subtitle="Nuevos / terceros vs reparados por taller">
+          {tercerosVsTaller13.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sin datos.</p>
+          ) : (
+            <HoverPie data={tercerosVsTaller13} colors={["#38bdf8","#f59e0b"]} />
+          )}
+        </ChartPanel>
+
+        <ChartPanel title="Nuevos vs Reparados — 33 kV" subtitle="Composición del stock 33 / 0,4 kV">
+          {nuevosVsReparados33.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sin datos.</p>
+          ) : (
+            <HoverPie data={nuevosVsReparados33} colors={["#34d399","#f59e0b"]} />
+          )}
+        </ChartPanel>
+      </div>
+    ),
+
+    stockKva: (
+      <ChartPanel title="Stock Disponible por KVA" subtitle="Unidades libres (sin comprometer) — planilla actual">
+        {stockPorKva.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Sin datos para la selección actual.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={Math.max(180, stockPorKva.length * 36)}>
+            <BarChart
+              data={stockPorKva}
+              layout="vertical"
+              margin={{ top: 0, right: 48, left: 0, bottom: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
+              <XAxis
+                type="number"
+                tick={{ fontSize: 11, fill: "#94a3b8" }}
+                axisLine={false}
+                tickLine={false}
+                allowDecimals={false}
+              />
+              <YAxis
+                type="category"
+                dataKey="label"
+                width={110}
+                tick={{ fontSize: 11, fill: "#94a3b8" }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <Tooltip
+                cursor={{ fill: "#1e293b" }}
+                contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+                labelStyle={{ color: "#94a3b8" }}
+                itemStyle={{ color: "#f1f5f9" }}
+                formatter={(v: number) => [v, "Disponibles"]}
+              />
+              <Bar dataKey="disponible" radius={[0, 4, 4, 0]} maxBarSize={26}>
+                {stockPorKva.map((d, i) => (
+                  <Cell
+                    key={i}
+                    fill={d.disponible <= 0 ? "#ef4444" : d.disponible <= 3 ? "#f59e0b" : "#3b82f6"}
+                  />
+                ))}
+                <LabelList
+                  dataKey="disponible"
+                  position="right"
+                  style={{ fontSize: 11, fill: "#94a3b8" }}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </ChartPanel>
+    ),
+
+    ultimaPlanilla: planillasActuales.length === 0 ? null : (
+      <div className="space-y-6">
+        {planillasActuales.map(planilla => {
+          const KVA_ROWS = POT_13;
+          const REL33_ROWS = POT_33;
+          const totTerceros = KVA_ROWS.reduce((s, k) => {
+            const c = planilla.datos.terceros?.[String(k)];
+            return s + (c ? c.t + c.m + c.ct : 0);
+          }, 0);
+          const totTaller = KVA_ROWS.reduce((s, k) => {
+            const c = planilla.datos.taller?.[String(k)];
+            return s + (c ? c.t + c.m + c.ct : 0);
+          }, 0);
+          const totAuto = KVA_ROWS.reduce((s, k) => s + (planilla.datos.autorizados?.[String(k)] ?? 0), 0);
+          const totGeneral = s13(planilla) + s33(planilla);
+          const totDisp = totGeneral - totAuto;
+          return (
+            <div key={planilla.id} className="overflow-hidden shadow-sm" style={PANEL_STYLE}>
+              <div className="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-foreground">
+                    Última Planilla — {planilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
+                    {planilla.datos.deposito && <span className="text-slate-400 font-normal"> — {planilla.datos.deposito}</span>}
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    <span className="font-semibold text-blue-400">{totGeneral}</span> total ·{" "}
+                    <span className="font-semibold text-green-400">{totDisp}</span> disponibles ·{" "}
+                    <span className="font-semibold text-cyan-400">{totTerceros}</span> terceros ·{" "}
+                    <span className="font-semibold text-amber-400">{totTaller}</span> taller
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-x divide-slate-700">
+                {/* Terceros */}
+                <div className="overflow-x-auto">
+                  <div className="px-4 py-2 bg-blue-600/10 text-xs font-semibold text-blue-300 uppercase tracking-wide border-b border-slate-700">
+                    Nuevos y Reparados por Terceros
+                  </div>
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-700/40 border-b border-slate-700">
+                      <tr>
+                        <th className="px-3 py-2 text-center text-slate-300">KVA</th>
+                        <th className="px-3 py-2 text-center text-slate-300">T</th>
+                        <th className="px-3 py-2 text-center text-slate-300">M</th>
+                        <th className="px-3 py-2 text-center text-slate-300">C/T</th>
+                        <th className="px-3 py-2 text-center text-slate-300">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {KVA_ROWS.map(k => {
+                        const c = planilla.datos.terceros?.[String(k)] ?? { t: 0, m: 0, ct: 0 };
+                        const tot = c.t + c.m + c.ct;
+                        return (
+                          <tr key={k} className="border-b border-slate-700/50 last:border-0">
+                            <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
+                            <td className="px-3 py-1.5 text-center text-slate-300">{c.t || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-slate-300">{c.m || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-slate-300">{c.ct || "—"}</td>
+                            <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Taller */}
+                <div className="overflow-x-auto">
+                  <div className="px-4 py-2 bg-amber-600/10 text-xs font-semibold text-amber-300 uppercase tracking-wide border-b border-slate-700">
+                    Reparados por Taller
+                  </div>
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-700/40 border-b border-slate-700">
+                      <tr>
+                        <th className="px-3 py-2 text-center text-slate-300">KVA</th>
+                        <th className="px-3 py-2 text-center text-slate-300">T</th>
+                        <th className="px-3 py-2 text-center text-slate-300">M</th>
+                        <th className="px-3 py-2 text-center text-slate-300">C/T</th>
+                        <th className="px-3 py-2 text-center text-slate-300">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {KVA_ROWS.map(k => {
+                        const c = planilla.datos.taller?.[String(k)] ?? { t: 0, m: 0, ct: 0 };
+                        const tot = c.t + c.m + c.ct;
+                        return (
+                          <tr key={k} className="border-b border-slate-700/50 last:border-0">
+                            <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
+                            <td className="px-3 py-1.5 text-center text-slate-300">{c.t || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-slate-300">{c.m || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-slate-300">{c.ct || "—"}</td>
+                            <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              {/* Totales + Relación 33 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-x divide-slate-700 border-t border-slate-700">
+                {/* Totales 13.2 */}
+                <div className="overflow-x-auto">
+                  <div className="px-4 py-2 bg-green-600/10 text-xs font-semibold text-green-300 uppercase tracking-wide border-b border-slate-700">
+                    Total de Transformadores 13,2 kV
+                  </div>
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-700/40 border-b border-slate-700">
+                      <tr>
+                        <th className="px-3 py-2 text-center text-slate-300">KVA</th>
+                        <th className="px-3 py-2 text-center text-slate-300">Total</th>
+                        <th className="px-3 py-2 text-center text-slate-300">Autorizados</th>
+                        <th className="px-3 py-2 text-center text-slate-300">Disponibles</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {KVA_ROWS.map(k => {
+                        const tot  = planilla.datos.totales?.[String(k)] ?? 0;
+                        const auto = planilla.datos.autorizados?.[String(k)] ?? 0;
+                        const disp = tot - auto;
+                        return (
+                          <tr key={k} className="border-b border-slate-700/50 last:border-0">
+                            <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
+                            <td className="px-3 py-1.5 text-center text-foreground">{tot || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-amber-400">{auto || "—"}</td>
+                            <td className={`px-3 py-1.5 text-center font-semibold ${disp < 0 ? "text-red-400" : "text-green-400"}`}>{disp}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Relación 33 */}
+                <div className="overflow-x-auto">
+                  <div className="px-4 py-2 bg-purple-600/10 text-xs font-semibold text-purple-300 uppercase tracking-wide border-b border-slate-700">
+                    Relación 33 / 0,4 kV
+                  </div>
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-700/40 border-b border-slate-700">
+                      <tr>
+                        <th className="px-3 py-2 text-center text-slate-300">KVA</th>
+                        <th className="px-3 py-2 text-center text-slate-300">T Nuevo</th>
+                        <th className="px-3 py-2 text-center text-slate-300">M Nuevo</th>
+                        <th className="px-3 py-2 text-center text-slate-300">T Rep.</th>
+                        <th className="px-3 py-2 text-center text-slate-300">M Rep.</th>
+                        <th className="px-3 py-2 text-center text-slate-300">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {REL33_ROWS.map(k => {
+                        const r = planilla.datos.rel33?.[String(k)] ?? { tN: 0, mN: 0, tR: 0, mR: 0 };
+                        const tot = r.tN + r.mN + r.tR + r.mR;
+                        return (
+                          <tr key={k} className="border-b border-slate-700/50 last:border-0">
+                            <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
+                            <td className="px-3 py-1.5 text-center text-slate-300">{r.tN || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-slate-300">{r.mN || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-slate-300">{r.tR || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-slate-300">{r.mR || "—"}</td>
+                            <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot || "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    ),
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -1037,393 +1474,22 @@ export function TransformadoresResumenSection() {
         </div>
       </div>
 
-      {/* ── Gráfico de Variación Neta ── */}
-      <ChartPanel title="Gráfico de Variación Neta" subtitle="Stock neto en comparación con el mes anterior">
-        {variacionData.length < 2 ? (
-          <p className="text-sm text-muted-foreground">Se necesitan al menos 2 planillas para calcular la variación.</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={variacionData} margin={{ top: 28, right: 16, left: 0, bottom: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-              <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} label={{ value: "Variación neta", angle: -90, position: "insideLeft", offset: 10, style: { fontSize: 11, fill: "#64748b" } }} />
-              <Tooltip
-                cursor={false}
-                contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-                labelStyle={{ color: "#94a3b8" }}
-                itemStyle={{ color: "#f1f5f9" }}
-                formatter={(v: number) => [v, "Variación"]}
-              />
-              <Bar
-                dataKey="variacion"
-                radius={[3, 3, 0, 0]}
-                maxBarSize={48}
-                activeBar={false}
-                onMouseEnter={(_: unknown, index: number) => setActiveBarIndex(index)}
-                onMouseLeave={() => setActiveBarIndex(null)}
-              >
-                <LabelList dataKey="variacion" content={VariacionLabel} />
-                {variacionData.map((d, i) => {
-                  const baseColor = d.variacion >= 0 ? "#16a34a" : "#dc2626";
-                  const isActive  = activeBarIndex === i;
-                  const isDimmed  = activeBarIndex !== null && !isActive;
-                  return (
-                    <Cell
-                      key={i}
-                      fill={baseColor}
-                      fillOpacity={isDimmed ? 0.35 : 1}
-                      style={isActive ? { filter: "brightness(1.45)" } : undefined}
-                    />
-                  );
-                })}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </ChartPanel>
-
-      {/* ── Tabla de verificación ── */}
-      {variacionData.length > 0 && (
-        <details className="shadow-sm" style={PANEL_STYLE}>
-          <summary className="px-5 py-3 text-xs font-semibold text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">
-            Ver detalle del cálculo
-          </summary>
-          <div className="overflow-x-auto px-5 pb-4">
-            <table className="w-full text-xs mt-2">
-              <thead>
-                <tr className="border-b border-border text-muted-foreground">
-                  <th className="pb-2 text-left font-medium">Mes</th>
-                  <th className="pb-2 text-right font-medium">Stock Bruto</th>
-                  <th className="pb-2 text-right font-medium">Autorizados</th>
-                  <th className="pb-2 text-right font-medium">Stock Neto</th>
-                  <th className="pb-2 text-right font-medium">Variación</th>
-                  <th className="pb-2 text-left font-medium pl-4">Zonas incluidas</th>
-                </tr>
-              </thead>
-              <tbody>
-                {variacionData.map((d, i) => (
-                  <tr key={i} className="border-b border-border/50 last:border-0">
-                    <td className="py-1.5 text-foreground font-medium">{d.mes}</td>
-                    <td className="py-1.5 text-right text-foreground">{d.bruto}</td>
-                    <td className="py-1.5 text-right text-amber-400">{d.auto}</td>
-                    <td className="py-1.5 text-right text-foreground">{d.neto}</td>
-                    <td className={`py-1.5 text-right font-semibold ${d.variacion > 0 ? "text-green-400" : d.variacion < 0 ? "text-red-400" : "text-muted-foreground"}`}>
-                      {i === 0 ? "—" : d.variacion > 0 ? `+${d.variacion}` : d.variacion}
-                    </td>
-                    <td className="py-1.5 text-muted-foreground pl-4">{d.zonas}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* ── Bloques de gráficos (reordenables) ── */}
+      <DndContext sensors={blockSensors} collisionDetection={closestCenter} onDragEnd={handleBlockDragEnd}>
+        <SortableContext items={blockOrder} strategy={verticalListSortingStrategy}>
+          <div className="space-y-6">
+            {blockOrder.map(id => {
+              const content = blockContent[id];
+              if (!content) return null;
+              return (
+                <SortableBlock key={id} id={id}>
+                  {content}
+                </SortableBlock>
+              );
+            })}
           </div>
-        </details>
-      )}
-
-      {/* ── Evolución de Stock por Tensión (dos gráficos) ── */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {/* Total vs 13,2 / 0,4 kV */}
-        <ChartPanel title="Evolución — Total vs 13,2 / 0,4 kV" subtitle="Stock neto al cierre de cada mes">
-          {variacionData.length < 2 ? (
-            <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-                  labelStyle={{ color: "#94a3b8" }}
-                  itemStyle={{ color: "#f1f5f9" }}
-                />
-                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-                <Line type="monotone" dataKey="neto"   name="Total"         stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                <Line type="monotone" dataKey="neto13" name="13,2 / 0,4 kV" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </ChartPanel>
-
-        {/* Total vs 33 / 0,4 kV */}
-        <ChartPanel title="Evolución — Total vs 33 / 0,4 kV" subtitle="Stock neto al cierre de cada mes">
-          {variacionData.length < 2 ? (
-            <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-                  labelStyle={{ color: "#94a3b8" }}
-                  itemStyle={{ color: "#f1f5f9" }}
-                />
-                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-                <Line type="monotone" dataKey="neto"   name="Total"       stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                <Line type="monotone" dataKey="neto33" name="33 / 0,4 kV" stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </ChartPanel>
-      </div>
-
-      {/* ── Pie charts ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-        {/* Zonas */}
-        <ChartPanel title="Stock por Zona" subtitle="Distribución actual entre depósitos">
-          {zonaPieData.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Sin datos.</p>
-          ) : (
-            <HoverPie
-              data={zonaPieData}
-              colors={["#6366f1","#38bdf8","#a78bfa","#34d399"]}
-              formatter={(v: number, n: string) => [v, n]}
-            />
-          )}
-        </ChartPanel>
-
-        {/* Terceros vs Taller — 13.2 kV */}
-        <ChartPanel title="Nuevos vs Reparados — 13,2 kV" subtitle="Nuevos / terceros vs reparados por taller">
-          {tercerosVsTaller13.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Sin datos.</p>
-          ) : (
-            <HoverPie data={tercerosVsTaller13} colors={["#38bdf8","#f59e0b"]} />
-          )}
-        </ChartPanel>
-
-        {/* Nuevos vs Reparados — 33 kV */}
-        <ChartPanel title="Nuevos vs Reparados — 33 kV" subtitle="Composición del stock 33 / 0,4 kV">
-          {nuevosVsReparados33.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Sin datos.</p>
-          ) : (
-            <HoverPie data={nuevosVsReparados33} colors={["#34d399","#f59e0b"]} />
-          )}
-        </ChartPanel>
-
-      </div>
-
-      {/* ── Stock Disponible por KVA ── */}
-      <ChartPanel title="Stock Disponible por KVA" subtitle="Unidades libres (sin comprometer) — planilla actual">
-        {stockPorKva.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Sin datos para la selección actual.</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={Math.max(180, stockPorKva.length * 36)}>
-            <BarChart
-              data={stockPorKva}
-              layout="vertical"
-              margin={{ top: 0, right: 48, left: 0, bottom: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
-              <XAxis
-                type="number"
-                tick={{ fontSize: 11, fill: "#94a3b8" }}
-                axisLine={false}
-                tickLine={false}
-                allowDecimals={false}
-              />
-              <YAxis
-                type="category"
-                dataKey="label"
-                width={110}
-                tick={{ fontSize: 11, fill: "#94a3b8" }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <Tooltip
-                cursor={{ fill: "#1e293b" }}
-                contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-                labelStyle={{ color: "#94a3b8" }}
-                itemStyle={{ color: "#f1f5f9" }}
-                formatter={(v: number) => [v, "Disponibles"]}
-              />
-              <Bar dataKey="disponible" radius={[0, 4, 4, 0]} maxBarSize={26}>
-                {stockPorKva.map((d, i) => (
-                  <Cell
-                    key={i}
-                    fill={d.disponible <= 0 ? "#ef4444" : d.disponible <= 3 ? "#f59e0b" : "#3b82f6"}
-                  />
-                ))}
-                <LabelList
-                  dataKey="disponible"
-                  position="right"
-                  style={{ fontSize: 11, fill: "#94a3b8" }}
-                />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </ChartPanel>
-
-      {/* ── Última planilla cargada ── */}
-      {planillasActuales.length > 0 && planillasActuales.map(planilla => {
-        const KVA_ROWS = POT_13;
-        const REL33_ROWS = POT_33;
-        const totTerceros = KVA_ROWS.reduce((s, k) => {
-          const c = planilla.datos.terceros?.[String(k)];
-          return s + (c ? c.t + c.m + c.ct : 0);
-        }, 0);
-        const totTaller = KVA_ROWS.reduce((s, k) => {
-          const c = planilla.datos.taller?.[String(k)];
-          return s + (c ? c.t + c.m + c.ct : 0);
-        }, 0);
-        const totAuto = KVA_ROWS.reduce((s, k) => s + (planilla.datos.autorizados?.[String(k)] ?? 0), 0);
-        const totGeneral = s13(planilla) + s33(planilla);
-        const totDisp = totGeneral - totAuto;
-        return (
-          <div key={planilla.id} className="overflow-hidden shadow-sm" style={PANEL_STYLE}>
-            <div className="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-bold text-foreground">
-                  Última Planilla — {planilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
-                  {planilla.datos.deposito && <span className="text-slate-400 font-normal"> — {planilla.datos.deposito}</span>}
-                </h3>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  <span className="font-semibold text-blue-400">{totGeneral}</span> total ·{" "}
-                  <span className="font-semibold text-green-400">{totDisp}</span> disponibles ·{" "}
-                  <span className="font-semibold text-cyan-400">{totTerceros}</span> terceros ·{" "}
-                  <span className="font-semibold text-amber-400">{totTaller}</span> taller
-                </p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-x divide-slate-700">
-              {/* Terceros */}
-              <div className="overflow-x-auto">
-                <div className="px-4 py-2 bg-blue-600/10 text-xs font-semibold text-blue-300 uppercase tracking-wide border-b border-slate-700">
-                  Nuevos y Reparados por Terceros
-                </div>
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-700/40 border-b border-slate-700">
-                    <tr>
-                      <th className="px-3 py-2 text-center text-slate-300">KVA</th>
-                      <th className="px-3 py-2 text-center text-slate-300">T</th>
-                      <th className="px-3 py-2 text-center text-slate-300">M</th>
-                      <th className="px-3 py-2 text-center text-slate-300">C/T</th>
-                      <th className="px-3 py-2 text-center text-slate-300">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {KVA_ROWS.map(k => {
-                      const c = planilla.datos.terceros?.[String(k)] ?? { t: 0, m: 0, ct: 0 };
-                      const tot = c.t + c.m + c.ct;
-                      return (
-                        <tr key={k} className="border-b border-slate-700/50 last:border-0">
-                          <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
-                          <td className="px-3 py-1.5 text-center text-slate-300">{c.t || "—"}</td>
-                          <td className="px-3 py-1.5 text-center text-slate-300">{c.m || "—"}</td>
-                          <td className="px-3 py-1.5 text-center text-slate-300">{c.ct || "—"}</td>
-                          <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {/* Taller */}
-              <div className="overflow-x-auto">
-                <div className="px-4 py-2 bg-amber-600/10 text-xs font-semibold text-amber-300 uppercase tracking-wide border-b border-slate-700">
-                  Reparados por Taller
-                </div>
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-700/40 border-b border-slate-700">
-                    <tr>
-                      <th className="px-3 py-2 text-center text-slate-300">KVA</th>
-                      <th className="px-3 py-2 text-center text-slate-300">T</th>
-                      <th className="px-3 py-2 text-center text-slate-300">M</th>
-                      <th className="px-3 py-2 text-center text-slate-300">C/T</th>
-                      <th className="px-3 py-2 text-center text-slate-300">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {KVA_ROWS.map(k => {
-                      const c = planilla.datos.taller?.[String(k)] ?? { t: 0, m: 0, ct: 0 };
-                      const tot = c.t + c.m + c.ct;
-                      return (
-                        <tr key={k} className="border-b border-slate-700/50 last:border-0">
-                          <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
-                          <td className="px-3 py-1.5 text-center text-slate-300">{c.t || "—"}</td>
-                          <td className="px-3 py-1.5 text-center text-slate-300">{c.m || "—"}</td>
-                          <td className="px-3 py-1.5 text-center text-slate-300">{c.ct || "—"}</td>
-                          <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            {/* Totales + Relación 33 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-x divide-slate-700 border-t border-slate-700">
-              {/* Totales 13.2 */}
-              <div className="overflow-x-auto">
-                <div className="px-4 py-2 bg-green-600/10 text-xs font-semibold text-green-300 uppercase tracking-wide border-b border-slate-700">
-                  Total de Transformadores 13,2 kV
-                </div>
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-700/40 border-b border-slate-700">
-                    <tr>
-                      <th className="px-3 py-2 text-center text-slate-300">KVA</th>
-                      <th className="px-3 py-2 text-center text-slate-300">Total</th>
-                      <th className="px-3 py-2 text-center text-slate-300">Autorizados</th>
-                      <th className="px-3 py-2 text-center text-slate-300">Disponibles</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {KVA_ROWS.map(k => {
-                      const tot  = planilla.datos.totales?.[String(k)] ?? 0;
-                      const auto = planilla.datos.autorizados?.[String(k)] ?? 0;
-                      const disp = tot - auto;
-                      return (
-                        <tr key={k} className="border-b border-slate-700/50 last:border-0">
-                          <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
-                          <td className="px-3 py-1.5 text-center text-foreground">{tot || "—"}</td>
-                          <td className="px-3 py-1.5 text-center text-amber-400">{auto || "—"}</td>
-                          <td className={`px-3 py-1.5 text-center font-semibold ${disp < 0 ? "text-red-400" : "text-green-400"}`}>{disp}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {/* Relación 33 */}
-              <div className="overflow-x-auto">
-                <div className="px-4 py-2 bg-purple-600/10 text-xs font-semibold text-purple-300 uppercase tracking-wide border-b border-slate-700">
-                  Relación 33 / 0,4 kV
-                </div>
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-700/40 border-b border-slate-700">
-                    <tr>
-                      <th className="px-3 py-2 text-center text-slate-300">KVA</th>
-                      <th className="px-3 py-2 text-center text-slate-300">T Nuevo</th>
-                      <th className="px-3 py-2 text-center text-slate-300">M Nuevo</th>
-                      <th className="px-3 py-2 text-center text-slate-300">T Rep.</th>
-                      <th className="px-3 py-2 text-center text-slate-300">M Rep.</th>
-                      <th className="px-3 py-2 text-center text-slate-300">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {REL33_ROWS.map(k => {
-                      const r = planilla.datos.rel33?.[String(k)] ?? { tN: 0, mN: 0, tR: 0, mR: 0 };
-                      const tot = r.tN + r.mN + r.tR + r.mR;
-                      return (
-                        <tr key={k} className="border-b border-slate-700/50 last:border-0">
-                          <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
-                          <td className="px-3 py-1.5 text-center text-slate-300">{r.tN || "—"}</td>
-                          <td className="px-3 py-1.5 text-center text-slate-300">{r.mN || "—"}</td>
-                          <td className="px-3 py-1.5 text-center text-slate-300">{r.tR || "—"}</td>
-                          <td className="px-3 py-1.5 text-center text-slate-300">{r.mR || "—"}</td>
-                          <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot || "—"}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        );
-      })}
+        </SortableContext>
+      </DndContext>
     </div>
   );
 }
