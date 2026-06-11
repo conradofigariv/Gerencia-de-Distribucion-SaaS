@@ -8,8 +8,8 @@ import {
   ResponsiveContainer, PieChart, Pie, Legend, Sector,
 } from "recharts";
 import {
-  Zap, CheckCircle2, Wrench, XCircle, RefreshCw, Loader2, ChevronDown,
-  Bell, BellRing, Plus, Trash2, X, Package, Activity, TrendingUp, TrendingDown, Clock,
+  CheckCircle2, RefreshCw, Loader2, ChevronDown,
+  Bell, BellRing, Plus, Trash2, X, Package, TrendingUp, TrendingDown, Clock,
 } from "lucide-react";
 
 const POT_13 = [5,10,16,25,50,63,80,100,125,160,200,250,315,500,630,800,1000];
@@ -40,30 +40,6 @@ interface PlanillaReserva {
   fecha:  string;
   datos:  DatosPlanilla;
 }
-
-interface Transformador {
-  id:         string;
-  numero:     string;
-  tipo:       string | null;
-  potencia:   string | null;
-  tension:    string | null;
-  estado:     string | null;
-  ubicacion:  string | null;
-  imagen_url: string | null;
-}
-
-interface KpiCard {
-  label:   string;
-  value:   number;
-  color:   string;
-}
-
-const ESTADO_BADGE: Record<string, string> = {
-  "Disponible":    "bg-green-500/15 text-green-400",
-  "En servicio":   "bg-blue-500/15 text-blue-400",
-  "En reparación": "bg-amber-500/15 text-amber-400",
-  "Baja":          "bg-red-500/15 text-red-400",
-};
 
 function kvasFor(relacion: string, fases: string): number[] {
   let base = relacion === "33" ? POT_33 : POT_13;
@@ -226,96 +202,6 @@ function useCountUp(target: number, dur = 900, delay = 0) {
   return v;
 }
 
-function useEnter(dur = 600, delay = 0) {
-  const [p, setP] = useState(0);
-  useEffect(() => {
-    let raf: number;
-    let to: ReturnType<typeof setTimeout>;
-    to = setTimeout(() => {
-      const t0 = performance.now();
-      const step = (now: number) => {
-        const k = Math.min(1, (now - t0) / dur);
-        setP(k);
-        if (k < 1) raf = requestAnimationFrame(step);
-      };
-      raf = requestAnimationFrame(step);
-    }, delay);
-    return () => { clearTimeout(to); cancelAnimationFrame(raf); };
-  }, []);
-  return p;
-}
-
-function useInView(threshold = 0.15) {
-  const ref  = useRef<HTMLDivElement>(null);
-  const [seen, setSeen] = useState(false);
-  useEffect(() => {
-    if (!ref.current || seen) return;
-    const io = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) { setSeen(true); io.disconnect(); }
-    }, { threshold });
-    io.observe(ref.current);
-    return () => io.disconnect();
-  }, [seen, threshold]);
-  return [ref, seen] as const;
-}
-
-// ── PromedioRow ───────────────────────────────────────────────────────────────
-
-function PromedioRow({ label, sub, value, maxVal, hue, idx = 0 }: {
-  label: string; sub: string; value: number; maxVal: number; hue: number; idx?: number;
-}) {
-  const chip       = `oklch(0.72 0.16 ${hue})`;
-  const chipSoft   = `oklch(0.72 0.16 ${hue} / 0.16)`;
-  const chipBorder = `oklch(0.72 0.16 ${hue} / 0.22)`;
-  const animated   = useCountUp(value, 1100, 250 + idx * 120);
-  const barP       = useEnter(1000, 300 + idx * 120);
-  const pct        = Math.min(100, (value / (maxVal || 1)) * 100);
-
-  return (
-    <div style={{
-      display: "grid", gridTemplateColumns: "40px 1fr auto",
-      gap: 14, alignItems: "center",
-      padding: "12px 0",
-      borderBottom: "1px solid rgba(255,255,255,0.07)",
-    }}>
-      <div style={{
-        width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-        background: chipSoft, color: chip,
-        display: "grid", placeItems: "center",
-        border: `1px solid ${chipBorder}`,
-      }}>
-        <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
-          <path d="M9 1.5 3.5 9h3.5L6 14.5 12.5 7H9V1.5Z"
-            stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"
-            fill="currentColor" fillOpacity=".12" />
-        </svg>
-      </div>
-
-      <div style={{ minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "rgba(255,255,255,0.50)" }}>
-            {label}
-          </span>
-          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.30)" }}>· {sub}</span>
-        </div>
-        <div style={{ height: 4, background: "rgba(255,255,255,0.07)", borderRadius: 999, overflow: "hidden" }}>
-          <div style={{
-            width: `${pct * easeOutCubic(barP)}%`, height: "100%",
-            background: `linear-gradient(90deg, ${chip}, oklch(0.78 0.16 ${hue}))`,
-            borderRadius: 999,
-          }} />
-        </div>
-      </div>
-
-      <div style={{ textAlign: "right" }}>
-        <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-.02em", color: "#f1f5f9", fontVariantNumeric: "tabular-nums" }}>
-          {Math.round(animated)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── KpiStatCard ───────────────────────────────────────────────────────────────
 
 type KpiTone = "neutral" | "warn" | "pos" | "delta";
@@ -416,109 +302,6 @@ function KpiStatCard({ label, value, tone, sub, showSign = false, idx = 0 }: {
   );
 }
 
-// ── Gauge helpers ─────────────────────────────────────────────────────────────
-
-function polar(cx: number, cy: number, r: number, deg: number) {
-  const rad = (deg * Math.PI) / 180;
-  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
-}
-
-function arc(cx: number, cy: number, r: number, a1: number, a2: number) {
-  const s = polar(cx, cy, r, a1), e = polar(cx, cy, r, a2);
-  return `M ${s.x.toFixed(1)} ${s.y.toFixed(1)} A ${r} ${r} 0 ${a2 - a1 > 180 ? 1 : 0} 1 ${e.x.toFixed(1)} ${e.y.toFixed(1)}`;
-}
-
-function GaugeChart({ ratio }: { ratio: number }) {
-  const animated = useCountUp(ratio, 1400, 300);
-  const cx = 140, cy = 128, r = 95;
-  const startA = -210, endA = 30, sweep = endA - startA;
-  const MAX = 150;
-
-  const polarG = (angDeg: number, radius = r) => {
-    const a = (angDeg * Math.PI) / 180;
-    return [cx + radius * Math.cos(a), cy + radius * Math.sin(a)] as [number, number];
-  };
-  const arcG = (from: number, to: number, radius = r) => {
-    const [x1, y1] = polarG(from, radius);
-    const [x2, y2] = polarG(to, radius);
-    const large = Math.abs(to - from) > 180 ? 1 : 0;
-    return `M${x1},${y1} A${radius},${radius} 0 ${large} 1 ${x2},${y2}`;
-  };
-
-  const clampedRatio = Math.min(Math.max(animated, 0), MAX);
-  const valAngle     = startA + (clampedRatio / MAX) * sweep;
-
-  // Three zones: 0-60% of scale = red, 60-80% = warn, 80-100% = green (mapped to 0-150%)
-  const seg1 = [startA, startA + sweep * (90  / MAX)];
-  const seg2 = [seg1[1], startA + sweep * (100 / MAX)];
-  const seg3 = [seg2[1], endA];
-
-  const [nx, ny] = polarG(valAngle, r - 14);
-
-  const status = ratio < 90
-    ? { label: "CRÍTICO",  color: "oklch(0.68 0.19 25)" }
-    : ratio <= 100
-    ? { label: "ÓPTIMO",   color: "oklch(0.74 0.16 152)" }
-    : { label: "EXCESO",   color: "oklch(0.80 0.15 85)" };
-
-  return (
-    <svg viewBox="0 0 280 188" width="100%" style={{ display: "block", maxHeight: 220 }}>
-      {/* Track */}
-      <path d={arcG(startA, endA)} fill="none"
-        stroke="oklch(0.26 0.020 265)" strokeWidth="14" strokeLinecap="round" />
-      {/* Zones */}
-      <path d={arcG(seg1[0], seg1[1])} fill="none"
-        stroke="oklch(0.68 0.19 25)"  strokeWidth="14" strokeLinecap="round" opacity=".85" />
-      <path d={arcG(seg2[0], seg2[1])} fill="none"
-        stroke="oklch(0.74 0.16 152)" strokeWidth="14" opacity=".85" />
-      <path d={arcG(seg3[0], seg3[1])} fill="none"
-        stroke="oklch(0.80 0.15 85)"  strokeWidth="14" strokeLinecap="round" opacity=".85" />
-      {/* Tick marks */}
-      {Array.from({ length: 9 }).map((_, i) => {
-        const a  = startA + (i / 8) * sweep;
-        const [x1, y1] = polarG(a, r - 22);
-        const [x2, y2] = polarG(a, r - 28);
-        return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
-          stroke="oklch(0.45 0.020 265)" strokeWidth="1" />;
-      })}
-      {/* Needle */}
-      <path d={`M${cx},${cy} L${nx},${ny}`}
-        stroke="oklch(0.97 0.005 265)" strokeWidth="2.5" strokeLinecap="round"
-        style={{ filter: "drop-shadow(0 0 4px oklch(1 0 0 / .25))" }} />
-      {/* Center cap */}
-      <circle cx={cx} cy={cy} r={7}  fill="oklch(0.16 0.012 265)"
-        stroke="oklch(0.97 0.005 265)" strokeWidth="2" />
-      {/* Value */}
-      <text x={cx} y={cy + 36} textAnchor="middle"
-        fill="oklch(0.97 0.005 265)" fontFamily="Inter, system-ui, sans-serif"
-        fontWeight="600" fontSize="28" letterSpacing="-1"
-        style={{ fontVariantNumeric: "tabular-nums" }}>
-        {animated.toFixed(1)}%
-      </text>
-      {/* Status */}
-      <text x={cx} y={cy + 52} textAnchor="middle"
-        fill={status.color} fontFamily="Inter, system-ui, sans-serif"
-        fontSize="10" fontWeight="600" letterSpacing=".1em">
-        {status.label}
-      </text>
-      {/* Legend dots */}
-      <g transform={`translate(${cx - 85}, ${cy + 68})`}>
-        {[
-          { color: "oklch(0.68 0.19 25)",  label: "0–90% crítico" },
-          { color: "oklch(0.74 0.16 152)", label: "90–100% óptimo" },
-          { color: "oklch(0.80 0.15 85)",  label: "100%+ exceso" },
-        ].map((s, i) => (
-          <g key={i} transform={`translate(${i * 57}, 0)`}>
-            <rect x={0} y={-5} width={7} height={7} rx={2} fill={s.color} />
-            <text x={10} y={2} fontSize={8} fill="oklch(0.45 0.020 265)"
-              fontFamily="Inter, system-ui, sans-serif">{s.label}</text>
-          </g>
-        ))}
-      </g>
-    </svg>
-  );
-}
-
 // ── Animated pie slice on hover ───────────────────────────────────────────────
 
 function renderActiveSlice(props: {
@@ -575,7 +358,6 @@ function HoverPie({ data, colors, formatter }: {
 }
 
 export function TransformadoresResumenSection() {
-  const [rows, setRows]           = useState<Transformador[]>([]);
   const [planillas, setPlanillas] = useState<PlanillaReserva[]>([]);
   const [loading, setLoading]     = useState(true);
 
@@ -623,7 +405,6 @@ export function TransformadoresResumenSection() {
     }
 
     setPlanillas(plans ?? []);
-    setRows([]);   // tabla transformadores no usada actualmente
     setLoading(false);
   }, []);
 
@@ -634,8 +415,6 @@ export function TransformadoresResumenSection() {
   const s13 = (p: PlanillaReserva) => POT_13.reduce((s, k) => s + (p.datos.totales?.[String(k)] ?? 0), 0);
   const s33 = (p: PlanillaReserva) => POT_33.reduce((s, k) => { const r = p.datos.rel33?.[String(k)]; return s + (r ? r.tN + r.mN + r.tR + r.mR : 0); }, 0);
   const autoFor = (p: PlanillaReserva) => POT_13.reduce((s, k) => s + (p.datos.autorizados?.[String(k)] ?? 0), 0);
-
-  const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
   // ── Shared monthly snapshot (last planilla per zone per month, zones summed) ─
   const MES_SHORT = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
@@ -662,17 +441,6 @@ export function TransformadoresResumenSection() {
   })();
 
   const sortedMonths = Object.keys(monthlySnapshots).sort();
-  const latestMonth  = sortedMonths[sortedMonths.length - 1];
-
-  const current13    = latestMonth ? monthlySnapshots[latestMonth].neto13 : 0;
-  const current33    = latestMonth ? monthlySnapshots[latestMonth].neto33 : 0;
-  const currentStock = latestMonth ? monthlySnapshots[latestMonth].neto   : 0;
-
-  const avgAll = avg(sortedMonths.map(m => monthlySnapshots[m].neto));
-  const avg13  = avg(sortedMonths.map(m => monthlySnapshots[m].neto13));
-  const avg33  = avg(sortedMonths.map(m => monthlySnapshots[m].neto33));
-
-  const gaugeRatio = avgAll > 0 ? (currentStock / avgAll) * 100 : 0;
 
   // ── Variación neta mensual (reuses monthlySnapshots) ─────────────────────
 
@@ -867,35 +635,6 @@ export function TransformadoresResumenSection() {
       .sort((a, b) => b.disponible - a.disponible);
   })();
 
-
-  // ── Transformadores KPIs (existing) ──────────────────────────────────────
-
-  const total       = rows.length;
-  const disponibles = rows.filter(r => r.estado === "Disponible").length;
-  const enServicio  = rows.filter(r => r.estado === "En servicio").length;
-  const reparacion  = rows.filter(r => r.estado === "En reparación").length;
-  const baja        = rows.filter(r => r.estado === "Baja").length;
-
-  const existingKpis = [
-    { label: "Total registrados", value: total,       icon: Zap,         color: "text-accent",     bgColor: "bg-accent/10" },
-    { label: "Disponibles",       value: disponibles, icon: CheckCircle2, color: "text-green-400", bgColor: "bg-green-500/10" },
-    { label: "En servicio",       value: enServicio,  icon: Zap,         color: "text-blue-400",  bgColor: "bg-blue-500/10" },
-    { label: "En reparación",     value: reparacion,  icon: Wrench,      color: "text-amber-400", bgColor: "bg-amber-500/10" },
-    { label: "Bajas",             value: baja,        icon: XCircle,     color: "text-red-400",   bgColor: "bg-red-500/10" },
-  ];
-
-  const byTipo = rows.reduce<Record<string, number>>((acc, r) => {
-    const key = r.tipo ?? "Sin tipo";
-    acc[key] = (acc[key] ?? 0) + 1;
-    return acc;
-  }, {});
-
-  const byUbicacion = rows.reduce<Record<string, number>>((acc, r) => {
-    const key = r.ubicacion ?? "Sin ubicación";
-    acc[key] = (acc[key] ?? 0) + 1;
-    return acc;
-  }, {});
-  const topUbicaciones = Object.entries(byUbicacion).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
   // Available options for filters
   const availableYears = [...new Set(planillas.map(p => p.fecha.slice(0, 4)))].sort((a, b) => b.localeCompare(a));
@@ -1106,77 +845,6 @@ export function TransformadoresResumenSection() {
             Planilla: {currentLabel}
           </p>
         )}
-      </div>
-
-      {/* ── Promedios + Gauge ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-        {/* Promedios por tensión */}
-        <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-          <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-0">
-            <div>
-              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "oklch(0.60 0.018 265)" }}>
-                Promedios por tensión
-              </p>
-              <p style={{ fontSize: 12, color: "oklch(0.45 0.020 265)", marginTop: 3 }}>
-                Stock real · promedio histórico
-              </p>
-            </div>
-            <span style={{
-              display: "inline-flex", alignItems: "center", gap: 4,
-              padding: "2px 10px", borderRadius: 999,
-              background: "oklch(0.72 0.16 265 / 0.16)",
-              color: "oklch(0.72 0.16 265)",
-              border: "1px solid transparent",
-              fontSize: 11, fontWeight: 500,
-            }}>
-              Móvil 12m
-            </span>
-          </div>
-          <div className="px-5 pb-5">
-            <PromedioRow label="Stock promedio histórico vs Stock Actual" sub={`Actual: ${currentStock} | Prom. hist.: ${Math.round(avgAll)}`}   value={currentStock} maxVal={avgAll  || 1} hue={265} idx={0} />
-            <PromedioRow label="13,2 / 0,4 kV"                          sub={`Actual: ${current13}     | Prom. hist.: ${Math.round(avg13)}`}    value={current13}    maxVal={avg13   || 1} hue={230} idx={1} />
-            <PromedioRow label="33 / 0,4 kV"                            sub={`Actual: ${current33}     | Prom. hist.: ${Math.round(avg33)}`}    value={current33}    maxVal={avg33   || 1} hue={305} idx={2} />
-            <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, fontSize: 11, color: "oklch(0.45 0.020 265)" }}>
-              {latestMonth && (
-                <span>
-                  Planilla · {latestMonth.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
-                </span>
-              )}
-              {latestMonth && monthlySnapshots[latestMonth]?.zonas.size > 0 && (
-                <span>{[...monthlySnapshots[latestMonth].zonas].join(" + ")}</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Gauge card */}
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm flex flex-col">
-          <div className="flex items-start justify-between gap-3 mb-1">
-            <div>
-              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "oklch(0.60 0.018 265)" }}>
-                Salud del inventario
-              </p>
-              <p style={{ fontSize: 12, color: "oklch(0.45 0.020 265)", marginTop: 3 }}>
-                Stock actual vs. promedio histórico
-              </p>
-            </div>
-            {gaugeRatio < 90 && (
-              <span style={{
-                display: "inline-flex", alignItems: "center", gap: 4,
-                padding: "2px 10px", borderRadius: 999,
-                background: "oklch(0.68 0.19 25 / 0.18)",
-                color: "oklch(0.68 0.19 25)",
-                fontSize: 11, fontWeight: 500,
-              }}>
-                Bajo el umbral
-              </span>
-            )}
-          </div>
-          <div className="flex-1 flex items-center justify-center">
-            <GaugeChart ratio={gaugeRatio} />
-          </div>
-        </div>
       </div>
 
       {/* ── Gráfico de Variación Neta ── */}
@@ -1416,66 +1084,6 @@ export function TransformadoresResumenSection() {
             </BarChart>
           </ResponsiveContainer>
         )}
-      </div>
-
-      {/* Existing inventory KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        {existingKpis.map(kpi => {
-          const Icon = kpi.icon;
-          return (
-            <div key={kpi.label} className="bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col gap-2">
-              <div className={`w-9 h-9 rounded-lg ${kpi.bgColor} flex items-center justify-center`}>
-                <Icon className={`w-5 h-5 ${kpi.color}`} />
-              </div>
-              <p className="text-2xl font-bold text-foreground">{kpi.value}</p>
-              <p className="text-xs text-muted-foreground leading-tight">{kpi.label}</p>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-foreground mb-4">Distribución por tipo</h3>
-          {Object.keys(byTipo).length === 0 ? (
-            <p className="text-sm text-muted-foreground">Sin datos</p>
-          ) : (
-            <div className="space-y-3">
-              {Object.entries(byTipo).sort((a, b) => b[1] - a[1]).map(([tipo, count]) => (
-                <div key={tipo}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-foreground truncate">{tipo}</span>
-                    <span className="text-muted-foreground ml-4 shrink-0">{count}</span>
-                  </div>
-                  <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
-                    <div className="h-full bg-accent rounded-full transition-all duration-500" style={{ width: `${(count / total) * 100}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-foreground mb-4">Top ubicaciones</h3>
-          {topUbicaciones.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Sin datos</p>
-          ) : (
-            <div className="space-y-3">
-              {topUbicaciones.map(([ubic, count]) => (
-                <div key={ubic}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-foreground truncate">{ubic}</span>
-                    <span className="text-muted-foreground ml-4 shrink-0">{count}</span>
-                  </div>
-                  <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
-                    <div className="h-full bg-chart-1 rounded-full transition-all duration-500" style={{ width: `${(count / total) * 100}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* ── Última planilla cargada ── */}
