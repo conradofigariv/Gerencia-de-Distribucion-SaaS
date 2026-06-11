@@ -762,7 +762,8 @@ export function StockZonaSection() {
       setImportedAt(new Date());
       setImportedCount(rows.length);
       toast.success(`${rows.length} registros · ${byZona.size} zona${byZona.size > 1 ? "s" : ""}: ${[...byZona.keys()].join(", ")}`);
-      setText(""); setTab("resumen"); await refresh();
+      // Se queda en "Cargar datos" (se cargan zonas de a una); limpia y refresca.
+      setText(""); await refresh();
     }
     setSaving(false);
   };
