@@ -444,12 +444,49 @@ function HoverPie({ data, colors, formatter }: {
   );
 }
 
+// ── Chart panel (beast pure dark style, shared by all chart cards) ────────────
+
+const PANEL_STYLE: React.CSSProperties = {
+  background: "oklch(0.205 0.005 270)",
+  border: "1px solid oklch(1 0 0 / 0.07)",
+  borderRadius: 14,
+};
+
+function ChartPanel({ title, subtitle, right, dragHandle, children, className = "p-5" }: {
+  title: string; subtitle?: string; right?: React.ReactNode;
+  dragHandle?: DragHandle; children: React.ReactNode; className?: string;
+}) {
+  return (
+    <div className={className} style={PANEL_STYLE}>
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div className="flex items-start gap-2 min-w-0">
+          {dragHandle && (
+            <span
+              {...dragHandle.attributes}
+              {...dragHandle.listeners}
+              className="touch-none mt-0.5"
+              style={{ display: "flex", color: "oklch(0.45 0.018 265)", cursor: "grab", flexShrink: 0 }}
+            >
+              <GripVertical size={13} />
+            </span>
+          )}
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground">{title}</p>
+            {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+          </div>
+        </div>
+        {right && <div className="flex-shrink-0">{right}</div>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export function TransformadoresResumenSection() {
   const [planillas, setPlanillas] = useState<PlanillaReserva[]>([]);
   const [loading, setLoading]     = useState(true);
 
   const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null);
-  const [visibleLines, setVisibleLines] = useState<Set<string>>(new Set(["neto", "neto13", "neto33"]));
 
   // KPI drag & drop order
   const [kpiOrder, setKpiOrder] = useOrder(KPI_ORDER_KEY, DEFAULT_KPI_ORDER);
@@ -1001,9 +1038,7 @@ export function TransformadoresResumenSection() {
       </div>
 
       {/* ── Gráfico de Variación Neta ── */}
-      <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-        <p className="text-sm font-semibold text-foreground">Gráfico de Variación Neta</p>
-        <p className="text-xs text-blue-400 mb-4">Stock neto en comparación con el mes anterior</p>
+      <ChartPanel title="Gráfico de Variación Neta" subtitle="Stock neto en comparación con el mes anterior">
         {variacionData.length < 2 ? (
           <p className="text-sm text-muted-foreground">Se necesitan al menos 2 planillas para calcular la variación.</p>
         ) : (
@@ -1045,11 +1080,11 @@ export function TransformadoresResumenSection() {
             </BarChart>
           </ResponsiveContainer>
         )}
-      </div>
+      </ChartPanel>
 
       {/* ── Tabla de verificación ── */}
       {variacionData.length > 0 && (
-        <details className="bg-card border border-border rounded-xl shadow-sm">
+        <details className="shadow-sm" style={PANEL_STYLE}>
           <summary className="px-5 py-3 text-xs font-semibold text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">
             Ver detalle del cálculo
           </summary>
@@ -1084,72 +1119,60 @@ export function TransformadoresResumenSection() {
         </details>
       )}
 
-      {/* ── Evolución de Stock por Tensión ── */}
-      <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-        <div className="flex items-start justify-between gap-4 mb-4">
-          <div>
-            <p className="text-sm font-semibold text-foreground">Evolución de Stock Mensual por Tensión</p>
-            <p className="text-xs text-muted-foreground">Stock neto al cierre de cada mes (última planilla por zona)</p>
-          </div>
-          <div className="flex gap-1.5 flex-shrink-0">
-            {([
-              { key: "neto",   label: "Total",         color: "#6366f1" },
-              { key: "neto13", label: "13,2 / 0,4 kV", color: "#38bdf8" },
-              { key: "neto33", label: "33 / 0,4 kV",   color: "#a78bfa" },
-            ] as const).map(({ key, label, color }) => {
-              const active = visibleLines.has(key);
-              return (
-                <button
-                  key={key}
-                  onClick={() => setVisibleLines(prev => {
-                    const next = new Set(prev);
-                    if (next.has(key)) { if (next.size > 1) next.delete(key); }
-                    else next.add(key);
-                    return next;
-                  })}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all duration-150"
-                  style={{
-                    borderColor: active ? color : "transparent",
-                    background:  active ? `${color}22` : "transparent",
-                    color:       active ? color : "#64748b",
-                    opacity:     active ? 1 : 0.5,
-                  }}
-                >
-                  <span className="w-2 h-2 rounded-full" style={{ background: color }} />
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        {variacionData.length < 2 ? (
-          <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-              <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-              <Tooltip
-                contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-                labelStyle={{ color: "#94a3b8" }}
-                itemStyle={{ color: "#f1f5f9" }}
-              />
-              {visibleLines.has("neto")   && <Line type="monotone" dataKey="neto"   name="Total"         stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />}
-              {visibleLines.has("neto13") && <Line type="monotone" dataKey="neto13" name="13,2 / 0,4 kV" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />}
-              {visibleLines.has("neto33") && <Line type="monotone" dataKey="neto33" name="33 / 0,4 kV"   stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />}
-            </LineChart>
-          </ResponsiveContainer>
-        )}
+      {/* ── Evolución de Stock por Tensión (dos gráficos) ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        {/* Total vs 13,2 / 0,4 kV */}
+        <ChartPanel title="Evolución — Total vs 13,2 / 0,4 kV" subtitle="Stock neto al cierre de cada mes">
+          {variacionData.length < 2 ? (
+            <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+                  labelStyle={{ color: "#94a3b8" }}
+                  itemStyle={{ color: "#f1f5f9" }}
+                />
+                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
+                <Line type="monotone" dataKey="neto"   name="Total"         stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="neto13" name="13,2 / 0,4 kV" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </ChartPanel>
+
+        {/* Total vs 33 / 0,4 kV */}
+        <ChartPanel title="Evolución — Total vs 33 / 0,4 kV" subtitle="Stock neto al cierre de cada mes">
+          {variacionData.length < 2 ? (
+            <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+                  labelStyle={{ color: "#94a3b8" }}
+                  itemStyle={{ color: "#f1f5f9" }}
+                />
+                <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
+                <Line type="monotone" dataKey="neto"   name="Total"       stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="neto33" name="33 / 0,4 kV" stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </ChartPanel>
       </div>
 
       {/* ── Pie charts ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
         {/* Zonas */}
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-          <p className="text-sm font-semibold text-foreground mb-1">Stock por Zona</p>
-          <p className="text-xs text-muted-foreground mb-3">Distribución actual entre depósitos</p>
+        <ChartPanel title="Stock por Zona" subtitle="Distribución actual entre depósitos">
           {zonaPieData.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin datos.</p>
           ) : (
@@ -1159,36 +1182,30 @@ export function TransformadoresResumenSection() {
               formatter={(v: number, n: string) => [v, n]}
             />
           )}
-        </div>
+        </ChartPanel>
 
         {/* Terceros vs Taller — 13.2 kV */}
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-          <p className="text-sm font-semibold text-foreground mb-1">Nuevos vs Reparados — 13,2 kV</p>
-          <p className="text-xs text-muted-foreground mb-3">Nuevos / terceros vs reparados por taller</p>
+        <ChartPanel title="Nuevos vs Reparados — 13,2 kV" subtitle="Nuevos / terceros vs reparados por taller">
           {tercerosVsTaller13.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin datos.</p>
           ) : (
             <HoverPie data={tercerosVsTaller13} colors={["#38bdf8","#f59e0b"]} />
           )}
-        </div>
+        </ChartPanel>
 
         {/* Nuevos vs Reparados — 33 kV */}
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-          <p className="text-sm font-semibold text-foreground mb-1">Nuevos vs Reparados — 33 kV</p>
-          <p className="text-xs text-muted-foreground mb-3">Composición del stock 33 / 0,4 kV</p>
+        <ChartPanel title="Nuevos vs Reparados — 33 kV" subtitle="Composición del stock 33 / 0,4 kV">
           {nuevosVsReparados33.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin datos.</p>
           ) : (
             <HoverPie data={nuevosVsReparados33} colors={["#34d399","#f59e0b"]} />
           )}
-        </div>
+        </ChartPanel>
 
       </div>
 
       {/* ── Stock Disponible por KVA ── */}
-      <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-        <p className="text-sm font-semibold text-foreground">Stock Disponible por KVA</p>
-        <p className="text-xs text-muted-foreground mb-4">Unidades libres (sin comprometer) — planilla actual</p>
+      <ChartPanel title="Stock Disponible por KVA" subtitle="Unidades libres (sin comprometer) — planilla actual">
         {stockPorKva.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sin datos para la selección actual.</p>
         ) : (
@@ -1237,7 +1254,7 @@ export function TransformadoresResumenSection() {
             </BarChart>
           </ResponsiveContainer>
         )}
-      </div>
+      </ChartPanel>
 
       {/* ── Última planilla cargada ── */}
       {planillasActuales.length > 0 && planillasActuales.map(planilla => {
@@ -1255,7 +1272,7 @@ export function TransformadoresResumenSection() {
         const totGeneral = s13(planilla) + s33(planilla);
         const totDisp = totGeneral - totAuto;
         return (
-          <div key={planilla.id} className="bg-slate-800/40 border border-slate-700 rounded-xl overflow-hidden shadow-sm">
+          <div key={planilla.id} className="overflow-hidden shadow-sm" style={PANEL_STYLE}>
             <div className="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-foreground">
