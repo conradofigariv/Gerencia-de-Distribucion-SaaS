@@ -551,6 +551,112 @@ function ChartPanel({ title, subtitle, right, dragHandle, children, className = 
   );
 }
 
+// ── Evolución mensual por modelo (KVA) — selección múltiple de líneas ──────────
+
+const EVOL_COLORS = [
+  "#38bdf8", "#a78bfa", "#34d399", "#f59e0b", "#f472b6", "#facc15",
+  "#60a5fa", "#fb7185", "#4ade80", "#c084fc", "#2dd4bf", "#fbbf24",
+  "#818cf8", "#e879f9", "#22d3ee", "#a3e635", "#fca5a5", "#5eead4",
+];
+
+interface EvolSeries { key: string; label: string }
+
+function EvolutionBody({ chartData, series, storageKey }: {
+  chartData: Record<string, number | string>[];
+  series: EvolSeries[];
+  storageKey: string;
+}) {
+  const [selected, setSelected] = useState<string[]>(["Total"]);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(storageKey) ?? "null") as string[] | null;
+      if (Array.isArray(saved)) {
+        const valid = saved.filter(k => series.some(s => s.key === k));
+        setSelected(valid.length ? valid : ["Total"]);
+      }
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const toggle = useCallback((key: string) => {
+    setSelected(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+      localStorage.setItem(storageKey, JSON.stringify(next));
+      return next;
+    });
+  }, [storageKey]);
+
+  const colorOf = useCallback((key: string) => {
+    const idx = series.findIndex(s => s.key === key);
+    return EVOL_COLORS[(idx < 0 ? 0 : idx) % EVOL_COLORS.length];
+  }, [series]);
+
+  if (chartData.length < 2) {
+    return <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>;
+  }
+
+  return (
+    <div>
+      {/* Selector de modelos */}
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        {series.map(s => {
+          const active = selected.includes(s.key);
+          const c = colorOf(s.key);
+          return (
+            <button
+              key={s.key}
+              onClick={() => toggle(s.key)}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors"
+              style={active
+                ? { borderColor: c, color: c, background: `${c}1f` }
+                : { borderColor: "oklch(1 0 0 / 0.08)", color: "oklch(0.55 0.018 265)", background: "transparent" }
+              }
+            >
+              {s.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {selected.length === 0 ? (
+        <div className="grid place-items-center text-sm text-muted-foreground" style={{ height: 280 }}>
+          Seleccioná al menos un modelo para ver la evolución.
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={chartData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+            <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} allowDecimals={false} />
+            <Tooltip
+              contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+              labelStyle={{ color: "#94a3b8" }}
+              itemStyle={{ color: "#f1f5f9" }}
+            />
+            {selected.length > 1 && <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />}
+            {selected.map(key => {
+              const def = series.find(s => s.key === key);
+              return (
+                <Line
+                  key={key}
+                  type="monotone"
+                  dataKey={key}
+                  name={def?.label ?? key}
+                  stroke={colorOf(key)}
+                  strokeWidth={2}
+                  dot={{ r: 2.5 }}
+                  activeDot={{ r: 5 }}
+                />
+              );
+            })}
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  );
+}
+
 export function TransformadoresResumenSection() {
   const [planillas, setPlanillas] = useState<PlanillaReserva[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -678,6 +784,54 @@ export function TransformadoresResumenSection() {
     };
   });
 
+  // ── Evolución mensual por modelo (KVA) ───────────────────────────────────
+  // Stock neto por KVA por mes (último snapshot por zona/mes, zonas sumadas).
+  // 13,2 kV: totales[k] − autorizados[k]. 33 kV: tN+mN+tR+mR.
+  const monthlyKva = (() => {
+    const byZoneMonth: Record<string, PlanillaReserva> = {};
+    for (const p of planillas) {
+      const key = `${p.datos.deposito ?? ""}::${p.fecha.slice(0, 7)}`;
+      if (!byZoneMonth[key] || p.fecha > byZoneMonth[key].fecha) byZoneMonth[key] = p;
+    }
+    const byMonth: Record<string, { k13: Record<number, number>; k33: Record<number, number>; total13: number; total33: number }> = {};
+    for (const p of Object.values(byZoneMonth)) {
+      const mkey = p.fecha.slice(0, 7);
+      if (!byMonth[mkey]) byMonth[mkey] = { k13: {}, k33: {}, total13: 0, total33: 0 };
+      const b = byMonth[mkey];
+      for (const k of POT_13) {
+        const net = (p.datos.totales?.[String(k)] ?? 0) - (p.datos.autorizados?.[String(k)] ?? 0);
+        b.k13[k] = (b.k13[k] ?? 0) + net;
+        b.total13 += net;
+      }
+      for (const k of POT_33) {
+        const r = p.datos.rel33?.[String(k)];
+        const v = r ? r.tN + r.mN + r.tR + r.mR : 0;
+        b.k33[k] = (b.k33[k] ?? 0) + v;
+        b.total33 += v;
+      }
+    }
+    return byMonth;
+  })();
+
+  const kvas13Activos = POT_13.filter(k => sortedMonths.some(m => (monthlyKva[m]?.k13[k] ?? 0) !== 0));
+  const kvas33Activos = POT_33.filter(k => sortedMonths.some(m => (monthlyKva[m]?.k33[k] ?? 0) !== 0));
+
+  const evolSeries13: EvolSeries[] = [{ key: "Total", label: "Total" }, ...kvas13Activos.map(k => ({ key: `${k} kVA`, label: `${k} kVA` }))];
+  const evolSeries33: EvolSeries[] = [{ key: "Total", label: "Total" }, ...kvas33Activos.map(k => ({ key: `${k} kVA`, label: `${k} kVA` }))];
+
+  const buildEvolData = (rel: "13" | "33"): Record<string, number | string>[] =>
+    sortedMonths.map(m => {
+      const [y, mo] = m.split("-");
+      const snap = monthlyKva[m];
+      const row: Record<string, number | string> = { mes: `${MES_SHORT[Number(mo) - 1]} ${y.slice(2)}` };
+      row["Total"] = rel === "13" ? snap.total13 : snap.total33;
+      const kvas = rel === "13" ? POT_13 : POT_33;
+      for (const k of kvas) row[`${k} kVA`] = (rel === "13" ? snap.k13[k] : snap.k33[k]) ?? 0;
+      return row;
+    });
+
+  const evolData13 = buildEvolData("13");
+  const evolData33 = buildEvolData("33");
 
   // ── Alarm evaluation ─────────────────────────────────────────────────────
 
@@ -964,44 +1118,12 @@ export function TransformadoresResumenSection() {
 
     evolucion: (
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <ChartPanel title="Evolución Mensual — 13,2 / 0,4 kV" subtitle="Stock neto al cierre de cada mes">
-          {variacionData.length < 2 ? (
-            <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-                  labelStyle={{ color: "#94a3b8" }}
-                  itemStyle={{ color: "#f1f5f9" }}
-                />
-                <Line type="monotone" dataKey="neto13" name="13,2 / 0,4 kV" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
+        <ChartPanel title="Evolución Mensual — 13,2 / 0,4 kV" subtitle="Stock neto al cierre de cada mes — elegí modelos para comparar">
+          <EvolutionBody chartData={evolData13} series={evolSeries13} storageKey="transformadores_evol13_series" />
         </ChartPanel>
 
-        <ChartPanel title="Evolución Mensual — 33 / 0,4 kV" subtitle="Stock neto al cierre de cada mes">
-          {variacionData.length < 2 ? (
-            <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-                  labelStyle={{ color: "#94a3b8" }}
-                  itemStyle={{ color: "#f1f5f9" }}
-                />
-                <Line type="monotone" dataKey="neto33" name="33 / 0,4 kV" stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
+        <ChartPanel title="Evolución Mensual — 33 / 0,4 kV" subtitle="Stock neto al cierre de cada mes — elegí modelos para comparar">
+          <EvolutionBody chartData={evolData33} series={evolSeries33} storageKey="transformadores_evol33_series" />
         </ChartPanel>
       </div>
     ),
