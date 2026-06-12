@@ -131,11 +131,12 @@ function useOrder(key: string, defaultOrder: string[]) {
 
 // ── FilterSelect ──────────────────────────────────────────────────────────────
 
-function FilterSelect({ value, onChange, placeholder, options }: {
+function FilterSelect({ value, onChange, placeholder, options, fullWidth = false }: {
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
   options: { value: string; label: string }[];
+  fullWidth?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -171,10 +172,10 @@ function FilterSelect({ value, onChange, placeholder, options }: {
   const current = options.find(o => o.value === value);
 
   return (
-    <div ref={wrapRef} className="relative">
+    <div ref={wrapRef} className={`relative ${fullWidth ? "w-full" : ""}`}>
       <button
         onClick={() => setOpen(v => !v)}
-        className={`flex items-center gap-2 pl-3.5 pr-3 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200 min-w-[110px] justify-between ${
+        className={`flex items-center gap-2 pl-3.5 pr-3 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200 justify-between ${fullWidth ? "w-full" : "min-w-[110px]"} ${
           value
             ? "bg-accent/10 border-accent/40 text-accent hover:bg-accent/15"
             : "bg-card border-border text-foreground hover:bg-secondary hover:border-border/80"
@@ -551,112 +552,6 @@ function ChartPanel({ title, subtitle, right, dragHandle, children, className = 
   );
 }
 
-// ── Evolución mensual por modelo (KVA) — selección múltiple de líneas ──────────
-
-const EVOL_COLORS = [
-  "#38bdf8", "#a78bfa", "#34d399", "#f59e0b", "#f472b6", "#facc15",
-  "#60a5fa", "#fb7185", "#4ade80", "#c084fc", "#2dd4bf", "#fbbf24",
-  "#818cf8", "#e879f9", "#22d3ee", "#a3e635", "#fca5a5", "#5eead4",
-];
-
-interface EvolSeries { key: string; label: string }
-
-function EvolutionBody({ chartData, series, storageKey }: {
-  chartData: Record<string, number | string>[];
-  series: EvolSeries[];
-  storageKey: string;
-}) {
-  const [selected, setSelected] = useState<string[]>(["Total"]);
-
-  useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(storageKey) ?? "null") as string[] | null;
-      if (Array.isArray(saved)) {
-        const valid = saved.filter(k => series.some(s => s.key === k));
-        setSelected(valid.length ? valid : ["Total"]);
-      }
-    } catch {}
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const toggle = useCallback((key: string) => {
-    setSelected(prev => {
-      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
-      localStorage.setItem(storageKey, JSON.stringify(next));
-      return next;
-    });
-  }, [storageKey]);
-
-  const colorOf = useCallback((key: string) => {
-    const idx = series.findIndex(s => s.key === key);
-    return EVOL_COLORS[(idx < 0 ? 0 : idx) % EVOL_COLORS.length];
-  }, [series]);
-
-  if (chartData.length < 2) {
-    return <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>;
-  }
-
-  return (
-    <div>
-      {/* Selector de modelos */}
-      <div className="flex flex-wrap gap-1.5 mb-4">
-        {series.map(s => {
-          const active = selected.includes(s.key);
-          const c = colorOf(s.key);
-          return (
-            <button
-              key={s.key}
-              onClick={() => toggle(s.key)}
-              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors"
-              style={active
-                ? { borderColor: c, color: c, background: `${c}1f` }
-                : { borderColor: "oklch(1 0 0 / 0.08)", color: "oklch(0.55 0.018 265)", background: "transparent" }
-              }
-            >
-              {s.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {selected.length === 0 ? (
-        <div className="grid place-items-center text-sm text-muted-foreground" style={{ height: 280 }}>
-          Seleccioná al menos un modelo para ver la evolución.
-        </div>
-      ) : (
-        <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={chartData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-            <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} allowDecimals={false} />
-            <Tooltip
-              contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
-              labelStyle={{ color: "#94a3b8" }}
-              itemStyle={{ color: "#f1f5f9" }}
-            />
-            {selected.length > 1 && <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />}
-            {selected.map(key => {
-              const def = series.find(s => s.key === key);
-              return (
-                <Line
-                  key={key}
-                  type="monotone"
-                  dataKey={key}
-                  name={def?.label ?? key}
-                  stroke={colorOf(key)}
-                  strokeWidth={2}
-                  dot={{ r: 2.5 }}
-                  activeDot={{ r: 5 }}
-                />
-              );
-            })}
-          </LineChart>
-        </ResponsiveContainer>
-      )}
-    </div>
-  );
-}
-
 export function TransformadoresResumenSection() {
   const [planillas, setPlanillas] = useState<PlanillaReserva[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -739,27 +634,43 @@ export function TransformadoresResumenSection() {
 
   const s13 = (p: PlanillaReserva) => POT_13.reduce((s, k) => s + (p.datos.totales?.[String(k)] ?? 0), 0);
   const s33 = (p: PlanillaReserva) => POT_33.reduce((s, k) => { const r = p.datos.rel33?.[String(k)]; return s + (r ? r.tN + r.mN + r.tR + r.mR : 0); }, 0);
-  const autoFor = (p: PlanillaReserva) => POT_13.reduce((s, k) => s + (p.datos.autorizados?.[String(k)] ?? 0), 0);
 
   // ── Shared monthly snapshot (last planilla per zone per month, zones summed) ─
+  // Respeta los filtros de arriba: zona, año, potencia, relación y fases.
   const MES_SHORT = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 
+  // KVAs seleccionados por relación según los filtros (potencia / relación / fases)
+  const potNum = filterPotencia ? Number(filterPotencia) : null;
+  const kvas13Sel = filterRelacion === "33" ? []
+    : potNum != null ? (POT_13.includes(potNum) ? [potNum] : [])
+    : kvasFor("13", filterFases);
+  const kvas33Sel = filterRelacion === "13" ? []
+    : potNum != null ? (POT_33.includes(potNum) ? [potNum] : [])
+    : POT_33;
+
   const monthlySnapshots = (() => {
+    const source = planillas.filter(p => {
+      if (filterZona && (p.datos.deposito ?? "") !== filterZona) return false;
+      if (filterAno  && p.fecha.slice(0, 4) !== filterAno) return false;
+      return true;
+    });
     const byZoneMonth: Record<string, PlanillaReserva> = {};
-    for (const p of planillas) {
+    for (const p of source) {
       const key = `${p.datos.deposito ?? ""}::${p.fecha.slice(0, 7)}`;
       if (!byZoneMonth[key] || p.fecha > byZoneMonth[key].fecha) byZoneMonth[key] = p;
     }
     const byMonth: Record<string, { bruto: number; auto: number; neto: number; neto13: number; neto33: number; zonas: Set<string> }> = {};
     for (const p of Object.values(byZoneMonth)) {
-      const key  = p.fecha.slice(0, 7);
-      const auto = autoFor(p);
+      const key    = p.fecha.slice(0, 7);
+      const bruto13 = computeStockBruto(p, kvas13Sel, "13");
+      const bruto33 = computeStockBruto(p, kvas33Sel, "33", filterFases);
+      const auto    = computePendientes(p, kvas13Sel, "13");
       if (!byMonth[key]) byMonth[key] = { bruto: 0, auto: 0, neto: 0, neto13: 0, neto33: 0, zonas: new Set() };
-      byMonth[key].bruto  += s13(p) + s33(p);
+      byMonth[key].bruto  += bruto13 + bruto33;
       byMonth[key].auto   += auto;
-      byMonth[key].neto   += s13(p) + s33(p) - auto;
-      byMonth[key].neto13 += s13(p) - auto;
-      byMonth[key].neto33 += s33(p);
+      byMonth[key].neto   += bruto13 + bruto33 - auto;
+      byMonth[key].neto13 += bruto13 - auto;
+      byMonth[key].neto33 += bruto33;
       if (p.datos.deposito) byMonth[key].zonas.add(p.datos.deposito);
     }
     return byMonth;
@@ -783,55 +694,6 @@ export function TransformadoresResumenSection() {
       variacion: monthlySnapshots[key].neto - prev,
     };
   });
-
-  // ── Evolución mensual por modelo (KVA) ───────────────────────────────────
-  // Stock neto por KVA por mes (último snapshot por zona/mes, zonas sumadas).
-  // 13,2 kV: totales[k] − autorizados[k]. 33 kV: tN+mN+tR+mR.
-  const monthlyKva = (() => {
-    const byZoneMonth: Record<string, PlanillaReserva> = {};
-    for (const p of planillas) {
-      const key = `${p.datos.deposito ?? ""}::${p.fecha.slice(0, 7)}`;
-      if (!byZoneMonth[key] || p.fecha > byZoneMonth[key].fecha) byZoneMonth[key] = p;
-    }
-    const byMonth: Record<string, { k13: Record<number, number>; k33: Record<number, number>; total13: number; total33: number }> = {};
-    for (const p of Object.values(byZoneMonth)) {
-      const mkey = p.fecha.slice(0, 7);
-      if (!byMonth[mkey]) byMonth[mkey] = { k13: {}, k33: {}, total13: 0, total33: 0 };
-      const b = byMonth[mkey];
-      for (const k of POT_13) {
-        const net = (p.datos.totales?.[String(k)] ?? 0) - (p.datos.autorizados?.[String(k)] ?? 0);
-        b.k13[k] = (b.k13[k] ?? 0) + net;
-        b.total13 += net;
-      }
-      for (const k of POT_33) {
-        const r = p.datos.rel33?.[String(k)];
-        const v = r ? r.tN + r.mN + r.tR + r.mR : 0;
-        b.k33[k] = (b.k33[k] ?? 0) + v;
-        b.total33 += v;
-      }
-    }
-    return byMonth;
-  })();
-
-  const kvas13Activos = POT_13.filter(k => sortedMonths.some(m => (monthlyKva[m]?.k13[k] ?? 0) !== 0));
-  const kvas33Activos = POT_33.filter(k => sortedMonths.some(m => (monthlyKva[m]?.k33[k] ?? 0) !== 0));
-
-  const evolSeries13: EvolSeries[] = [{ key: "Total", label: "Total" }, ...kvas13Activos.map(k => ({ key: `${k} kVA`, label: `${k} kVA` }))];
-  const evolSeries33: EvolSeries[] = [{ key: "Total", label: "Total" }, ...kvas33Activos.map(k => ({ key: `${k} kVA`, label: `${k} kVA` }))];
-
-  const buildEvolData = (rel: "13" | "33"): Record<string, number | string>[] =>
-    sortedMonths.map(m => {
-      const [y, mo] = m.split("-");
-      const snap = monthlyKva[m];
-      const row: Record<string, number | string> = { mes: `${MES_SHORT[Number(mo) - 1]} ${y.slice(2)}` };
-      row["Total"] = rel === "13" ? snap.total13 : snap.total33;
-      const kvas = rel === "13" ? POT_13 : POT_33;
-      for (const k of kvas) row[`${k} kVA`] = (rel === "13" ? snap.k13[k] : snap.k33[k]) ?? 0;
-      return row;
-    });
-
-  const evolData13 = buildEvolData("13");
-  const evolData33 = buildEvolData("33");
 
   // ── Alarm evaluation ─────────────────────────────────────────────────────
 
@@ -1118,12 +980,44 @@ export function TransformadoresResumenSection() {
 
     evolucion: (
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <ChartPanel title="Evolución Mensual — 13,2 / 0,4 kV" subtitle="Stock neto al cierre de cada mes — elegí modelos para comparar">
-          <EvolutionBody chartData={evolData13} series={evolSeries13} storageKey="transformadores_evol13_series" />
+        <ChartPanel title="Evolución Mensual — 13,2 / 0,4 kV" subtitle="Stock neto al cierre de cada mes (según filtros)">
+          {variacionData.length < 2 ? (
+            <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+                  labelStyle={{ color: "#94a3b8" }}
+                  itemStyle={{ color: "#f1f5f9" }}
+                />
+                <Line type="monotone" dataKey="neto13" name="13,2 / 0,4 kV" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </ChartPanel>
 
-        <ChartPanel title="Evolución Mensual — 33 / 0,4 kV" subtitle="Stock neto al cierre de cada mes — elegí modelos para comparar">
-          <EvolutionBody chartData={evolData33} series={evolSeries33} storageKey="transformadores_evol33_series" />
+        <ChartPanel title="Evolución Mensual — 33 / 0,4 kV" subtitle="Stock neto al cierre de cada mes (según filtros)">
+          {variacionData.length < 2 ? (
+            <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+                  labelStyle={{ color: "#94a3b8" }}
+                  itemStyle={{ color: "#f1f5f9" }}
+                />
+                <Line type="monotone" dataKey="neto33" name="33 / 0,4 kV" stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </ChartPanel>
       </div>
     ),
@@ -1454,44 +1348,53 @@ export function TransformadoresResumenSection() {
         <div className="space-y-4">
 
         {/* Filters row */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           <FilterSelect
+            fullWidth
             value={filterAno}
             onChange={setFilterAno}
             placeholder="Año"
             options={availableYears.map(y => ({ value: y, label: y }))}
           />
           <FilterSelect
+            fullWidth
             value={filterMes}
             onChange={setFilterMes}
             placeholder="Mes"
             options={MONTHS.map(m => ({ value: m.value, label: m.label }))}
           />
           <FilterSelect
+            fullWidth
             value={filterPotencia}
             onChange={setFilterPotencia}
             placeholder="Potencia"
             options={(filterRelacion === "33" ? POT_33 : POT_13).map(k => ({ value: String(k), label: `${k} kVA` }))}
           />
           <FilterSelect
+            fullWidth
             value={filterRelacion}
             onChange={v => { setFilterRelacion(v); setFilterPotencia(""); }}
             placeholder="Relación"
             options={[{ value: "13", label: "13,2/0,4 kV" }, { value: "33", label: "33/0,4 kV" }]}
           />
           <FilterSelect
+            fullWidth
             value={filterFases}
             onChange={setFilterFases}
             placeholder="Fases"
             options={[{ value: "mono", label: "Monofásico" }, { value: "tri", label: "Trifásico" }]}
           />
           <FilterSelect
+            fullWidth
             value={filterZona}
             onChange={setFilterZona}
             placeholder="Zona"
             options={availableZonas.map(z => ({ value: z, label: z }))}
           />
+          </div>
 
+          <div className="flex items-center gap-2">
           {(filterAno || filterMes || filterPotencia || filterRelacion || filterFases || filterZona) && (
             <button
               onClick={() => { setFilterAno(""); setFilterMes(""); setFilterPotencia(""); setFilterRelacion(""); setFilterFases(""); setFilterZona(""); }}
@@ -1591,6 +1494,7 @@ export function TransformadoresResumenSection() {
                 </div>
               </div>
             )}
+          </div>
           </div>
         </div>
 
