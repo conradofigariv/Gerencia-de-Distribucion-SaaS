@@ -70,7 +70,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     const stored = localStorage.getItem("bgEffect") as BgEffect | null;
-    if (stored && ["swirl", "coalesce", "shift", "none"].includes(stored)) setBgEffect(stored);
+    if (stored && ["swirl", "coalesce", "shift", "ps2", "none"].includes(stored)) setBgEffect(stored);
   }, []);
 
   function handleBgChange(v: BgEffect) {
