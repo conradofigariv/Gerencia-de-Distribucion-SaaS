@@ -39,7 +39,7 @@ const sectionTitles: Record<Section, string> = {
   "tablero-op-carga":         "Tablero OP — Carga de datos",
 };
 
-export function Header({ activeSection, bgEffect = "pipeline", onBgChange }: HeaderProps) {
+export function Header({ activeSection, bgEffect = "swirl", onBgChange }: HeaderProps) {
   const [searchFocused, setSearchFocused] = useState(false);
 
   return (

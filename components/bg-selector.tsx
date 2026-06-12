@@ -5,8 +5,6 @@ import { Layers } from "lucide-react";
 import type { BgEffect } from "@/components/canvas-background";
 
 const OPTIONS: { value: BgEffect; label: string }[] = [
-  { value: "pipeline", label: "Pipeline" },
-  { value: "aurora",   label: "Aurora" },
   { value: "swirl",    label: "Swirl" },
   { value: "coalesce", label: "Coalesce" },
   { value: "shift",    label: "Shift" },

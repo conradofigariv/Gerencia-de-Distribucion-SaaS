@@ -54,7 +54,7 @@ export default function Dashboard() {
   const [authLoading, setAuthLoading] = useState(true);
   const [activeSection, setActiveSection]   = useState<Section>("servicios-planillas");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [bgEffect, setBgEffect]             = useState<BgEffect>("pipeline");
+  const [bgEffect, setBgEffect]             = useState<BgEffect>("swirl");
 
   // Auth state
   useEffect(() => {
@@ -70,7 +70,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     const stored = localStorage.getItem("bgEffect") as BgEffect | null;
-    if (stored) setBgEffect(stored);
+    if (stored && ["swirl", "coalesce", "shift", "none"].includes(stored)) setBgEffect(stored);
   }, []);
 
   function handleBgChange(v: BgEffect) {
@@ -88,7 +88,7 @@ export default function Dashboard() {
   }
 
   // Not logged in
-  if (!user) return <><CanvasBackground effect="pipeline" /><LoginPage /></>;
+  if (!user) return <><CanvasBackground effect="swirl" /><LoginPage /></>;
 
   const renderSection = () => {
     switch (activeSection) {
