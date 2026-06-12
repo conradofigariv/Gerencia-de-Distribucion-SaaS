@@ -9,7 +9,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Legend, Sector,
 } from "recharts";
 import {
-  CheckCircle2, RefreshCw, Loader2, ChevronDown,
+  CheckCircle2, Check, RefreshCw, Loader2, ChevronDown,
   Bell, BellRing, Plus, Trash2, X, Package, TrendingUp, TrendingDown, Clock,
   LayoutGrid, GripVertical, GripHorizontal,
 } from "lucide-react";
@@ -214,6 +214,112 @@ function FilterSelect({ value, onChange, placeholder, options, fullWidth = false
               {o.label}
             </button>
           ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+// ── MonthMultiSelect (multi-selección de meses, mismo estilo, portal) ─────────
+
+function MonthMultiSelect({ values, onChange, options }: {
+  values: string[];
+  onChange: (v: string[]) => void;
+  options: { value: string; label: string }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const reposition = useCallback(() => {
+    const r = wrapRef.current?.getBoundingClientRect();
+    if (r) setCoords({ top: r.bottom + 6, left: r.left, width: r.width });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (open) reposition();
+  }, [open, reposition]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      const t = e.target as Node;
+      if (wrapRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open, reposition]);
+
+  const toggle = (v: string) =>
+    onChange(values.includes(v) ? values.filter(x => x !== v) : [...values, v]);
+
+  const active = values.length > 0;
+  const label = values.length === 0 ? "Mes"
+    : values.length === 1 ? (options.find(o => o.value === values[0])?.label ?? "1 mes")
+    : `${values.length} meses`;
+
+  return (
+    <div ref={wrapRef} className="relative w-full">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className={`flex items-center gap-2 pl-3.5 pr-3 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200 justify-between w-full ${
+          active
+            ? "bg-accent/10 border-accent/40 text-accent hover:bg-accent/15"
+            : "bg-card border-border text-foreground hover:bg-secondary hover:border-border/80"
+        }`}
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown className={`w-3.5 h-3.5 opacity-60 transition-transform duration-200 shrink-0 ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && coords && createPortal(
+        <div
+          ref={menuRef}
+          className="bg-card border border-border rounded-xl shadow-2xl py-1 overflow-y-auto"
+          style={{ position: "fixed", top: coords.top, left: coords.left, minWidth: coords.width, maxHeight: "min(320px, 60vh)", zIndex: 1000 }}
+        >
+          {options.map(o => {
+            const sel = values.includes(o.value);
+            return (
+              <button
+                key={o.value}
+                onClick={() => toggle(o.value)}
+                className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2 ${sel ? "text-accent font-semibold bg-accent/8" : "text-foreground hover:bg-secondary"}`}
+              >
+                <span
+                  className="grid place-items-center rounded shrink-0"
+                  style={{
+                    width: 15, height: 15,
+                    border: `1.5px solid ${sel ? "hsl(var(--accent))" : "oklch(1 0 0 / 0.2)"}`,
+                    background: sel ? "hsl(var(--accent))" : "transparent",
+                  }}
+                >
+                  {sel && <Check className="w-3 h-3 text-accent-foreground" strokeWidth={3} />}
+                </span>
+                {o.label}
+              </button>
+            );
+          })}
+          {active && (
+            <>
+              <div className="h-px bg-border/50 mx-2 my-0.5" />
+              <button
+                onClick={() => onChange([])}
+                className="w-full text-left px-3.5 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              >
+                Limpiar meses
+              </button>
+            </>
+          )}
         </div>,
         document.body
       )}
@@ -586,7 +692,7 @@ export function TransformadoresResumenSection() {
 
   // Filters
   const [filterAno,      setFilterAno]      = useState("");
-  const [filterMes,      setFilterMes]      = useState("");
+  const [filterMeses,    setFilterMeses]    = useState<string[]>([]);
   const [filterPotencia, setFilterPotencia] = useState("");
   const [filterRelacion, setFilterRelacion] = useState("");
   const [filterFases,    setFilterFases]    = useState("");
@@ -635,8 +741,9 @@ export function TransformadoresResumenSection() {
   const s13 = (p: PlanillaReserva) => POT_13.reduce((s, k) => s + (p.datos.totales?.[String(k)] ?? 0), 0);
   const s33 = (p: PlanillaReserva) => POT_33.reduce((s, k) => { const r = p.datos.rel33?.[String(k)]; return s + (r ? r.tN + r.mN + r.tR + r.mR : 0); }, 0);
 
-  // ── Shared monthly snapshot (last planilla per zone per month, zones summed) ─
-  // Respeta los filtros de arriba: zona, año, potencia, relación y fases.
+  // ── Shared snapshot por período (último por zona, zonas sumadas) ──────────
+  // Granularidad mensual por defecto; semanal cuando hay meses seleccionados.
+  // Respeta los filtros: zona, año, mes(es), potencia, relación y fases.
   const MES_SHORT = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 
   // KVAs seleccionados por relación según los filtros (potencia / relación / fases)
@@ -648,50 +755,79 @@ export function TransformadoresResumenSection() {
     : potNum != null ? (POT_33.includes(potNum) ? [potNum] : [])
     : POT_33;
 
-  const monthlySnapshots = (() => {
+  // Granularidad: semanal si hay al menos un mes seleccionado
+  const weekly = filterMeses.length > 0;
+
+  // Bucket (clave de orden + etiqueta) para una fecha según la granularidad
+  const bucketOf = (fecha: string): { key: string; label: string } => {
+    if (!weekly) {
+      const [y, m] = fecha.split("-");
+      const ym = `${y}-${m}`;
+      return { key: ym, label: `${MES_SHORT[Number(m) - 1]} ${y.slice(2)}` };
+    }
+    const d = new Date(`${fecha}T00:00:00`);
+    // Semana ISO (el jueves define el año)
+    const t = new Date(d);
+    t.setHours(0, 0, 0, 0);
+    t.setDate(t.getDate() + 3 - ((t.getDay() + 6) % 7));
+    const week1  = new Date(t.getFullYear(), 0, 4);
+    const weekNo = 1 + Math.round(((t.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+    // Lunes de la semana para la etiqueta
+    const mon = new Date(d);
+    mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
+    const label = `${String(mon.getDate()).padStart(2, "0")} ${MES_SHORT[mon.getMonth()]}`;
+    return { key: `${t.getFullYear()}-W${String(weekNo).padStart(2, "0")}`, label };
+  };
+
+  const periodSnapshots = (() => {
     const source = planillas.filter(p => {
+      const [y, m] = p.fecha.split("-");
       if (filterZona && (p.datos.deposito ?? "") !== filterZona) return false;
-      if (filterAno  && p.fecha.slice(0, 4) !== filterAno) return false;
+      if (filterAno  && y !== filterAno) return false;
+      if (filterMeses.length && !filterMeses.includes(m)) return false;
       return true;
     });
-    const byZoneMonth: Record<string, PlanillaReserva> = {};
+    // Último planilla por zona y bucket
+    const byZoneBucket: Record<string, PlanillaReserva> = {};
     for (const p of source) {
-      const key = `${p.datos.deposito ?? ""}::${p.fecha.slice(0, 7)}`;
-      if (!byZoneMonth[key] || p.fecha > byZoneMonth[key].fecha) byZoneMonth[key] = p;
+      const { key } = bucketOf(p.fecha);
+      const zk = `${p.datos.deposito ?? ""}::${key}`;
+      if (!byZoneBucket[zk] || p.fecha > byZoneBucket[zk].fecha) byZoneBucket[zk] = p;
     }
-    const byMonth: Record<string, { bruto: number; auto: number; neto: number; neto13: number; neto33: number; zonas: Set<string> }> = {};
-    for (const p of Object.values(byZoneMonth)) {
-      const key    = p.fecha.slice(0, 7);
+    const byBucket: Record<string, { label: string; bruto: number; auto: number; neto: number; neto13: number; neto33: number; zonas: Set<string> }> = {};
+    for (const p of Object.values(byZoneBucket)) {
+      const { key, label } = bucketOf(p.fecha);
       const bruto13 = computeStockBruto(p, kvas13Sel, "13");
       const bruto33 = computeStockBruto(p, kvas33Sel, "33", filterFases);
       const auto    = computePendientes(p, kvas13Sel, "13");
-      if (!byMonth[key]) byMonth[key] = { bruto: 0, auto: 0, neto: 0, neto13: 0, neto33: 0, zonas: new Set() };
-      byMonth[key].bruto  += bruto13 + bruto33;
-      byMonth[key].auto   += auto;
-      byMonth[key].neto   += bruto13 + bruto33 - auto;
-      byMonth[key].neto13 += bruto13 - auto;
-      byMonth[key].neto33 += bruto33;
-      if (p.datos.deposito) byMonth[key].zonas.add(p.datos.deposito);
+      if (!byBucket[key]) byBucket[key] = { label, bruto: 0, auto: 0, neto: 0, neto13: 0, neto33: 0, zonas: new Set() };
+      const b = byBucket[key];
+      b.bruto  += bruto13 + bruto33;
+      b.auto   += auto;
+      b.neto   += bruto13 + bruto33 - auto;
+      b.neto13 += bruto13 - auto;
+      b.neto33 += bruto33;
+      if (p.datos.deposito) b.zonas.add(p.datos.deposito);
     }
-    return byMonth;
+    return byBucket;
   })();
 
-  const sortedMonths = Object.keys(monthlySnapshots).sort();
+  const sortedBuckets = Object.keys(periodSnapshots).sort();
 
-  // ── Variación neta mensual (reuses monthlySnapshots) ─────────────────────
+  // ── Variación neta por período (mensual o semanal) ───────────────────────
 
-  const variacionData = sortedMonths.map((key, i) => {
-    const [y, m] = key.split("-");
-    const prev   = i > 0 ? monthlySnapshots[sortedMonths[i - 1]].neto : monthlySnapshots[key].neto;
+  const variacionData = sortedBuckets.map((key, i) => {
+    const snap = periodSnapshots[key];
+    const prev = i > 0 ? periodSnapshots[sortedBuckets[i - 1]].neto : snap.neto;
     return {
-      mes:       `${MES_SHORT[Number(m) - 1]} ${y.slice(2)}`,
-      bruto:     monthlySnapshots[key].bruto,
-      auto:      monthlySnapshots[key].auto,
-      neto:      monthlySnapshots[key].neto,
-      neto13:    monthlySnapshots[key].neto13,
-      neto33:    monthlySnapshots[key].neto33,
-      zonas:     [...monthlySnapshots[key].zonas].join(", "),
-      variacion: monthlySnapshots[key].neto - prev,
+      mes:       snap.label,
+      bruto:     snap.bruto,
+      auto:      snap.auto,
+      neto:      snap.neto,
+      neto13:    snap.neto13,
+      neto33:    snap.neto33,
+      zonas:     [...snap.zonas].join(", "),
+      variacion: snap.neto - prev,
     };
   });
 
@@ -742,7 +878,7 @@ export function TransformadoresResumenSection() {
   const planillasFiltradas = planillas.filter(p => {
     const [y, m] = p.fecha.split("-");
     if (filterAno  && y !== filterAno)  return false;
-    if (filterMes  && m !== filterMes)  return false;
+    if (filterMeses.length && !filterMeses.includes(m)) return false;
     if (filterZona && (p.datos.deposito ?? "") !== filterZona) return false;
     return true;
   });
@@ -896,7 +1032,7 @@ export function TransformadoresResumenSection() {
   const blockContent: Record<string, React.ReactNode> = {
     variacion: (
       <div className="space-y-6">
-        <ChartPanel title="Gráfico de Variación Neta" subtitle="Stock neto en comparación con el mes anterior">
+        <ChartPanel title="Gráfico de Variación Neta" subtitle={`Stock neto en comparación con ${weekly ? "la semana anterior" : "el mes anterior"}`}>
           {variacionData.length < 2 ? (
             <p className="text-sm text-muted-foreground">Se necesitan al menos 2 planillas para calcular la variación.</p>
           ) : (
@@ -949,7 +1085,7 @@ export function TransformadoresResumenSection() {
               <table className="w-full text-xs mt-2">
                 <thead>
                   <tr className="border-b border-border text-muted-foreground">
-                    <th className="pb-2 text-left font-medium">Mes</th>
+                    <th className="pb-2 text-left font-medium">{weekly ? "Semana" : "Mes"}</th>
                     <th className="pb-2 text-right font-medium">Stock Bruto</th>
                     <th className="pb-2 text-right font-medium">Autorizados</th>
                     <th className="pb-2 text-right font-medium">Stock Neto</th>
@@ -980,9 +1116,9 @@ export function TransformadoresResumenSection() {
 
     evolucion: (
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <ChartPanel title="Evolución Mensual — 13,2 / 0,4 kV" subtitle="Stock neto al cierre de cada mes (según filtros)">
+        <ChartPanel title="Evolución — 13,2 / 0,4 kV" subtitle={`Stock neto al cierre de cada ${weekly ? "semana" : "mes"} (según filtros)`}>
           {variacionData.length < 2 ? (
-            <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
+            <p className="text-sm text-muted-foreground">Se necesitan al menos 2 {weekly ? "semanas" : "meses"} con datos.</p>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
@@ -1000,9 +1136,9 @@ export function TransformadoresResumenSection() {
           )}
         </ChartPanel>
 
-        <ChartPanel title="Evolución Mensual — 33 / 0,4 kV" subtitle="Stock neto al cierre de cada mes (según filtros)">
+        <ChartPanel title="Evolución — 33 / 0,4 kV" subtitle={`Stock neto al cierre de cada ${weekly ? "semana" : "mes"} (según filtros)`}>
           {variacionData.length < 2 ? (
-            <p className="text-sm text-muted-foreground">Se necesitan planillas de al menos 2 meses distintos.</p>
+            <p className="text-sm text-muted-foreground">Se necesitan al menos 2 {weekly ? "semanas" : "meses"} con datos.</p>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <LineChart data={variacionData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
@@ -1357,11 +1493,9 @@ export function TransformadoresResumenSection() {
             placeholder="Año"
             options={availableYears.map(y => ({ value: y, label: y }))}
           />
-          <FilterSelect
-            fullWidth
-            value={filterMes}
-            onChange={setFilterMes}
-            placeholder="Mes"
+          <MonthMultiSelect
+            values={filterMeses}
+            onChange={setFilterMeses}
             options={MONTHS.map(m => ({ value: m.value, label: m.label }))}
           />
           <FilterSelect
@@ -1395,9 +1529,9 @@ export function TransformadoresResumenSection() {
           </div>
 
           <div className="flex items-center gap-2">
-          {(filterAno || filterMes || filterPotencia || filterRelacion || filterFases || filterZona) && (
+          {(filterAno || filterMeses.length || filterPotencia || filterRelacion || filterFases || filterZona) && (
             <button
-              onClick={() => { setFilterAno(""); setFilterMes(""); setFilterPotencia(""); setFilterRelacion(""); setFilterFases(""); setFilterZona(""); }}
+              onClick={() => { setFilterAno(""); setFilterMeses([]); setFilterPotencia(""); setFilterRelacion(""); setFilterFases(""); setFilterZona(""); }}
               className="px-3.5 py-2.5 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-secondary border border-border transition-colors"
             >
               Limpiar
