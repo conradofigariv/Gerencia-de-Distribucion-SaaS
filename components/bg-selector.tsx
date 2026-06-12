@@ -8,6 +8,7 @@ const OPTIONS: { value: BgEffect; label: string }[] = [
   { value: "swirl",    label: "Swirl" },
   { value: "coalesce", label: "Coalesce" },
   { value: "shift",    label: "Shift" },
+  { value: "nebula",   label: "Nebula" },
   { value: "none",     label: "Sin fondo" },
 ];
 

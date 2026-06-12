@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { createNoise3D } from "simplex-noise";
 
-export type BgEffect = "swirl" | "coalesce" | "shift" | "none";
+export type BgEffect = "swirl" | "coalesce" | "shift" | "nebula" | "none";
 
 // ── Shared utils ──────────────────────────────────────────────────────────────
 const TAU      = Math.PI * 2;
@@ -174,7 +174,7 @@ export function CanvasBackground({ effect }: { effect: BgEffect }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    if (effect === "none") return;
+    if (effect === "none" || effect === "nebula") return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const runner = RUNNERS[effect];
@@ -184,6 +184,19 @@ export function CanvasBackground({ effect }: { effect: BgEffect }) {
   }, [effect]);
 
   if (effect === "none") return null;
+
+  if (effect === "nebula") {
+    return (
+      <video
+        src="/bg-nebula.mp4"
+        autoPlay
+        loop
+        muted
+        playsInline
+        style={{ position: "fixed", inset: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: 0, pointerEvents: "none" }}
+      />
+    );
+  }
 
   return (
     <canvas
