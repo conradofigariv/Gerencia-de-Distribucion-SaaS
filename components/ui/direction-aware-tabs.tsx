@@ -60,16 +60,16 @@ export function DirectionAwareTabs({
               type="button"
               onClick={() => handleClick(tab.id)}
               className={cn(
-                "relative rounded-full px-4 py-2 text-[13px] font-medium transition-colors outline-none whitespace-nowrap",
-                isActive ? "text-white" : "text-neutral-400 hover:text-neutral-200",
+                "relative rounded-full px-4 py-[7px] text-[13px] font-medium outline-none whitespace-nowrap transition-colors duration-150",
+                isActive ? "text-white" : "text-neutral-500 hover:text-neutral-200",
               )}
               style={{ WebkitTapHighlightColor: "transparent" }}
             >
               {isActive && (
                 <motion.span
                   layoutId="direction-aware-bubble"
-                  className="absolute inset-0 z-10 mix-blend-difference"
-                  style={{ borderRadius: 9999, background: "white" }}
+                  className="absolute inset-0 z-10"
+                  style={{ borderRadius: 9999, background: "oklch(0.32 0.006 270)", boxShadow: "0 1px 3px rgba(0,0,0,0.4)" }}
                   transition={{ type: "spring", bounce: 0.19, duration: 0.4 }}
                 />
               )}
