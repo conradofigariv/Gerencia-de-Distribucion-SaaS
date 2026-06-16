@@ -147,6 +147,8 @@ export function TransformadoresCargaSection() {
   const [saving, setSaving]         = useState(false);
   const [analyzing, setAnalyzing]   = useState(false);
   const [fechaDuplicada, setFechaDuplicada] = useState(false);
+  const savingRef = useRef(false);
+  const [overwriteInfo, setOverwriteInfo] = useState<{ ids: number[]; datos: Record<string, unknown>; count: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Auth / role
@@ -287,47 +289,69 @@ export function TransformadoresCargaSection() {
 
   // ── Save ────────────────────────────────────────────────────────────────────
 
-  // Stable stringify (ordena claves recursivamente) para comparar datos sin
-  // depender del orden de inserción de las claves.
-  const stableStringify = (v: unknown): string => {
-    if (v === null || typeof v !== "object") return JSON.stringify(v);
-    if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
-    const obj = v as Record<string, unknown>;
-    return `{${Object.keys(obj).sort().map(k => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
+  // Inserta (opcionalmente borrando filas previas para sobreescribir) y resetea flags.
+  const persistInsert = async (datos: Record<string, unknown>, deleteIds?: number[]) => {
     try {
-      const datos = { terceros, taller, totales, autorizados, rel33, obs, pend, deposito };
-
-      // Evitar duplicados exactos: misma fecha + misma zona + mismos datos.
-      const { data: existentes } = await supabase
-        .from("planillas_reserva")
-        .select("id, datos")
-        .eq("fecha", fecha);
-      const target = stableStringify(datos);
-      const dup = (existentes ?? []).find(
-        p => (p.datos?.deposito ?? "") === deposito && stableStringify(p.datos) === target,
-      );
-      if (dup) {
-        toast.error("Ya existe un informe idéntico para esta fecha y zona. No se guardó el duplicado.", { duration: 4000 });
-        setFechaDuplicada(true);
-        return;
+      if (deleteIds && deleteIds.length) {
+        const { error: delErr } = await supabase.from("planillas_reserva").delete().in("id", deleteIds);
+        if (delErr) throw delErr;
       }
-
-      const { error } = await supabase
-        .from("planillas_reserva")
-        .insert([{ fecha, datos }]);
+      const { error } = await supabase.from("planillas_reserva").insert([{ fecha, datos }]);
       if (error) throw error;
-      toast.success("Planilla guardada correctamente", { duration: 1000 });
+      toast.success(deleteIds?.length ? "Informe sobreescrito correctamente" : "Planilla guardada correctamente", { duration: 1500 });
+      setFechaDuplicada(false);
       if (userId) await markUpdated(REMINDER_KEY, REMINDER_NAME, userId).catch(() => {});
     } catch (err: unknown) {
       toast.error((err as Error).message ?? "Error al guardar");
     } finally {
       setSaving(false);
+      savingRef.current = false;
     }
   };
+
+  const handleSave = async () => {
+    // Guard síncrono: evita el doble guardado por doble click (la condición
+    // disabled del botón se aplica recién en el próximo render).
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+
+    const datos = { terceros, taller, totales, autorizados, rel33, obs, pend, deposito };
+    try {
+      // ¿Ya existe un informe para esta fecha + zona?
+      const { data: existentes, error: qErr } = await supabase
+        .from("planillas_reserva")
+        .select("id, datos")
+        .eq("fecha", fecha);
+      if (qErr) throw qErr;
+      const mismos = (existentes ?? []).filter(p => (p.datos?.deposito ?? "") === deposito);
+      if (mismos.length > 0) {
+        // Pedir confirmación: sobreescribir o descartar.
+        setOverwriteInfo({ ids: mismos.map(p => p.id as number), datos, count: mismos.length });
+        setSaving(false);
+        savingRef.current = false;
+        return;
+      }
+    } catch (err: unknown) {
+      toast.error((err as Error).message ?? "Error al verificar duplicados");
+      setSaving(false);
+      savingRef.current = false;
+      return;
+    }
+
+    await persistInsert(datos);
+  };
+
+  const handleOverwrite = async () => {
+    if (!overwriteInfo) return;
+    const { ids, datos } = overwriteInfo;
+    setOverwriteInfo(null);
+    savingRef.current = true;
+    setSaving(true);
+    await persistInsert(datos, ids);
+  };
+
+  const handleCancelOverwrite = () => setOverwriteInfo(null);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -634,6 +658,44 @@ export function TransformadoresCargaSection() {
           </button>
         </div>
       </div>
+
+      {/* ── Confirmación de sobreescritura (portal) ── */}
+      {overwriteInfo && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleCancelOverwrite} />
+          <div className="relative bg-popover border border-border rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="grid place-items-center w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-400 shrink-0">
+                <span className="text-lg font-bold">!</span>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-foreground">Ya existe un informe para esta fecha</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Hay {overwriteInfo.count > 1 ? `${overwriteInfo.count} informes` : "un informe"} guardado{overwriteInfo.count > 1 ? "s" : ""} para
+                  el <span className="text-foreground font-medium">{fecha.split("-").reverse().join("/")}</span>
+                  {deposito && <> en <span className="text-foreground font-medium">{deposito}</span></>}.
+                  ¿Querés sobreescribir{overwriteInfo.count > 1 ? "los" : "lo"} o descartar este guardado?
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                onClick={handleCancelOverwrite}
+                className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground border border-border hover:bg-secondary transition-colors"
+              >
+                Descartar
+              </button>
+              <button
+                onClick={handleOverwrite}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 text-black text-sm font-semibold hover:bg-amber-400 transition-colors"
+              >
+                <CheckCircle2 className="w-4 h-4" /> Sobreescribir
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* ── Reminder config dialog (portal) ── */}
       {configOpen && typeof document !== "undefined" && createPortal(
