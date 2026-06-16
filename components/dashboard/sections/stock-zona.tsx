@@ -5,10 +5,10 @@ import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { DirectionAwareTabs } from "@/components/ui/direction-aware-tabs";
 import {
-  Trash2, Loader2, Search, X, PackageOpen, RefreshCw,
+  Trash2, Loader2, X, PackageOpen, RefreshCw,
   ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight,
   Download, Sparkles, Tag, Wrench, Package, Check, Plus, HelpCircle,
-  ChevronLeft, ArrowRight, Lightbulb, ListChecks,
+  ChevronLeft, ArrowRight, Lightbulb, ListChecks, Pin, Filter,
 } from "lucide-react";
 import { CheckIcon } from "lucide-react";
 import { SearchInput } from "@/components/ui/floating-input";
@@ -26,6 +26,8 @@ type SortDir        = "asc" | "desc";
 const MATRICULAS_CACHE_KEY = "stock-zona-matriculas-cache";
 // Ancho de columnas persistido (para que la lista se vea igual al volver)
 const COLWIDTHS_KEY = "stock-zona-colwidths";
+// Zonas elegidas + matrículas fijadas + "solo zonas con stock" (persistido)
+const RESUMEN_STATE_KEY = "stock-zona-resumen-state";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] = [
   { id: "resumen",  label: "Resumen de stock", icon: PackageOpen, desc: "Stock consolidado por artículo y zona de depósito." },
@@ -267,6 +269,145 @@ function BeastSelect({
   );
 }
 
+// ─── BeastMultiSelect (multi-selección con checkboxes — mismo estilo) ──────────
+
+function BeastMultiSelect({
+  options, values, onToggle, onClear, placeholder, minWidth = 200, align = "left",
+}: {
+  options: BeastOption[];
+  values: string[];
+  onToggle: (v: string) => void;
+  onClear: () => void;
+  placeholder: string;
+  minWidth?: number;
+  align?: "left" | "right";
+}) {
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left?: number; right?: number; minWidth: number } | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (ref.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const r = ref.current?.getBoundingClientRect();
+      if (!r) return;
+      const w = Math.max(minWidth, r.width);
+      const overflowsRight = r.left + w > window.innerWidth - 8;
+      const anchorRight = align === "right" || overflowsRight;
+      setCoords({
+        top: r.bottom + 6,
+        ...(anchorRight ? { right: Math.max(8, window.innerWidth - r.right) } : { left: r.left }),
+        minWidth: w,
+      });
+    };
+    update();
+    const close = () => setOpen(false);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", update);
+    return () => { window.removeEventListener("scroll", close, true); window.removeEventListener("resize", update); };
+  }, [open, align, minWidth]);
+
+  const selectedSet = new Set(values);
+  const count = values.length;
+
+  const menu = (
+    <div
+      ref={menuRef}
+      className="overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
+      style={{
+        position: "fixed", zIndex: 300, top: coords?.top, left: coords?.left, right: coords?.right,
+        minWidth: coords?.minWidth ?? minWidth,
+        background: "oklch(0.205 0.005 270)",
+        border: "1px solid oklch(1 0 0 / 0.07)",
+        borderRadius: 10,
+        boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6), 0 0 0 1px oklch(1 0 0 / 0.02) inset",
+        padding: 4,
+        maxHeight: 340, overflowY: "auto",
+      }}
+    >
+      <button
+        onClick={() => { onClear(); }}
+        className="w-full text-left flex items-center gap-2.5 transition-colors"
+        style={{ padding: "8px 10px", borderRadius: 7, border: "none", background: "transparent", cursor: "pointer" }}
+        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "oklch(0.25 0.005 270)"; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+      >
+        <span className="flex-1 truncate text-[13px]" style={{ color: count === 0 ? "oklch(0.97 0 0)" : "oklch(0.82 0 0)", fontWeight: count === 0 ? 500 : 400 }}>
+          Todas las zonas
+        </span>
+        {count === 0 && <CheckIcon className="w-3.5 h-3.5 shrink-0" style={{ color: "#8B5CF6" }} strokeWidth={2.6} />}
+      </button>
+      {options.map(o => {
+        const isActive = selectedSet.has(o.value);
+        return (
+          <button
+            key={o.value}
+            onClick={() => onToggle(o.value)}
+            className="w-full text-left flex items-center gap-2.5 transition-colors"
+            style={{ padding: "8px 10px", borderRadius: 7, border: "none", background: "transparent", cursor: "pointer" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "oklch(0.25 0.005 270)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+          >
+            <span
+              className="grid place-items-center shrink-0"
+              style={{
+                width: 16, height: 16, borderRadius: 5,
+                border: `1.5px solid ${isActive ? "#8B5CF6" : "oklch(1 0 0 / 0.18)"}`,
+                background: isActive ? "#8B5CF6" : "transparent",
+                transition: "background .12s, border-color .12s",
+              }}
+            >
+              {isActive && <CheckIcon className="w-2.5 h-2.5" style={{ color: "#fff" }} strokeWidth={3.5} />}
+            </span>
+            <span className="flex-1 truncate text-[13px]" style={{ color: isActive ? "oklch(0.97 0 0)" : "oklch(0.82 0 0)" }}>
+              {o.node ?? o.label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div ref={ref} className="relative" style={{ flexShrink: 0 }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-2"
+        style={{
+          height: 38, padding: "0 12px", borderRadius: 9, minWidth, width: "100%",
+          background: "oklch(0.16 0.005 270)",
+          border: `1px solid ${open ? "oklch(0.55 0.20 295 / 0.55)" : "oklch(1 0 0 / 0.07)"}`,
+          color: "oklch(0.97 0 0)", fontSize: 13,
+          transition: "border-color .15s, box-shadow .15s",
+          boxShadow: open ? "0 0 0 3px oklch(0.55 0.20 295 / 0.15)" : "none",
+        }}
+      >
+        <span className="truncate flex-1 text-left flex items-center gap-1.5" style={{ color: count === 0 ? "oklch(0.55 0 0)" : "oklch(0.90 0 0)" }}>
+          {count === 0
+            ? placeholder
+            : count <= 2
+              ? values.slice().sort((a, b) => a.localeCompare(b, "es", { numeric: true })).map(z => <ZonePill key={z} zona={z} small />)
+              : <>{count} zonas</>}
+        </span>
+        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} style={{ color: "oklch(0.55 0 0)" }} />
+      </button>
+      {open && coords && createPortal(menu, document.body)}
+    </div>
+  );
+}
+
 // ─── Main section ─────────────────────────────────────────────────────────────
 
 export function StockZonaSection() {
@@ -281,7 +422,9 @@ export function StockZonaSection() {
   const [importedCount, setImportedCount]   = useState(0);
 
   // Resumen state
-  const [filterZona, setFilterZona]         = useState("todos");
+  const [selectedZonas, setSelectedZonas]   = useState<string[]>([]);   // [] = todas las zonas
+  const [onlyZonasConStock, setOnlyZonasConStock] = useState(false);    // solo columnas de zona con stock
+  const [pinnedArticulos, setPinnedArticulos] = useState<string[]>([]); // matrículas fijadas arriba
   const [filterFamilia, setFilterFamilia]   = useState("");
   const [filterTipo, setFilterTipo]         = useState<ArticuloTipo>("");
   const [filterSearch, setFilterSearch]     = useState("");
@@ -289,6 +432,18 @@ export function StockZonaSection() {
   const [sortCol, setSortCol]               = useState("articulo");
   const [sortDir, setSortDir]               = useState<SortDir>("asc");
   const [selectedRow, setSelectedRow]       = useState<string | null>(null);
+
+  // Toggle de fijar matrícula arriba
+  const togglePin = useCallback((articulo: string) => {
+    setPinnedArticulos(prev =>
+      prev.includes(articulo) ? prev.filter(a => a !== articulo) : [...prev, articulo],
+    );
+  }, []);
+  const toggleZonaSel = useCallback((zona: string) => {
+    setSelectedZonas(prev =>
+      prev.includes(zona) ? prev.filter(z => z !== zona) : [...prev, zona],
+    );
+  }, []);
 
   // Column resize & zone collapse
   const [colWidths, setColWidths] = useState({ articulo: 140, descArticulo: 280, udmPrimaria: 84, tipo: 130, total: 100 });
@@ -316,6 +471,30 @@ export function StockZonaSection() {
     if (!colWidthsLoaded.current) return;   // no guardar antes de cargar lo previo
     try { localStorage.setItem(COLWIDTHS_KEY, JSON.stringify({ colWidths, zoneWidth })); } catch { /* ignorar */ }
   }, [colWidths, zoneWidth]);
+
+  // ── Persistencia de zonas elegidas / matrículas fijadas (localStorage) ──────
+  const resumenStateLoaded = useRef(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(RESUMEN_STATE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as { selectedZonas?: string[]; pinned?: string[]; onlyConStock?: boolean };
+        if (Array.isArray(saved.selectedZonas)) setSelectedZonas(saved.selectedZonas);
+        if (Array.isArray(saved.pinned))        setPinnedArticulos(saved.pinned);
+        if (typeof saved.onlyConStock === "boolean") setOnlyZonasConStock(saved.onlyConStock);
+      }
+    } catch { /* ignorar */ }
+    resumenStateLoaded.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!resumenStateLoaded.current) return;
+    try {
+      localStorage.setItem(RESUMEN_STATE_KEY, JSON.stringify({
+        selectedZonas, pinned: pinnedArticulos, onlyConStock: onlyZonasConStock,
+      }));
+    } catch { /* ignorar */ }
+  }, [selectedZonas, pinnedArticulos, onlyZonasConStock]);
 
   // ── Toggle de zonas con animación ───────────────────────────────────────────
   const toggleZones = useCallback(() => {
@@ -421,10 +600,11 @@ export function StockZonaSection() {
     [uploads],
   );
 
-  // Columnas de zona visibles en la tabla: si hay una zona filtrada, solo esa.
-  const visibleZonas = useMemo(
-    () => (filterZona === "todos" ? zonas : zonas.filter(z => z === filterZona)),
-    [zonas, filterZona],
+  // Zonas elegidas en el desplegable (vacío = todas). Se intersecta con las
+  // zonas existentes por si quedó alguna guardada que ya no existe.
+  const baseZonas = useMemo(
+    () => (selectedZonas.length ? zonas.filter(z => selectedZonas.includes(z)) : zonas),
+    [zonas, selectedZonas],
   );
 
   const lastUpdate = useMemo(() => uploads.reduce<string | null>((latest, u) => {
@@ -503,9 +683,10 @@ export function StockZonaSection() {
     return m;
   }, [uploads, families, matriculasInfo]);
 
-  const pivotRows = useMemo(() => Array.from(pivotMap.values())
+  // Filas que cumplen los filtros (búsqueda / familia / tipo). NO se filtra por
+  // zona: elegir zonas solo limita las COLUMNAS, no las filas.
+  const matchedRows = useMemo(() => Array.from(pivotMap.values())
     .filter(r => {
-      const zonaOk       = filterZona === "todos"    || (r.byZona[filterZona] ?? 0) > 0;
       const familiaOk    = !filterFamilia            || familiasOf(r.articulo).includes(filterFamilia);
       const tipoOk       = !filterTipo               || tipoOf(r.articulo) === filterTipo;
       const lo           = filterSearch.toLowerCase();
@@ -514,7 +695,7 @@ export function StockZonaSection() {
           ? r.articulo.toLowerCase().includes(lo)
           : r.descArticulo.toLowerCase().includes(lo)
       );
-      return zonaOk && familiaOk && tipoOk && searchOk;
+      return familiaOk && tipoOk && searchOk;
     })
     .sort((a, b) => {
       if (sortCol === "total") {
@@ -535,7 +716,35 @@ export function StockZonaSection() {
       const va = a.byZona[sortCol] ?? 0;
       const vb = b.byZona[sortCol] ?? 0;
       return sortDir === "asc" ? va - vb : vb - va;
-    }), [pivotMap, familiasOf, tipoOf, filterZona, filterFamilia, filterTipo, filterSearch, articuloFiltro, sortCol, sortDir]);
+    }), [pivotMap, familiasOf, tipoOf, filterFamilia, filterTipo, filterSearch, articuloFiltro, sortCol, sortDir]);
+
+  // Conjunto de matrículas fijadas (para estilo y para no duplicarlas).
+  const pinnedSet = useMemo(() => new Set(pinnedArticulos), [pinnedArticulos]);
+
+  // Filas finales: las fijadas SIEMPRE arriba (aunque no coincidan con el filtro),
+  // en orden de fijado, y debajo el resto que cumple los filtros.
+  const pivotRows = useMemo(() => {
+    const pinned = pinnedArticulos
+      .map(a => pivotMap.get(a))
+      .filter((r): r is PivotRow => !!r);
+    const rest = matchedRows.filter(r => !pinnedSet.has(r.articulo));
+    return [...pinned, ...rest];
+  }, [pinnedArticulos, pivotMap, matchedRows, pinnedSet]);
+
+  const pinnedCount = pinnedArticulos.filter(a => pivotMap.has(a)).length;
+
+  // Columnas de zona visibles: las elegidas (o todas) y, si "solo con stock"
+  // está activo, solo las que tienen stock en alguna fila visible.
+  const visibleZonas = useMemo(() => {
+    if (!onlyZonasConStock) return baseZonas;
+    const conStock = new Set<string>();
+    for (const r of pivotRows) {
+      for (const z of baseZonas) {
+        if ((r.byZona[z] ?? 0) > 0) conStock.add(z);
+      }
+    }
+    return baseZonas.filter(z => conStock.has(z));
+  }, [baseZonas, onlyZonasConStock, pivotRows]);
 
   const allArticles = useMemo(() => Array.from(pivotMap.values())
     .sort((a, b) => a.articulo.localeCompare(b.articulo, "es", { numeric: true })), [pivotMap]);
@@ -924,17 +1133,33 @@ export function StockZonaSection() {
             <>
               {/* Filter bar */}
               <div className="flex items-center gap-2.5 flex-wrap">
-                {/* Zone select */}
-                <BeastSelect
-                  value={filterZona}
-                  onChange={setFilterZona}
+                {/* Zone multi-select (varias zonas fijas; solo limita columnas) */}
+                <BeastMultiSelect
+                  values={selectedZonas}
+                  onToggle={toggleZonaSel}
+                  onClear={() => setSelectedZonas([])}
                   placeholder="Todas las zonas"
                   minWidth={180}
-                  options={[
-                    { value: "todos", label: "Todas las zonas" },
-                    ...zonas.map(z => ({ value: z, label: `Zona ${z}`, node: <ZonePill zona={z} /> })),
-                  ]}
+                  options={zonas.map(z => ({ value: z, label: `Zona ${z}`, node: <ZonePill zona={z} /> }))}
                 />
+
+                {/* Solo zonas con stock (oculta columnas de zona sin stock visible) */}
+                <button
+                  onClick={() => setOnlyZonasConStock(v => !v)}
+                  title="Mostrar solo las columnas de zona que tienen stock en lo que estás viendo"
+                  style={{
+                    height: 38, padding: "0 12px", borderRadius: 9,
+                    display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer",
+                    fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap",
+                    background: onlyZonasConStock ? "oklch(0.30 0.10 155 / 0.45)" : "oklch(0.16 0.005 270)",
+                    border: `1px solid ${onlyZonasConStock ? "oklch(0.55 0.15 155 / 0.55)" : "oklch(1 0 0 / 0.07)"}`,
+                    color: onlyZonasConStock ? "#86efac" : "oklch(0.65 0 0)",
+                    transition: "background .15s, color .15s, border-color .15s",
+                  }}
+                >
+                  <Filter className="w-3.5 h-3.5" strokeWidth={2} />
+                  Solo zonas con stock
+                </button>
 
                 {familiasDisponibles.length > 0 && (
                   <BeastSelect
@@ -986,7 +1211,15 @@ export function StockZonaSection() {
                 />
 
                 <p className="text-[12.5px] text-muted-foreground whitespace-nowrap flex items-center gap-1.5">
-                  <span><span className="text-foreground font-medium">{pivotRows.length}</span> de {pivotMap.size} artículos</span>
+                  <span><span className="text-foreground font-medium">{matchedRows.length}</span> de {pivotMap.size} artículos</span>
+                  {pinnedCount > 0 && (
+                    <span className="inline-flex items-center gap-1" style={{ color: "#c4b5fd" }}>
+                      · <Pin className="w-3 h-3" fill="#c4b5fd" strokeWidth={2} /> {pinnedCount} fijada{pinnedCount !== 1 ? "s" : ""}
+                      <button onClick={() => setPinnedArticulos([])} className="ml-0.5 underline decoration-dotted hover:text-foreground" style={{ fontSize: 11.5 }}>
+                        limpiar
+                      </button>
+                    </span>
+                  )}
                   {matriculasLoading && (
                     <span className="inline-flex items-center gap-1 text-muted-foreground/70">
                       · <Loader2 className="w-3 h-3 animate-spin" /> catálogo…
@@ -1118,18 +1351,40 @@ export function StockZonaSection() {
                             {vItems.map(vi => {
                               const row = pivotRows[vi.index];
                               const isSelected = selectedRow === row.articulo;
+                              const isPinned   = pinnedSet.has(row.articulo);
+                              const isLastPinned = pinnedCount > 0 && vi.index === pinnedCount - 1;
                               const isLast = vi.index === pivotRows.length - 1;
-                              const bottomBorder = isLast ? {} : { borderBottom: cellBorder };
+                              const bottomBorder = isLastPinned
+                                ? { borderBottom: "2px solid oklch(0.55 0.20 295 / 0.5)" }
+                                : isLast ? {} : { borderBottom: cellBorder };
+                              const pinnedBg = "oklch(0.55 0.20 295 / 0.08)";
+                              const baseBg = isSelected ? "oklch(0.55 0.20 295 / 0.15)" : isPinned ? pinnedBg : "";
                               return (
                                 <tr
                                   key={row.articulo}
                                   onClick={() => setSelectedRow(isSelected ? null : row.articulo)}
-                                  style={{ cursor: "pointer", background: isSelected ? "oklch(0.55 0.20 295 / 0.15)" : undefined, transition: "background 0.1s" }}
+                                  style={{ cursor: "pointer", background: baseBg || undefined, transition: "background 0.1s" }}
                                   onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "hsl(var(--secondary) / 0.35)"; }}
-                                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = ""; }}
+                                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = baseBg; }}
                                 >
-                                  <td style={{ ...bottomBorder, padding: "10px 12px 10px 14px", fontFamily: "ui-monospace, monospace", fontSize: 12.5, color: "#7ee2a8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                    {row.articulo}
+                                  <td style={{ ...bottomBorder, padding: "10px 12px 10px 10px", fontFamily: "ui-monospace, monospace", fontSize: 12.5, color: "#7ee2a8", overflow: "hidden", whiteSpace: "nowrap" }}>
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: "100%" }}>
+                                      <button
+                                        onClick={e => { e.stopPropagation(); togglePin(row.articulo); }}
+                                        title={isPinned ? "Quitar de fijadas" : "Fijar arriba"}
+                                        className="shrink-0 grid place-items-center transition-colors"
+                                        style={{
+                                          width: 20, height: 20, borderRadius: 5,
+                                          color: isPinned ? "#c4b5fd" : "oklch(0.45 0 0)",
+                                          background: isPinned ? "oklch(0.55 0.20 295 / 0.2)" : "transparent",
+                                        }}
+                                        onMouseEnter={e => { if (!isPinned) (e.currentTarget as HTMLButtonElement).style.color = "#c4b5fd"; }}
+                                        onMouseLeave={e => { if (!isPinned) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.45 0 0)"; }}
+                                      >
+                                        <Pin className="w-3.5 h-3.5" strokeWidth={2} fill={isPinned ? "#c4b5fd" : "none"} />
+                                      </button>
+                                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.articulo}</span>
+                                    </span>
                                   </td>
                                   <td style={{ ...bottomBorder, padding: "10px 12px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                     {row.descArticulo}
