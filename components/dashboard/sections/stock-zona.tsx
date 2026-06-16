@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { DirectionAwareTabs } from "@/components/ui/direction-aware-tabs";
 import {
   Trash2, Loader2, Search, X, PackageOpen, RefreshCw,
   ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight,
@@ -859,47 +860,24 @@ export function StockZonaSection() {
         </div>
       </div>
 
-      {/* Tabs — beast pure pill bar */}
-      <div
-        style={{
-          display: "inline-flex", gap: 4, padding: 4,
-          background: "oklch(0.235 0.005 270)", borderRadius: 12,
-          flexWrap: "wrap", maxWidth: "100%",
-        }}
-      >
-        {TABS.map((t, idx) => {
+      {/* Tabs — Direction Aware Tabs (burbuja deslizante + contenido direccional) */}
+      <DirectionAwareTabs
+        value={tab}
+        onChange={(id) => setTab(id as Tab)}
+        className="mb-5"
+        tabs={TABS.map((t) => {
           const Icon = t.icon;
-          const isActive = tab === t.id;
-          return (
-            <Fragment key={t.id}>
-              {idx > 0 && (
-                <span style={{ display: "inline-flex", alignItems: "center", color: "oklch(0.38 0 0)", fontSize: 13, userSelect: "none", pointerEvents: "none" }}>
-                  →
-                </span>
-              )}
-              <button
-                onClick={() => setTab(t.id)}
-                style={{
-                  display: "inline-flex", alignItems: "center", gap: 7,
-                  padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer",
-                  background: isActive ? "oklch(0.27 0.005 270)" : "transparent",
-                  color: isActive ? "oklch(0.97 0 0)" : "oklch(0.65 0 0)",
-                  fontSize: 13, fontWeight: isActive ? 500 : 400,
-                  transition: "background .15s, color .15s",
-                  boxShadow: isActive ? "0 1px 0 oklch(1 0 0 / 0.06) inset" : "none",
-                  whiteSpace: "nowrap",
-                }}
-                onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; }}
-                onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.65 0 0)"; }}
-              >
-                <Icon className="w-3.5 h-3.5" strokeWidth={1.8} />
+          return {
+            id: t.id,
+            label: (
+              <>
+                <Icon className="w-3.5 h-3.5" strokeWidth={1.9} />
                 {t.label}
-              </button>
-            </Fragment>
-          );
+              </>
+            ),
+          };
         })}
-      </div>
-
+      >
       {/* Content card */}
       <div
         className="px-4 py-6 sm:px-6 overflow-hidden"
@@ -1718,6 +1696,7 @@ export function StockZonaSection() {
         </div>
       )}
       </div>
+      </DirectionAwareTabs>
 
       {/* Modal: Agregar familia (nombre + pegar lista de matrículas) */}
       {addFamilyOpen && createPortal(
