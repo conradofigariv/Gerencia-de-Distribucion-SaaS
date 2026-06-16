@@ -181,10 +181,9 @@ function BeastSelect({
       });
     };
     update();
-    const close = () => setOpen(false);
-    window.addEventListener("scroll", close, true);
+    window.addEventListener("scroll", update, true);
     window.addEventListener("resize", update);
-    return () => { window.removeEventListener("scroll", close, true); window.removeEventListener("resize", update); };
+    return () => { window.removeEventListener("scroll", update, true); window.removeEventListener("resize", update); };
   }, [open, portal, align, minWidth]);
 
   const selected = options.find(o => o.value === value);
@@ -313,10 +312,11 @@ function BeastMultiSelect({
       });
     };
     update();
-    const close = () => setOpen(false);
-    window.addEventListener("scroll", close, true);
+    // Reposicionar al hacer scroll (no cerrar): así no se cierra al desplazar
+    // dentro del menú ni al usar su barra; si scrollea la página, lo sigue.
+    window.addEventListener("scroll", update, true);
     window.addEventListener("resize", update);
-    return () => { window.removeEventListener("scroll", close, true); window.removeEventListener("resize", update); };
+    return () => { window.removeEventListener("scroll", update, true); window.removeEventListener("resize", update); };
   }, [open, align, minWidth]);
 
   const selectedSet = new Set(values);
