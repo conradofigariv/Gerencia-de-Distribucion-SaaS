@@ -187,10 +187,20 @@ export function IndiceIdoResumenSection() {
         </div>
       </div>
 
+      {/* Contenedor beast pure (modelo Stock por Zona) */}
+      <div
+        className="px-4 py-6 sm:px-6 space-y-5"
+        style={{
+          background: "oklch(0.235 0.005 270)",
+          border: "1px solid oklch(1 0 0 / 0.07)",
+          borderRadius: 14,
+        }}
+      >
+
       {/* IDO promedio */}
       {idoPromedio !== null && (
         <div className="flex items-center gap-4 flex-wrap">
-          <div className="rounded-xl border border-border bg-card/40 px-5 py-3">
+          <div className="rounded-[14px] px-5 py-3" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}>
             <div className="text-xs text-muted-foreground">IDO promedio ({calc.filter((c) => c.ido !== null).length} zonas)</div>
             <div className="text-2xl font-semibold font-mono" style={{ color: idoStyle(idoPromedio).color }}>
               {fmtPct(idoPromedio, 1)}
@@ -200,7 +210,7 @@ export function IndiceIdoResumenSection() {
       )}
 
       {/* Metas (lectura — se editan en Carga de datos) */}
-      <div className="rounded-xl border border-border bg-card/40">
+      <div className="rounded-[14px]" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}>
         <button
           onClick={() => setMetasOpen((o) => !o)}
           className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-foreground"
@@ -233,7 +243,10 @@ export function IndiceIdoResumenSection() {
       </div>
 
       {/* Tabla calculada */}
-      <div className="rounded-xl border border-border bg-card/40 overflow-x-auto">
+      <div
+        className="overflow-x-auto rounded-[14px]"
+        style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}
+      >
         {calc.length === 0 ? (
           <div className="p-10 text-center text-sm text-muted-foreground">
             {loading ? "Cargando…" : `Sin datos para el período ${periodo}. Cargá valores en "Carga de datos".`}
@@ -247,7 +260,7 @@ export function IndiceIdoResumenSection() {
             </colgroup>
             <thead>
               <tr className="border-b border-border">
-                <th rowSpan={2} className="relative text-left font-medium px-3 py-2 sticky left-0 bg-card/90 z-10 align-bottom">Zona<Resizer id="zona" /></th>
+                <th rowSpan={2} className="relative text-left font-medium px-3 py-2 sticky left-0 bg-[oklch(0.255_0.006_270)] z-10 align-bottom">Zona<Resizer id="zona" /></th>
                 <th colSpan={hasS2 ? 5 : 3} className="text-center font-semibold text-foreground/80 px-3 py-1.5 border-l border-border">FMIK</th>
                 <th colSpan={hasS2 ? 5 : 3} className="text-center font-semibold text-foreground/80 px-3 py-1.5 border-l border-border">DMIK</th>
                 <th rowSpan={2} className="relative text-center font-semibold text-foreground/80 px-3 py-2 border-l border-border align-bottom">Result.<br />Técnico<Resizer id="tecnico" /></th>
@@ -273,7 +286,7 @@ export function IndiceIdoResumenSection() {
                 const ido = idoStyle(c.ido);
                 return (
                   <tr key={c.zona} className="border-b border-border/50 hover:bg-secondary/20">
-                    <td className="px-3 py-1.5 font-semibold text-foreground sticky left-0 bg-card/90 z-10 truncate">{c.zona}</td>
+                    <td className="px-3 py-1.5 font-semibold text-foreground sticky left-0 bg-[oklch(0.255_0.006_270)] z-10 truncate">{c.zona}</td>
                     <td className="px-3 py-1.5 text-right font-mono border-l border-border text-foreground/90 truncate">{fmtNum(c.fmikS1)}</td>
                     <td className={`px-3 py-1.5 text-right font-mono font-semibold ${kpiColor(c.kpiFmikS1)}`}>{fmtPct(c.kpiFmikS1)}</td>
                     {hasS2 && <td className="px-3 py-1.5 text-right font-mono text-foreground/90 truncate">{fmtNum(c.fmikS2)}</td>}
@@ -298,6 +311,7 @@ export function IndiceIdoResumenSection() {
             </tbody>
           </table>
         )}
+      </div>
       </div>
     </div>
   );

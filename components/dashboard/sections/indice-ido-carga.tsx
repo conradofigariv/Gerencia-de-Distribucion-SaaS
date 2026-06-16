@@ -303,6 +303,16 @@ export function IndiceIdoCargaSection() {
         </div>
       </div>
 
+      {/* Contenedor beast pure (modelo Stock por Zona) */}
+      <div
+        className="px-4 py-6 sm:px-6 space-y-5"
+        style={{
+          background: "oklch(0.235 0.005 270)",
+          border: "1px solid oklch(1 0 0 / 0.07)",
+          borderRadius: 14,
+        }}
+      >
+
       {/* Alcance */}
       <div className="text-xs text-muted-foreground bg-secondary/30 border border-border rounded-lg px-3 py-2.5">
         <strong className="text-foreground/80">Alcance:</strong> se consideran únicamente las{" "}
@@ -312,7 +322,7 @@ export function IndiceIdoCargaSection() {
       </div>
 
       {/* Criterios estratégicos / metas internas (editables, persistidos por período) */}
-      <div className="rounded-xl border border-border bg-card/40">
+      <div className="rounded-[14px]" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}>
         <button
           onClick={() => setMetasOpen((o) => !o)}
           className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-foreground"
@@ -371,11 +381,14 @@ export function IndiceIdoCargaSection() {
       </div>
 
       {/* Tabla editable */}
-      <div className="rounded-xl border border-border bg-card/40 overflow-x-auto">
+      <div
+        className="overflow-x-auto rounded-[14px]"
+        style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}
+      >
         <table className="w-full text-xs border-collapse">
           <thead>
             <tr className="border-b border-border">
-              <th rowSpan={2} className="text-left font-medium px-3 py-2 sticky left-0 bg-card/90 z-10 align-bottom">
+              <th rowSpan={2} className="text-left font-medium px-3 py-2 sticky left-0 bg-[oklch(0.255_0.006_270)] z-10 align-bottom">
                 Zona
               </th>
               {GROUPS.map((g) => (
@@ -403,7 +416,7 @@ export function IndiceIdoCargaSection() {
           <tbody>
             {grid.map((row, rowIdx) => (
               <tr key={row.zona} className="border-b border-border/50 hover:bg-secondary/20">
-                <td className="px-3 py-1.5 font-semibold text-foreground sticky left-0 bg-card/90 z-10">
+                <td className="px-3 py-1.5 font-semibold text-foreground sticky left-0 bg-[oklch(0.255_0.006_270)] z-10">
                   {row.zona}
                 </td>
                 {COLUMNS.map((col) => {
@@ -416,7 +429,7 @@ export function IndiceIdoCargaSection() {
                           value={row.cells[col.field]}
                           onChange={(e) => setCell(rowIdx, col.field, e.target.value)}
                           onPaste={(e) => handlePaste(e, rowIdx, col.fieldIdx)}
-                          className="w-20 px-2 py-1 rounded bg-secondary/60 border border-transparent text-right font-mono text-foreground/90 focus:outline-none focus:border-accent focus:bg-secondary"
+                          className="w-20 px-2 py-1 rounded bg-[oklch(0.16_0.005_270)] border border-[oklch(1_0_0_/_0.07)] text-right font-mono text-foreground/90 focus:outline-none focus:border-accent"
                         />
                       </td>
                     );
@@ -477,6 +490,7 @@ export function IndiceIdoCargaSection() {
             <Plus className="w-4 h-4" /> Agregar
           </button>
         </div>
+      </div>
       </div>
     </div>
   );
