@@ -11,6 +11,7 @@ import {
   ChevronLeft, ArrowRight, Lightbulb, ListChecks,
 } from "lucide-react";
 import { CheckIcon } from "lucide-react";
+import { SearchInput } from "@/components/ui/floating-input";
 import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
 import type { ZonaUpload, CompraRow } from "@/lib/stockStorage";
 import { getFamilies, upsertFamiliesBulk, deleteFamiliesBulk, getMatriculasInfo } from "@/lib/stockFamilies";
@@ -977,21 +978,12 @@ export function StockZonaSection() {
                 </div>
 
                 {/* Search input */}
-                <div className="flex items-center gap-2 flex-1 min-w-[180px] h-9 px-3 rounded-lg bg-secondary border border-border">
-                  <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  <input
-                    type="text"
-                    value={filterSearch}
-                    onChange={e => setFilterSearch(e.target.value)}
-                    placeholder={articuloFiltro === "nro" ? "Buscar por número…" : "Buscar por nombre…"}
-                    className="flex-1 bg-transparent border-none outline-none text-[13px] text-foreground placeholder:text-muted-foreground/50"
-                  />
-                  {filterSearch && (
-                    <button onClick={() => setFilterSearch("")} className="text-muted-foreground hover:text-foreground">
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
+                <SearchInput
+                  value={filterSearch}
+                  onChange={setFilterSearch}
+                  placeholder={articuloFiltro === "nro" ? "Buscar por número…" : "Buscar por nombre…"}
+                  style={{ flex: 1, minWidth: 180 }}
+                />
 
                 <p className="text-[12.5px] text-muted-foreground whitespace-nowrap flex items-center gap-1.5">
                   <span><span className="text-foreground font-medium">{pivotRows.length}</span> de {pivotMap.size} artículos</span>
@@ -1384,21 +1376,12 @@ export function StockZonaSection() {
                   Agregar familia
                 </button>
 
-                <div className="flex items-center gap-2 flex-1 min-w-[180px] max-w-xs h-9 px-3 rounded-lg bg-secondary border border-border">
-                  <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  <input
-                    type="text"
-                    value={familiaSearch}
-                    onChange={e => setFamiliaSearch(e.target.value)}
-                    placeholder="Buscar matrícula..."
-                    className="flex-1 bg-transparent border-none outline-none text-[13px] text-foreground placeholder:text-muted-foreground/50"
-                  />
-                  {familiaSearch && (
-                    <button onClick={() => setFamiliaSearch("")} className="text-muted-foreground hover:text-foreground">
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
+                <SearchInput
+                  value={familiaSearch}
+                  onChange={setFamiliaSearch}
+                  placeholder="Buscar matrícula..."
+                  style={{ flex: 1, minWidth: 180, maxWidth: 320 }}
+                />
 
                 {familiasDisponibles.length > 0 && (
                   <BeastSelect

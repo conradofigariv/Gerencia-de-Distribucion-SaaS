@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, Search, ChevronDown, Trash2 } from "lucide-react";
+import { Loader2, RefreshCw, ChevronDown, Trash2, Search } from "lucide-react";
+import { SearchInput } from "@/components/ui/floating-input";
 
 const KVA_ROWS = [5, 10, 16, 25, 50, 63, 80, 100, 125, 160, 200, 250, 315, 500, 630, 800, 1000];
 const REL33_ROWS = [25, 63, 160, 315, 500, 630];
@@ -139,12 +140,11 @@ export function TransformadoresTablaSection() {
             <option key={m.value} value={m.value}>{m.label}</option>
           ))}
         </select>
-        <input
-          type="text"
-          placeholder="Buscar fecha exacta (ej: 2026-04-20)..."
+        <SearchInput
           value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="flex-1 min-w-[200px] px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          onChange={setSearch}
+          placeholder="Buscar fecha exacta (ej: 2026-04-20)..."
+          style={{ flex: 1, minWidth: 200 }}
         />
         {(filterYear || filterMonth || search) && (
           <button

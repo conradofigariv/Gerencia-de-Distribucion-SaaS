@@ -39,6 +39,7 @@ import {
   type Adjudicacion,
 } from "@/lib/informeTecnico";
 import { toast } from "sonner";
+import { FloatingInput, SearchInput } from "@/components/ui/floating-input";
 
 type WizardTab = "datos" | "renglones" | "oferentes" | "ofertas" | "evaluacion" | "adjudicacion";
 
@@ -479,27 +480,21 @@ function CreateLicitacionModal({
             los cargás en las pestañas.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <label className="block">
-            <span className="text-xs text-muted-foreground">Número SIC</span>
-            <input
-              type="text"
-              value={numeroSic}
-              onChange={(e) => setNumeroSic(e.target.value)}
-              placeholder="Ej: 21441"
-              className="mt-1 w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs text-muted-foreground">Título / objeto</span>
-            <input
-              type="text"
-              value={titulo}
-              onChange={(e) => setTitulo(e.target.value)}
-              placeholder="Ej: Adquisición de RTU para teleoperación"
-              className="mt-1 w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
-            />
-          </label>
+        <CardContent className="space-y-5">
+          <FloatingInput
+            label="Número SIC"
+            type="text"
+            value={numeroSic}
+            onChange={(e) => setNumeroSic(e.target.value)}
+            cardBg="oklch(0.12 0.005 260)"
+          />
+          <FloatingInput
+            label="Título / objeto"
+            type="text"
+            value={titulo}
+            onChange={(e) => setTitulo(e.target.value)}
+            cardBg="oklch(0.12 0.005 260)"
+          />
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={onClose} disabled={loading}>Cancelar</Button>
             <Button
@@ -2086,16 +2081,17 @@ function OferentesTab({ licitacionId }: { licitacionId: string }) {
 
   return (
     <div className="space-y-4 max-w-lg">
-      <div className="flex gap-2">
-        <input
+      <div className="flex gap-2 items-end">
+        <FloatingInput
           ref={inputRef}
+          label="Nombre del oferente"
           type="text"
           value={nombre}
           onChange={(e) => setNombre(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
-          placeholder="Nombre del oferente (Ej: Empresa S.A.)"
-          className="flex-1 h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
           autoFocus
+          className="flex-1"
+          cardBg="oklch(0.12 0.005 260)"
         />
         <Button onClick={handleAdd} disabled={adding || !nombre.trim()} size="sm">
           {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4 mr-1" />}

@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Eye, EyeOff, Lock, Mail, AlertCircle } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { Logo } from "@/components/logo";
+import { FloatingInput } from "@/components/ui/floating-input";
 
 export function LoginPage() {
   const [email, setEmail]             = useState("");
@@ -27,6 +28,8 @@ export function LoginPage() {
     setIsLoading(false);
   };
 
+  const CARD_BG = "oklch(0.18 0.005 270)";
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-6 duration-500">
@@ -45,45 +48,41 @@ export function LoginPage() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {/* Email */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Email</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="tu@email.com"
-                  required
-                  className="w-full h-10 pl-10 pr-4 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all duration-200"
-                />
-              </div>
-            </div>
+            <FloatingInput
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+              icon={<Mail className="w-4 h-4" />}
+              cardBg={CARD_BG}
+            />
 
             {/* Password */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Contraseña</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  className="w-full h-10 pl-10 pr-10 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all duration-200"
-                />
+            <FloatingInput
+              label="Contraseña"
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+              icon={<Lock className="w-4 h-4" />}
+              cardBg={CARD_BG}
+              rightElement={
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  style={{ color: "oklch(0.55 0 0)", display: "flex", alignItems: "center" }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "oklch(0.85 0 0)")}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "oklch(0.55 0 0)")}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
-              </div>
-            </div>
+              }
+            />
 
             {/* Error */}
             {error && (

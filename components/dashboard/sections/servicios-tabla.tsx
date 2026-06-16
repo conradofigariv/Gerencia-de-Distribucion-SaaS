@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { Search, Trash2, Database, RefreshCw, Loader2, Pencil } from "lucide-react";
+import { Trash2, Database, RefreshCw, Loader2, Pencil } from "lucide-react";
+import { SearchInput } from "@/components/ui/floating-input";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 
@@ -215,16 +216,12 @@ export function ServiciosTablaSection() {
 
       {/* Controls */}
       <div className="flex items-center gap-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Buscar en todos los campos..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0); setSelected(new Set()); }}
-            className="w-72 h-9 pl-9 pr-4 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all duration-200"
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={(v) => { setSearch(v); setPage(0); setSelected(new Set()); }}
+          placeholder="Buscar en todos los campos..."
+          width={288}
+        />
         <button onClick={load} className="flex items-center gap-1.5 h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-muted-foreground hover:text-foreground transition-all">
           <RefreshCw className="w-3.5 h-3.5" />Actualizar
         </button>
