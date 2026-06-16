@@ -287,10 +287,35 @@ export function TransformadoresCargaSection() {
 
   // ── Save ────────────────────────────────────────────────────────────────────
 
+  // Stable stringify (ordena claves recursivamente) para comparar datos sin
+  // depender del orden de inserción de las claves.
+  const stableStringify = (v: unknown): string => {
+    if (v === null || typeof v !== "object") return JSON.stringify(v);
+    if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
+    const obj = v as Record<string, unknown>;
+    return `{${Object.keys(obj).sort().map(k => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
       const datos = { terceros, taller, totales, autorizados, rel33, obs, pend, deposito };
+
+      // Evitar duplicados exactos: misma fecha + misma zona + mismos datos.
+      const { data: existentes } = await supabase
+        .from("planillas_reserva")
+        .select("id, datos")
+        .eq("fecha", fecha);
+      const target = stableStringify(datos);
+      const dup = (existentes ?? []).find(
+        p => (p.datos?.deposito ?? "") === deposito && stableStringify(p.datos) === target,
+      );
+      if (dup) {
+        toast.error("Ya existe un informe idéntico para esta fecha y zona. No se guardó el duplicado.", { duration: 4000 });
+        setFechaDuplicada(true);
+        return;
+      }
+
       const { error } = await supabase
         .from("planillas_reserva")
         .insert([{ fecha, datos }]);

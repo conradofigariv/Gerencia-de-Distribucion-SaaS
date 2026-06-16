@@ -10,7 +10,7 @@ import {
   Users,
   BarChart3,
   ChevronLeft,
-  ChevronRight,
+  X,
   Building2,
   TrendingUp,
   Settings,
@@ -36,6 +36,8 @@ interface SidebarProps {
   onSectionChange: (section: Section) => void;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
+  mobileOpen?: boolean;
+  onMobileOpenChange?: (open: boolean) => void;
 }
 
 type NavLink = {
@@ -149,7 +151,14 @@ export function Sidebar({
   onSectionChange,
   collapsed,
   onCollapsedChange,
+  mobileOpen = false,
+  onMobileOpenChange,
 }: SidebarProps) {
+  // Selección de sección: en mobile además cierra el drawer
+  const handleSelect = (section: Section) => {
+    onSectionChange(section);
+    onMobileOpenChange?.(false);
+  };
   const initialGroups = [
     ...(SERVICIOS_SECTIONS.includes(activeSection)      ? ["servicios"]      : []),
     ...(SIC_SECTIONS.includes(activeSection)            ? ["sic"]            : []),
@@ -158,6 +167,17 @@ export function Sidebar({
     ...(TABLERO_OP_SECTIONS.includes(activeSection)     ? ["tablero-op"]      : []),
   ];
   const [expandedGroups, setExpandedGroups] = useState<string[]>(initialGroups);
+
+  // En mobile el drawer siempre se muestra expandido (no aplica el colapso de desktop)
+  const [mobileView, setMobileView] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => setMobileView(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  const c = mobileView ? false : collapsed;
 
   // Auto-expand group when a child section becomes active
   useEffect(() => {
@@ -179,8 +199,8 @@ export function Sidebar({
   }, [activeSection]);
 
   const toggleGroup = (groupId: string) => {
-    // If sidebar is collapsed, expand it first
-    if (collapsed) {
+    // If sidebar is collapsed (desktop), expand it first
+    if (c) {
       onCollapsedChange(false);
       setExpandedGroups((prev) =>
         prev.includes(groupId) ? prev : [...prev, groupId]
@@ -195,7 +215,7 @@ export function Sidebar({
   };
 
   const isGroupExpanded = (groupId: string) =>
-    expandedGroups.includes(groupId) && !collapsed;
+    expandedGroups.includes(groupId) && !c;
 
   const isGroupActive = (group: NavGroup) =>
     group.children.some((c) => c.id === activeSection);
@@ -203,24 +223,46 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300 ease-out flex flex-col",
-        collapsed ? "w-[72px]" : "w-[260px]"
+        "fixed left-0 top-0 z-50 h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300 ease-out flex flex-col",
+        // Ancho: en mobile siempre 260; en desktop depende de colapsado
+        "w-[260px]",
+        collapsed ? "md:w-[72px]" : "md:w-[260px]",
+        // Visibilidad: drawer en mobile (slide), siempre visible en desktop
+        mobileOpen ? "translate-x-0" : "-translate-x-full",
+        "md:translate-x-0"
       )}
     >
       {/* Logo */}
-      <div className="h-16 flex items-center px-4 border-b border-sidebar-border">
+      <div className="h-16 flex items-center justify-between px-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <Logo className="w-9 h-9 shrink-0" />
           <span
             className={cn(
               "font-semibold text-lg text-sidebar-foreground whitespace-nowrap transition-all duration-300",
-              collapsed ? "opacity-0 w-0" : "opacity-100 w-auto"
+              collapsed ? "md:opacity-0 md:w-0" : "opacity-100 w-auto"
             )}
           >
             SaaS Soft
           </span>
         </div>
+        {/* Cerrar (solo mobile) */}
+        <button
+          onClick={() => onMobileOpenChange?.(false)}
+          className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors"
+          aria-label="Cerrar menú"
+        >
+          <X className="w-5 h-5" />
+        </button>
       </div>
+
+      {/* Botón flotante colapsar/expandir (solo desktop) */}
+      <button
+        onClick={() => onCollapsedChange(!collapsed)}
+        className="hidden md:flex absolute -right-3 top-[72px] z-50 w-6 h-6 items-center justify-center rounded-full bg-sidebar border border-sidebar-border text-muted-foreground shadow-md hover:text-sidebar-foreground hover:border-accent/50 transition-colors"
+        aria-label={collapsed ? "Expandir menú" : "Colapsar menú"}
+      >
+        <ChevronLeft className={cn("w-3.5 h-3.5 transition-transform duration-300 ease-out", collapsed && "rotate-180")} />
+      </button>
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }}>
@@ -232,7 +274,7 @@ export function Sidebar({
             return (
               <button
                 key={item.id}
-                onClick={() => onSectionChange(item.id)}
+                onClick={() => handleSelect(item.id)}
                 className={cn(
                   "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative",
                   isActive
@@ -255,7 +297,7 @@ export function Sidebar({
                 <span
                   className={cn(
                     "whitespace-nowrap transition-all duration-300",
-                    collapsed ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+                    c ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
                   )}
                 >
                   {item.label}
@@ -296,12 +338,12 @@ export function Sidebar({
                 <span
                   className={cn(
                     "flex-1 text-left whitespace-nowrap transition-all duration-300",
-                    collapsed ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+                    c ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
                   )}
                 >
                   {item.label}
                 </span>
-                {!collapsed && (
+                {!c && (
                   <ChevronDown
                     className={cn(
                       "w-4 h-4 shrink-0 transition-transform duration-200",
@@ -326,7 +368,7 @@ export function Sidebar({
                     return (
                       <button
                         key={child.id}
-                        onClick={() => onSectionChange(child.id)}
+                        onClick={() => handleSelect(child.id)}
                         className={cn(
                           "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-all duration-200",
                           isActive
@@ -345,23 +387,6 @@ export function Sidebar({
           );
         })}
       </nav>
-
-      {/* Collapse button */}
-      <div className="p-3 border-t border-sidebar-border">
-        <button
-          onClick={() => onCollapsedChange(!collapsed)}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all duration-200"
-        >
-          {collapsed ? (
-            <ChevronRight className="w-5 h-5" />
-          ) : (
-            <>
-              <ChevronLeft className="w-5 h-5" />
-              <span>Collapse</span>
-            </>
-          )}
-        </button>
-      </div>
     </aside>
   );
 }
