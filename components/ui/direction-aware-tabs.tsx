@@ -46,7 +46,10 @@ export function DirectionAwareTabs({
     <div className="flex flex-col w-full">
       <div
         className={cn(
-          "inline-flex flex-wrap items-center gap-1 p-1 self-start shadow-inner",
+          // Mobile: ocupa todo el ancho en una sola fila (sin que ningún botón baje).
+          // sm+: pill compacto alineado a la izquierda.
+          "flex w-full flex-nowrap items-center gap-0.5 p-1 shadow-inner",
+          "sm:inline-flex sm:w-auto sm:self-start sm:gap-1",
           rounded ?? "rounded-full",
           className,
         )}
@@ -60,7 +63,8 @@ export function DirectionAwareTabs({
               type="button"
               onClick={() => handleClick(tab.id)}
               className={cn(
-                "relative rounded-full px-4 py-[7px] text-[13px] font-medium outline-none whitespace-nowrap transition-colors duration-150",
+                "relative flex flex-1 items-center justify-center overflow-hidden rounded-full outline-none whitespace-nowrap font-medium transition-colors duration-150 min-w-0",
+                "px-2 py-[7px] text-[12px] sm:flex-none sm:px-4 sm:text-[13px]",
                 isActive ? "text-white" : "text-neutral-500 hover:text-neutral-200",
               )}
               style={{ WebkitTapHighlightColor: "transparent" }}
@@ -73,7 +77,9 @@ export function DirectionAwareTabs({
                   transition={{ type: "spring", bounce: 0.19, duration: 0.4 }}
                 />
               )}
-              <span className="relative z-20 inline-flex items-center gap-1.5">{tab.label}</span>
+              <span className="relative z-20 inline-flex items-center gap-1 sm:gap-1.5 min-w-0 [&>svg]:shrink-0">
+                {tab.label}
+              </span>
             </button>
           );
         })}
