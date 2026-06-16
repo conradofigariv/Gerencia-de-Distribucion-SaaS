@@ -121,14 +121,24 @@ export function IndiceIdoResumenSection() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center">
-            <Gauge className="w-5 h-5 text-accent" />
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3">
+          <div
+            className="grid place-items-center mt-0.5"
+            style={{
+              width: 36, height: 36, borderRadius: 9,
+              background: "oklch(0.30 0.10 155 / 0.45)",
+              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
+              color: "#86efac",
+            }}
+          >
+            <Gauge className="w-[18px] h-[18px]" strokeWidth={2} />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Índice IDO — Resumen</h2>
-            <p className="text-sm text-muted-foreground">
+            <h2 className="text-[22px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.4, margin: 0 }}>
+              Índice IDO — Resumen
+            </h2>
+            <p className="mt-1 text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
               KPIs, Resultado Técnico, POVA, Mantenimiento e IDO calculados por zona.
             </p>
           </div>

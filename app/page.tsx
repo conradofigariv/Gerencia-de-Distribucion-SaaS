@@ -54,6 +54,7 @@ export default function Dashboard() {
   const [authLoading, setAuthLoading] = useState(true);
   const [activeSection, setActiveSection]   = useState<Section>("servicios-planillas");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [bgEffect, setBgEffect]             = useState<BgEffect>("swirl");
 
   // Auth state
@@ -127,10 +128,27 @@ export default function Dashboard() {
           onSectionChange={setActiveSection}
           collapsed={sidebarCollapsed}
           onCollapsedChange={setSidebarCollapsed}
+          mobileOpen={mobileSidebarOpen}
+          onMobileOpenChange={setMobileSidebarOpen}
         />
-        <div className={`flex-1 flex flex-col transition-all duration-300 ease-out ${sidebarCollapsed ? "ml-[72px]" : "ml-[260px]"}`}>
-          <Header activeSection={activeSection} bgEffect={bgEffect} onBgChange={handleBgChange} />
-          <main className="flex-1 p-6 overflow-auto">
+
+        {/* Backdrop del drawer (solo mobile) */}
+        {mobileSidebarOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
+            onClick={() => setMobileSidebarOpen(false)}
+            aria-hidden
+          />
+        )}
+
+        <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ease-out ml-0 ${sidebarCollapsed ? "md:ml-[72px]" : "md:ml-[260px]"}`}>
+          <Header
+            activeSection={activeSection}
+            bgEffect={bgEffect}
+            onBgChange={handleBgChange}
+            onMenuClick={() => setMobileSidebarOpen(true)}
+          />
+          <main className="flex-1 p-4 sm:p-6 overflow-auto">
             <div key={activeSection} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
               {renderSection()}
             </div>

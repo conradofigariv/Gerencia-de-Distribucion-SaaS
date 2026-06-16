@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import type { Section } from "@/app/page";
-import { Search, Calendar } from "lucide-react";
+import { Search, Calendar, Menu } from "lucide-react";
 import { useState } from "react";
 import { BgSelector } from "@/components/bg-selector";
 import type { BgEffect } from "@/components/canvas-background";
@@ -12,6 +12,7 @@ interface HeaderProps {
   activeSection: Section;
   bgEffect?: BgEffect;
   onBgChange?: (v: BgEffect) => void;
+  onMenuClick?: () => void;
 }
 
 const sectionTitles: Record<Section, string> = {
@@ -39,26 +40,34 @@ const sectionTitles: Record<Section, string> = {
   "tablero-op-carga":         "Tablero OP — Carga de datos",
 };
 
-export function Header({ activeSection, bgEffect = "swirl", onBgChange }: HeaderProps) {
+export function Header({ activeSection, bgEffect = "swirl", onBgChange, onMenuClick }: HeaderProps) {
   const [searchFocused, setSearchFocused] = useState(false);
 
   return (
-    <header className="h-16 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-30 flex items-center justify-between px-6">
-      <div className="flex items-center gap-6">
-        <h1 className="text-xl font-semibold text-foreground">
+    <header className="h-16 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6">
+      <div className="flex items-center gap-3 sm:gap-6 min-w-0">
+        {/* Hamburguesa (solo mobile) */}
+        <button
+          onClick={onMenuClick}
+          className="md:hidden flex items-center justify-center w-9 h-9 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors shrink-0"
+          aria-label="Abrir menú"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+        <h1 className="text-lg sm:text-xl font-semibold text-foreground truncate">
           {sectionTitles[activeSection]}
         </h1>
-        <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="hidden lg:flex items-center gap-2 text-sm text-muted-foreground">
           <Calendar className="w-4 h-4" />
           <span>Last 30 days</span>
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3 sm:gap-4">
         {/* Search */}
         <div
           className={cn(
-            "relative flex items-center transition-all duration-300",
+            "relative hidden md:flex items-center transition-all duration-300",
             searchFocused ? "w-64" : "w-48"
           )}
         >
