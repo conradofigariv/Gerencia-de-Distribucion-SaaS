@@ -221,12 +221,14 @@ function FilterSelect({ value, onChange, placeholder, options, fullWidth = false
   );
 }
 
-// ── MonthMultiSelect (multi-selección de meses, mismo estilo, portal) ─────────
+// ── MultiSelect (multi-selección, mismo estilo, portal) ──────────────────────
 
-function MonthMultiSelect({ values, onChange, options }: {
+function MultiSelect({ values, onChange, options, placeholder, noun }: {
   values: string[];
   onChange: (v: string[]) => void;
   options: { value: string; label: string }[];
+  placeholder: string;
+  noun: string;
 }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -263,9 +265,9 @@ function MonthMultiSelect({ values, onChange, options }: {
     onChange(values.includes(v) ? values.filter(x => x !== v) : [...values, v]);
 
   const active = values.length > 0;
-  const label = values.length === 0 ? "Mes"
-    : values.length === 1 ? (options.find(o => o.value === values[0])?.label ?? "1 mes")
-    : `${values.length} meses`;
+  const label = values.length === 0 ? placeholder
+    : values.length === 1 ? (options.find(o => o.value === values[0])?.label ?? `1 ${noun}`)
+    : `${values.length} ${noun}`;
 
   return (
     <div ref={wrapRef} className="relative w-full">
@@ -691,7 +693,7 @@ export function TransformadoresResumenSection() {
   }, [setBlockOrder]);
 
   // Filters
-  const [filterAno,      setFilterAno]      = useState("");
+  const [filterAnos,     setFilterAnos]     = useState<string[]>([]);
   const [filterMeses,    setFilterMeses]    = useState<string[]>([]);
   const [filterPotencia, setFilterPotencia] = useState("");
   const [filterRelacion, setFilterRelacion] = useState("");
@@ -758,6 +760,43 @@ export function TransformadoresResumenSection() {
   // Granularidad: semanal si hay al menos un mes seleccionado
   const weekly = filterMeses.length > 0;
 
+  // ── Ventana temporal (rango continuo) ────────────────────────────────────
+  // Años: multi-selección interpretada como rango [min..max].
+  // Meses: multi-selección interpretada como rango [min..max] dentro de UN solo
+  // año (el mayor seleccionado, o el último con datos si Año = Todos). Esto
+  // evita comparar el mismo mes entre años distintos.
+  const selYears = filterAnos.map(Number);
+  const selMeses = filterMeses.map(Number);
+  const minM = selMeses.length ? Math.min(...selMeses) : null;
+  const maxM = selMeses.length ? Math.max(...selMeses) : null;
+  const minY = selYears.length ? Math.min(...selYears) : null;
+  const maxY = selYears.length ? Math.max(...selYears) : null;
+
+  // Año objetivo cuando hay meses seleccionados (un único año)
+  const targetYear = (() => {
+    if (!selMeses.length) return null;
+    if (selYears.length) return maxY;
+    // último año con datos dentro del rango de meses
+    let best: number | null = null;
+    for (const p of planillas) {
+      const [yy, mm] = p.fecha.split("-").map(Number);
+      if (mm >= (minM as number) && mm <= (maxM as number)) best = best === null ? yy : Math.max(best, yy);
+    }
+    return best;
+  })();
+
+  const inWindow = (fecha: string): boolean => {
+    const [yy, mm] = fecha.split("-").map(Number);
+    if (selMeses.length) {
+      if (targetYear === null) return false;
+      return yy === targetYear && mm >= (minM as number) && mm <= (maxM as number);
+    }
+    if (selYears.length) {
+      return yy >= (minY as number) && yy <= (maxY as number);
+    }
+    return true;
+  };
+
   // Bucket (clave de orden + etiqueta) para una fecha según la granularidad
   const bucketOf = (fecha: string): { key: string; label: string } => {
     if (!weekly) {
@@ -772,19 +811,17 @@ export function TransformadoresResumenSection() {
     t.setDate(t.getDate() + 3 - ((t.getDay() + 6) % 7));
     const week1  = new Date(t.getFullYear(), 0, 4);
     const weekNo = 1 + Math.round(((t.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
-    // Lunes de la semana para la etiqueta
+    // Lunes de la semana para la etiqueta (con año a 2 dígitos)
     const mon = new Date(d);
     mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
-    const label = `${String(mon.getDate()).padStart(2, "0")} ${MES_SHORT[mon.getMonth()]}`;
+    const label = `${String(mon.getDate()).padStart(2, "0")} ${MES_SHORT[mon.getMonth()]} ${String(mon.getFullYear()).slice(2)}`;
     return { key: `${t.getFullYear()}-W${String(weekNo).padStart(2, "0")}`, label };
   };
 
   const periodSnapshots = (() => {
     const source = planillas.filter(p => {
-      const [y, m] = p.fecha.split("-");
       if (filterZona && (p.datos.deposito ?? "") !== filterZona) return false;
-      if (filterAno  && y !== filterAno) return false;
-      if (filterMeses.length && !filterMeses.includes(m)) return false;
+      if (!inWindow(p.fecha)) return false;
       return true;
     });
     // Último planilla por zona y bucket
@@ -876,9 +913,7 @@ export function TransformadoresResumenSection() {
   // ── KPI computation ───────────────────────────────────────────────────────
 
   const planillasFiltradas = planillas.filter(p => {
-    const [y, m] = p.fecha.split("-");
-    if (filterAno  && y !== filterAno)  return false;
-    if (filterMeses.length && !filterMeses.includes(m)) return false;
+    if (!inWindow(p.fecha)) return false;
     if (filterZona && (p.datos.deposito ?? "") !== filterZona) return false;
     return true;
   });
@@ -1486,14 +1521,16 @@ export function TransformadoresResumenSection() {
         {/* Filters row */}
         <div className="space-y-2">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-          <FilterSelect
-            fullWidth
-            value={filterAno}
-            onChange={setFilterAno}
+          <MultiSelect
             placeholder="Año"
+            noun="años"
+            values={filterAnos}
+            onChange={setFilterAnos}
             options={availableYears.map(y => ({ value: y, label: y }))}
           />
-          <MonthMultiSelect
+          <MultiSelect
+            placeholder="Mes"
+            noun="meses"
             values={filterMeses}
             onChange={setFilterMeses}
             options={MONTHS.map(m => ({ value: m.value, label: m.label }))}
@@ -1529,9 +1566,9 @@ export function TransformadoresResumenSection() {
           </div>
 
           <div className="flex items-center gap-2">
-          {(filterAno || filterMeses.length || filterPotencia || filterRelacion || filterFases || filterZona) && (
+          {(filterAnos.length || filterMeses.length || filterPotencia || filterRelacion || filterFases || filterZona) && (
             <button
-              onClick={() => { setFilterAno(""); setFilterMeses([]); setFilterPotencia(""); setFilterRelacion(""); setFilterFases(""); setFilterZona(""); }}
+              onClick={() => { setFilterAnos([]); setFilterMeses([]); setFilterPotencia(""); setFilterRelacion(""); setFilterFases(""); setFilterZona(""); }}
               className="px-3.5 py-2.5 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-secondary border border-border transition-colors"
             >
               Limpiar
