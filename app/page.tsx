@@ -49,6 +49,12 @@ export type Section =
   | "indice-ido-resumen" | "indice-ido-carga"
   | "tablero-op-resumen" | "tablero-op-carga";
 
+export interface HeaderProfile {
+  nombre:     string;
+  apellido:   string;
+  avatar_url: string;
+}
+
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -56,6 +62,7 @@ export default function Dashboard() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [bgEffect, setBgEffect]             = useState<BgEffect>("swirl");
+  const [headerProfile, setHeaderProfile]   = useState<HeaderProfile | null>(null);
 
   // Auth state
   useEffect(() => {
@@ -68,6 +75,23 @@ export default function Dashboard() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // Carga el perfil (nombre/apellido/avatar) para el avatar del header
+  useEffect(() => {
+    if (!user) { setHeaderProfile(null); return; }
+    supabase
+      .from("profiles")
+      .select("nombre, apellido, avatar_url")
+      .eq("id", user.id)
+      .single()
+      .then(({ data }) => {
+        setHeaderProfile({
+          nombre: data?.nombre ?? "",
+          apellido: data?.apellido ?? "",
+          avatar_url: data?.avatar_url ?? "",
+        });
+      });
+  }, [user]);
 
   useEffect(() => {
     const stored = localStorage.getItem("bgEffect") as BgEffect | null;
@@ -100,7 +124,7 @@ export default function Dashboard() {
       case "team":               return <TeamSection />;
       case "forecasting":        return <ForecastingSection />;
       case "reports":            return <ReportsSection />;
-      case "settings":               return <SettingsSection user={user} />;
+      case "settings":               return <SettingsSection user={user} onProfileUpdate={p => setHeaderProfile(prev => ({ ...(prev ?? { nombre: "", apellido: "", avatar_url: "" }), ...p }))} />;
       case "servicios-resumen":      return <ServiciosResumenSection />;
       case "servicios-tabla":        return <ServiciosTablaSection />;
       case "servicios-carga":        return <ServiciosCargaSection />;
@@ -147,6 +171,8 @@ export default function Dashboard() {
             bgEffect={bgEffect}
             onBgChange={handleBgChange}
             onMenuClick={() => setMobileSidebarOpen(true)}
+            userEmail={user.email}
+            userProfile={headerProfile}
           />
           <main className="flex-1 p-4 sm:p-6 overflow-auto">
             <div key={activeSection} className="animate-in fade-in slide-in-from-bottom-4 duration-500">

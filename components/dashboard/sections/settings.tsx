@@ -50,7 +50,12 @@ const NIVEL_BADGE: Record<NivelAcceso, { label: string; cls: string }> = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function SettingsSection({ user }: { user: User }) {
+interface SettingsSectionProps {
+  user: User;
+  onProfileUpdate?: (p: { nombre: string; apellido: string; avatar_url: string }) => void;
+}
+
+export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps) {
   const [profile, setProfile]               = useState<Profile>(EMPTY_PROFILE);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [savingProfile, setSavingProfile]   = useState(false);
@@ -127,7 +132,10 @@ export function SettingsSection({ user }: { user: User }) {
         updated_at: new Date().toISOString(),
       });
     if (error) toast.error(`Error al guardar: ${error.message}`);
-    else toast.success("Perfil actualizado");
+    else {
+      toast.success("Perfil actualizado");
+      onProfileUpdate?.({ nombre: profile.nombre, apellido: profile.apellido, avatar_url: profile.avatar_url });
+    }
     setSavingProfile(false);
   };
 
@@ -167,6 +175,7 @@ export function SettingsSection({ user }: { user: User }) {
     if (saveError) toast.error(`Error al guardar: ${saveError.message}`);
     else {
       setProfile(p => ({ ...p, avatar_url: url }));
+      onProfileUpdate?.({ nombre: profile.nombre, apellido: profile.apellido, avatar_url: url });
       toast.success("Avatar actualizado");
     }
 

@@ -1,18 +1,21 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import type { Section } from "@/app/page";
+import type { Section, HeaderProfile } from "@/app/page";
 import { Search, Calendar, Menu } from "lucide-react";
 import { useState } from "react";
 import { BgSelector } from "@/components/bg-selector";
 import type { BgEffect } from "@/components/canvas-background";
 import { ReminderBell } from "@/components/dashboard/reminder-bell";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface HeaderProps {
   activeSection: Section;
   bgEffect?: BgEffect;
   onBgChange?: (v: BgEffect) => void;
   onMenuClick?: () => void;
+  userEmail?: string | null;
+  userProfile?: HeaderProfile | null;
 }
 
 const sectionTitles: Record<Section, string> = {
@@ -40,8 +43,13 @@ const sectionTitles: Record<Section, string> = {
   "tablero-op-carga":         "Tablero OP — Carga de datos",
 };
 
-export function Header({ activeSection, bgEffect = "swirl", onBgChange, onMenuClick }: HeaderProps) {
+export function Header({ activeSection, bgEffect = "swirl", onBgChange, onMenuClick, userEmail, userProfile }: HeaderProps) {
   const [searchFocused, setSearchFocused] = useState(false);
+
+  const initials = [userProfile?.nombre, userProfile?.apellido]
+    .map(s => (s ?? "").trim()[0] ?? "")
+    .join("")
+    .toUpperCase() || userEmail?.[0]?.toUpperCase() || "U";
 
   return (
     <header className="h-16 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6">
@@ -89,9 +97,14 @@ export function Header({ activeSection, bgEffect = "swirl", onBgChange, onMenuCl
 
         {/* User avatar */}
         <button className="w-9 h-9 rounded-lg overflow-hidden bg-secondary ring-2 ring-transparent hover:ring-accent/50 transition-all duration-200">
-          <div className="w-full h-full bg-gradient-to-br from-accent/80 to-chart-1 flex items-center justify-center text-xs font-semibold text-accent-foreground">
-            JD
-          </div>
+          <Avatar className="w-full h-full rounded-lg">
+            {userProfile?.avatar_url && (
+              <AvatarImage src={userProfile.avatar_url} alt={initials} className="rounded-lg" />
+            )}
+            <AvatarFallback className="rounded-lg bg-gradient-to-br from-accent/80 to-chart-1 text-xs font-semibold text-accent-foreground">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
         </button>
       </div>
     </header>
