@@ -784,12 +784,56 @@ function FormField({ label, children, className = "" }: { label: string; childre
 
 // ─── Tab: Evaluación técnica ─────────────────────────────────────
 
+// ─── Especificaciones técnicas (specs) ──────────────────────────────
+
+type SpecItem =
+  | { id: string; kind: "check"; label: string; checked: boolean }
+  | { id: string; kind: "text"; text: string };
+
+const specSid = () => Math.random().toString(36).slice(2, 9);
+
+function parseSpecs(raw: string | null): SpecItem[] {
+  if (!raw) return [];
+  const t = raw.trim();
+  if (!t) return [];
+  if (t.startsWith("[")) {
+    try {
+      const arr = JSON.parse(t);
+      if (Array.isArray(arr)) {
+        return arr
+          .filter((x) => x && (x.kind === "check" || x.kind === "text"))
+          .map((x) =>
+            x.kind === "check"
+              ? { id: String(x.id ?? specSid()), kind: "check", label: String(x.label ?? ""), checked: !!x.checked }
+              : { id: String(x.id ?? specSid()), kind: "text", text: String(x.text ?? "") },
+          ) as SpecItem[];
+      }
+    } catch { /* fall through to legacy */ }
+  }
+  // Legacy plain-text observación → una sola nota
+  return [{ id: specSid(), kind: "text", text: raw }];
+}
+
+function serializeSpecs(items: SpecItem[]): string | null {
+  return items.length === 0 ? null : JSON.stringify(items);
+}
+
+// Deriva el estado técnico a partir de los checkboxes.
+// undefined = no hay checkboxes → no influye (se mantiene el estado manual).
+function deriveCumpleFromSpecs(items: SpecItem[]): boolean | null | undefined {
+  const checks = items.filter((x): x is Extract<SpecItem, { kind: "check" }> => x.kind === "check");
+  if (checks.length === 0) return undefined;
+  return checks.every((c) => c.checked);
+}
+
 function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
   const [loading, setLoading] = useState(true);
-  const [renglones, setRenglones] = useState<Renglon[]>([]);
+  const [renglones, setRenglones] = useState<RenglonConItems[]>([]);
   const [oferentes, setOferentes] = useState<Oferente[]>([]);
   const [evals, setEvals] = useState<Map<string, EvaluacionTecnica>>(new Map());
+  const [ofertaSet, setOfertaSet] = useState<Set<string>>(new Set()); // `${itemId}|${oferenteId}`
   const [saving, setSaving] = useState<Set<string>>(new Set());
+  const [specsModal, setSpecsModal] = useState<{ renglonId: string; oferenteId: string } | null>(null);
 
   const cellKey = (renglonId: string, oferenteId: string) => `${renglonId}|${oferenteId}`;
 
@@ -798,10 +842,11 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
     const load = async () => {
       setLoading(true);
       try {
-        const [reng, ofer, evs] = await Promise.all([
+        const [reng, ofer, evs, oftas] = await Promise.all([
           listRenglonesConItems(licitacionId),
           listOferentes(licitacionId),
           listEvaluaciones(licitacionId),
+          listOfertas(licitacionId),
         ]);
         if (cancelled) return;
         setRenglones(reng);
@@ -809,6 +854,9 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
         const map = new Map<string, EvaluacionTecnica>();
         for (const ev of evs) map.set(cellKey(ev.renglon_id, ev.oferente_id), ev);
         setEvals(map);
+        const os = new Set<string>();
+        for (const o of oftas) os.add(`${o.item_id}|${o.oferente_id}`);
+        setOfertaSet(os);
       } catch (e) {
         console.error(e);
         toast.error("No se pudo cargar la evaluación técnica");
@@ -819,6 +867,23 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
     load();
     return () => { cancelled = true; };
   }, [licitacionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cobertura de un oferente en un renglón
+  const coberturaDe = (r: RenglonConItems, oferenteId: string): number =>
+    r.items.reduce((n, it) => n + (ofertaSet.has(`${it.id}|${oferenteId}`) ? 1 : 0), 0);
+
+  // "No oferta": el oferente no cubrió todos los ítems del renglón (parcial o cero)
+  const esNoOferta = (r: RenglonConItems, oferenteId: string): boolean =>
+    r.items.length > 0 && coberturaDe(r, oferenteId) < r.items.length;
+
+  type CellStatus = "noOferta" | "cumple" | "noCumple" | "pendiente" | "sinEval";
+  const cellStatus = (r: RenglonConItems, oferenteId: string): CellStatus => {
+    if (esNoOferta(r, oferenteId)) return "noOferta";
+    const key = cellKey(r.id, oferenteId);
+    if (!evals.has(key)) return "sinEval";
+    const c = evals.get(key)?.cumple ?? null;
+    return c === true ? "cumple" : c === false ? "noCumple" : "pendiente";
+  };
 
   const doSave = async (
     renglonId: string,
@@ -875,24 +940,17 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
     doSave(renglonId, oferenteId, null, current?.observaciones ?? null);
   };
 
-  const handleObsChange = (renglonId: string, oferenteId: string, obs: string) => {
+  const handleSaveSpecs = (renglonId: string, oferenteId: string, items: SpecItem[]) => {
     const key = cellKey(renglonId, oferenteId);
     const current = evals.get(key);
+    const obs = serializeSpecs(items);
+    const derived = deriveCumpleFromSpecs(items);
+    const cumple = derived === undefined ? (current?.cumple ?? null) : derived;
     setEvals((prev) =>
-      new Map(prev).set(key, {
-        id: current?.id ?? "",
-        oferente_id: oferenteId,
-        renglon_id: renglonId,
-        cumple: current?.cumple ?? null,
-        observaciones: obs || null,
-      }),
+      new Map(prev).set(key, { id: current?.id ?? "", oferente_id: oferenteId, renglon_id: renglonId, cumple, observaciones: obs }),
     );
-  };
-
-  const handleObsBlur = (renglonId: string, oferenteId: string) => {
-    const key = cellKey(renglonId, oferenteId);
-    const current = evals.get(key);
-    doSave(renglonId, oferenteId, current?.cumple ?? null, current?.observaciones ?? null);
+    doSave(renglonId, oferenteId, cumple, obs);
+    setSpecsModal(null);
   };
 
   if (loading) {
@@ -918,6 +976,9 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
       </div>
     );
   }
+
+  const modalRenglon = specsModal ? renglones.find((r) => r.id === specsModal.renglonId) ?? null : null;
+  const modalOferente = specsModal ? oferentes.find((o) => o.id === specsModal.oferenteId) ?? null : null;
 
   return (
     <div className="space-y-4">
@@ -951,11 +1012,29 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                 {oferentes.map((of) => {
                   const key = cellKey(r.id, of.id);
                   const ev = evals.get(key);
-                  const hasRecord = evals.has(key);
-                  const cumple = ev?.cumple ?? null;
-                  const isPendiente = hasRecord && cumple === null;
-                  const obs = ev?.observaciones ?? "";
+                  const status = cellStatus(r, of.id);
                   const isSaving = saving.has(key);
+                  const specs = parseSpecs(ev?.observaciones ?? null);
+                  const specsCount = specs.length;
+
+                  // Celda bloqueada: el oferente no ofertó (todos los ítems del renglón)
+                  if (status === "noOferta") {
+                    const cob = coberturaDe(r, of.id);
+                    return (
+                      <td key={of.id} className="px-3 py-3 align-top border-r border-border last:border-r-0">
+                        <div
+                          className="flex flex-col items-center justify-center gap-1 rounded-md py-4 px-3"
+                          style={{ background: "oklch(0.22 0.01 250 / 0.5)", border: "1px dashed oklch(0.45 0.02 250 / 0.5)" }}
+                        >
+                          <span style={{ fontSize: 14, fontWeight: 600, color: "#94a3b8" }}>⊘ No oferta</span>
+                          <span style={{ fontSize: 12, color: "oklch(0.50 0 0)" }}>
+                            {cob === 0 ? "Sin ofertas en este renglón" : `Cobertura parcial ${cob}/${r.items.length}`}
+                          </span>
+                        </div>
+                      </td>
+                    );
+                  }
+
                   return (
                     <td key={of.id} className="px-3 py-3 align-top border-r border-border last:border-r-0">
                       <div className="space-y-2">
@@ -964,7 +1043,7 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                             onClick={() => handleToggle(r.id, of.id, true)}
                             disabled={isSaving}
                             className={`flex items-center gap-1 px-3 py-1.5 rounded text-[13.5px] font-medium border transition-colors disabled:opacity-60 ${
-                              cumple === true
+                              status === "cumple"
                                 ? "bg-emerald-500/15 border-emerald-500/60 text-emerald-400"
                                 : "border-border text-muted-foreground hover:bg-secondary/60"
                             }`}
@@ -975,7 +1054,7 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                             onClick={() => handlePendiente(r.id, of.id)}
                             disabled={isSaving}
                             className={`flex items-center gap-1 px-3 py-1.5 rounded text-[13.5px] font-medium border transition-colors disabled:opacity-60 ${
-                              isPendiente
+                              status === "pendiente"
                                 ? "bg-amber-500/15 border-amber-500/60 text-amber-400"
                                 : "border-border text-muted-foreground hover:bg-secondary/60"
                             }`}
@@ -986,7 +1065,7 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                             onClick={() => handleToggle(r.id, of.id, false)}
                             disabled={isSaving}
                             className={`flex items-center gap-1 px-3 py-1.5 rounded text-[13.5px] font-medium border transition-colors disabled:opacity-60 ${
-                              cumple === false
+                              status === "noCumple"
                                 ? "bg-red-500/15 border-red-500/60 text-red-400"
                                 : "border-border text-muted-foreground hover:bg-secondary/60"
                             }`}
@@ -995,14 +1074,25 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                           </button>
                           {isSaving && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
                         </div>
-                        <textarea
-                          value={obs}
-                          onChange={(e) => handleObsChange(r.id, of.id, e.target.value)}
-                          onBlur={() => handleObsBlur(r.id, of.id)}
-                          placeholder="Observaciones..."
-                          rows={2}
-                          className="w-full px-2.5 py-2 rounded-md bg-secondary border border-border text-[14px] text-foreground resize-none focus:outline-none focus:ring-1 focus:ring-ring/30 placeholder:text-muted-foreground/40"
-                        />
+                        <button
+                          onClick={() => setSpecsModal({ renglonId: r.id, oferenteId: of.id })}
+                          className="w-full flex items-center justify-center gap-2 px-2.5 py-2 rounded-md text-[13.5px] font-medium transition-colors"
+                          style={{
+                            background: "oklch(0.18 0.005 270)",
+                            border: "1px solid oklch(1 0 0 / 0.08)",
+                            color: specsCount > 0 ? "#86efac" : "oklch(0.60 0 0)",
+                          }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.18)"; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.08)"; }}
+                        >
+                          <ListChecks className="w-3.5 h-3.5" />
+                          Especificaciones
+                          {specsCount > 0 && (
+                            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 11.5, fontWeight: 700, background: "oklch(0.30 0.10 155 / 0.45)", border: "1px solid oklch(0.55 0.15 155 / 0.5)", borderRadius: 20, padding: "1px 7px", color: "#86efac" }}>
+                              {specsCount}
+                            </span>
+                          )}
+                        </button>
                       </div>
                     </td>
                   );
@@ -1017,12 +1107,17 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
       <div className="rounded-lg border border-border bg-card p-4 space-y-2">
         <h4 className="text-[13px] font-semibold text-foreground uppercase tracking-wide" style={{ color: "oklch(0.55 0 0)" }}>Resumen de evaluación técnica</h4>
         {renglones.map((r) => {
-          const cumpleN    = oferentes.filter((of) => evals.get(cellKey(r.id, of.id))?.cumple === true).length;
-          const noCumpleN  = oferentes.filter((of) => evals.get(cellKey(r.id, of.id))?.cumple === false).length;
-          const pendienteN = oferentes.filter((of) => evals.has(cellKey(r.id, of.id)) && evals.get(cellKey(r.id, of.id))?.cumple === null).length;
-          const sinEvalN   = oferentes.length - cumpleN - noCumpleN - pendienteN;
+          let cumpleN = 0, noCumpleN = 0, pendienteN = 0, noOfertaN = 0, sinEvalN = 0;
+          for (const of of oferentes) {
+            const s = cellStatus(r, of.id);
+            if (s === "cumple") cumpleN++;
+            else if (s === "noCumple") noCumpleN++;
+            else if (s === "pendiente") pendienteN++;
+            else if (s === "noOferta") noOfertaN++;
+            else sinEvalN++;
+          }
           return (
-            <div key={r.id} className="flex items-center gap-3 text-[14px]">
+            <div key={r.id} className="flex items-center gap-3 text-[14px] flex-wrap">
               <span className="text-muted-foreground w-24 shrink-0">Renglón {r.numero}:</span>
               {cumpleN > 0 && (
                 <span className="text-emerald-400 font-medium">
@@ -1039,19 +1134,228 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                   {noCumpleN} no {noCumpleN === 1 ? "cumple" : "cumplen"}
                 </span>
               )}
+              {noOfertaN > 0 && (
+                <span style={{ color: "#94a3b8" }} className="font-medium">
+                  {noOfertaN} sin oferta
+                </span>
+              )}
               {sinEvalN > 0 && (
                 <span className="text-muted-foreground/70">
                   {sinEvalN} sin evaluar
                 </span>
               )}
-              {sinEvalN === 0 && cumpleN === 0 && noCumpleN === 0 && pendienteN === 0 && (
+              {sinEvalN === 0 && cumpleN === 0 && noCumpleN === 0 && pendienteN === 0 && noOfertaN === 0 && (
                 <span className="text-muted-foreground/50">Sin evaluaciones</span>
               )}
             </div>
           );
         })}
       </div>
+
+      {specsModal && modalRenglon && modalOferente && (
+        <SpecsModal
+          renglonNumero={modalRenglon.numero}
+          oferenteNombre={modalOferente.nombre}
+          initial={parseSpecs(evals.get(cellKey(specsModal.renglonId, specsModal.oferenteId))?.observaciones ?? null)}
+          onClose={() => setSpecsModal(null)}
+          onSave={(items) => handleSaveSpecs(specsModal.renglonId, specsModal.oferenteId, items)}
+        />
+      )}
     </div>
+  );
+}
+
+// ─── Modal de especificaciones técnicas ──────────────────────────────
+
+function SpecsModal({
+  renglonNumero, oferenteNombre, initial, onClose, onSave,
+}: {
+  renglonNumero: number;
+  oferenteNombre: string;
+  initial: SpecItem[];
+  onClose: () => void;
+  onSave: (items: SpecItem[]) => void;
+}) {
+  const [items, setItems] = useState<SpecItem[]>(initial);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
+
+  const addCheck = () => setItems((p) => [...p, { id: specSid(), kind: "check", label: "", checked: false }]);
+  const addText = () => setItems((p) => [...p, { id: specSid(), kind: "text", text: "" }]);
+  const remove = (id: string) => setItems((p) => p.filter((x) => x.id !== id));
+  const update = (id: string, patch: Partial<SpecItem>) =>
+    setItems((p) => p.map((x) => (x.id === id ? ({ ...x, ...patch } as SpecItem) : x)));
+
+  const reorder = (from: number, to: number) => {
+    if (from === to) return;
+    setItems((p) => {
+      const n = [...p];
+      const [moved] = n.splice(from, 1);
+      n.splice(to, 0, moved);
+      return n;
+    });
+  };
+
+  const derived = deriveCumpleFromSpecs(items);
+
+  return createPortal(
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 9000, background: "oklch(0 0 0 / 0.65)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        style={{ width: "100%", maxWidth: 600, maxHeight: "90vh", display: "flex", flexDirection: "column", borderRadius: 16, overflow: "hidden", background: "oklch(0.15 0.005 270)", border: "1px solid oklch(1 0 0 / 0.09)", boxShadow: "0 24px 64px -20px oklch(0 0 0 / 0.8)" }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 22px", borderBottom: "1px solid oklch(1 0 0 / 0.07)", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 8, background: "oklch(0.30 0.10 155 / 0.35)", border: "1px solid oklch(0.55 0.15 155 / 0.45)", color: "#86efac" }}>
+              <ListChecks className="w-4 h-4" />
+            </div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "oklch(0.95 0 0)", letterSpacing: -0.3 }}>Especificaciones técnicas</div>
+              <div style={{ fontSize: 12.5, color: "oklch(0.55 0 0)", marginTop: 1 }}>
+                Renglón <span style={{ fontFamily: "ui-monospace, monospace", color: "#86efac", fontWeight: 600 }}>{renglonNumero}</span> · {oferenteNombre}
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 7, background: "transparent", border: "1px solid oklch(1 0 0 / 0.08)", color: "oklch(0.60 0 0)", cursor: "pointer" }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Derived state hint */}
+        <div style={{ padding: "10px 22px", borderBottom: "1px solid oklch(1 0 0 / 0.05)", flexShrink: 0 }}>
+          {derived === undefined ? (
+            <span style={{ fontSize: 12.5, color: "oklch(0.50 0 0)" }}>
+              Sin checkboxes — el estado técnico se define manualmente con los botones.
+            </span>
+          ) : (
+            <span style={{ fontSize: 12.5, color: "oklch(0.55 0 0)" }}>
+              Según las especificaciones, al guardar el estado quedará:{" "}
+              <strong style={{ color: derived ? "#86efac" : "#fca5a5" }}>{derived ? "✓ Cumple" : "✗ No cumple"}</strong>
+            </span>
+          )}
+        </div>
+
+        {/* Body: list */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px" }}>
+          {items.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "28px 0", fontSize: 13.5, color: "oklch(0.45 0 0)" }}>
+              No hay especificaciones. Agregá un checkbox o una nota abajo.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {items.map((it, idx) => (
+                <div
+                  key={it.id}
+                  onDragOver={(e) => { e.preventDefault(); setOverIdx(idx); }}
+                  onDrop={(e) => { e.preventDefault(); if (dragIdx !== null) reorder(dragIdx, idx); setDragIdx(null); setOverIdx(null); }}
+                  style={{
+                    display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px", borderRadius: 10,
+                    background: overIdx === idx && dragIdx !== null ? "oklch(0.24 0.005 270)" : "oklch(0.18 0.005 270)",
+                    border: `1px solid ${overIdx === idx && dragIdx !== null ? "oklch(0.55 0.15 155 / 0.5)" : "oklch(1 0 0 / 0.07)"}`,
+                    opacity: dragIdx === idx ? 0.4 : 1,
+                    transition: "background .12s, border-color .12s, opacity .12s",
+                  }}
+                >
+                  <div
+                    draggable
+                    onDragStart={() => setDragIdx(idx)}
+                    onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
+                    title="Arrastrar para reordenar"
+                    style={{ cursor: "grab", color: "oklch(0.42 0 0)", paddingTop: it.kind === "text" ? 8 : 6, flexShrink: 0 }}
+                  >
+                    <GripVertical className="w-4 h-4" />
+                  </div>
+
+                  {it.kind === "check" ? (
+                    <>
+                      <button
+                        onClick={() => update(it.id, { checked: !it.checked } as Partial<SpecItem>)}
+                        style={{
+                          flexShrink: 0, width: 22, height: 22, borderRadius: 6, marginTop: 5, cursor: "pointer",
+                          display: "grid", placeItems: "center",
+                          background: it.checked ? "#86efac" : "oklch(0.14 0.005 270)",
+                          border: `1px solid ${it.checked ? "#86efac" : "oklch(1 0 0 / 0.15)"}`,
+                          color: "oklch(0.10 0.02 155)",
+                          transition: "background .12s, border-color .12s",
+                        }}
+                      >
+                        {it.checked && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+                      </button>
+                      <input
+                        type="text"
+                        value={it.label}
+                        onChange={(e) => update(it.id, { label: e.target.value } as Partial<SpecItem>)}
+                        placeholder="Especificación (ej: Tensión nominal 13.2 kV)"
+                        style={{
+                          flex: 1, minWidth: 0, height: 34, padding: "0 10px", borderRadius: 7,
+                          background: "oklch(0.14 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)",
+                          color: it.checked ? "oklch(0.92 0 0)" : "oklch(0.78 0 0)", fontSize: 14, outline: "none",
+                        }}
+                      />
+                    </>
+                  ) : (
+                    <textarea
+                      value={it.text}
+                      onChange={(e) => update(it.id, { text: e.target.value } as Partial<SpecItem>)}
+                      placeholder="Nota / observación libre…"
+                      rows={2}
+                      style={{
+                        flex: 1, minWidth: 0, padding: "7px 10px", borderRadius: 7, resize: "vertical",
+                        background: "oklch(0.14 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)",
+                        color: "oklch(0.85 0 0)", fontSize: 14, outline: "none", lineHeight: 1.5,
+                      }}
+                    />
+                  )}
+
+                  <button
+                    onClick={() => remove(it.id)}
+                    title="Eliminar"
+                    style={{ flexShrink: 0, display: "grid", placeItems: "center", width: 28, height: 28, marginTop: 3, borderRadius: 7, background: "transparent", border: "1px solid oklch(1 0 0 / 0.06)", color: "oklch(0.50 0 0)", cursor: "pointer" }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#fca5a5"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(0.55 0.15 25 / 0.4)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.50 0 0)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.06)"; }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add buttons */}
+          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            <button
+              onClick={addCheck}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, background: "oklch(0.20 0.005 270)", border: "1px dashed oklch(0.55 0.15 155 / 0.4)", color: "#86efac", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+            >
+              <Plus className="w-3.5 h-3.5" /> Especificación
+            </button>
+            <button
+              onClick={addText}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, background: "oklch(0.20 0.005 270)", border: "1px dashed oklch(1 0 0 / 0.14)", color: "oklch(0.70 0 0)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+            >
+              <Plus className="w-3.5 h-3.5" /> Nota de texto
+            </button>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "14px 22px", borderTop: "1px solid oklch(1 0 0 / 0.07)", display: "flex", justifyContent: "flex-end", gap: 10, flexShrink: 0 }}>
+          <button onClick={onClose}
+            style={{ padding: "10px 20px", borderRadius: 9, border: "1px solid oklch(1 0 0 / 0.10)", background: "transparent", color: "oklch(0.65 0 0)", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
+            Cancelar
+          </button>
+          <button onClick={() => onSave(items)}
+            style={{ padding: "10px 24px", borderRadius: 9, border: "none", background: "#86efac", color: "oklch(0.12 0.02 155)", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            Guardar
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -2897,13 +3201,17 @@ function HelpStepContent({ step }: { step: number }) {
             <HelpAction label="✓ Cumple" desc="El oferente cumplió todos los requisitos técnicos del renglón. Se muestra en verde." />
             <HelpAction label="⏳ Pendiente" desc="La evaluación está en curso o requiere más análisis. Se muestra en amarillo." />
             <HelpAction label="✗ No cumple" desc="El oferente no cumplió los requisitos técnicos. Se muestra en rojo." />
-            <HelpAction label="Sin evaluar" desc="No se registró ninguna evaluación (celda vacía / sin color)." />
+            <HelpAction label="⊘ No oferta" desc="Automático: el oferente no ofertó todos los ítems del renglón (parcial o cero). Bloquea la evaluación manual." />
+            <HelpAction label="Sin evaluar" desc="Ofertó completo pero no se registró ninguna evaluación." />
           </HelpSection>
-          <HelpSection title="Observaciones">
-            <HelpAction label="Campo de texto" desc="Podés escribir observaciones adicionales en cada celda. Se guardan junto al estado." />
+          <HelpSection title="Especificaciones técnicas">
+            <HelpAction label="Especificaciones" desc="Abre una ventana para cargar una lista mixta de checkboxes (requisitos) y notas de texto." />
+            <HelpAction label="Drag" desc="Reordená los elementos arrastrándolos por el ícono de la izquierda." />
+            <HelpAction label="Checkbox" desc="Cada requisito se tilda o no. Editás el texto y agregás/quitás los que necesites." />
           </HelpSection>
+          <HelpTip>Si la ventana tiene <strong>checkboxes</strong>, al guardar definen el estado: todos tildados → <strong>Cumple</strong>; alguno sin tildar → <strong>No cumple</strong>. Sin checkboxes, el estado es 100% manual.</HelpTip>
           <HelpTip>Hacé clic en el <strong>mismo botón activo</strong> para quitar la evaluación y dejarla en estado "Sin evaluar".</HelpTip>
-          <HelpTip>El estado de la evaluación aparece en la columna "Técnica" dentro de la pestaña Adjudicación para ayudar en la decisión.</HelpTip>
+          <HelpWarning>El estado <strong>No oferta</strong> se detecta solo desde la pestaña Ofertas: si falta cargar el precio de algún ítem del renglón, la celda queda bloqueada hasta completarlo.</HelpWarning>
         </>
       );
     case 5:
