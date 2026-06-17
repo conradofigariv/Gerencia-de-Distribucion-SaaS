@@ -24,6 +24,7 @@ interface Profile {
   empresa:      string;
   cargo:        string;
   telefono:     string;
+  cumpleanos:   string;
   avatar_url:   string;
   nivel_acceso: NivelAcceso;
 }
@@ -38,7 +39,7 @@ interface AdminUser {
 }
 
 const EMPTY_PROFILE: Profile = {
-  nombre: "", apellido: "", empresa: "", cargo: "", telefono: "", avatar_url: "", nivel_acceso: "visualizador",
+  nombre: "", apellido: "", empresa: "", cargo: "", telefono: "", cumpleanos: "", avatar_url: "", nivel_acceso: "visualizador",
 };
 
 const NIVEL_BADGE: Record<NivelAcceso, { label: string; cls: string }> = {
@@ -79,7 +80,7 @@ export function SettingsSection({ user }: { user: User }) {
     (async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("nombre, apellido, empresa, cargo, telefono, avatar_url, nivel_acceso")
+        .select("nombre, apellido, empresa, cargo, telefono, cumpleanos, avatar_url, nivel_acceso")
         .eq("id", user.id)
         .single();
       if (!error && data) {
@@ -119,7 +120,12 @@ export function SettingsSection({ user }: { user: User }) {
     setSavingProfile(true);
     const { error } = await supabase
       .from("profiles")
-      .upsert({ id: user.id, ...profile, updated_at: new Date().toISOString() });
+      .upsert({
+        id: user.id,
+        ...profile,
+        cumpleanos: profile.cumpleanos || null, // columna date: "" no es válido
+        updated_at: new Date().toISOString(),
+      });
     if (error) toast.error(`Error al guardar: ${error.message}`);
     else toast.success("Perfil actualizado");
     setSavingProfile(false);
@@ -394,9 +400,19 @@ export function SettingsSection({ user }: { user: User }) {
                       <Label>Puesto</Label>
                       {field("cargo")}
                     </div>
-                    <div className="space-y-1.5 md:col-span-2">
+                    <div className="space-y-1.5">
                       <Label>Teléfono</Label>
                       {field("telefono")}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Cumpleaños</Label>
+                      <input
+                        type="date"
+                        value={profile.cumpleanos}
+                        onChange={e => setProfile(p => ({ ...p, cumpleanos: e.target.value }))}
+                        style={{ colorScheme: "dark" }}
+                        className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all"
+                      />
                     </div>
                   </div>
                 </>
