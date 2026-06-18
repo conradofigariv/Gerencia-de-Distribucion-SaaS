@@ -258,20 +258,20 @@ export function IndiceIdoResumenSection() {
             <thead>
               <tr className="border-b border-border">
                 <th rowSpan={2} className="relative text-left font-medium px-3 py-2 sticky left-0 bg-panel-header z-10 align-bottom">Zona<Resizer id="zona" /></th>
-                <th colSpan={hasS2 ? 5 : 3} className="text-center font-semibold text-foreground/80 px-3 py-1.5 border-l border-border">FMIK</th>
-                <th colSpan={hasS2 ? 5 : 3} className="text-center font-semibold text-foreground/80 px-3 py-1.5 border-l border-border">DMIK</th>
-                <th rowSpan={2} className="relative text-center font-semibold text-foreground/80 px-3 py-2 border-l border-border align-bottom">Result.<br />Técnico<Resizer id="tecnico" /></th>
-                <th rowSpan={2} className="relative text-center font-semibold text-foreground/80 px-3 py-2 border-l border-border align-bottom">POVA<Resizer id="pova" /></th>
-                <th rowSpan={2} className="relative text-center font-semibold text-foreground/80 px-3 py-2 border-l border-border align-bottom">Manten.<Resizer id="mant" /></th>
-                <th rowSpan={2} className="relative text-center font-semibold text-foreground px-3 py-2 border-l border-border align-bottom">IDO<Resizer id="ido" /></th>
+                <th colSpan={hasS2 ? 5 : 3} className="text-center font-bold uppercase tracking-wider text-accent-green px-3 py-1.5 border-l-2 border-foreground/20 bg-secondary/40">FMIK</th>
+                <th colSpan={hasS2 ? 5 : 3} className="text-center font-bold uppercase tracking-wider text-accent-green px-3 py-1.5 border-l-2 border-foreground/20 bg-secondary/40">DMIK</th>
+                <th rowSpan={2} className="relative text-center font-semibold text-foreground/80 px-3 py-2 border-l-2 border-foreground/20 align-bottom">Result.<br />Técnico<Resizer id="tecnico" /></th>
+                <th rowSpan={2} className="relative text-center font-semibold text-foreground/80 px-3 py-2 border-l-2 border-foreground/20 align-bottom">POVA<Resizer id="pova" /></th>
+                <th rowSpan={2} className="relative text-center font-semibold text-foreground/80 px-3 py-2 border-l-2 border-foreground/20 align-bottom">Manten.<Resizer id="mant" /></th>
+                <th rowSpan={2} className="relative text-center font-semibold text-foreground px-3 py-2 border-l-2 border-foreground/20 align-bottom">IDO<Resizer id="ido" /></th>
               </tr>
               <tr className="border-b border-border text-muted-foreground">
-                <th className="relative text-right font-medium px-3 py-1.5 border-l border-border">S1<Resizer id="fmik_s1" /></th>
+                <th className="relative text-right font-medium px-3 py-1.5 border-l-2 border-foreground/20">S1<Resizer id="fmik_s1" /></th>
                 <th className="relative text-right font-medium px-3 py-1.5">KPI S1<Resizer id="fmik_kpi_s1" /></th>
                 {hasS2 && <th className="relative text-right font-medium px-3 py-1.5">S2<Resizer id="fmik_s2" /></th>}
                 {hasS2 && <th className="relative text-right font-medium px-3 py-1.5">KPI S2<Resizer id="fmik_kpi_s2" /></th>}
                 <th className="relative text-right font-medium px-3 py-1.5">KPI<Resizer id="fmik_kpi" /></th>
-                <th className="relative text-right font-medium px-3 py-1.5 border-l border-border">S1<Resizer id="dmik_s1" /></th>
+                <th className="relative text-right font-medium px-3 py-1.5 border-l-2 border-foreground/20">S1<Resizer id="dmik_s1" /></th>
                 <th className="relative text-right font-medium px-3 py-1.5">KPI S1<Resizer id="dmik_kpi_s1" /></th>
                 {hasS2 && <th className="relative text-right font-medium px-3 py-1.5">S2<Resizer id="dmik_s2" /></th>}
                 {hasS2 && <th className="relative text-right font-medium px-3 py-1.5">KPI S2<Resizer id="dmik_kpi_s2" /></th>}
@@ -284,20 +284,20 @@ export function IndiceIdoResumenSection() {
                 return (
                   <tr key={c.zona} className="border-b border-border/50 even:bg-secondary/15 hover:bg-secondary/30">
                     <td className="px-3 py-1.5 font-semibold text-foreground sticky left-0 bg-panel-header z-10 truncate">{c.zona}</td>
-                    <td className="px-3 py-1.5 text-right font-mono border-l border-border text-foreground/90 truncate">{fmtNum(c.fmikS1)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono border-l-2 border-foreground/20 text-foreground/90 truncate">{fmtNum(c.fmikS1)}</td>
                     <td className={`px-3 py-1.5 text-right font-mono font-semibold ${kpiColor(c.kpiFmikS1)}`}>{fmtPct(c.kpiFmikS1)}</td>
                     {hasS2 && <td className="px-3 py-1.5 text-right font-mono text-foreground/90 truncate">{fmtNum(c.fmikS2)}</td>}
                     {hasS2 && <td className={`px-3 py-1.5 text-right font-mono font-semibold ${kpiColor(c.kpiFmikS2)}`}>{fmtPct(c.kpiFmikS2)}</td>}
                     <td className={`px-3 py-1.5 text-right font-mono font-semibold ${kpiColor(c.kpiFmik)}`}>{fmtPct(c.kpiFmik)}</td>
-                    <td className="px-3 py-1.5 text-right font-mono border-l border-border text-foreground/90 truncate">{fmtNum(c.dmikS1)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono border-l-2 border-foreground/20 text-foreground/90 truncate">{fmtNum(c.dmikS1)}</td>
                     <td className={`px-3 py-1.5 text-right font-mono font-semibold ${kpiColor(c.kpiDmikS1)}`}>{fmtPct(c.kpiDmikS1)}</td>
                     {hasS2 && <td className="px-3 py-1.5 text-right font-mono text-foreground/90 truncate">{fmtNum(c.dmikS2)}</td>}
                     {hasS2 && <td className={`px-3 py-1.5 text-right font-mono font-semibold ${kpiColor(c.kpiDmikS2)}`}>{fmtPct(c.kpiDmikS2)}</td>}
                     <td className={`px-3 py-1.5 text-right font-mono font-semibold ${kpiColor(c.kpiDmik)}`}>{fmtPct(c.kpiDmik)}</td>
-                    <td className={`px-3 py-1.5 text-right font-mono font-semibold border-l border-border ${kpiColor(c.resultadoTecnico)}`}>{fmtPct(c.resultadoTecnico)}</td>
-                    <td className="px-3 py-1.5 text-right font-mono border-l border-border text-foreground/90 truncate">{fmtPct(c.pova)}</td>
-                    <td className="px-3 py-1.5 text-right font-mono border-l border-border text-foreground/90 truncate">{fmtPct(c.mantenimiento)}</td>
-                    <td className="px-3 py-1.5 text-right border-l border-border">
+                    <td className={`px-3 py-1.5 text-right font-mono font-semibold border-l-2 border-foreground/20 ${kpiColor(c.resultadoTecnico)}`}>{fmtPct(c.resultadoTecnico)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono border-l-2 border-foreground/20 text-foreground/90 truncate">{fmtPct(c.pova)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono border-l-2 border-foreground/20 text-foreground/90 truncate">{fmtPct(c.mantenimiento)}</td>
+                    <td className="px-3 py-1.5 text-right border-l-2 border-foreground/20">
                       <span className="inline-block px-2 py-0.5 rounded font-mono font-semibold" style={{ color: ido.color, background: ido.bg }}>
                         {fmtPct(c.ido, 1)}
                       </span>

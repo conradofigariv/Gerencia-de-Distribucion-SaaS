@@ -392,7 +392,7 @@ export function IndiceIdoCargaSection() {
                 <th
                   key={g.label}
                   colSpan={g.fields.length + (g.derived?.length ?? 0)}
-                  className="text-center font-semibold text-foreground/80 px-3 py-1.5 border-l border-border"
+                  className="text-center font-bold uppercase tracking-wider text-accent-green px-3 py-1.5 border-l-2 border-foreground/20 bg-secondary/40"
                 >
                   {g.label}
                 </th>
@@ -403,7 +403,7 @@ export function IndiceIdoCargaSection() {
               {COLUMNS.map((col) => (
                 <th
                   key={col.kind === "input" ? col.field : col.key}
-                  className={`text-right font-medium px-3 py-1.5 whitespace-nowrap ${col.groupStart ? "border-l border-border" : ""} ${col.kind === "derived" ? "text-accent/70 italic" : ""}`}
+                  className={`text-right font-medium px-3 py-1.5 whitespace-nowrap ${col.groupStart ? "border-l-2 border-foreground/20" : ""} ${col.kind === "derived" ? "text-accent/70 italic" : ""}`}
                 >
                   {col.label}
                 </th>
@@ -419,7 +419,7 @@ export function IndiceIdoCargaSection() {
                 {COLUMNS.map((col) => {
                   if (col.kind === "input") {
                     return (
-                      <td key={col.field} className={`px-1 py-1 ${col.groupStart ? "border-l border-border" : ""}`}>
+                      <td key={col.field} className={`px-1 py-1 ${col.groupStart ? "border-l-2 border-foreground/20" : ""}`}>
                         <input
                           type="text"
                           inputMode="decimal"
@@ -432,7 +432,7 @@ export function IndiceIdoCargaSection() {
                     );
                   }
                   return (
-                    <td key={col.key} className={`px-2 py-1.5 text-right ${col.groupStart ? "border-l border-border" : ""}`}>
+                    <td key={col.key} className={`px-2 py-1.5 text-right ${col.groupStart ? "border-l-2 border-foreground/20" : ""}`}>
                       <span className="font-mono text-accent/80" title="Calculado (provisorio)">{fmtPct(col.compute(row.cells))}</span>
                     </td>
                   );
