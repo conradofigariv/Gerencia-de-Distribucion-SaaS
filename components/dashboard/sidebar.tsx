@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import type { Section } from "@/app/page";
+import type { Section, HeaderProfile } from "@/app/page";
+import { supabase } from "@/lib/supabaseClient";
 import {
   ChevronLeft,
   X,
@@ -21,8 +22,11 @@ import {
   Gavel,
   Gauge,
   ClipboardList,
+  LogOut,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 interface SidebarProps {
   activeSection: Section;
@@ -31,6 +35,19 @@ interface SidebarProps {
   onCollapsedChange: (collapsed: boolean) => void;
   mobileOpen?: boolean;
   onMobileOpenChange?: (open: boolean) => void;
+  userProfile?: HeaderProfile | null;
+  userEmail?: string | null;
+}
+
+/** Envuelve un item en tooltip sólo cuando el sidebar está colapsado. */
+function NavTooltip({ show, label, children }: { show: boolean; label: string; children: React.ReactNode }) {
+  if (!show) return <>{children}</>;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 type NavLink = {
@@ -139,12 +156,26 @@ export function Sidebar({
   onCollapsedChange,
   mobileOpen = false,
   onMobileOpenChange,
+  userProfile,
+  userEmail,
 }: SidebarProps) {
   // Selección de sección: en mobile además cierra el drawer
   const handleSelect = (section: Section) => {
     onSectionChange(section);
     onMobileOpenChange?.(false);
   };
+
+  // Datos para el mini-perfil del footer
+  const displayName =
+    [userProfile?.nombre, userProfile?.apellido].filter(Boolean).join(" ").trim() ||
+    userEmail ||
+    "Usuario";
+  const initials =
+    [userProfile?.nombre, userProfile?.apellido]
+      .map((s) => (s ?? "").trim()[0] ?? "")
+      .join("")
+      .toUpperCase() || userEmail?.[0]?.toUpperCase() || "U";
+  const handleLogout = () => { supabase.auth.signOut(); };
   const initialGroups = [
     ...(SERVICIOS_SECTIONS.includes(activeSection)      ? ["servicios"]      : []),
     ...(SIC_SECTIONS.includes(activeSection)            ? ["sic"]            : []),
@@ -258,37 +289,38 @@ export function Sidebar({
             const isActive = activeSection === item.id;
 
             return (
-              <button
-                key={item.id}
-                onClick={() => handleSelect(item.id)}
-                className={cn(
-                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative",
-                  isActive
-                    ? "bg-sidebar-accent text-sidebar-foreground"
-                    : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
-                )}
-              >
-                <span
+              <NavTooltip key={item.id} show={c} label={item.label}>
+                <button
+                  onClick={() => handleSelect(item.id)}
                   className={cn(
-                    "absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-accent transition-all duration-300",
-                    isActive ? "opacity-100" : "opacity-0"
-                  )}
-                />
-                <Icon
-                  className={cn(
-                    "w-5 h-5 shrink-0 transition-transform duration-200",
-                    isActive ? "text-accent" : "group-hover:scale-110"
-                  )}
-                />
-                <span
-                  className={cn(
-                    "whitespace-nowrap transition-all duration-300",
-                    c ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative",
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-foreground"
+                      : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
                   )}
                 >
-                  {item.label}
-                </span>
-              </button>
+                  <span
+                    className={cn(
+                      "absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-accent transition-all duration-300",
+                      isActive ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  <Icon
+                    className={cn(
+                      "w-5 h-5 shrink-0 transition-transform duration-200",
+                      isActive ? "text-accent" : "group-hover:scale-110"
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      "whitespace-nowrap transition-all duration-300",
+                      c ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                </button>
+              </NavTooltip>
             );
           }
 
@@ -300,44 +332,46 @@ export function Sidebar({
           return (
             <div key={item.id}>
               {/* Group header */}
-              <button
-                onClick={() => toggleGroup(item.id)}
-                className={cn(
-                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative",
-                  groupActive
-                    ? "bg-sidebar-accent text-sidebar-foreground"
-                    : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
-                )}
-              >
-                <span
+              <NavTooltip show={c} label={item.label}>
+                <button
+                  onClick={() => toggleGroup(item.id)}
                   className={cn(
-                    "absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-accent transition-all duration-300",
-                    groupActive ? "opacity-100" : "opacity-0"
-                  )}
-                />
-                <Icon
-                  className={cn(
-                    "w-5 h-5 shrink-0 transition-transform duration-200",
-                    groupActive ? "text-accent" : "group-hover:scale-110"
-                  )}
-                />
-                <span
-                  className={cn(
-                    "flex-1 text-left whitespace-nowrap transition-all duration-300",
-                    c ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative",
+                    groupActive
+                      ? "bg-sidebar-accent text-sidebar-foreground"
+                      : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
                   )}
                 >
-                  {item.label}
-                </span>
-                {!c && (
-                  <ChevronDown
+                  <span
                     className={cn(
-                      "w-4 h-4 shrink-0 transition-transform duration-200",
-                      expanded ? "rotate-180" : "rotate-0"
+                      "absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-accent transition-all duration-300",
+                      groupActive ? "opacity-100" : "opacity-0"
                     )}
                   />
-                )}
-              </button>
+                  <Icon
+                    className={cn(
+                      "w-5 h-5 shrink-0 transition-transform duration-200",
+                      groupActive ? "text-accent" : "group-hover:scale-110"
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      "flex-1 text-left whitespace-nowrap transition-all duration-300",
+                      c ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                  {!c && (
+                    <ChevronDown
+                      className={cn(
+                        "w-4 h-4 shrink-0 transition-transform duration-200",
+                        expanded ? "rotate-180" : "rotate-0"
+                      )}
+                    />
+                  )}
+                </button>
+              </NavTooltip>
 
               {/* Children */}
               <div
@@ -373,6 +407,57 @@ export function Sidebar({
           );
         })}
       </nav>
+
+      {/* Footer: mini-perfil */}
+      <div className="border-t border-sidebar-border p-3 shrink-0">
+        {c ? (
+          <NavTooltip show label={displayName}>
+            <button
+              onClick={() => handleSelect("settings")}
+              className="w-full flex justify-center rounded-lg p-1.5 hover:bg-sidebar-accent/50 transition-colors"
+              aria-label={displayName}
+            >
+              <Avatar className="w-8 h-8 rounded-lg">
+                {userProfile?.avatar_url && (
+                  <AvatarImage src={userProfile.avatar_url} alt={initials} className="rounded-lg" />
+                )}
+                <AvatarFallback className="rounded-lg bg-gradient-to-br from-accent/80 to-chart-1 text-[11px] font-semibold text-accent-foreground">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+            </button>
+          </NavTooltip>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleSelect("settings")}
+              className="flex flex-1 min-w-0 items-center gap-3 rounded-lg p-1.5 hover:bg-sidebar-accent/50 transition-colors"
+              title="Ir a Configuración"
+            >
+              <Avatar className="w-9 h-9 rounded-lg shrink-0">
+                {userProfile?.avatar_url && (
+                  <AvatarImage src={userProfile.avatar_url} alt={initials} className="rounded-lg" />
+                )}
+                <AvatarFallback className="rounded-lg bg-gradient-to-br from-accent/80 to-chart-1 text-xs font-semibold text-accent-foreground">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 text-left">
+                <p className="truncate text-sm font-medium text-sidebar-foreground">{displayName}</p>
+                <p className="truncate text-xs text-muted-foreground">{userEmail}</p>
+              </div>
+            </button>
+            <button
+              onClick={handleLogout}
+              title="Cerrar sesión"
+              aria-label="Cerrar sesión"
+              className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
     </aside>
   );
 }

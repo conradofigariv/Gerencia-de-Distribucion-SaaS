@@ -154,6 +154,8 @@ export default function Dashboard() {
           onCollapsedChange={setSidebarCollapsed}
           mobileOpen={mobileSidebarOpen}
           onMobileOpenChange={setMobileSidebarOpen}
+          userProfile={headerProfile}
+          userEmail={user.email}
         />
 
         {/* Backdrop del drawer (solo mobile) */}
