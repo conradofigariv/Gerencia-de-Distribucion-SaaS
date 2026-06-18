@@ -11,7 +11,7 @@
  */
 
 import { useState } from "react";
-import { Loader2, Check, Bell, Trash2, Plus, Search } from "lucide-react";
+import { Check, Bell, Trash2, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -170,31 +170,37 @@ export default function StyleguidePage() {
         </Section>
 
         {/* ── Botones ──────────────────────────────────────────────── */}
-        <Section title="Botones" description="FASE 1: unificar todo a <Button variant>. Hoy faltan success/warning y estado loading integrado.">
+        <Section title="Botones" description="Fase 1: variantes accent/success/warning, prop loading con spinner integrado y micro-interacción al click (active:scale).">
           <div className="space-y-1">
-            <Row label="Variantes">
-              <Button>Default</Button>
-              <Button variant="secondary">Secondary</Button>
-              <Button variant="outline">Outline</Button>
+            <Row label="Jerarquía">
+              <Button variant="accent">Acción primaria</Button>
+              <Button variant="secondary">Secundaria</Button>
+              <Button variant="outline">Terciaria</Button>
               <Button variant="ghost">Ghost</Button>
-              <Button variant="destructive">Destructive</Button>
               <Button variant="link">Link</Button>
             </Row>
+            <Row label="Semánticas">
+              <Button variant="accent">Accent (verde)</Button>
+              <Button variant="success"><Check /> Success</Button>
+              <Button variant="warning">Warning</Button>
+              <Button variant="destructive"><Trash2 /> Destructive</Button>
+              <Button>Default (blanco)</Button>
+            </Row>
             <Row label="Tamaños">
-              <Button size="sm">Small</Button>
-              <Button size="default">Default</Button>
-              <Button size="lg">Large</Button>
-              <Button size="icon" aria-label="icono"><Plus /></Button>
+              <Button variant="accent" size="sm">Small</Button>
+              <Button variant="accent" size="default">Default</Button>
+              <Button variant="accent" size="lg">Large</Button>
+              <Button variant="accent" size="icon" aria-label="icono"><Plus /></Button>
             </Row>
             <Row label="Con ícono">
-              <Button><Check /> Guardar</Button>
+              <Button variant="accent"><Check /> Guardar</Button>
               <Button variant="outline"><Bell /> Recordatorio</Button>
               <Button variant="destructive"><Trash2 /> Eliminar</Button>
             </Row>
             <Row label="Estados">
               <Button disabled>Disabled</Button>
-              <Button onClick={() => { setLoading(true); setTimeout(() => setLoading(false), 1500); }} disabled={loading}>
-                {loading ? <><Loader2 className="animate-spin" /> Guardando…</> : "Probar loading"}
+              <Button variant="accent" loading={loading} onClick={() => { setLoading(true); setTimeout(() => setLoading(false), 1500); }}>
+                {loading ? "Guardando…" : "Probar loading"}
               </Button>
             </Row>
           </div>
