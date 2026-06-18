@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { CheckIcon } from "lucide-react";
 import { SearchInput } from "@/components/ui/floating-input";
+import { Button } from "@/components/ui/button";
 import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
 import type { ZonaUpload, CompraRow } from "@/lib/stockStorage";
 import { getFamilies, upsertFamiliesBulk, deleteFamiliesBulk, getMatriculasInfo } from "@/lib/stockFamilies";
@@ -1515,20 +1516,15 @@ export function StockZonaSection() {
 
             {/* Action buttons */}
             <div className="flex items-center gap-2.5 mt-3.5">
-              <button
+              <Button
+                variant="accent"
                 onClick={handleImport}
-                disabled={saving || !text.trim()}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-[9px] text-[13px] font-semibold transition-all disabled:cursor-not-allowed"
-                style={{
-                  background: (saving || !text.trim()) ? "hsl(var(--secondary))" : "#8B5CF6",
-                  color: (saving || !text.trim()) ? "hsl(var(--muted-foreground))" : "#fff",
-                  border: "none",
-                  boxShadow: (!saving && text.trim()) ? "0 1px 0 rgba(255,255,255,0.1) inset, 0 8px 16px -10px rgba(139,92,246,0.6)" : "none",
-                }}
+                loading={saving}
+                disabled={!text.trim()}
               >
-                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                {!saving && <Download className="w-3.5 h-3.5" />}
                 {saving ? "Importando..." : "Importar"}
-              </button>
+              </Button>
 
               <button
                 onClick={() => setText("")}
@@ -1622,14 +1618,10 @@ export function StockZonaSection() {
           ) : (
             <>
               <div className="flex items-center gap-3 flex-wrap">
-                <button
-                  onClick={() => setAddFamilyOpen(true)}
-                  className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[12.5px] font-semibold transition-all"
-                  style={{ background: "#8B5CF6", color: "#fff", border: "none", boxShadow: "0 8px 16px -10px rgba(139,92,246,0.6)", cursor: "pointer" }}
-                >
+                <Button variant="accent" onClick={() => setAddFamilyOpen(true)}>
                   <Plus className="w-3.5 h-3.5" strokeWidth={2.6} />
                   Agregar familia
-                </button>
+                </Button>
 
                 <SearchInput
                   value={familiaSearch}
@@ -1997,25 +1989,21 @@ export function StockZonaSection() {
               </div>
 
               <div className="flex items-center gap-2.5 pt-1">
-                <button
+                <Button
+                  variant="accent"
                   onClick={handleAddFamily}
-                  disabled={addingFamily || !addFamilyName.trim() || addFamilyMatriculas.length === 0}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-[9px] text-[13px] font-semibold transition-all disabled:cursor-not-allowed"
-                  style={{
-                    background: (addingFamily || !addFamilyName.trim() || addFamilyMatriculas.length === 0) ? "hsl(var(--secondary))" : "#8B5CF6",
-                    color: (addingFamily || !addFamilyName.trim() || addFamilyMatriculas.length === 0) ? "hsl(var(--muted-foreground))" : "#fff",
-                    border: "none",
-                  }}
+                  loading={addingFamily}
+                  disabled={!addFamilyName.trim() || addFamilyMatriculas.length === 0}
                 >
-                  {addingFamily ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" strokeWidth={2.6} />}
+                  {!addingFamily && <Plus className="w-3.5 h-3.5" strokeWidth={2.6} />}
                   {addingFamily ? "Guardando…" : "Crear y asignar"}
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => { if (!addingFamily) setAddFamilyOpen(false); }}
-                  className="px-3.5 py-2 rounded-[9px] border border-border text-[13px] font-medium transition-colors bg-transparent text-muted-foreground hover:text-foreground"
                 >
                   Cancelar
-                </button>
+                </Button>
               </div>
             </div>
           </div>
