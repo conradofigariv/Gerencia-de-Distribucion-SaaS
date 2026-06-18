@@ -4,15 +4,8 @@ import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { Section } from "@/app/page";
 import {
-  LayoutDashboard,
-  GitBranch,
-  Handshake,
-  Users,
-  BarChart3,
   ChevronLeft,
   X,
-  Building2,
-  TrendingUp,
   Settings,
   Server,
   LayoutGrid,
@@ -112,14 +105,7 @@ const navItems: NavItemDef[] = [
       { id: "tablero-op-carga",   label: "Carga de datos", icon: UploadCloud },
     ],
   },
-  { kind: "link", id: "overview", label: "Overview", icon: LayoutDashboard },
-  { kind: "link", id: "pipeline", label: "Pipeline", icon: GitBranch },
-  { kind: "link", id: "deals", label: "Deals", icon: Handshake },
-  { kind: "link", id: "customers", label: "Customers", icon: Building2 },
-  { kind: "link", id: "team", label: "Team", icon: Users },
-  { kind: "link", id: "forecasting", label: "Forecasting", icon: TrendingUp },
-  { kind: "link", id: "reports", label: "Reports", icon: BarChart3 },
-  { kind: "link", id: "settings", label: "Settings", icon: Settings },
+  { kind: "link", id: "settings", label: "Configuración", icon: Settings },
 ];
 
 const SERVICIOS_SECTIONS: Section[] = [
