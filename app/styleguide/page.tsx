@@ -48,6 +48,17 @@ const COLOR_TOKENS: { name: string; varName: string; note: string }[] = [
 
 const CHART_TOKENS = ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"];
 
+// Superficies "beast pure" (Informe Técnico, Stock por Zona…), ahora tokens.
+const SURFACE_TOKENS: { name: string; varName: string; util: string }[] = [
+  { name: "panel",         varName: "--panel",         util: "bg-panel" },
+  { name: "panel-2",       varName: "--panel-2",       util: "bg-panel-2" },
+  { name: "panel-header",  varName: "--panel-header",  util: "bg-panel-header" },
+  { name: "panel-input",   varName: "--panel-input",   util: "bg-panel-input" },
+  { name: "accent-green",  varName: "--accent-green",  util: "text-accent-green" },
+  { name: "accent-amber",  varName: "--accent-amber",  util: "text-accent-amber" },
+  { name: "accent-red",    varName: "--accent-red",    util: "text-accent-red" },
+];
+
 // ─── Helpers de layout ─────────────────────────────────────────────────────
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
@@ -113,6 +124,31 @@ export default function StyleguidePage() {
               </div>
             ))}
           </div>
+        </Section>
+
+        {/* ── Superficies beast pure ───────────────────────────────── */}
+        <Section title="Superficies (beast pure)" description="Fase 0.1: los oklch que estaban hardcodeados en Informe Técnico / Stock por Zona, ahora como tokens. Mismos colores, reutilizables vía utilidades.">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+            {SURFACE_TOKENS.map(t => (
+              <div key={t.varName} className="space-y-2">
+                <div
+                  className="flex h-16 w-full items-center justify-center rounded-lg border border-hairline"
+                  style={{ background: `var(${t.varName})` }}
+                >
+                  <span className="text-xs" style={{ color: t.name.startsWith("accent") ? `var(${t.varName})` : undefined }}>
+                    {t.name.startsWith("accent") ? "Aa 123" : ""}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-sm font-medium">{t.name}</p>
+                  <p className="font-mono text-[11px] text-muted-foreground">{t.util}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-4 text-xs text-muted-foreground">
+            Borde tenue: <code className="font-mono">border-hairline</code> · Focus verde: <code className="font-mono">ring-green</code>
+          </p>
         </Section>
 
         {/* ── Tipografía ───────────────────────────────────────────── */}

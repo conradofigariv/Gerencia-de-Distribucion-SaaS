@@ -43,6 +43,20 @@ input[type="number"] { -moz-appearance: textfield; }
   --sidebar-ring: oklch(0.7 0.18 145);
   --success: oklch(0.7 0.18 145);
   --warning: oklch(0.75 0.18 55);
+
+  /* ── Superficies "beast pure" (Informe Técnico, Stock por Zona, etc.) ──
+     Mismos valores que estaban hardcodeados; ahora como tokens reutilizables.
+     Uso: bg-panel, bg-panel-2, bg-panel-header, bg-panel-input,
+          border-hairline, text-accent-green / -amber / -red. */
+  --panel: oklch(0.235 0.005 270);          /* contenedor / card beast */
+  --panel-2: oklch(0.205 0.005 270);        /* panel interno */
+  --panel-header: oklch(0.255 0.006 270);   /* header sticky de tabla */
+  --panel-input: oklch(0.16 0.005 270);     /* fondo de input */
+  --hairline: oklch(1 0 0 / 0.07);          /* borde tenue */
+  --ring-green: oklch(0.55 0.15 155 / 0.7); /* focus verde */
+  --accent-green: #86efac;                  /* acento verde claro (números/SIC/adjudicado) */
+  --accent-amber: #fcd34d;                  /* pendiente */
+  --accent-red: #fca5a5;                    /* no cumple */
 }
 
 .dark {
@@ -80,6 +94,17 @@ input[type="number"] { -moz-appearance: textfield; }
   --sidebar-ring: oklch(0.7 0.18 145);
   --success: oklch(0.7 0.18 145);
   --warning: oklch(0.75 0.18 55);
+
+  /* "beast pure" — ver bloque equivalente en :root */
+  --panel: oklch(0.235 0.005 270);
+  --panel-2: oklch(0.205 0.005 270);
+  --panel-header: oklch(0.255 0.006 270);
+  --panel-input: oklch(0.16 0.005 270);
+  --hairline: oklch(1 0 0 / 0.07);
+  --ring-green: oklch(0.55 0.15 155 / 0.7);
+  --accent-green: #86efac;
+  --accent-amber: #fcd34d;
+  --accent-red: #fca5a5;
 }
 
 @theme inline {
@@ -123,6 +148,16 @@ input[type="number"] { -moz-appearance: textfield; }
   --color-sidebar-ring: var(--sidebar-ring);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  /* "beast pure" → utilidades (bg-panel, border-hairline, text-accent-green, …) */
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-panel-header: var(--panel-header);
+  --color-panel-input: var(--panel-input);
+  --color-hairline: var(--hairline);
+  --color-ring-green: var(--ring-green);
+  --color-accent-green: var(--accent-green);
+  --color-accent-amber: var(--accent-amber);
+  --color-accent-red: var(--accent-red);
 }
 
 @layer base {

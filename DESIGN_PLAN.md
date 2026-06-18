@@ -6,6 +6,24 @@
 
 ---
 
+## 0. Regla de oro (OBLIGATORIA)
+
+**La base de TODA la UI es shadcn/ui + nuestros tokens.** La app ya está sobre
+shadcn (`components.json`, `style: new-york`, `cssVariables: true`); los colores
+nuestros **son** el tema de shadcn.
+
+- ✅ Componentes nuevos: bajarlos con `npx shadcn@latest add <comp>` (heredan el tema).
+- ✅ Estilar siempre con **tokens / utilidades** (`bg-card`, `bg-panel`, `text-accent-green`).
+- ❌ **Prohibido** `oklch()` / hex literal en componentes (usar los tokens del §1).
+- ❌ **Prohibido** crear dropdowns/inputs/tablas custom nuevos que dupliquen un
+  primitivo de shadcn (`Select`, `Input`, `Table`…). Reutilizar el primitivo.
+- 🔬 Todo componente nuevo se prueba primero en **`/styleguide`**.
+
+> `BeastSelect` / `DivisaPicker` y las tablas a mano son **legado**: se migran a
+> primitivos shadcn de forma incremental, no se replican en código nuevo.
+
+---
+
 ## 1. Identidad visual (CANÓNICA)
 
 ### Principios
@@ -39,8 +57,24 @@ Hoy conviven **dos sistemas de color**:
    `oklch(0.205 0.005 270)`, acento `#86efac`) — Informe Técnico y Stock por Zona.
 
 **Regla a futuro:** todo componente nuevo usa **tokens**, nunca `oklch()` literal.
-El "beast pure" se migrará a variables (`--panel`, `--panel-2`, `--accent-green`)
-manteniendo exactamente los mismos colores (cambio invisible al usuario).
+
+**✅ Fase 0.1 hecha:** los colores "beast pure" ya existen como tokens en
+`globals.css` (mismos valores, cambio invisible). Disponibles como utilidades:
+
+| Token | Utilidad | Era |
+|---|---|---|
+| `--panel` | `bg-panel` | `oklch(0.235 0.005 270)` |
+| `--panel-2` | `bg-panel-2` | `oklch(0.205 0.005 270)` |
+| `--panel-header` | `bg-panel-header` | `oklch(0.255 0.006 270)` |
+| `--panel-input` | `bg-panel-input` | `oklch(0.16 0.005 270)` |
+| `--hairline` | `border-hairline` | `oklch(1 0 0 / 0.07)` |
+| `--ring-green` | `ring-green` | `oklch(0.55 0.15 155 / 0.7)` |
+| `--accent-green` | `text-accent-green` | `#86efac` |
+| `--accent-amber` | `text-accent-amber` | `#fcd34d` |
+| `--accent-red` | `text-accent-red` | `#fca5a5` |
+
+Falta (incremental, no urgente): reemplazar los literales en las 10 secciones por
+estas utilidades, sección por sección.
 
 ---
 

@@ -18,12 +18,25 @@
 ## Guía de Estilo y Tech Stack
 - **Framework:** Next.js 15+ (App Router).
 - **Lenguaje:** TypeScript.
-- **Estilos:** Tailwind CSS.
-- **Componentes:** Radix UI / Lucide React.
+- **Estilos:** Tailwind CSS v4.
+- **Componentes:** **shadcn/ui** (sobre Radix) / Lucide React.
 - **Convenciones de Código:**
   - Usar componentes funcionales y Server Components por defecto.
   - Tipado estricto en interfaces y props (evitar `any`).
   - Nombramiento: PascalCase para componentes, camelCase para funciones/variables.
+
+### Sistema de diseño — REGLA OBLIGATORIA (ver `DESIGN_PLAN.md`)
+La base de toda la UI es **shadcn/ui + nuestros tokens** (la app ya está sobre
+shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema).
+- ✅ Componentes nuevos: `npx shadcn@latest add <comp>` (heredan el tema verde).
+- ✅ Estilar SIEMPRE con tokens/utilidades (`bg-card`, `bg-panel`, `text-accent-green`).
+- ❌ Prohibido `oklch()` / hex literal en componentes nuevos.
+- ❌ Prohibido duplicar primitivos shadcn con componentes custom (`Select`, `Input`, `Table`).
+  `BeastSelect` / `DivisaPicker` / tablas a mano son **legado** → migrar incremental.
+- 🔬 Probar componentes nuevos en **`/styleguide`** (ruta interna, no enlazada).
+- **Tokens "beast pure"** (superficies de Informe Técnico / Stock por Zona) ya están
+  en `globals.css`: `bg-panel`, `bg-panel-2`, `bg-panel-header`, `bg-panel-input`,
+  `border-hairline`, `text-accent-green` / `-amber` / `-red`, `ring-green`.
 
 ## Estructura de Archivos Clave
 - `app/`: Rutas y vistas principales (App Router).
