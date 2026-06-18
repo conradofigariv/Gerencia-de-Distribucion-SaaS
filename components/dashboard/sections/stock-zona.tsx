@@ -98,7 +98,7 @@ const TIPO_OPTIONS: { value: Exclude<ArticuloTipo, "">; label: string }[] = [
 
 function tipoMeta(tipo: ArticuloTipo) {
   if (tipo === "servicio") return { label: "Servicio", color: "#7dd3fc", bg: "oklch(0.28 0.08 230 / 0.5)", border: "oklch(0.70 0.10 230 / 0.45)", Icon: Wrench };
-  if (tipo === "material") return { label: "Material", color: "#86efac", bg: "oklch(0.30 0.10 155 / 0.45)", border: "oklch(0.55 0.15 155 / 0.5)", Icon: Package };
+  if (tipo === "material") return { label: "Material", color: "var(--accent-green)", bg: "oklch(0.30 0.10 155 / 0.45)", border: "oklch(0.55 0.15 155 / 0.5)", Icon: Package };
   return null;
 }
 
@@ -216,8 +216,8 @@ function BeastSelect({
   );
 
   const menuStyle: React.CSSProperties = {
-    background: "oklch(0.205 0.005 270)",
-    border: "1px solid oklch(1 0 0 / 0.07)",
+    background: "var(--panel-2)",
+    border: "1px solid var(--hairline)",
     borderRadius: 10,
     boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6), 0 0 0 1px oklch(1 0 0 / 0.02) inset",
     padding: 4,
@@ -231,8 +231,8 @@ function BeastSelect({
         className="flex items-center gap-2"
         style={{
           height: 38, padding: "0 12px", borderRadius: 9, minWidth, width: "100%",
-          background: "oklch(0.16 0.005 270)",
-          border: `1px solid ${open ? "oklch(0.55 0.20 295 / 0.55)" : "oklch(1 0 0 / 0.07)"}`,
+          background: "var(--panel-input)",
+          border: `1px solid ${open ? "oklch(0.55 0.20 295 / 0.55)" : "var(--hairline)"}`,
           color: "oklch(0.97 0 0)", fontSize: 13,
           transition: "border-color .15s, box-shadow .15s",
           boxShadow: open ? "0 0 0 3px oklch(0.55 0.20 295 / 0.15)" : "none",
@@ -329,8 +329,8 @@ function BeastMultiSelect({
       style={{
         position: "fixed", zIndex: 300, top: coords?.top, left: coords?.left, right: coords?.right,
         minWidth: coords?.minWidth ?? minWidth,
-        background: "oklch(0.205 0.005 270)",
-        border: "1px solid oklch(1 0 0 / 0.07)",
+        background: "var(--panel-2)",
+        border: "1px solid var(--hairline)",
         borderRadius: 10,
         boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6), 0 0 0 1px oklch(1 0 0 / 0.02) inset",
         padding: 4,
@@ -387,8 +387,8 @@ function BeastMultiSelect({
         className="flex items-center gap-2"
         style={{
           height: 38, padding: "0 12px", borderRadius: 9, minWidth, width: "100%",
-          background: "oklch(0.16 0.005 270)",
-          border: `1px solid ${open ? "oklch(0.55 0.20 295 / 0.55)" : "oklch(1 0 0 / 0.07)"}`,
+          background: "var(--panel-input)",
+          border: `1px solid ${open ? "oklch(0.55 0.20 295 / 0.55)" : "var(--hairline)"}`,
           color: "oklch(0.97 0 0)", fontSize: 13,
           transition: "border-color .15s, box-shadow .15s",
           boxShadow: open ? "0 0 0 3px oklch(0.55 0.20 295 / 0.15)" : "none",
@@ -1026,7 +1026,7 @@ export function StockZonaSection() {
               width: 36, height: 36, borderRadius: 9,
               background: "oklch(0.30 0.10 155 / 0.45)",
               border: "1px solid oklch(0.55 0.15 155 / 0.5)",
-              color: "#86efac",
+              color: "var(--accent-green)",
             }}
           >
             <PackageOpen className="w-[18px] h-[18px]" strokeWidth={2} />
@@ -1092,8 +1092,8 @@ export function StockZonaSection() {
       <div
         className="px-4 py-6 sm:px-6 overflow-hidden"
         style={{
-          background: "oklch(0.235 0.005 270)",
-          border: "1px solid oklch(1 0 0 / 0.07)",
+          background: "var(--panel)",
+          border: "1px solid var(--hairline)",
           borderRadius: 14,
         }}
       >
@@ -1104,7 +1104,7 @@ export function StockZonaSection() {
               width: 30, height: 30, borderRadius: 8,
               background: "oklch(0.30 0.10 155 / 0.45)",
               border: "1px solid oklch(0.55 0.15 155 / 0.5)",
-              color: "#86efac",
+              color: "var(--accent-green)",
             }}
           >
             <ActiveIcon className="w-4 h-4" strokeWidth={2} />
@@ -1151,9 +1151,9 @@ export function StockZonaSection() {
                     height: 38, padding: "0 12px", borderRadius: 9,
                     display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer",
                     fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap",
-                    background: onlyZonasConStock ? "oklch(0.30 0.10 155 / 0.45)" : "oklch(0.16 0.005 270)",
-                    border: `1px solid ${onlyZonasConStock ? "oklch(0.55 0.15 155 / 0.55)" : "oklch(1 0 0 / 0.07)"}`,
-                    color: onlyZonasConStock ? "#86efac" : "oklch(0.65 0 0)",
+                    background: onlyZonasConStock ? "oklch(0.30 0.10 155 / 0.45)" : "var(--panel-input)",
+                    border: `1px solid ${onlyZonasConStock ? "oklch(0.55 0.15 155 / 0.55)" : "var(--hairline)"}`,
+                    color: onlyZonasConStock ? "var(--accent-green)" : "oklch(0.65 0 0)",
                     transition: "background .15s, color .15s, border-color .15s",
                   }}
                 >
@@ -1229,7 +1229,7 @@ export function StockZonaSection() {
               </div>
 
               {/* Pivot table */}
-              <div className="rounded-[14px] overflow-hidden" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}>
+              <div className="rounded-[14px] overflow-hidden" style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)" }}>
                 <div ref={resumenScrollRef} className="overflow-auto" style={{ maxHeight: "70vh" }}>
                   <table
                     style={zonesExpanded
@@ -1265,7 +1265,7 @@ export function StockZonaSection() {
                                 position: "sticky",
                                 top: 0,
                                 zIndex: 2,
-                                background: "oklch(0.255 0.006 270)",
+                                background: "var(--panel-header)",
                               }}
                             >
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 5, justifyContent: align === "right" ? "flex-end" : "flex-start" }}>
@@ -1289,7 +1289,7 @@ export function StockZonaSection() {
                             position: "sticky",
                             top: 0,
                             zIndex: 2,
-                            background: "oklch(0.255 0.006 270)",
+                            background: "var(--panel-header)",
                           }}
                         >
                           <span className="inline-flex items-center gap-1 whitespace-nowrap">
@@ -1316,7 +1316,7 @@ export function StockZonaSection() {
                                 position: "sticky",
                                 top: 0,
                                 zIndex: 2,
-                                background: "oklch(0.255 0.006 270)",
+                                background: "var(--panel-header)",
                               }}
                             >
                               <span className={`inline-flex items-center justify-center gap-1.5 ${zoneAnimClass}`}>
@@ -1457,7 +1457,7 @@ export function StockZonaSection() {
       {tab === "cargar" && (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 items-start">
           {/* Main card */}
-          <div className="rounded-[14px] p-5" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}>
+          <div className="rounded-[14px] p-5" style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)" }}>
             {/* Card header */}
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
@@ -1472,7 +1472,7 @@ export function StockZonaSection() {
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold shrink-0 mt-0.5"
                   style={{
                     background: looksOk ? "oklch(0.30 0.10 155 / 0.4)" : "oklch(0.30 0.10 50 / 0.4)",
-                    color: looksOk ? "#86efac" : "#fcd34d",
+                    color: looksOk ? "var(--accent-green)" : "var(--accent-amber)",
                     border: `1px solid ${looksOk ? "oklch(0.55 0.15 155 / 0.5)" : "oklch(0.6 0.15 60 / 0.5)"}`,
                   }}
                 >
@@ -1541,7 +1541,7 @@ export function StockZonaSection() {
               <div className="flex-1" />
 
               {importedAt && (
-                <div className="flex items-center gap-1.5 text-[12.5px]" style={{ color: "#86efac" }}>
+                <div className="flex items-center gap-1.5 text-[12.5px]" style={{ color: "var(--accent-green)" }}>
                   <CheckIcon className="w-3.5 h-3.5" strokeWidth={2.4} />
                   Importado {importedAt.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · {importedCount} artículos
                 </div>
@@ -1560,7 +1560,7 @@ export function StockZonaSection() {
           {/* Sidebar */}
           <div className="flex flex-col gap-3">
             {/* Required columns */}
-            <div className="rounded-[14px] p-4" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}>
+            <div className="rounded-[14px] p-4" style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)" }}>
               <p className="text-[11px] text-muted-foreground uppercase tracking-[0.6px] mb-3">Columnas requeridas</p>
               <div className="flex flex-col gap-1.5">
                 {REQUIRED_COLS.map((c, i) => {
@@ -1579,8 +1579,8 @@ export function StockZonaSection() {
                             ? "oklch(0.55 0.15 155 / 0.25)"
                             : hasText ? "oklch(0.5 0.15 25 / 0.2)" : "hsl(var(--secondary))",
                           color: found
-                            ? "#86efac"
-                            : hasText ? "#fca5a5" : "hsl(var(--muted-foreground))",
+                            ? "var(--accent-green)"
+                            : hasText ? "var(--accent-red)" : "hsl(var(--muted-foreground))",
                         }}
                       >
                         {found ? (
@@ -1592,7 +1592,7 @@ export function StockZonaSection() {
                         )}
                       </span>
                       <span className="text-foreground font-medium flex-1">{c}</span>
-                      {found && <span className="text-[11px]" style={{ color: "#86efac" }}>detectada</span>}
+                      {found && <span className="text-[11px]" style={{ color: "var(--accent-green)" }}>detectada</span>}
                     </div>
                   );
                 })}
@@ -1600,7 +1600,7 @@ export function StockZonaSection() {
             </div>
 
             {/* Tip card */}
-            <div className="rounded-[14px] p-4 text-[12.5px] text-muted-foreground leading-relaxed" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}>
+            <div className="rounded-[14px] p-4 text-[12.5px] text-muted-foreground leading-relaxed" style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)" }}>
               <div className="flex items-center gap-1.5 text-foreground font-semibold mb-1.5 text-[13px]">
                 <Sparkles className="w-3.5 h-3.5" strokeWidth={2} />
                 Tip
@@ -1708,7 +1708,7 @@ export function StockZonaSection() {
                     onClick={() => applyBulk("remove")}
                     disabled={applyingBulk || !bulkFamilia.trim()}
                     className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium transition-all disabled:opacity-40"
-                    style={{ background: "transparent", color: "#fca5a5", border: "1px solid oklch(0.5 0.15 25 / 0.4)", cursor: "pointer" }}
+                    style={{ background: "transparent", color: "var(--accent-red)", border: "1px solid oklch(0.5 0.15 25 / 0.4)", cursor: "pointer" }}
                     title="Quitar esta familia de las seleccionadas"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -1741,7 +1741,7 @@ export function StockZonaSection() {
                     onClick={() => clearBulkSelection(true)}
                     disabled={applyingBulk}
                     className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium transition-colors disabled:opacity-50"
-                    style={{ background: "transparent", color: "#fca5a5", border: "1px solid oklch(0.5 0.15 25 / 0.4)", cursor: "pointer" }}
+                    style={{ background: "transparent", color: "var(--accent-red)", border: "1px solid oklch(0.5 0.15 25 / 0.4)", cursor: "pointer" }}
                     title="Borrar todas las familias y el tipo de las seleccionadas"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1762,7 +1762,7 @@ export function StockZonaSection() {
                 {familiasDisponibles.map(f => <option key={f} value={f} />)}
               </datalist>
 
-              <div className="rounded-[14px] overflow-hidden" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}>
+              <div className="rounded-[14px] overflow-hidden" style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)" }}>
                 <div ref={familiasScrollRef} className="overflow-auto" style={{ maxHeight: "70vh" }}>
                   <table className="text-sm" style={{ tableLayout: "fixed", width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
                     <colgroup>
@@ -1775,7 +1775,7 @@ export function StockZonaSection() {
                     </colgroup>
                     <thead>
                       <tr>
-                        <th style={{ padding: "14px 0 14px 14px", width: 44, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>
+                        <th style={{ padding: "14px 0 14px 14px", width: 44, position: "sticky", top: 0, zIndex: 2, background: "var(--panel-header)", borderBottom: "1px solid hsl(var(--border))" }}>
                           <button
                             onClick={toggleSelectAll}
                             title={allVisibleSelected ? "Deseleccionar todo" : "Seleccionar todo"}
@@ -1790,11 +1790,11 @@ export function StockZonaSection() {
                             {allVisibleSelected && <Check className="w-3 h-3" strokeWidth={3} />}
                           </button>
                         </th>
-                        <th style={{ padding: "14px 14px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 130, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Matrícula</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 240, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Descripción</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Familias</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 150, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }}>Tipo</th>
-                        <th style={{ width: 32, position: "sticky", top: 0, zIndex: 2, background: "oklch(0.255 0.006 270)", borderBottom: "1px solid hsl(var(--border))" }} />
+                        <th style={{ padding: "14px 14px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 130, position: "sticky", top: 0, zIndex: 2, background: "var(--panel-header)", borderBottom: "1px solid hsl(var(--border))" }}>Matrícula</th>
+                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 240, position: "sticky", top: 0, zIndex: 2, background: "var(--panel-header)", borderBottom: "1px solid hsl(var(--border))" }}>Descripción</th>
+                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", position: "sticky", top: 0, zIndex: 2, background: "var(--panel-header)", borderBottom: "1px solid hsl(var(--border))" }}>Familias</th>
+                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 150, position: "sticky", top: 0, zIndex: 2, background: "var(--panel-header)", borderBottom: "1px solid hsl(var(--border))" }}>Tipo</th>
+                        <th style={{ width: 32, position: "sticky", top: 0, zIndex: 2, background: "var(--panel-header)", borderBottom: "1px solid hsl(var(--border))" }} />
                       </tr>
                     </thead>
                     <tbody>
@@ -1945,7 +1945,7 @@ export function StockZonaSection() {
         >
           <div
             className="w-full max-w-lg rounded-[16px] overflow-hidden"
-            style={{ background: "oklch(0.235 0.005 270)", border: "1px solid oklch(1 0 0 / 0.08)", boxShadow: "0 24px 60px -20px rgba(0,0,0,0.7)" }}
+            style={{ background: "var(--panel)", border: "1px solid oklch(1 0 0 / 0.08)", boxShadow: "0 24px 60px -20px rgba(0,0,0,0.7)" }}
           >
             <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-3">
               <div className="flex items-start gap-3">
@@ -1973,7 +1973,7 @@ export function StockZonaSection() {
                   placeholder="Ej: Cables, Transformadores…"
                   autoFocus
                   className="w-full h-10 px-3 rounded-[9px] text-[14px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
-                  style={{ background: "oklch(0.16 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}
+                  style={{ background: "var(--panel-input)", border: "1px solid var(--hairline)" }}
                 />
               </div>
 
@@ -1987,10 +1987,10 @@ export function StockZonaSection() {
                   placeholder={"00000022.0\n00000023.0\n00000024.0"}
                   rows={8}
                   className="w-full px-3 py-2.5 rounded-[9px] outline-none resize-y text-foreground placeholder:text-muted-foreground/35"
-                  style={{ background: "oklch(0.16 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", fontFamily: "ui-monospace, monospace", fontSize: 12.5, lineHeight: 1.7 }}
+                  style={{ background: "var(--panel-input)", border: "1px solid var(--hairline)", fontFamily: "ui-monospace, monospace", fontSize: 12.5, lineHeight: 1.7 }}
                 />
                 {addFamilyMatriculas.length > 0 && (
-                  <p className="mt-1.5 text-[12px]" style={{ color: "#86efac" }}>
+                  <p className="mt-1.5 text-[12px]" style={{ color: "var(--accent-green)" }}>
                     {addFamilyMatriculas.length} matrícula{addFamilyMatriculas.length === 1 ? "" : "s"} detectada{addFamilyMatriculas.length === 1 ? "" : "s"}
                   </p>
                 )}
@@ -2045,7 +2045,7 @@ const STOCK_HELP_META = [
 function HelpTip({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", gap: 10, padding: "10px 14px", borderRadius: 9, background: "oklch(0.30 0.10 155 / 0.12)", border: "1px solid oklch(0.55 0.15 155 / 0.22)", marginTop: 8 }}>
-      <Lightbulb className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#86efac" }} />
+      <Lightbulb className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--accent-green)" }} />
       <span style={{ fontSize: 13, color: "oklch(0.78 0 0)", lineHeight: 1.55 }}>{children}</span>
     </div>
   );
@@ -2093,13 +2093,13 @@ function StockHelpStepContent({ step, onGoCargar }: { step: number; onGoCargar: 
                 <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 999, background: "#60a5fa", color: "oklch(0.12 0 0)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{s.n}</span>
                 <span style={{ fontSize: 13.5, color: "oklch(0.85 0 0)", lineHeight: 1.55, paddingTop: 1 }}>{s.text}</span>
               </div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 10, border: "1px solid oklch(1 0 0 / 0.07)", background: "oklch(0.11 0.005 270)", padding: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 10, border: "1px solid var(--hairline)", background: "oklch(0.11 0.005 270)", padding: 12 }}>
                 <img src={s.img} alt={`Paso ${s.n}`} style={{ maxHeight: 300, maxWidth: "100%", height: "auto", display: "block", borderRadius: 6 }} />
               </div>
             </div>
           ))}
           <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 999, background: "#86efac", color: "oklch(0.12 0 0)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>6</span>
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 999, background: "var(--accent-green)", color: "oklch(0.12 0 0)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>6</span>
             <span style={{ fontSize: 13.5, color: "oklch(0.85 0 0)", lineHeight: 1.55, paddingTop: 1 }}>
               Volvé acá, entrá a <strong>«Cargar datos»</strong>, <strong>pegá</strong> (Ctrl+V) la tabla y tocá <strong>Importar</strong>. Podés pegar varias zonas juntas.
             </span>
@@ -2170,9 +2170,9 @@ function StockHelpModal({ onClose, onGoCargar }: { onClose: () => void; onGoCarg
         onMouseDown={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid oklch(1 0 0 / 0.07)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid var(--hairline)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 8, background: "oklch(0.30 0.10 155 / 0.35)", border: "1px solid oklch(0.55 0.15 155 / 0.45)", color: "#86efac" }}>
+            <div style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 8, background: "oklch(0.30 0.10 155 / 0.35)", border: "1px solid oklch(0.55 0.15 155 / 0.45)", color: "var(--accent-green)" }}>
               <HelpCircle className="w-4 h-4" />
             </div>
             <span style={{ fontSize: 17, fontWeight: 600, color: "oklch(0.95 0 0)", letterSpacing: -0.3 }}>Guía de uso — Stock por Zona</span>
@@ -2235,7 +2235,7 @@ function StockHelpModal({ onClose, onGoCargar }: { onClose: () => void; onGoCarg
         </div>
 
         {/* Footer */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderTop: "1px solid oklch(1 0 0 / 0.07)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderTop: "1px solid var(--hairline)", flexShrink: 0 }}>
           <button
             onClick={() => setStep(s => Math.max(0, s - 1))}
             disabled={step === 0}
@@ -2262,7 +2262,7 @@ function StockHelpModal({ onClose, onGoCargar }: { onClose: () => void; onGoCarg
           ) : (
             <button
               onClick={onClose}
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "none", background: "#86efac", color: "oklch(0.10 0 0)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--accent-green)", color: "oklch(0.10 0 0)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
             >
               <Check className="w-4 h-4" /> Entendido
             </button>
