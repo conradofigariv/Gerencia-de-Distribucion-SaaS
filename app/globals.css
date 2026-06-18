@@ -57,6 +57,11 @@ input[type="number"] { -moz-appearance: textfield; }
   --accent-green: #86efac;                  /* acento verde claro (números/SIC/adjudicado) */
   --accent-amber: #fcd34d;                  /* pendiente */
   --accent-red: #fca5a5;                    /* no cumple */
+  /* Acentos de superficie (base opaca; la opacidad se aplica con color-mix). */
+  --accent-violet: oklch(0.55 0.20 295);       /* acento violeta (chips/activos) */
+  --accent-violet-deep: oklch(0.30 0.06 295);  /* superficie violeta */
+  --accent-emerald: oklch(0.55 0.15 155);      /* verde medio (bordes/activos) */
+  --accent-emerald-deep: oklch(0.30 0.10 155); /* superficie verde */
 }
 
 .dark {
@@ -105,6 +110,10 @@ input[type="number"] { -moz-appearance: textfield; }
   --accent-green: #86efac;
   --accent-amber: #fcd34d;
   --accent-red: #fca5a5;
+  --accent-violet: oklch(0.55 0.20 295);
+  --accent-violet-deep: oklch(0.30 0.06 295);
+  --accent-emerald: oklch(0.55 0.15 155);
+  --accent-emerald-deep: oklch(0.30 0.10 155);
 }
 
 @theme inline {
@@ -158,6 +167,10 @@ input[type="number"] { -moz-appearance: textfield; }
   --color-accent-green: var(--accent-green);
   --color-accent-amber: var(--accent-amber);
   --color-accent-red: var(--accent-red);
+  --color-accent-violet: var(--accent-violet);
+  --color-accent-violet-deep: var(--accent-violet-deep);
+  --color-accent-emerald: var(--accent-emerald);
+  --color-accent-emerald-deep: var(--accent-emerald-deep);
 }
 
 @layer base {

@@ -98,7 +98,7 @@ const TIPO_OPTIONS: { value: Exclude<ArticuloTipo, "">; label: string }[] = [
 
 function tipoMeta(tipo: ArticuloTipo) {
   if (tipo === "servicio") return { label: "Servicio", color: "#7dd3fc", bg: "oklch(0.28 0.08 230 / 0.5)", border: "oklch(0.70 0.10 230 / 0.45)", Icon: Wrench };
-  if (tipo === "material") return { label: "Material", color: "var(--accent-green)", bg: "oklch(0.30 0.10 155 / 0.45)", border: "oklch(0.55 0.15 155 / 0.5)", Icon: Package };
+  if (tipo === "material") return { label: "Material", color: "var(--accent-green)", bg: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)", border: "color-mix(in oklab, var(--accent-emerald) 50%, transparent)", Icon: Package };
   return null;
 }
 
@@ -232,10 +232,10 @@ function BeastSelect({
         style={{
           height: 38, padding: "0 12px", borderRadius: 9, minWidth, width: "100%",
           background: "var(--panel-input)",
-          border: `1px solid ${open ? "oklch(0.55 0.20 295 / 0.55)" : "var(--hairline)"}`,
+          border: `1px solid ${open ? "color-mix(in oklab, var(--accent-violet) 55%, transparent)" : "var(--hairline)"}`,
           color: "oklch(0.97 0 0)", fontSize: 13,
           transition: "border-color .15s, box-shadow .15s",
-          boxShadow: open ? "0 0 0 3px oklch(0.55 0.20 295 / 0.15)" : "none",
+          boxShadow: open ? "0 0 0 3px color-mix(in oklab, var(--accent-violet) 15%, transparent)" : "none",
         }}
       >
         <span className="truncate flex-1 text-left flex items-center gap-2" style={{ color: showPlaceholder ? "oklch(0.55 0 0)" : "oklch(0.90 0 0)" }}>
@@ -388,10 +388,10 @@ function BeastMultiSelect({
         style={{
           height: 38, padding: "0 12px", borderRadius: 9, minWidth, width: "100%",
           background: "var(--panel-input)",
-          border: `1px solid ${open ? "oklch(0.55 0.20 295 / 0.55)" : "var(--hairline)"}`,
+          border: `1px solid ${open ? "color-mix(in oklab, var(--accent-violet) 55%, transparent)" : "var(--hairline)"}`,
           color: "oklch(0.97 0 0)", fontSize: 13,
           transition: "border-color .15s, box-shadow .15s",
-          boxShadow: open ? "0 0 0 3px oklch(0.55 0.20 295 / 0.15)" : "none",
+          boxShadow: open ? "0 0 0 3px color-mix(in oklab, var(--accent-violet) 15%, transparent)" : "none",
         }}
       >
         <span className="truncate flex-1 text-left flex items-center gap-1.5" style={{ color: count === 0 ? "oklch(0.55 0 0)" : "oklch(0.90 0 0)" }}>
@@ -1024,8 +1024,8 @@ export function StockZonaSection() {
             className="grid place-items-center mt-0.5"
             style={{
               width: 36, height: 36, borderRadius: 9,
-              background: "oklch(0.30 0.10 155 / 0.45)",
-              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
+              background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
+              border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
               color: "var(--accent-green)",
             }}
           >
@@ -1050,12 +1050,12 @@ export function StockZonaSection() {
               height: 32, padding: "0 12px", borderRadius: 9,
               background: "oklch(0.22 0.005 270)",
               border: "1px solid oklch(1 0 0 / 0.08)",
-              color: "oklch(0.65 0 0)", fontSize: 12.5, fontWeight: 500,
+              color: "var(--muted-foreground)", fontSize: 12.5, fontWeight: 500,
               cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7,
               transition: "color .15s, border-color .15s",
             }}
             onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.18)"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.65 0 0)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.08)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "var(--muted-foreground)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.08)"; }}
           >
             <HelpCircle className="w-4 h-4" />
             Ayuda
@@ -1102,8 +1102,8 @@ export function StockZonaSection() {
             className="grid place-items-center"
             style={{
               width: 30, height: 30, borderRadius: 8,
-              background: "oklch(0.30 0.10 155 / 0.45)",
-              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
+              background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
+              border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
               color: "var(--accent-green)",
             }}
           >
@@ -1151,9 +1151,9 @@ export function StockZonaSection() {
                     height: 38, padding: "0 12px", borderRadius: 9,
                     display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer",
                     fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap",
-                    background: onlyZonasConStock ? "oklch(0.30 0.10 155 / 0.45)" : "var(--panel-input)",
-                    border: `1px solid ${onlyZonasConStock ? "oklch(0.55 0.15 155 / 0.55)" : "var(--hairline)"}`,
-                    color: onlyZonasConStock ? "var(--accent-green)" : "oklch(0.65 0 0)",
+                    background: onlyZonasConStock ? "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)" : "var(--panel-input)",
+                    border: `1px solid ${onlyZonasConStock ? "color-mix(in oklab, var(--accent-emerald) 55%, transparent)" : "var(--hairline)"}`,
+                    color: onlyZonasConStock ? "var(--accent-green)" : "var(--muted-foreground)",
                     transition: "background .15s, color .15s, border-color .15s",
                   }}
                 >
@@ -1355,10 +1355,10 @@ export function StockZonaSection() {
                               const isLastPinned = pinnedCount > 0 && vi.index === pinnedCount - 1;
                               const isLast = vi.index === pivotRows.length - 1;
                               const bottomBorder = isLastPinned
-                                ? { borderBottom: "2px solid oklch(0.55 0.20 295 / 0.5)" }
+                                ? { borderBottom: "2px solid color-mix(in oklab, var(--accent-violet) 50%, transparent)" }
                                 : isLast ? {} : { borderBottom: cellBorder };
-                              const pinnedBg = "oklch(0.55 0.20 295 / 0.08)";
-                              const baseBg = isSelected ? "oklch(0.55 0.20 295 / 0.15)" : isPinned ? pinnedBg : "";
+                              const pinnedBg = "color-mix(in oklab, var(--accent-violet) 8%, transparent)";
+                              const baseBg = isSelected ? "color-mix(in oklab, var(--accent-violet) 15%, transparent)" : isPinned ? pinnedBg : "";
                               return (
                                 <tr
                                   key={row.articulo}
@@ -1376,7 +1376,7 @@ export function StockZonaSection() {
                                         style={{
                                           width: 20, height: 20, borderRadius: 5,
                                           color: isPinned ? "#c4b5fd" : "oklch(0.45 0 0)",
-                                          background: isPinned ? "oklch(0.55 0.20 295 / 0.2)" : "transparent",
+                                          background: isPinned ? "color-mix(in oklab, var(--accent-violet) 20%, transparent)" : "transparent",
                                         }}
                                         onMouseEnter={e => { if (!isPinned) (e.currentTarget as HTMLButtonElement).style.color = "#c4b5fd"; }}
                                         onMouseLeave={e => { if (!isPinned) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.45 0 0)"; }}
@@ -1471,9 +1471,9 @@ export function StockZonaSection() {
                 <span
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold shrink-0 mt-0.5"
                   style={{
-                    background: looksOk ? "oklch(0.30 0.10 155 / 0.4)" : "oklch(0.30 0.10 50 / 0.4)",
+                    background: looksOk ? "color-mix(in oklab, var(--accent-emerald-deep) 40%, transparent)" : "oklch(0.30 0.10 50 / 0.4)",
                     color: looksOk ? "var(--accent-green)" : "var(--accent-amber)",
-                    border: `1px solid ${looksOk ? "oklch(0.55 0.15 155 / 0.5)" : "oklch(0.6 0.15 60 / 0.5)"}`,
+                    border: `1px solid ${looksOk ? "color-mix(in oklab, var(--accent-emerald) 50%, transparent)" : "oklch(0.6 0.15 60 / 0.5)"}`,
                   }}
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-current" />
@@ -1576,7 +1576,7 @@ export function StockZonaSection() {
                         className="w-[18px] h-[18px] rounded-[5px] flex items-center justify-center shrink-0"
                         style={{
                           background: found
-                            ? "oklch(0.55 0.15 155 / 0.25)"
+                            ? "color-mix(in oklab, var(--accent-emerald) 25%, transparent)"
                             : hasText ? "oklch(0.5 0.15 25 / 0.2)" : "hsl(var(--secondary))",
                           color: found
                             ? "var(--accent-green)"
@@ -1673,7 +1673,7 @@ export function StockZonaSection() {
               {selectedArticulos.size > 0 && (
                 <div
                   className="flex items-center gap-2.5 flex-wrap rounded-[12px] p-3"
-                  style={{ background: "oklch(0.27 0.04 295 / 0.35)", border: "1px solid oklch(0.55 0.20 295 / 0.45)" }}
+                  style={{ background: "color-mix(in oklab, var(--accent-violet-deep) 35%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-violet) 45%, transparent)" }}
                 >
                   <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-foreground shrink-0">
                     <span
@@ -1827,9 +1827,9 @@ export function StockZonaSection() {
                         return (
                           <tr
                             key={row.articulo}
-                            style={{ opacity: hasFamily || isSelected ? 1 : 0.65, transition: "opacity 0.15s", background: isSelected ? "oklch(0.55 0.20 295 / 0.12)" : undefined }}
+                            style={{ opacity: hasFamily || isSelected ? 1 : 0.65, transition: "opacity 0.15s", background: isSelected ? "color-mix(in oklab, var(--accent-violet) 12%, transparent)" : undefined }}
                             onMouseEnter={e => { e.currentTarget.style.opacity = "1"; if (!isSelected) e.currentTarget.style.background = "hsl(var(--secondary) / 0.3)"; }}
-                            onMouseLeave={e => { e.currentTarget.style.opacity = hasFamily || isSelected ? "1" : "0.65"; e.currentTarget.style.background = isSelected ? "oklch(0.55 0.20 295 / 0.12)" : ""; }}
+                            onMouseLeave={e => { e.currentTarget.style.opacity = hasFamily || isSelected ? "1" : "0.65"; e.currentTarget.style.background = isSelected ? "color-mix(in oklab, var(--accent-violet) 12%, transparent)" : ""; }}
                           >
                             <td style={{ ...bottomBorder, padding: "0 0 0 14px", textAlign: "center" }}>
                               <button
@@ -1853,7 +1853,7 @@ export function StockZonaSection() {
                                   <span
                                     key={f}
                                     className="inline-flex items-center gap-1"
-                                    style={{ padding: "2px 4px 2px 8px", borderRadius: 999, background: "oklch(0.30 0.06 295 / 0.5)", color: "#d6c2ff", border: "1px solid oklch(0.55 0.18 295 / 0.45)", fontSize: 11.5, fontWeight: 500, whiteSpace: "nowrap" }}
+                                    style={{ padding: "2px 4px 2px 8px", borderRadius: 999, background: "color-mix(in oklab, var(--accent-violet-deep) 50%, transparent)", color: "#d6c2ff", border: "1px solid color-mix(in oklab, var(--accent-violet) 45%, transparent)", fontSize: 11.5, fontWeight: 500, whiteSpace: "nowrap" }}
                                   >
                                     {f}
                                     <button
@@ -1949,7 +1949,7 @@ export function StockZonaSection() {
           >
             <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-3">
               <div className="flex items-start gap-3">
-                <div className="grid place-items-center mt-0.5" style={{ width: 34, height: 34, borderRadius: 9, background: "oklch(0.30 0.06 295 / 0.5)", border: "1px solid oklch(0.55 0.18 295 / 0.45)", color: "#c4b5fd" }}>
+                <div className="grid place-items-center mt-0.5" style={{ width: 34, height: 34, borderRadius: 9, background: "color-mix(in oklab, var(--accent-violet-deep) 50%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-violet) 45%, transparent)", color: "#c4b5fd" }}>
                   <Tag className="w-4 h-4" strokeWidth={2} />
                 </div>
                 <div>
@@ -2044,7 +2044,7 @@ const STOCK_HELP_META = [
 
 function HelpTip({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", gap: 10, padding: "10px 14px", borderRadius: 9, background: "oklch(0.30 0.10 155 / 0.12)", border: "1px solid oklch(0.55 0.15 155 / 0.22)", marginTop: 8 }}>
+    <div style={{ display: "flex", gap: 10, padding: "10px 14px", borderRadius: 9, background: "color-mix(in oklab, var(--accent-emerald-deep) 12%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 22%, transparent)", marginTop: 8 }}>
       <Lightbulb className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--accent-green)" }} />
       <span style={{ fontSize: 13, color: "oklch(0.78 0 0)", lineHeight: 1.55 }}>{children}</span>
     </div>
@@ -2172,10 +2172,10 @@ function StockHelpModal({ onClose, onGoCargar }: { onClose: () => void; onGoCarg
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid var(--hairline)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 8, background: "oklch(0.30 0.10 155 / 0.35)", border: "1px solid oklch(0.55 0.15 155 / 0.45)", color: "var(--accent-green)" }}>
+            <div style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 8, background: "color-mix(in oklab, var(--accent-emerald-deep) 35%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 45%, transparent)", color: "var(--accent-green)" }}>
               <HelpCircle className="w-4 h-4" />
             </div>
-            <span style={{ fontSize: 17, fontWeight: 600, color: "oklch(0.95 0 0)", letterSpacing: -0.3 }}>Guía de uso — Stock por Zona</span>
+            <span style={{ fontSize: 17, fontWeight: 600, color: "var(--foreground)", letterSpacing: -0.3 }}>Guía de uso — Stock por Zona</span>
           </div>
           <button onClick={onClose} style={{ display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 7, background: "transparent", border: "1px solid oklch(1 0 0 / 0.08)", color: "oklch(0.60 0 0)", cursor: "pointer", transition: "color .15s, background .15s" }}
             onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; (e.currentTarget as HTMLButtonElement).style.background = "oklch(0.22 0.005 270)"; }}
@@ -2208,7 +2208,7 @@ function StockHelpModal({ onClose, onGoCargar }: { onClose: () => void; onGoCarg
                     <SIcon className="w-3.5 h-3.5" />
                   </div>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: isActive ? 600 : 400, color: isActive ? "oklch(0.95 0 0)" : "oklch(0.65 0 0)", lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.label}</div>
+                    <div style={{ fontSize: 13, fontWeight: isActive ? 600 : 400, color: isActive ? "var(--foreground)" : "var(--muted-foreground)", lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.label}</div>
                     <div style={{ fontSize: 11, color: isActive ? "oklch(0.55 0 0)" : "oklch(0.40 0 0)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.subtitle}</div>
                   </div>
                 </button>
@@ -2227,7 +2227,7 @@ function StockHelpModal({ onClose, onGoCargar }: { onClose: () => void; onGoCarg
                   <ArrowRight className="w-3 h-3" style={{ color: "oklch(0.30 0 0)" }} />
                   <span style={{ fontSize: 11, fontWeight: 600, color: current.color, textTransform: "uppercase", letterSpacing: "0.05em" }}>{current.subtitle}</span>
                 </div>
-                <div style={{ fontSize: 19, fontWeight: 700, color: "oklch(0.95 0 0)", letterSpacing: -0.3, marginTop: 2 }}>{current.label}</div>
+                <div style={{ fontSize: 19, fontWeight: 700, color: "var(--foreground)", letterSpacing: -0.3, marginTop: 2 }}>{current.label}</div>
               </div>
             </div>
             <StockHelpStepContent step={step} onGoCargar={onGoCargar} />
