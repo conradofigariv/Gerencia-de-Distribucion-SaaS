@@ -431,12 +431,13 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
 
           <div className="flex justify-end">
             <Button
+              variant="accent"
               onClick={handleSaveProfile}
-              disabled={savingProfile || loadingProfile}
-              className="bg-accent hover:bg-accent/90 text-accent-foreground"
+              loading={savingProfile}
+              disabled={loadingProfile}
             >
               {savingProfile
-                ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Guardando...</>
+                ? "Guardando..."
                 : <><Check className="w-4 h-4 mr-2" />Guardar cambios</>}
             </Button>
           </div>
@@ -588,12 +589,12 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
                   </div>
                 </div>
                 <Button
+                  variant="accent"
                   onClick={handleCreateUser}
-                  disabled={creatingUser}
-                  className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                  loading={creatingUser}
                 >
                   {creatingUser
-                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Creando...</>
+                    ? "Creando..."
                     : <><Plus className="w-4 h-4 mr-2" />Crear usuario</>}
                 </Button>
               </CardContent>
