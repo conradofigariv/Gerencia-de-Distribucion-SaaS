@@ -249,7 +249,7 @@ export function ServiciosTablaSection() {
         </div>
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className={cn("overflow-x-auto", isResizing && "select-none cursor-col-resize")}>
+          <div className={cn("overflow-auto max-h-[62vh]", isResizing && "select-none cursor-col-resize")}>
             <table className="text-xs" style={{ tableLayout: "fixed", width: 32 + 40 + 40 + DISPLAY_COLS.reduce((s, c) => s + (colWidths[c.db] ?? DEFAULT_WIDTHS[c.db] ?? 100), 0) }}>
               <colgroup>
                 <col style={{ width: 32 }} />
@@ -258,8 +258,8 @@ export function ServiciosTablaSection() {
                 <col style={{ width: 40 }} />
               </colgroup>
               <thead>
-                <tr className="border-b border-border bg-secondary/50">
-                  <th className="py-2.5 px-3">
+                <tr className="border-b border-border">
+                  <th className="sticky top-0 z-10 bg-panel-header py-2.5 px-3">
                     <input type="checkbox" checked={allPageSel}
                       ref={el => { if (el) el.indeterminate = somePageSel && !allPageSel; }}
                       onChange={toggleAll}
@@ -267,9 +267,9 @@ export function ServiciosTablaSection() {
                       title="Seleccionar todos en esta página"
                     />
                   </th>
-                  <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold">#</th>
+                  <th className="sticky top-0 z-10 bg-panel-header text-left py-2.5 px-3 text-muted-foreground font-semibold">#</th>
                   {DISPLAY_COLS.map(c => (
-                    <th key={c.db} style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS[c.db] ?? 100 }} className="relative text-left py-2.5 pl-3 pr-4 text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider overflow-hidden">
+                    <th key={c.db} style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS[c.db] ?? 100 }} className="sticky top-0 z-10 bg-panel-header relative text-left py-2.5 pl-3 pr-4 text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider overflow-hidden">
                       <span className="block truncate">{c.label}</span>
                       {/* Resize handle — usa pointer capture para drag confiable */}
                       <div
@@ -296,7 +296,7 @@ export function ServiciosTablaSection() {
                       </div>
                     </th>
                   ))}
-                  <th className="w-10" />
+                  <th className="sticky top-0 z-10 bg-panel-header w-10" />
                 </tr>
               </thead>
               <tbody>
@@ -305,7 +305,7 @@ export function ServiciosTablaSection() {
                   return (
                     <tr key={row.id} className={cn(
                       "border-b border-border last:border-0 transition-colors duration-150",
-                      isSelected ? "bg-accent/8 hover:bg-accent/12" : "hover:bg-secondary/30"
+                      isSelected ? "bg-accent/8 hover:bg-accent/12" : "even:bg-secondary/20 hover:bg-secondary/40"
                     )}>
                       <td className="py-2.5 px-3">
                         <input type="checkbox" checked={isSelected} onChange={() => toggleRow(row.id)}
