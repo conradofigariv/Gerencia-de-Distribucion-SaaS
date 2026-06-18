@@ -322,7 +322,7 @@ export function IndiceIdoCargaSection() {
       </div>
 
       {/* Criterios estratégicos / metas internas (editables, persistidos por período) */}
-      <div className="rounded-[14px]" style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}>
+      <div className="rounded-[14px] bg-panel-2 border border-hairline">
         <button
           onClick={() => setMetasOpen((o) => !o)}
           className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-foreground"
@@ -381,14 +381,11 @@ export function IndiceIdoCargaSection() {
       </div>
 
       {/* Tabla editable */}
-      <div
-        className="overflow-x-auto rounded-[14px]"
-        style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}
-      >
+      <div className="overflow-x-auto rounded-[14px] bg-panel-2 border border-hairline">
         <table className="w-full text-xs border-collapse">
           <thead>
             <tr className="border-b border-border">
-              <th rowSpan={2} className="text-left font-medium px-3 py-2 sticky left-0 bg-[oklch(0.255_0.006_270)] z-10 align-bottom">
+              <th rowSpan={2} className="text-left font-medium px-3 py-2 sticky left-0 bg-panel-header z-10 align-bottom">
                 Zona
               </th>
               {GROUPS.map((g) => (
@@ -415,8 +412,8 @@ export function IndiceIdoCargaSection() {
           </thead>
           <tbody>
             {grid.map((row, rowIdx) => (
-              <tr key={row.zona} className="border-b border-border/50 hover:bg-secondary/20">
-                <td className="px-3 py-1.5 font-semibold text-foreground sticky left-0 bg-[oklch(0.255_0.006_270)] z-10">
+              <tr key={row.zona} className="border-b border-border/50 even:bg-secondary/15 hover:bg-secondary/30">
+                <td className="px-3 py-1.5 font-semibold text-foreground sticky left-0 bg-panel-header z-10">
                   {row.zona}
                 </td>
                 {COLUMNS.map((col) => {

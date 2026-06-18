@@ -350,20 +350,20 @@ export function ServiciosResumenSection() {
           </div>
         ) : (
           <>
-            <div className={cn("overflow-x-auto", isResizing && "select-none cursor-col-resize")}>
+            <div className={cn("overflow-auto max-h-[62vh]", isResizing && "select-none cursor-col-resize")}>
               <table className="text-xs" style={{ tableLayout: "fixed", width: 40 + TABLE_COLS.reduce((s, c) => s + (colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100), 0) }}>
                 <colgroup>
                   <col style={{ width: 40 }} />
                   {TABLE_COLS.map(c => <col key={c.db} style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 }} />)}
                 </colgroup>
                 <thead>
-                  <tr className="border-b border-border bg-secondary/50">
-                    <th className="py-2.5 px-3 text-left text-muted-foreground font-semibold">#</th>
+                  <tr className="border-b border-border">
+                    <th className="sticky top-0 z-10 bg-panel-header py-2.5 px-3 text-left text-muted-foreground font-semibold">#</th>
                     {TABLE_COLS.map(c => (
                       <th
                         key={c.db}
                         style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 }}
-                        className="relative group/th py-2.5 pl-3 pr-4 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider"
+                        className="sticky top-0 z-10 bg-panel-header relative group/th py-2.5 pl-3 pr-4 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider"
                         onPointerMove={e => {
                           if (!resizing.current) return;
                           const newW = Math.max(50, resizing.current.startW + (e.clientX - resizing.current.startX));
@@ -403,7 +403,7 @@ export function ServiciosResumenSection() {
                 </thead>
                 <tbody>
                   {pagedRows.map((row, idx) => (
-                    <tr key={idx} className="border-b border-border last:border-0 hover:bg-secondary/30 transition-colors">
+                    <tr key={idx} className="border-b border-border last:border-0 even:bg-secondary/20 hover:bg-secondary/40 transition-colors">
                       <td className="py-2.5 px-3 text-muted-foreground">{tablePage * PAGE_SIZE + idx + 1}</td>
                       {TABLE_COLS.map(c => {
                         const val     = row[c.db];
