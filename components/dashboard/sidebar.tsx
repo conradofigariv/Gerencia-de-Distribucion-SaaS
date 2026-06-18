@@ -27,6 +27,9 @@ import {
 import { Logo } from "@/components/logo";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
+
+const EXPANDED_GROUPS_KEY = "sidebar-expanded-groups";
 
 interface SidebarProps {
   activeSection: Section;
@@ -185,6 +188,19 @@ export function Sidebar({
   ];
   const [expandedGroups, setExpandedGroups] = useState<string[]>(initialGroups);
 
+  // Restaurar grupos abiertos de localStorage (al montar)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(EXPANDED_GROUPS_KEY);
+      if (raw) setExpandedGroups(JSON.parse(raw));
+    } catch { /* ignore */ }
+  }, []);
+
+  // Persistir grupos abiertos
+  useEffect(() => {
+    try { localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify(expandedGroups)); } catch { /* ignore */ }
+  }, [expandedGroups]);
+
   // En mobile el drawer siempre se muestra expandido (no aplica el colapso de desktop)
   const [mobileView, setMobileView] = useState(false);
   useEffect(() => {
@@ -329,49 +345,90 @@ export function Sidebar({
           const expanded = isGroupExpanded(item.id);
           const groupActive = isGroupActive(item);
 
+          // Colapsado: flyout al costado con los sub-items (no descolapsa el sidebar)
+          if (c) {
+            return (
+              <HoverCard key={item.id} openDelay={80} closeDelay={120}>
+                <HoverCardTrigger asChild>
+                  <button
+                    onClick={() => handleSelect(item.children[0].id)}
+                    aria-label={item.label}
+                    className={cn(
+                      "w-full flex items-center justify-center px-3 py-2.5 rounded-lg transition-all duration-200 group relative",
+                      groupActive
+                        ? "bg-sidebar-accent text-sidebar-foreground"
+                        : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-accent transition-all duration-300",
+                        groupActive ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    <Icon className={cn("w-5 h-5 shrink-0 transition-transform duration-200", groupActive ? "text-accent" : "group-hover:scale-110")} />
+                  </button>
+                </HoverCardTrigger>
+                <HoverCardContent side="right" align="start" sideOffset={12} className="w-56 p-2">
+                  <p className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{item.label}</p>
+                  <div className="space-y-1">
+                    {item.children.map((child) => {
+                      const ChildIcon = child.icon;
+                      const isActive = activeSection === child.id;
+                      return (
+                        <button
+                          key={child.id}
+                          onClick={() => handleSelect(child.id)}
+                          className={cn(
+                            "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-all duration-200",
+                            isActive
+                              ? "bg-accent/15 text-accent"
+                              : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50"
+                          )}
+                        >
+                          <ChildIcon className="w-4 h-4 shrink-0" />
+                          <span className="whitespace-nowrap">{child.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </HoverCardContent>
+              </HoverCard>
+            );
+          }
+
           return (
             <div key={item.id}>
               {/* Group header */}
-              <NavTooltip show={c} label={item.label}>
-                <button
-                  onClick={() => toggleGroup(item.id)}
+              <button
+                onClick={() => toggleGroup(item.id)}
+                className={cn(
+                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative",
+                  groupActive
+                    ? "bg-sidebar-accent text-sidebar-foreground"
+                    : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                )}
+              >
+                <span
                   className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative",
-                    groupActive
-                      ? "bg-sidebar-accent text-sidebar-foreground"
-                      : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                    "absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-accent transition-all duration-300",
+                    groupActive ? "opacity-100" : "opacity-0"
                   )}
-                >
-                  <span
-                    className={cn(
-                      "absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-accent transition-all duration-300",
-                      groupActive ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                  <Icon
-                    className={cn(
-                      "w-5 h-5 shrink-0 transition-transform duration-200",
-                      groupActive ? "text-accent" : "group-hover:scale-110"
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      "flex-1 text-left whitespace-nowrap transition-all duration-300",
-                      c ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
-                    )}
-                  >
-                    {item.label}
-                  </span>
-                  {!c && (
-                    <ChevronDown
-                      className={cn(
-                        "w-4 h-4 shrink-0 transition-transform duration-200",
-                        expanded ? "rotate-180" : "rotate-0"
-                      )}
-                    />
+                />
+                <Icon
+                  className={cn(
+                    "w-5 h-5 shrink-0 transition-transform duration-200",
+                    groupActive ? "text-accent" : "group-hover:scale-110"
                   )}
-                </button>
-              </NavTooltip>
+                />
+                <span className="flex-1 text-left whitespace-nowrap">{item.label}</span>
+                <ChevronDown
+                  className={cn(
+                    "w-4 h-4 shrink-0 transition-transform duration-200",
+                    expanded ? "rotate-180" : "rotate-0"
+                  )}
+                />
+              </button>
 
               {/* Children */}
               <div

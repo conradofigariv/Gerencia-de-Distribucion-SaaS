@@ -98,9 +98,19 @@ export default function Dashboard() {
     if (stored && ["swirl", "coalesce", "shift", "nebula", "none"].includes(stored)) setBgEffect(stored);
   }, []);
 
+  // Restaurar preferencia de sidebar colapsado
+  useEffect(() => {
+    if (localStorage.getItem("sidebar-collapsed") === "true") setSidebarCollapsed(true);
+  }, []);
+
   function handleBgChange(v: BgEffect) {
     setBgEffect(v);
     localStorage.setItem("bgEffect", v);
+  }
+
+  function handleCollapsedChange(v: boolean) {
+    setSidebarCollapsed(v);
+    localStorage.setItem("sidebar-collapsed", String(v));
   }
 
   // Loading splash
@@ -151,7 +161,7 @@ export default function Dashboard() {
           activeSection={activeSection}
           onSectionChange={setActiveSection}
           collapsed={sidebarCollapsed}
-          onCollapsedChange={setSidebarCollapsed}
+          onCollapsedChange={handleCollapsedChange}
           mobileOpen={mobileSidebarOpen}
           onMobileOpenChange={setMobileSidebarOpen}
           userProfile={headerProfile}
