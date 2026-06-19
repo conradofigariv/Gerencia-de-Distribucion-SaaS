@@ -176,7 +176,7 @@ export function TransformadoresTablaSection() {
         return (
           <div key={planilla.id} className="space-y-4">
             {/* Planilla Header */}
-            <div className="bg-slate-800/40 rounded-xl shadow-sm border border-slate-700 p-6 hover:bg-slate-800/60 transition-colors">
+            <div className="bg-secondary/40 rounded-xl shadow-sm border border-border p-6 hover:bg-secondary transition-colors">
               <div className="flex items-center justify-between">
                 <button
                   onClick={() => setExpandedId(isExpanded ? null : planilla.id)}
@@ -184,10 +184,10 @@ export function TransformadoresTablaSection() {
                 >
                   <h2 className="text-xl font-bold text-foreground">
                     Informe de Reservas — {planilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
-                    {planilla.datos.deposito && <span className="text-slate-400 font-normal"> — {planilla.datos.deposito}</span>}
+                    {planilla.datos.deposito && <span className="text-muted-foreground font-normal"> — {planilla.datos.deposito}</span>}
                   </h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    <span className="font-semibold text-blue-400">{totals.totGeneral}</span> total
+                    <span className="font-semibold text-accent-green">{totals.totGeneral}</span> total
                     {" | "}
                     <span className="font-semibold text-green-400">{totals.totDisp}</span> disponibles
                     {" | "}
@@ -212,7 +212,7 @@ export function TransformadoresTablaSection() {
             {isExpanded && (
               <>
                 {/* Reporte Header */}
-                <div className="bg-slate-800/30 rounded-xl shadow-sm border border-slate-700 p-6">
+                <div className="bg-secondary/40 rounded-xl shadow-sm border border-border p-6">
                   <h1 className="text-2xl font-bold text-foreground">Reporte de Transformadores</h1>
                   <p className="text-sm text-muted-foreground mt-1">Actualización: 08:00 HRS</p>
                 </div>
@@ -221,16 +221,16 @@ export function TransformadoresTablaSection() {
                 <div className="grid grid-cols-3 gap-6">
 
                   {/* Nuevos y Reparados por Terceros */}
-                  <div className="bg-slate-800/30 rounded-xl shadow-sm border border-slate-700 overflow-hidden">
+                  <div className="bg-secondary/40 rounded-xl shadow-sm border border-border overflow-hidden">
                     <button
                       onClick={() => toggleSection("nuevos")}
-                      className="w-full bg-gradient-to-r from-blue-600/20 to-blue-700/20 border-b border-slate-700 px-6 py-4 flex items-center justify-between hover:from-blue-600/30 hover:to-blue-700/30 transition-all"
+                      className="w-full bg-gradient-to-r from-accent/20 to-accent/20 border-b border-border px-6 py-4 flex items-center justify-between hover:from-accent/30 hover:to-accent/30 transition-all"
                     >
-                      <h2 className="text-sm font-semibold text-blue-300 uppercase tracking-wide">
+                      <h2 className="text-sm font-semibold text-accent-green uppercase tracking-wide">
                         Nuevos y Reparados por Terceros
                       </h2>
                       <svg
-                        className={`w-5 h-5 text-blue-400 transition-transform ${expandedSections.nuevos ? "rotate-180" : ""}`}
+                        className={`w-5 h-5 text-accent-green transition-transform ${expandedSections.nuevos ? "rotate-180" : ""}`}
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -241,14 +241,14 @@ export function TransformadoresTablaSection() {
                     {expandedSections.nuevos && (
                       <div className="overflow-x-auto">
                         <table className="w-full">
-                          <thead className="bg-slate-700/50 border-b border-slate-700">
+                          <thead className="bg-panel-header border-b border-border">
                             <tr>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">POTENCIA KVA</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">T</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">M</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">Con tanque</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">TOTAL</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">TIPO DE USO</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">POTENCIA KVA</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">T</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">M</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">Con tanque</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">TOTAL</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">TIPO DE USO</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-700/50">
@@ -256,13 +256,13 @@ export function TransformadoresTablaSection() {
                               const r = planilla.datos.terceros[String(kva)] ?? { t: 0, m: 0, ct: 0 };
                               const tot = r.t + r.m;
                               return (
-                                <tr key={kva} className="hover:bg-blue-600/10 transition-colors">
+                                <tr key={kva} className="hover:bg-accent/10 transition-colors">
                                   <td className="px-4 py-2.5 text-sm font-medium text-center text-foreground">{kva}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-slate-300">{r.t || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-slate-300">{r.m || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-slate-300">{r.ct || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center font-semibold text-blue-400">{tot || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-slate-400">{r.tipo ?? ""}</td>
+                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.t || ""}</td>
+                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.m || ""}</td>
+                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.ct || ""}</td>
+                                  <td className="px-4 py-2.5 text-sm text-center font-semibold text-accent-green">{tot || ""}</td>
+                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.tipo ?? ""}</td>
                                 </tr>
                               );
                             })}
@@ -273,10 +273,10 @@ export function TransformadoresTablaSection() {
                   </div>
 
                   {/* Reparados por Taller */}
-                  <div className="bg-slate-800/30 rounded-xl shadow-sm border border-slate-700 overflow-hidden">
+                  <div className="bg-secondary/40 rounded-xl shadow-sm border border-border overflow-hidden">
                     <button
                       onClick={() => toggleSection("reparados")}
-                      className="w-full bg-gradient-to-r from-emerald-600/20 to-emerald-700/20 border-b border-slate-700 px-6 py-4 flex items-center justify-between hover:from-emerald-600/30 hover:to-emerald-700/30 transition-all"
+                      className="w-full bg-gradient-to-r from-emerald-600/20 to-emerald-700/20 border-b border-border px-6 py-4 flex items-center justify-between hover:from-emerald-600/30 hover:to-emerald-700/30 transition-all"
                     >
                       <h2 className="text-sm font-semibold text-emerald-300 uppercase tracking-wide">
                         Reparados por Taller de Transformadores
@@ -293,14 +293,14 @@ export function TransformadoresTablaSection() {
                     {expandedSections.reparados && (
                       <div className="overflow-x-auto">
                         <table className="w-full">
-                          <thead className="bg-slate-700/50 border-b border-slate-700">
+                          <thead className="bg-panel-header border-b border-border">
                             <tr>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">POTENCIA KVA</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">T</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">M</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">Con tanque</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">TOTAL</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">TIPO DE USO</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">POTENCIA KVA</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">T</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">M</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">Con tanque</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">TOTAL</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">TIPO DE USO</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-700/50">
@@ -310,11 +310,11 @@ export function TransformadoresTablaSection() {
                               return (
                                 <tr key={kva} className="hover:bg-emerald-600/10 transition-colors">
                                   <td className="px-4 py-2.5 text-sm font-medium text-center text-foreground">{kva}</td>
-                                  <td className="px-3 py-2.5 text-sm text-center text-slate-300">{r.t || ""}</td>
-                                  <td className="px-3 py-2.5 text-sm text-center text-slate-300">{r.m || ""}</td>
-                                  <td className="px-3 py-2.5 text-sm text-center text-slate-300">{r.ct || ""}</td>
+                                  <td className="px-3 py-2.5 text-sm text-center text-muted-foreground">{r.t || ""}</td>
+                                  <td className="px-3 py-2.5 text-sm text-center text-muted-foreground">{r.m || ""}</td>
+                                  <td className="px-3 py-2.5 text-sm text-center text-muted-foreground">{r.ct || ""}</td>
                                   <td className="px-4 py-2.5 text-sm text-center font-semibold text-emerald-400">{tot || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-slate-400">{r.tipo ?? ""}</td>
+                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.tipo ?? ""}</td>
                                 </tr>
                               );
                             })}
@@ -325,10 +325,10 @@ export function TransformadoresTablaSection() {
                   </div>
 
                   {/* Total de Transformadores */}
-                  <div className="bg-slate-800/30 rounded-xl shadow-sm border border-slate-700 overflow-hidden">
+                  <div className="bg-secondary/40 rounded-xl shadow-sm border border-border overflow-hidden">
                     <button
                       onClick={() => toggleSection("totales")}
-                      className="w-full bg-gradient-to-r from-purple-600/20 to-purple-700/20 border-b border-slate-700 px-6 py-4 flex items-center justify-between hover:from-purple-600/30 hover:to-purple-700/30 transition-all"
+                      className="w-full bg-gradient-to-r from-purple-600/20 to-purple-700/20 border-b border-border px-6 py-4 flex items-center justify-between hover:from-purple-600/30 hover:to-purple-700/30 transition-all"
                     >
                       <h2 className="text-sm font-semibold text-purple-300 uppercase tracking-wide">
                         Total de Transformadores
@@ -345,12 +345,12 @@ export function TransformadoresTablaSection() {
                     {expandedSections.totales && (
                       <div className="overflow-x-auto">
                         <table className="w-full">
-                          <thead className="bg-slate-700/50 border-b border-slate-700">
+                          <thead className="bg-panel-header border-b border-border">
                             <tr>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">POTENCIA KVA</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">TOTAL DE TRANSFORMADORES</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">Autorizados Pendiente de Retiro</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">Disponibles para Retiro</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">POTENCIA KVA</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">TOTAL DE TRANSFORMADORES</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">Autorizados Pendiente de Retiro</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">Disponibles para Retiro</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-700/50">
@@ -362,20 +362,20 @@ export function TransformadoresTablaSection() {
                               const disp = total - auto;
                               return (
                                 <tr key={kva} className="hover:bg-purple-600/10 transition-colors">
-                                  <td className="px-4 py-2.5 text-sm text-center text-slate-300">{kva}</td>
+                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{kva}</td>
                                   <td className="px-4 py-2.5 text-sm text-center font-semibold text-purple-400">{total || ""}</td>
                                   <td className="px-4 py-2.5 text-sm text-center font-semibold text-amber-400">{auto || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-slate-300">{disp || ""}</td>
+                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{disp || ""}</td>
                                 </tr>
                               );
                             })}
                           </tbody>
-                          <tfoot className="bg-slate-700/50 border-t-2 border-slate-700">
+                          <tfoot className="bg-panel-header border-t-2 border-border">
                             <tr>
-                              <td className="px-4 py-3 text-sm font-bold text-slate-300 text-center">TOTAL</td>
+                              <td className="px-4 py-3 text-sm font-bold text-muted-foreground text-center">TOTAL</td>
                               <td className="px-4 py-3 text-sm font-bold text-purple-300 text-center">{totals.totGeneral}</td>
                               <td className="px-4 py-3 text-sm font-bold text-amber-300 text-center">Tot. Disp.</td>
-                              <td className="px-4 py-3 text-sm font-bold text-slate-300 text-center">{totals.totDisp}</td>
+                              <td className="px-4 py-3 text-sm font-bold text-muted-foreground text-center">{totals.totDisp}</td>
                             </tr>
                           </tfoot>
                         </table>
@@ -388,10 +388,10 @@ export function TransformadoresTablaSection() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
                   {/* Relación: 33/0.4 KV */}
-                  <div className="bg-slate-800/30 rounded-xl shadow-sm border border-slate-700 overflow-hidden">
+                  <div className="bg-secondary/40 rounded-xl shadow-sm border border-border overflow-hidden">
                     <button
                       onClick={() => toggleSection("relacion")}
-                      className="w-full bg-gradient-to-r from-amber-600/20 to-amber-700/20 border-b border-slate-700 px-6 py-4 flex items-center justify-between hover:from-amber-600/30 hover:to-amber-700/30 transition-all"
+                      className="w-full bg-gradient-to-r from-amber-600/20 to-amber-700/20 border-b border-border px-6 py-4 flex items-center justify-between hover:from-amber-600/30 hover:to-amber-700/30 transition-all"
                     >
                       <h2 className="text-sm font-semibold text-amber-300 uppercase tracking-wide">
                         Relación: 33/0.4 KV
@@ -408,18 +408,18 @@ export function TransformadoresTablaSection() {
                     {expandedSections.relacion && (
                       <div className="overflow-x-auto">
                         <table className="w-full">
-                          <thead className="bg-slate-700/50 border-b border-slate-700">
+                          <thead className="bg-panel-header border-b border-border">
                             <tr>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">POTENCIA</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300" colSpan={2}>TRAFOS NUEVOS</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300" colSpan={2}>TRAFOS REPARADOS</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">POTENCIA</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground" colSpan={2}>TRAFOS NUEVOS</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground" colSpan={2}>TRAFOS REPARADOS</th>
                             </tr>
-                            <tr className="bg-slate-700/50 border-b border-slate-700">
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300"></th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">T</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">M</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">T</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-300">M</th>
+                            <tr className="bg-panel-header border-b border-border">
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground"></th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">T</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">M</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">T</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">M</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-700/50">
@@ -428,15 +428,15 @@ export function TransformadoresTablaSection() {
                               return (
                                 <tr key={kva} className="hover:bg-amber-600/10 transition-colors">
                                   <td className="px-4 py-2.5 text-sm font-medium text-center text-foreground">{kva}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-slate-300">{r.tN || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-slate-300">{r.mN || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-slate-300">{r.tR || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-slate-300">{r.mR || ""}</td>
+                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.tN || ""}</td>
+                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.mN || ""}</td>
+                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.tR || ""}</td>
+                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.mR || ""}</td>
                                 </tr>
                               );
                             })}
                           </tbody>
-                          <tfoot className="bg-slate-700/50 border-t-2 border-slate-700">
+                          <tfoot className="bg-panel-header border-t-2 border-border">
                             <tr>
                               <td className="px-4 py-3 text-sm font-bold text-amber-300 text-center">TOTAL</td>
                               <td className="px-4 py-3 text-sm font-bold text-amber-300 text-center">
@@ -459,16 +459,16 @@ export function TransformadoresTablaSection() {
                   </div>
 
                   {/* Observaciones */}
-                  <div className="bg-slate-800/30 rounded-xl shadow-sm border border-slate-700 overflow-hidden">
+                  <div className="bg-secondary/40 rounded-xl shadow-sm border border-border overflow-hidden">
                     <button
                       onClick={() => toggleSection("notas")}
-                      className="w-full bg-gradient-to-r from-slate-700/30 to-slate-800/30 border-b border-slate-700 px-6 py-4 flex items-center justify-between hover:from-slate-700/50 hover:to-slate-800/50 transition-all"
+                      className="w-full bg-gradient-to-r from-secondary/40 to-secondary/20 border-b border-border px-6 py-4 flex items-center justify-between hover:from-secondary/60 hover:to-secondary/40 transition-all"
                     >
-                      <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+                      <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                         Observaciones
                       </h2>
                       <svg
-                        className={`w-5 h-5 text-slate-400 transition-transform ${expandedSections.notas ? "rotate-180" : ""}`}
+                        className={`w-5 h-5 text-muted-foreground transition-transform ${expandedSections.notas ? "rotate-180" : ""}`}
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -479,9 +479,9 @@ export function TransformadoresTablaSection() {
                     {expandedSections.notas && (
                       <div className="p-6 space-y-4">
                         {planilla.datos.obs && (
-                          <div className="bg-blue-600/20 border-l-4 border-blue-400 p-4 rounded-r">
-                            <h3 className="text-sm font-semibold text-blue-300 mb-2">OBSERVACIONES:</h3>
-                            <p className="text-xs text-blue-200 whitespace-pre-wrap">{planilla.datos.obs}</p>
+                          <div className="bg-accent/20 border-l-4 border-accent p-4 rounded-r">
+                            <h3 className="text-sm font-semibold text-accent-green mb-2">OBSERVACIONES:</h3>
+                            <p className="text-xs text-accent-green whitespace-pre-wrap">{planilla.datos.obs}</p>
                           </div>
                         )}
                         {planilla.datos.pend && (
@@ -493,9 +493,9 @@ export function TransformadoresTablaSection() {
                         {!planilla.datos.obs && !planilla.datos.pend && (
                           <p className="text-sm text-muted-foreground text-center py-4">Sin observaciones ni pendientes</p>
                         )}
-                        <div className="bg-slate-700/50 rounded-lg p-4 text-center">
-                          <p className="text-xs text-slate-300 font-medium">PLANILLA REALIZADA POR:</p>
-                          <p className="text-xs text-slate-400 mt-1">HORA DE ACTUALIZACIÓN: 08:00 HRS</p>
+                        <div className="bg-panel-header rounded-lg p-4 text-center">
+                          <p className="text-xs text-muted-foreground font-medium">PLANILLA REALIZADA POR:</p>
+                          <p className="text-xs text-muted-foreground mt-1">HORA DE ACTUALIZACIÓN: 08:00 HRS</p>
                         </div>
                       </div>
                     )}

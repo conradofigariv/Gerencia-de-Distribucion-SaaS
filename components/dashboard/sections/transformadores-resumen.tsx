@@ -557,7 +557,7 @@ function SortableBlock({ id, children }: { id: string; children: React.ReactNode
           {...attributes}
           {...listeners}
           className="touch-none flex items-center justify-center w-10 h-4 rounded-full"
-          style={{ cursor: "grab", color: "oklch(0.45 0.018 265)", background: "oklch(0.235 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" }}
+          style={{ cursor: "grab", color: "oklch(0.45 0.018 265)", background: "var(--panel)", border: "1px solid var(--hairline)" }}
         >
           <GripHorizontal size={12} />
         </span>
@@ -625,8 +625,8 @@ function HoverPie({ data, colors, formatter }: {
 // ── Chart panel (beast pure dark style, shared by all chart cards) ────────────
 
 const PANEL_STYLE: React.CSSProperties = {
-  background: "oklch(0.205 0.005 270)",
-  border: "1px solid oklch(1 0 0 / 0.07)",
+  background: "var(--panel-2)",
+  border: "1px solid var(--hairline)",
   borderRadius: 14,
 };
 
@@ -1296,34 +1296,34 @@ export function TransformadoresResumenSection() {
           const totDisp = totGeneral - totAuto;
           return (
             <div key={planilla.id} className="overflow-hidden shadow-sm" style={PANEL_STYLE}>
-              <div className="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+              <div className="px-6 py-4 border-b border-border flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-bold text-foreground">
                     Última Planilla — {planilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
-                    {planilla.datos.deposito && <span className="text-slate-400 font-normal"> — {planilla.datos.deposito}</span>}
+                    {planilla.datos.deposito && <span className="text-muted-foreground font-normal"> — {planilla.datos.deposito}</span>}
                   </h3>
                   <p className="text-sm text-muted-foreground mt-0.5">
-                    <span className="font-semibold text-blue-400">{totGeneral}</span> total ·{" "}
+                    <span className="font-semibold text-accent-green">{totGeneral}</span> total ·{" "}
                     <span className="font-semibold text-green-400">{totDisp}</span> disponibles ·{" "}
                     <span className="font-semibold text-cyan-400">{totTerceros}</span> terceros ·{" "}
                     <span className="font-semibold text-amber-400">{totTaller}</span> taller
                   </p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-x divide-slate-700">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-x divide-border">
                 {/* Terceros */}
                 <div className="overflow-x-auto">
-                  <div className="px-4 py-2 bg-blue-600/10 text-xs font-semibold text-blue-300 uppercase tracking-wide border-b border-slate-700">
+                  <div className="px-4 py-2 bg-accent/10 text-xs font-semibold text-accent-green uppercase tracking-wide border-b border-border">
                     Nuevos y Reparados por Terceros
                   </div>
                   <table className="w-full text-xs">
-                    <thead className="bg-slate-700/40 border-b border-slate-700">
+                    <thead className="bg-secondary/40 border-b border-border">
                       <tr>
-                        <th className="px-3 py-2 text-center text-slate-300">KVA</th>
-                        <th className="px-3 py-2 text-center text-slate-300">T</th>
-                        <th className="px-3 py-2 text-center text-slate-300">M</th>
-                        <th className="px-3 py-2 text-center text-slate-300">C/T</th>
-                        <th className="px-3 py-2 text-center text-slate-300">Total</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">KVA</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">T</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">M</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">C/T</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1331,11 +1331,11 @@ export function TransformadoresResumenSection() {
                         const c = planilla.datos.terceros?.[String(k)] ?? { t: 0, m: 0, ct: 0 };
                         const tot = c.t + c.m + c.ct;
                         return (
-                          <tr key={k} className="border-b border-slate-700/50 last:border-0">
+                          <tr key={k} className="border-b border-border/50 last:border-0">
                             <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
-                            <td className="px-3 py-1.5 text-center text-slate-300">{c.t || "—"}</td>
-                            <td className="px-3 py-1.5 text-center text-slate-300">{c.m || "—"}</td>
-                            <td className="px-3 py-1.5 text-center text-slate-300">{c.ct || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-muted-foreground">{c.t || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-muted-foreground">{c.m || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-muted-foreground">{c.ct || "—"}</td>
                             <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot}</td>
                           </tr>
                         );
@@ -1345,17 +1345,17 @@ export function TransformadoresResumenSection() {
                 </div>
                 {/* Taller */}
                 <div className="overflow-x-auto">
-                  <div className="px-4 py-2 bg-amber-600/10 text-xs font-semibold text-amber-300 uppercase tracking-wide border-b border-slate-700">
+                  <div className="px-4 py-2 bg-amber-600/10 text-xs font-semibold text-amber-300 uppercase tracking-wide border-b border-border">
                     Reparados por Taller
                   </div>
                   <table className="w-full text-xs">
-                    <thead className="bg-slate-700/40 border-b border-slate-700">
+                    <thead className="bg-secondary/40 border-b border-border">
                       <tr>
-                        <th className="px-3 py-2 text-center text-slate-300">KVA</th>
-                        <th className="px-3 py-2 text-center text-slate-300">T</th>
-                        <th className="px-3 py-2 text-center text-slate-300">M</th>
-                        <th className="px-3 py-2 text-center text-slate-300">C/T</th>
-                        <th className="px-3 py-2 text-center text-slate-300">Total</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">KVA</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">T</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">M</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">C/T</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1363,11 +1363,11 @@ export function TransformadoresResumenSection() {
                         const c = planilla.datos.taller?.[String(k)] ?? { t: 0, m: 0, ct: 0 };
                         const tot = c.t + c.m + c.ct;
                         return (
-                          <tr key={k} className="border-b border-slate-700/50 last:border-0">
+                          <tr key={k} className="border-b border-border/50 last:border-0">
                             <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
-                            <td className="px-3 py-1.5 text-center text-slate-300">{c.t || "—"}</td>
-                            <td className="px-3 py-1.5 text-center text-slate-300">{c.m || "—"}</td>
-                            <td className="px-3 py-1.5 text-center text-slate-300">{c.ct || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-muted-foreground">{c.t || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-muted-foreground">{c.m || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-muted-foreground">{c.ct || "—"}</td>
                             <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot}</td>
                           </tr>
                         );
@@ -1377,19 +1377,19 @@ export function TransformadoresResumenSection() {
                 </div>
               </div>
               {/* Totales + Relación 33 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-x divide-slate-700 border-t border-slate-700">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-x divide-border border-t border-border">
                 {/* Totales 13.2 */}
                 <div className="overflow-x-auto">
-                  <div className="px-4 py-2 bg-green-600/10 text-xs font-semibold text-green-300 uppercase tracking-wide border-b border-slate-700">
+                  <div className="px-4 py-2 bg-green-600/10 text-xs font-semibold text-green-300 uppercase tracking-wide border-b border-border">
                     Total de Transformadores 13,2 kV
                   </div>
                   <table className="w-full text-xs">
-                    <thead className="bg-slate-700/40 border-b border-slate-700">
+                    <thead className="bg-secondary/40 border-b border-border">
                       <tr>
-                        <th className="px-3 py-2 text-center text-slate-300">KVA</th>
-                        <th className="px-3 py-2 text-center text-slate-300">Total</th>
-                        <th className="px-3 py-2 text-center text-slate-300">Autorizados</th>
-                        <th className="px-3 py-2 text-center text-slate-300">Disponibles</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">KVA</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">Total</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">Autorizados</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">Disponibles</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1398,7 +1398,7 @@ export function TransformadoresResumenSection() {
                         const auto = planilla.datos.autorizados?.[String(k)] ?? 0;
                         const disp = tot - auto;
                         return (
-                          <tr key={k} className="border-b border-slate-700/50 last:border-0">
+                          <tr key={k} className="border-b border-border/50 last:border-0">
                             <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
                             <td className="px-3 py-1.5 text-center text-foreground">{tot || "—"}</td>
                             <td className="px-3 py-1.5 text-center text-amber-400">{auto || "—"}</td>
@@ -1411,18 +1411,18 @@ export function TransformadoresResumenSection() {
                 </div>
                 {/* Relación 33 */}
                 <div className="overflow-x-auto">
-                  <div className="px-4 py-2 bg-purple-600/10 text-xs font-semibold text-purple-300 uppercase tracking-wide border-b border-slate-700">
+                  <div className="px-4 py-2 bg-purple-600/10 text-xs font-semibold text-purple-300 uppercase tracking-wide border-b border-border">
                     Relación 33 / 0,4 kV
                   </div>
                   <table className="w-full text-xs">
-                    <thead className="bg-slate-700/40 border-b border-slate-700">
+                    <thead className="bg-secondary/40 border-b border-border">
                       <tr>
-                        <th className="px-3 py-2 text-center text-slate-300">KVA</th>
-                        <th className="px-3 py-2 text-center text-slate-300">T Nuevo</th>
-                        <th className="px-3 py-2 text-center text-slate-300">M Nuevo</th>
-                        <th className="px-3 py-2 text-center text-slate-300">T Rep.</th>
-                        <th className="px-3 py-2 text-center text-slate-300">M Rep.</th>
-                        <th className="px-3 py-2 text-center text-slate-300">Total</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">KVA</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">T Nuevo</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">M Nuevo</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">T Rep.</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">M Rep.</th>
+                        <th className="px-3 py-2 text-center text-muted-foreground">Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1430,12 +1430,12 @@ export function TransformadoresResumenSection() {
                         const r = planilla.datos.rel33?.[String(k)] ?? { tN: 0, mN: 0, tR: 0, mR: 0 };
                         const tot = r.tN + r.mN + r.tR + r.mR;
                         return (
-                          <tr key={k} className="border-b border-slate-700/50 last:border-0">
+                          <tr key={k} className="border-b border-border/50 last:border-0">
                             <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
-                            <td className="px-3 py-1.5 text-center text-slate-300">{r.tN || "—"}</td>
-                            <td className="px-3 py-1.5 text-center text-slate-300">{r.mN || "—"}</td>
-                            <td className="px-3 py-1.5 text-center text-slate-300">{r.tR || "—"}</td>
-                            <td className="px-3 py-1.5 text-center text-slate-300">{r.mR || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-muted-foreground">{r.tN || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-muted-foreground">{r.mN || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-muted-foreground">{r.tR || "—"}</td>
+                            <td className="px-3 py-1.5 text-center text-muted-foreground">{r.mR || "—"}</td>
                             <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot || "—"}</td>
                           </tr>
                         );
@@ -1460,8 +1460,8 @@ export function TransformadoresResumenSection() {
             className="grid place-items-center mt-0.5"
             style={{
               width: 36, height: 36, borderRadius: 9,
-              background: "oklch(0.30 0.10 155 / 0.45)",
-              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
+              background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
+              border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
               color: "#86efac",
             }}
           >
@@ -1491,8 +1491,8 @@ export function TransformadoresResumenSection() {
       <div
         className="px-4 py-6 sm:px-6 overflow-hidden"
         style={{
-          background: "oklch(0.235 0.005 270)",
-          border: "1px solid oklch(1 0 0 / 0.07)",
+          background: "var(--panel)",
+          border: "1px solid var(--hairline)",
           borderRadius: 14,
         }}
       >
@@ -1501,8 +1501,8 @@ export function TransformadoresResumenSection() {
             className="grid place-items-center"
             style={{
               width: 30, height: 30, borderRadius: 8,
-              background: "oklch(0.30 0.10 155 / 0.45)",
-              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
+              background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
+              border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
               color: "#86efac",
             }}
           >
@@ -1697,7 +1697,7 @@ export function TransformadoresResumenSection() {
         </DndContext>
 
         {currentLabel && (
-          <p className="text-[11px] text-slate-500 text-right">
+          <p className="text-[11px] text-muted-foreground text-right">
             Planilla: {currentLabel}
           </p>
         )}
