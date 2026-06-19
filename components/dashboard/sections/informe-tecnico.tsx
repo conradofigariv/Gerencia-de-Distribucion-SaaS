@@ -9,6 +9,7 @@ import {
   listLicitaciones,
   createLicitacion,
   updateLicitacion,
+  deleteLicitacion,
   listRenglonesConItems,
   createRenglon,
   updateRenglon,
@@ -230,6 +231,14 @@ export function InformeTecnicoSection() {
                   setLicitaciones((prev) =>
                     prev.map((l) => (l.id === updated.id ? updated : l)),
                   );
+                }}
+                onDeleted={(deletedId) => {
+                  setLicitaciones((prev) => {
+                    const rest = prev.filter((l) => l.id !== deletedId);
+                    setSelectedId(rest[0]?.id ?? null);
+                    return rest;
+                  });
+                  setTab("datos");
                 }}
               />
             ) : tab === "renglones" ? (
@@ -489,10 +498,11 @@ function CreateLicitacionModal({
 // ─── Tab: Datos generales ────────────────────────────────────
 
 function DatosGeneralesTab({
-  licitacion, onUpdated,
+  licitacion, onUpdated, onDeleted,
 }: {
   licitacion: Licitacion;
   onUpdated: (l: Licitacion) => void;
+  onDeleted: (id: string) => void;
 }) {
   const [numeroSic,       setNumeroSic]       = useState(licitacion.numero_sic);
   const [titulo,          setTitulo]          = useState(licitacion.titulo);
@@ -502,6 +512,8 @@ function DatosGeneralesTab({
   const [fdOpValor,       setFdOpValor]       = useState<string>(licitacion.fd_op_valor?.toString() ?? "");
   const [umbral,          setUmbral]          = useState<string>(licitacion.umbral_economico_pct?.toString() ?? "50");
   const [saving,          setSaving]          = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting,        setDeleting]        = useState(false);
 
   useEffect(() => {
     setNumeroSic(licitacion.numero_sic);
@@ -608,6 +620,21 @@ function DatosGeneralesTab({
     }
   };
 
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await deleteLicitacion(licitacion.id);
+      toast.success("Licitación eliminada");
+      setShowDeleteConfirm(false);
+      onDeleted(licitacion.id);
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo eliminar la licitación");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <FormSection title="Identificación">
@@ -664,6 +691,24 @@ function DatosGeneralesTab({
         className="flex items-center gap-2.5 pt-4 mt-2"
         style={{ borderTop: "1px solid oklch(1 0 0 / 0.04)" }}
       >
+        <button
+          onClick={() => setShowDeleteConfirm(true)}
+          disabled={saving}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 7,
+            padding: "9px 14px", borderRadius: 9,
+            background: "transparent", border: "1px solid oklch(0.55 0.18 25 / 0.35)",
+            color: "var(--accent-red)", fontSize: 13, fontWeight: 500,
+            cursor: saving ? "not-allowed" : "pointer",
+            opacity: saving ? 0.4 : 1,
+            transition: "background .15s, border-color .15s",
+          }}
+          onMouseEnter={(e) => { if (!saving) { (e.currentTarget as HTMLButtonElement).style.background = "oklch(0.30 0.10 25 / 0.18)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(0.55 0.18 25 / 0.6)"; } }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(0.55 0.18 25 / 0.35)"; }}
+        >
+          <Trash2 className="w-3.5 h-3.5" strokeWidth={2} />
+          Eliminar SIC
+        </button>
         <div className="flex-1 text-[12px]" style={{ color: dirty ? "var(--accent-amber)" : "oklch(0.45 0 0)" }}>
           {dirty
             ? "● Cambios sin guardar"
@@ -698,6 +743,48 @@ function DatosGeneralesTab({
           Guardar cambios
         </BeastPrimaryButton>
       </div>
+
+      {showDeleteConfirm && createPortal(
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 9000, background: "oklch(0 0 0 / 0.65)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget && !deleting) setShowDeleteConfirm(false); }}
+        >
+          <div
+            style={{ width: "100%", maxWidth: 420, borderRadius: 16, overflow: "hidden", background: "oklch(0.15 0.005 270)", border: "1px solid oklch(1 0 0 / 0.09)", boxShadow: "0 24px 64px -20px oklch(0 0 0 / 0.8)" }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 22px 14px" }}>
+              <div style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 8, background: "oklch(0.30 0.10 25 / 0.35)", border: "1px solid oklch(0.55 0.18 25 / 0.5)", color: "var(--accent-red)", flexShrink: 0 }}>
+                <Trash2 className="w-4 h-4" />
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "oklch(0.95 0 0)", letterSpacing: -0.3 }}>
+                Eliminar licitación
+              </div>
+            </div>
+            <div style={{ padding: "0 22px 20px", fontSize: 13.5, lineHeight: 1.55, color: "oklch(0.62 0 0)" }}>
+              Se eliminará la SIC <strong style={{ fontFamily: "ui-monospace, monospace", color: "var(--accent-green)" }}>{licitacion.numero_sic}</strong> y todos sus renglones, ítems, oferentes, ofertas, evaluaciones y adjudicaciones. Esta acción no se puede deshacer.
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, padding: "14px 22px", borderTop: "1px solid oklch(1 0 0 / 0.06)" }}>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                style={{ padding: "9px 14px", borderRadius: 9, background: "transparent", border: "1px solid oklch(1 0 0 / 0.09)", color: "oklch(0.70 0 0)", fontSize: 13, fontWeight: 500, cursor: deleting ? "not-allowed" : "pointer", opacity: deleting ? 0.5 : 1 }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 16px", borderRadius: 9, background: "oklch(0.40 0.16 25 / 0.55)", border: "1px solid oklch(0.55 0.18 25 / 0.7)", color: "var(--accent-red)", fontSize: 13, fontWeight: 600, cursor: deleting ? "not-allowed" : "pointer", opacity: deleting ? 0.6 : 1 }}
+              >
+                {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" strokeWidth={2} />}
+                Eliminar definitivamente
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
 
       <style jsx global>{`
         .ti-input {
