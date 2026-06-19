@@ -798,12 +798,9 @@ export function TransformadoresResumenSection() {
   };
 
   // Bucket (clave de orden + etiqueta) para una fecha según la granularidad
-  const bucketOf = (fecha: string): { key: string; label: string } => {
-    if (!weekly) {
-      const [y, m] = fecha.split("-");
-      const ym = `${y}-${m}`;
-      return { key: ym, label: `${MES_SHORT[Number(m) - 1]} ${y.slice(2)}` };
-    }
+  // Clave de bucket (para agrupar/ordenar) según la granularidad
+  const bucketKey = (fecha: string): string => {
+    if (!weekly) return fecha.slice(0, 7); // YYYY-MM
     const d = new Date(`${fecha}T00:00:00`);
     // Semana ISO (el jueves define el año)
     const t = new Date(d);
@@ -811,12 +808,12 @@ export function TransformadoresResumenSection() {
     t.setDate(t.getDate() + 3 - ((t.getDay() + 6) % 7));
     const week1  = new Date(t.getFullYear(), 0, 4);
     const weekNo = 1 + Math.round(((t.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
-    // Lunes de la semana para la etiqueta (con año a 2 dígitos)
-    const mon = new Date(d);
-    mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
-    const label = `${String(mon.getDate()).padStart(2, "0")} ${MES_SHORT[mon.getMonth()]} ${String(mon.getFullYear()).slice(2)}`;
-    return { key: `${t.getFullYear()}-W${String(weekNo).padStart(2, "0")}`, label };
+    return `${t.getFullYear()}-W${String(weekNo).padStart(2, "0")}`;
   };
+
+  // Etiquetas (año a 2 dígitos). Semanal usa la fecha real del informe.
+  const fmtDay   = (fecha: string) => { const [y, m, d] = fecha.split("-"); return `${d}/${m}/${y.slice(2)}`; };
+  const fmtMonth = (ym: string)    => { const [y, m] = ym.split("-"); return `${MES_SHORT[Number(m) - 1]} ${y.slice(2)}`; };
 
   const periodSnapshots = (() => {
     const source = planillas.filter(p => {
@@ -827,18 +824,18 @@ export function TransformadoresResumenSection() {
     // Último planilla por zona y bucket
     const byZoneBucket: Record<string, PlanillaReserva> = {};
     for (const p of source) {
-      const { key } = bucketOf(p.fecha);
-      const zk = `${p.datos.deposito ?? ""}::${key}`;
+      const zk = `${p.datos.deposito ?? ""}::${bucketKey(p.fecha)}`;
       if (!byZoneBucket[zk] || p.fecha > byZoneBucket[zk].fecha) byZoneBucket[zk] = p;
     }
-    const byBucket: Record<string, { label: string; bruto: number; auto: number; neto: number; neto13: number; neto33: number; zonas: Set<string> }> = {};
+    const byBucket: Record<string, { maxFecha: string; bruto: number; auto: number; neto: number; neto13: number; neto33: number; zonas: Set<string> }> = {};
     for (const p of Object.values(byZoneBucket)) {
-      const { key, label } = bucketOf(p.fecha);
+      const key = bucketKey(p.fecha);
       const bruto13 = computeStockBruto(p, kvas13Sel, "13");
       const bruto33 = computeStockBruto(p, kvas33Sel, "33", filterFases);
       const auto    = computePendientes(p, kvas13Sel, "13");
-      if (!byBucket[key]) byBucket[key] = { label, bruto: 0, auto: 0, neto: 0, neto13: 0, neto33: 0, zonas: new Set() };
+      if (!byBucket[key]) byBucket[key] = { maxFecha: p.fecha, bruto: 0, auto: 0, neto: 0, neto13: 0, neto33: 0, zonas: new Set() };
       const b = byBucket[key];
+      if (p.fecha > b.maxFecha) b.maxFecha = p.fecha;
       b.bruto  += bruto13 + bruto33;
       b.auto   += auto;
       b.neto   += bruto13 + bruto33 - auto;
@@ -857,7 +854,7 @@ export function TransformadoresResumenSection() {
     const snap = periodSnapshots[key];
     const prev = i > 0 ? periodSnapshots[sortedBuckets[i - 1]].neto : snap.neto;
     return {
-      mes:       snap.label,
+      mes:       weekly ? fmtDay(snap.maxFecha) : fmtMonth(key),
       bruto:     snap.bruto,
       auto:      snap.auto,
       neto:      snap.neto,
