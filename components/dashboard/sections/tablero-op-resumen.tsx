@@ -12,15 +12,15 @@ import { runTablero, getZonas, type TableroRow } from "@/lib/tableroOp";
 
 // ─── Estilos beast pure (alineados con Stock por Zona) ──────────────────────
 
-const CARD_BG      = "oklch(0.235 0.005 270)";
-const PANEL_BG     = "oklch(0.205 0.005 270)";
-const PANEL_BORDER = "1px solid oklch(1 0 0 / 0.07)";
-const STICKY_BG    = "oklch(0.255 0.006 270)";
+const CARD_BG      = "var(--panel)";
+const PANEL_BG     = "var(--panel-2)";
+const PANEL_BORDER = "1px solid var(--hairline)";
+const STICKY_BG    = "var(--panel-header)";
 
 const beastInput: CSSProperties = {
   height: 38, padding: "0 12px", borderRadius: 9,
-  background: "oklch(0.16 0.005 270)",
-  border: "1px solid oklch(1 0 0 / 0.07)",
+  background: "var(--panel-input)",
+  border: "1px solid var(--hairline)",
   color: "oklch(0.95 0 0)", fontSize: 13,
   outline: "none",
   colorScheme: "dark",
@@ -29,9 +29,9 @@ const beastInput: CSSProperties = {
 type PillTone = "green" | "amber" | "red" | "gray";
 
 const PILL_STYLES: Record<PillTone, CSSProperties> = {
-  green: { background: "oklch(0.30 0.10 155 / 0.45)", color: "#86efac", border: "1px solid oklch(0.55 0.15 155 / 0.5)" },
-  amber: { background: "oklch(0.30 0.10 50 / 0.4)",   color: "#fcd34d", border: "1px solid oklch(0.6 0.15 60 / 0.5)" },
-  red:   { background: "oklch(0.28 0.10 25 / 0.45)",  color: "#fca5a5", border: "1px solid oklch(0.55 0.15 25 / 0.5)" },
+  green: { background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)", color: "var(--accent-green)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)" },
+  amber: { background: "oklch(0.30 0.10 50 / 0.4)",   color: "var(--accent-amber)", border: "1px solid oklch(0.6 0.15 60 / 0.5)" },
+  red:   { background: "oklch(0.28 0.10 25 / 0.45)",  color: "var(--accent-red)", border: "1px solid oklch(0.55 0.15 25 / 0.5)" },
   gray:  { background: "oklch(0.25 0.005 270)",        color: "oklch(0.65 0 0)", border: "1px solid oklch(1 0 0 / 0.08)" },
 };
 
@@ -272,9 +272,9 @@ export function TableroOpResumenSection() {
             className="grid place-items-center mt-0.5"
             style={{
               width: 36, height: 36, borderRadius: 9,
-              background: "oklch(0.30 0.10 155 / 0.45)",
-              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
-              color: "#86efac",
+              background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
+              border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
+              color: "var(--accent-green)",
             }}
           >
             <ClipboardList className="w-[18px] h-[18px]" strokeWidth={2} />
@@ -346,9 +346,9 @@ export function TableroOpResumenSection() {
             className="inline-flex items-center gap-2 px-3.5 rounded-[9px] text-[13px] font-medium transition-all"
             style={{
               height: 38,
-              background: soloConRecibido ? "#8B5CF6" : "oklch(0.16 0.005 270)",
+              background: soloConRecibido ? "#8B5CF6" : "var(--panel-input)",
               color: soloConRecibido ? "#fff" : "oklch(0.65 0 0)",
-              border: soloConRecibido ? "1px solid transparent" : "1px solid oklch(1 0 0 / 0.07)",
+              border: soloConRecibido ? "1px solid transparent" : "1px solid var(--hairline)",
               boxShadow: soloConRecibido ? "0 8px 16px -10px rgba(139,92,246,0.6)" : "none",
               cursor: "pointer",
             }}
@@ -380,8 +380,8 @@ export function TableroOpResumenSection() {
               className="inline-flex items-center gap-2 px-3.5 rounded-[9px] text-[13px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               style={{
                 height: 38,
-                background: "oklch(0.16 0.005 270)",
-                border: "1px solid oklch(1 0 0 / 0.07)",
+                background: "var(--panel-input)",
+                border: "1px solid var(--hairline)",
                 color: "oklch(0.65 0 0)",
                 cursor: "pointer",
               }}

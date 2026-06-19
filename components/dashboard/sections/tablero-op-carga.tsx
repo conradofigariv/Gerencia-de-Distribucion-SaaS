@@ -26,10 +26,10 @@ const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] 
 
 // ─── Estilos beast pure (alineados con Stock por Zona) ───────────────────────
 
-const CARD_BG      = "oklch(0.235 0.005 270)";
-const PANEL_BG     = "oklch(0.205 0.005 270)";
-const PANEL_BORDER = "1px solid oklch(1 0 0 / 0.07)";
-const STICKY_BG    = "oklch(0.255 0.006 270)";
+const CARD_BG      = "var(--panel)";
+const PANEL_BG     = "var(--panel-2)";
+const PANEL_BORDER = "1px solid var(--hairline)";
+const STICKY_BG    = "var(--panel-header)";
 
 // Botón primario violeta (mismo que «Importar» de Stock por Zona).
 const violetBtn = (disabled: boolean): React.CSSProperties => ({
@@ -65,7 +65,7 @@ function HintPanel({ icon: Icon = Info, children }: { icon?: React.ElementType; 
       className="flex items-start gap-2.5 px-4 py-3 text-[12.5px] leading-relaxed rounded-[12px]"
       style={{ background: PANEL_BG, border: PANEL_BORDER, color: "hsl(var(--muted-foreground))" }}
     >
-      <Icon className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#86efac" }} />
+      <Icon className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--accent-green)" }} />
       <div>{children}</div>
     </div>
   );
@@ -116,9 +116,9 @@ function TerminalBox({
 // Chip de estado del preview (válidas / omitidas / con errores).
 function StatusChip({ tone, icon: Icon, children }: { tone: "green" | "amber" | "red" | "gray"; icon: React.ElementType; children: React.ReactNode }) {
   const styles: Record<string, React.CSSProperties> = {
-    green: { background: "oklch(0.30 0.10 155 / 0.45)", color: "#86efac", border: "1px solid oklch(0.55 0.15 155 / 0.5)" },
-    amber: { background: "oklch(0.30 0.10 50 / 0.4)",   color: "#fcd34d", border: "1px solid oklch(0.6 0.15 60 / 0.5)" },
-    red:   { background: "oklch(0.28 0.10 25 / 0.45)",  color: "#fca5a5", border: "1px solid oklch(0.55 0.15 25 / 0.5)" },
+    green: { background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)", color: "var(--accent-green)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)" },
+    amber: { background: "oklch(0.30 0.10 50 / 0.4)",   color: "var(--accent-amber)", border: "1px solid oklch(0.6 0.15 60 / 0.5)" },
+    red:   { background: "oklch(0.28 0.10 25 / 0.45)",  color: "var(--accent-red)", border: "1px solid oklch(0.55 0.15 25 / 0.5)" },
     gray:  { background: "oklch(0.25 0.005 270)",        color: "oklch(0.65 0 0)", border: "1px solid oklch(1 0 0 / 0.08)" },
   };
   return (
@@ -560,9 +560,9 @@ function SeguimientoTab() {
                   <tr
                     key={r.id}
                     className="border-b border-border/50 transition-colors"
-                    style={{ background: selected.has(r.id) ? "oklch(0.55 0.20 295 / 0.12)" : undefined }}
+                    style={{ background: selected.has(r.id) ? "color-mix(in oklab, var(--accent-violet) 12%, transparent)" : undefined }}
                     onMouseEnter={(e) => { if (!selected.has(r.id)) (e.currentTarget as HTMLTableRowElement).style.background = "oklch(0.25 0.005 270 / 0.5)"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = selected.has(r.id) ? "oklch(0.55 0.20 295 / 0.12)" : ""; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = selected.has(r.id) ? "color-mix(in oklab, var(--accent-violet) 12%, transparent)" : ""; }}
                   >
                     <td className="py-2 px-3.5">
                       <input
@@ -676,7 +676,7 @@ function ImportPanel<T extends Record<string, unknown>>({
         className="flex items-center gap-2.5 px-4 py-3 text-[12.5px] rounded-[12px]"
         style={{ background: PANEL_BG, border: PANEL_BORDER, color: "hsl(var(--muted-foreground))" }}
       >
-        <Database className="w-3.5 h-3.5 shrink-0" style={{ color: "#86efac" }} />
+        <Database className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--accent-green)" }} />
         {loadingCount ? "Consultando estado actual…" : countLabel(count ?? 0)}
       </div>
 
@@ -912,9 +912,9 @@ export function TableroOpCargaSection() {
           className="grid place-items-center mt-0.5"
           style={{
             width: 36, height: 36, borderRadius: 9,
-            background: "oklch(0.30 0.10 155 / 0.45)",
-            border: "1px solid oklch(0.55 0.15 155 / 0.5)",
-            color: "#86efac",
+            background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
+            border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
+            color: "var(--accent-green)",
           }}
         >
           <UploadCloud className="w-[18px] h-[18px]" strokeWidth={2} />
@@ -980,9 +980,9 @@ export function TableroOpCargaSection() {
             className="grid place-items-center"
             style={{
               width: 30, height: 30, borderRadius: 8,
-              background: "oklch(0.30 0.10 155 / 0.45)",
-              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
-              color: "#86efac",
+              background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
+              border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
+              color: "var(--accent-green)",
             }}
           >
             <ActiveIcon className="w-4 h-4" strokeWidth={2} />

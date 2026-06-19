@@ -100,9 +100,9 @@ export function InformeTecnicoSection() {
             className="grid place-items-center mt-0.5"
             style={{
               width: 36, height: 36, borderRadius: 9,
-              background: "oklch(0.30 0.10 155 / 0.45)",
-              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
-              color: "#86efac",
+              background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
+              border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
+              color: "var(--accent-green)",
             }}
           >
             <FileText className="w-[18px] h-[18px]" strokeWidth={2} />
@@ -151,8 +151,8 @@ export function InformeTecnicoSection() {
         <div
           className="flex flex-col items-center text-center gap-3 py-14 px-6 rounded-[14px]"
           style={{
-            background: "oklch(0.235 0.005 270)",
-            border: "1px dashed oklch(1 0 0 / 0.07)",
+            background: "var(--panel)",
+            border: "1px dashed var(--hairline)",
           }}
         >
           <div
@@ -198,8 +198,8 @@ export function InformeTecnicoSection() {
           <div
             className="px-4 py-6 sm:px-6 overflow-hidden"
             style={{
-              background: "oklch(0.235 0.005 270)",
-              border: "1px solid oklch(1 0 0 / 0.07)",
+              background: "var(--panel)",
+              border: "1px solid var(--hairline)",
               borderRadius: 14,
             }}
           >
@@ -208,9 +208,9 @@ export function InformeTecnicoSection() {
                 className="grid place-items-center"
                 style={{
                   width: 30, height: 30, borderRadius: 8,
-                  background: "oklch(0.30 0.10 155 / 0.45)",
-                  border: "1px solid oklch(0.55 0.15 155 / 0.5)",
-                  color: "#86efac",
+                  background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
+                  border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
+                  color: "var(--accent-green)",
                 }}
               >
                 <ActiveIcon className="w-4 h-4" strokeWidth={2} />
@@ -220,7 +220,7 @@ export function InformeTecnicoSection() {
               </h2>
             </div>
             <p className="ml-[42px] mb-7 text-[14.5px]" style={{ color: "oklch(0.58 0 0)" }}>
-              Licitación SIC <span className="font-mono" style={{ color: "#86efac" }}>{selected.numero_sic}</span> — {selected.titulo}
+              Licitación SIC <span className="font-mono" style={{ color: "var(--accent-green)" }}>{selected.numero_sic}</span> — {selected.titulo}
             </p>
 
             {tab === "datos" ? (
@@ -354,11 +354,11 @@ function LicitacionSelector({
         className="flex items-center gap-2"
         style={{
           height: 38, padding: "0 12px", borderRadius: 9, minWidth: 260,
-          background: "oklch(0.16 0.005 270)",
-          border: `1px solid ${open ? "oklch(0.55 0.20 295 / 0.55)" : "oklch(1 0 0 / 0.07)"}`,
+          background: "var(--panel-input)",
+          border: `1px solid ${open ? "color-mix(in oklab, var(--accent-violet) 55%, transparent)" : "var(--hairline)"}`,
           color: "oklch(0.97 0 0)", fontSize: 13,
           transition: "border-color .15s, box-shadow .15s",
-          boxShadow: open ? "0 0 0 3px oklch(0.55 0.20 295 / 0.15)" : "none",
+          boxShadow: open ? "0 0 0 3px color-mix(in oklab, var(--accent-violet) 15%, transparent)" : "none",
         }}
       >
         <span className="truncate flex-1 text-left flex items-center gap-2">
@@ -368,9 +368,9 @@ function LicitacionSelector({
                 className="font-mono"
                 style={{
                   padding: "2px 7px", borderRadius: 6, fontSize: 11.5, fontWeight: 600,
-                  background: "oklch(0.30 0.10 155 / 0.45)",
-                  border: "1px solid oklch(0.55 0.15 155 / 0.5)",
-                  color: "#86efac", letterSpacing: 0.3,
+                  background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
+                  border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
+                  color: "var(--accent-green)", letterSpacing: 0.3,
                 }}
               >
                 SIC {selected.numero_sic}
@@ -390,8 +390,8 @@ function LicitacionSelector({
         <div
           className="absolute z-50 top-[calc(100%+6px)] right-0 min-w-[340px] overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
           style={{
-            background: "oklch(0.205 0.005 270)",
-            border: "1px solid oklch(1 0 0 / 0.07)",
+            background: "var(--panel-2)",
+            border: "1px solid var(--hairline)",
             borderRadius: 10,
             boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6), 0 0 0 1px oklch(1 0 0 / 0.02) inset",
             padding: 4,
@@ -414,9 +414,9 @@ function LicitacionSelector({
                   className="font-mono shrink-0 mt-0.5"
                   style={{
                     padding: "2px 7px", borderRadius: 6, fontSize: 11, fontWeight: 600,
-                    background: "oklch(0.30 0.10 155 / 0.45)",
-                    border: "1px solid oklch(0.55 0.15 155 / 0.5)",
-                    color: "#86efac", letterSpacing: 0.3,
+                    background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
+                    border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
+                    color: "var(--accent-green)", letterSpacing: 0.3,
                   }}
                 >
                   SIC {l.numero_sic}
@@ -640,7 +640,7 @@ function DatosGeneralesTab({
             <div style={{ display: "flex", gap: 8 }}>
               <input type="number" step="0.01" inputMode="decimal" value={fdOpValor} onChange={(e) => setFdOpValor(e.target.value)} placeholder="Ej: 1398" className="ti-input" style={{ flex: 1, appearance: "textfield", MozAppearance: "textfield" } as React.CSSProperties} />
               <button onClick={handleFetchOp} disabled={fetchingOp || !fdOpFecha} title="Buscar cotización BCRA para la fecha de la OP"
-                style={{ height: 44, padding: "0 14px", borderRadius: 9, border: "1px solid oklch(1 0 0 / 0.10)", background: "oklch(0.20 0.005 270)", color: fetchingOp ? "oklch(0.50 0 0)" : "#86efac", cursor: fetchingOp || !fdOpFecha ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5, opacity: !fdOpFecha ? 0.45 : 1 }}>
+                style={{ height: 44, padding: "0 14px", borderRadius: 9, border: "1px solid oklch(1 0 0 / 0.10)", background: "oklch(0.20 0.005 270)", color: fetchingOp ? "oklch(0.50 0 0)" : "var(--accent-green)", cursor: fetchingOp || !fdOpFecha ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5, opacity: !fdOpFecha ? 0.45 : 1 }}>
                 {fetchingOp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                 BCRA
               </button>
@@ -664,7 +664,7 @@ function DatosGeneralesTab({
         className="flex items-center gap-2.5 pt-4 mt-2"
         style={{ borderTop: "1px solid oklch(1 0 0 / 0.04)" }}
       >
-        <div className="flex-1 text-[12px]" style={{ color: dirty ? "#fcd34d" : "oklch(0.45 0 0)" }}>
+        <div className="flex-1 text-[12px]" style={{ color: dirty ? "var(--accent-amber)" : "oklch(0.45 0 0)" }}>
           {dirty
             ? "● Cambios sin guardar"
             : "Los cambios se aplican al análisis de todos los renglones de esta licitación."}
@@ -682,7 +682,7 @@ function DatosGeneralesTab({
           disabled={!dirty || saving}
           style={{
             padding: "9px 14px", borderRadius: 9,
-            background: "transparent", border: "1px solid oklch(1 0 0 / 0.07)",
+            background: "transparent", border: "1px solid var(--hairline)",
             color: "oklch(0.70 0 0)", fontSize: 13, fontWeight: 500,
             cursor: (!dirty || saving) ? "not-allowed" : "pointer",
             opacity: (!dirty || saving) ? 0.4 : 1,
@@ -705,8 +705,8 @@ function DatosGeneralesTab({
           height: 44px;
           padding: 0 13px;
           border-radius: 9px;
-          background-color: oklch(0.16 0.005 270);
-          border: 1px solid oklch(1 0 0 / 0.07);
+          background-color: var(--panel-input);
+          border: 1px solid var(--hairline);
           font-size: 15px;
           color: oklch(0.97 0 0);
           transition: border-color .15s, box-shadow .15s;
@@ -714,8 +714,8 @@ function DatosGeneralesTab({
         .ti-input::placeholder { color: oklch(0.40 0 0); }
         .ti-input:focus {
           outline: none;
-          border-color: oklch(0.55 0.20 295 / 0.55);
-          box-shadow: 0 0 0 3px oklch(0.55 0.20 295 / 0.15);
+          border-color: color-mix(in oklab, var(--accent-violet) 55%, transparent);
+          box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent-violet) 15%, transparent);
         }
         .ti-input[type="number"],
         .ti-input[type="date"] {
@@ -1056,7 +1056,7 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                           style={{
                             background: "oklch(0.18 0.005 270)",
                             border: "1px solid oklch(1 0 0 / 0.08)",
-                            color: specsCount > 0 ? "#86efac" : "oklch(0.60 0 0)",
+                            color: specsCount > 0 ? "var(--accent-green)" : "oklch(0.60 0 0)",
                           }}
                           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.18)"; }}
                           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.08)"; }}
@@ -1064,7 +1064,7 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                           <ListChecks className="w-3.5 h-3.5" />
                           Especificaciones
                           {specsCount > 0 && (
-                            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 11.5, fontWeight: 700, background: "oklch(0.30 0.10 155 / 0.45)", border: "1px solid oklch(0.55 0.15 155 / 0.5)", borderRadius: 20, padding: "1px 7px", color: "#86efac" }}>
+                            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 11.5, fontWeight: 700, background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)", borderRadius: 20, padding: "1px 7px", color: "var(--accent-green)" }}>
                               {specsCount}
                             </span>
                           )}
@@ -1184,15 +1184,15 @@ function SpecsModal({
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 22px", borderBottom: "1px solid oklch(1 0 0 / 0.07)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 22px", borderBottom: "1px solid var(--hairline)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 8, background: "oklch(0.30 0.10 155 / 0.35)", border: "1px solid oklch(0.55 0.15 155 / 0.45)", color: "#86efac" }}>
+            <div style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 8, background: "color-mix(in oklab, var(--accent-emerald-deep) 35%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 45%, transparent)", color: "var(--accent-green)" }}>
               <ListChecks className="w-4 h-4" />
             </div>
             <div>
               <div style={{ fontSize: 16, fontWeight: 600, color: "oklch(0.95 0 0)", letterSpacing: -0.3 }}>Especificaciones técnicas</div>
               <div style={{ fontSize: 12.5, color: "oklch(0.55 0 0)", marginTop: 1 }}>
-                Renglón <span style={{ fontFamily: "ui-monospace, monospace", color: "#86efac", fontWeight: 600 }}>{renglonNumero}</span> · {oferenteNombre}
+                Renglón <span style={{ fontFamily: "ui-monospace, monospace", color: "var(--accent-green)", fontWeight: 600 }}>{renglonNumero}</span> · {oferenteNombre}
               </div>
             </div>
           </div>
@@ -1210,7 +1210,7 @@ function SpecsModal({
           ) : (
             <span style={{ fontSize: 12.5, color: "oklch(0.55 0 0)" }}>
               Según las especificaciones, al guardar el estado quedará:{" "}
-              <strong style={{ color: derived ? "#86efac" : "#fca5a5" }}>{derived ? "✓ Cumple" : "✗ No cumple"}</strong>
+              <strong style={{ color: derived ? "var(--accent-green)" : "var(--accent-red)" }}>{derived ? "✓ Cumple" : "✗ No cumple"}</strong>
             </span>
           )}
         </div>
@@ -1231,7 +1231,7 @@ function SpecsModal({
                   style={{
                     display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px", borderRadius: 10,
                     background: overIdx === idx && dragIdx !== null ? "oklch(0.24 0.005 270)" : "oklch(0.18 0.005 270)",
-                    border: `1px solid ${overIdx === idx && dragIdx !== null ? "oklch(0.55 0.15 155 / 0.5)" : "oklch(1 0 0 / 0.07)"}`,
+                    border: `1px solid ${overIdx === idx && dragIdx !== null ? "color-mix(in oklab, var(--accent-emerald) 50%, transparent)" : "var(--hairline)"}`,
                     opacity: dragIdx === idx ? 0.4 : 1,
                     transition: "background .12s, border-color .12s, opacity .12s",
                   }}
@@ -1253,8 +1253,8 @@ function SpecsModal({
                         style={{
                           flexShrink: 0, width: 22, height: 22, borderRadius: 6, marginTop: 5, cursor: "pointer",
                           display: "grid", placeItems: "center",
-                          background: it.checked ? "#86efac" : "oklch(0.14 0.005 270)",
-                          border: `1px solid ${it.checked ? "#86efac" : "oklch(1 0 0 / 0.15)"}`,
+                          background: it.checked ? "var(--accent-green)" : "oklch(0.14 0.005 270)",
+                          border: `1px solid ${it.checked ? "var(--accent-green)" : "oklch(1 0 0 / 0.15)"}`,
                           color: "oklch(0.10 0.02 155)",
                           transition: "background .12s, border-color .12s",
                         }}
@@ -1268,7 +1268,7 @@ function SpecsModal({
                         placeholder="Especificación (ej: Tensión nominal 13.2 kV)"
                         style={{
                           flex: 1, minWidth: 0, height: 34, padding: "0 10px", borderRadius: 7,
-                          background: "oklch(0.14 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)",
+                          background: "oklch(0.14 0.005 270)", border: "1px solid var(--hairline)",
                           color: it.checked ? "oklch(0.92 0 0)" : "oklch(0.78 0 0)", fontSize: 14, outline: "none",
                         }}
                       />
@@ -1281,7 +1281,7 @@ function SpecsModal({
                       rows={2}
                       style={{
                         flex: 1, minWidth: 0, padding: "7px 10px", borderRadius: 7, resize: "vertical",
-                        background: "oklch(0.14 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)",
+                        background: "oklch(0.14 0.005 270)", border: "1px solid var(--hairline)",
                         color: "oklch(0.85 0 0)", fontSize: 14, outline: "none", lineHeight: 1.5,
                       }}
                     />
@@ -1291,7 +1291,7 @@ function SpecsModal({
                     onClick={() => remove(it.id)}
                     title="Eliminar"
                     style={{ flexShrink: 0, display: "grid", placeItems: "center", width: 28, height: 28, marginTop: 3, borderRadius: 7, background: "transparent", border: "1px solid oklch(1 0 0 / 0.06)", color: "oklch(0.50 0 0)", cursor: "pointer" }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#fca5a5"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(0.55 0.15 25 / 0.4)"; }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--accent-red)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(0.55 0.15 25 / 0.4)"; }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.50 0 0)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.06)"; }}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1305,7 +1305,7 @@ function SpecsModal({
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
             <button
               onClick={addCheck}
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, background: "oklch(0.20 0.005 270)", border: "1px dashed oklch(0.55 0.15 155 / 0.4)", color: "#86efac", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, background: "oklch(0.20 0.005 270)", border: "1px dashed color-mix(in oklab, var(--accent-emerald) 40%, transparent)", color: "var(--accent-green)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
             >
               <Plus className="w-3.5 h-3.5" /> Especificación
             </button>
@@ -1319,13 +1319,13 @@ function SpecsModal({
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "14px 22px", borderTop: "1px solid oklch(1 0 0 / 0.07)", display: "flex", justifyContent: "flex-end", gap: 10, flexShrink: 0 }}>
+        <div style={{ padding: "14px 22px", borderTop: "1px solid var(--hairline)", display: "flex", justifyContent: "flex-end", gap: 10, flexShrink: 0 }}>
           <button onClick={onClose}
             style={{ padding: "10px 20px", borderRadius: 9, border: "1px solid oklch(1 0 0 / 0.10)", background: "transparent", color: "oklch(0.65 0 0)", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
             Cancelar
           </button>
           <button onClick={() => onSave(items)}
-            style={{ padding: "10px 24px", borderRadius: 9, border: "none", background: "#86efac", color: "oklch(0.12 0.02 155)", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            style={{ padding: "10px 24px", borderRadius: 9, border: "none", background: "var(--accent-green)", color: "oklch(0.12 0.02 155)", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
             Guardar
           </button>
         </div>
@@ -1529,17 +1529,17 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
         const rankedOfIds = [...pctByOf.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id);
         const rankColor = (ofId: string): string => {
           const idx = rankedOfIds.indexOf(ofId);
-          if (idx === 0) return "#86efac";
-          if (idx === 1) return "#fcd34d";
+          if (idx === 0) return "var(--accent-green)";
+          if (idx === 1) return "var(--accent-amber)";
           return "oklch(0.92 0 0)";
         };
 
         return (
-          <div key={r.id} style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", borderRadius: 12 }}>
+          <div key={r.id} style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)", borderRadius: 12 }}>
             {/* Header */}
             <div style={{ padding: "11px 16px", borderBottom: "1px solid oklch(1 0 0 / 0.06)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "oklch(0.48 0 0)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Renglón</span>
-              <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 18, fontWeight: 700, color: "#86efac" }}>{r.numero}</span>
+              <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 18, fontWeight: 700, color: "var(--accent-green)" }}>{r.numero}</span>
               {r.condicion_adjudicacion && (
                 <span style={{ fontSize: 12.5, color: "oklch(0.58 0 0)" }}>{r.condicion_adjudicacion}</span>
               )}
@@ -1550,7 +1550,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                   title={canShowUSD ? `Clic para ver en ${showUSD ? "ARS" : "USD"}` : undefined}
                   style={{
                     display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 3,
-                    background: "oklch(0.18 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)",
+                    background: "oklch(0.18 0.005 270)", border: "1px solid var(--hairline)",
                     borderRadius: 7, padding: "5px 10px",
                     cursor: canShowUSD ? "pointer" : "default",
                     transition: "background .15s",
@@ -1573,7 +1573,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                 </button>
               )}
               {adjOfId && (
-                <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "oklch(0.30 0.10 155 / 0.45)", border: "1px solid oklch(0.55 0.15 155 / 0.5)", color: "#86efac" }}>
+                <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)", color: "var(--accent-green)" }}>
                   ✓ Adjudicado — {oferentes.find((o) => o.id === adjOfId)?.nombre}
                 </span>
               )}
@@ -1590,7 +1590,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                     {oferentes.map((of) => {
                       const isAdj = adjOfId === of.id;
                       return (
-                        <th key={of.id} style={{ textAlign: "center", padding: "11px 16px", fontSize: 15.5, fontWeight: 600, minWidth: 200, color: isAdj ? "#86efac" : "oklch(0.85 0 0)", background: isAdj ? "oklch(0.24 0.04 155 / 0.20)" : "transparent", borderBottom: isAdj ? "2px solid oklch(0.55 0.15 155 / 0.55)" : "none" }}>
+                        <th key={of.id} style={{ textAlign: "center", padding: "11px 16px", fontSize: 15.5, fontWeight: 600, minWidth: 200, color: isAdj ? "var(--accent-green)" : "oklch(0.85 0 0)", background: isAdj ? "oklch(0.24 0.04 155 / 0.20)" : "transparent", borderBottom: isAdj ? "2px solid color-mix(in oklab, var(--accent-emerald) 55%, transparent)" : "none" }}>
                           {of.nombre}
                         </th>
                       );
@@ -1651,7 +1651,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                       return (
                         <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
                           {pct !== null ? (
-                            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 16, fontWeight: 700, color: over ? "#fca5a5" : rankColor(of.id) }}>
+                            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 16, fontWeight: 700, color: over ? "var(--accent-red)" : rankColor(of.id) }}>
                               {pct >= 0 ? "+" : ""}{pct.toFixed(2)}%
                             </span>
                           ) : (
@@ -1671,11 +1671,11 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                       return (
                         <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
                           {cumple === true ? (
-                            <span style={{ fontSize: 14, color: "#86efac", fontWeight: 500 }}>✓ Cumple</span>
+                            <span style={{ fontSize: 14, color: "var(--accent-green)", fontWeight: 500 }}>✓ Cumple</span>
                           ) : cumple === false ? (
-                            <span style={{ fontSize: 14, color: "#fca5a5", fontWeight: 500 }}>✗ No cumple</span>
+                            <span style={{ fontSize: 14, color: "var(--accent-red)", fontWeight: 500 }}>✗ No cumple</span>
                           ) : cumple === null && evalsMap.has(`${r.id}|${of.id}`) ? (
-                            <span style={{ fontSize: 14, color: "#fcd34d", fontWeight: 500 }}>⏳ Pendiente</span>
+                            <span style={{ fontSize: 14, color: "var(--accent-amber)", fontWeight: 500 }}>⏳ Pendiente</span>
                           ) : (
                             <span style={{ fontSize: 14, color: "oklch(0.42 0 0)" }}>Sin evaluar</span>
                           )}
@@ -1696,9 +1696,9 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                           {total === 0 ? (
                             <span style={{ fontSize: 14, color: "oklch(0.42 0 0)" }}>—</span>
                           ) : cobertura === total ? (
-                            <span style={{ fontSize: 14, color: "#86efac", fontWeight: 500 }}>✓ Completo</span>
+                            <span style={{ fontSize: 14, color: "var(--accent-green)", fontWeight: 500 }}>✓ Completo</span>
                           ) : cobertura > 0 ? (
-                            <span style={{ fontSize: 14, color: "#fcd34d" }}>⚠ {cobertura}/{total}</span>
+                            <span style={{ fontSize: 14, color: "var(--accent-amber)" }}>⚠ {cobertura}/{total}</span>
                           ) : (
                             <span style={{ fontSize: 14, color: "oklch(0.42 0 0)" }}>Sin ofertar</span>
                           )}
@@ -1719,11 +1719,11 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                             disabled={isSaving}
                             style={{
                               padding: "9px 22px", borderRadius: 8, border: "none", cursor: isSaving ? "wait" : "pointer",
-                              background: isAdj ? "#86efac" : "oklch(0.27 0.005 270)",
+                              background: isAdj ? "var(--accent-green)" : "oklch(0.27 0.005 270)",
                               color: isAdj ? "oklch(0.10 0.02 155)" : "oklch(0.62 0 0)",
                               fontSize: 14, fontWeight: 600,
                               transition: "background .15s, color .15s",
-                              boxShadow: isAdj ? "0 2px 10px -4px oklch(0.55 0.15 155 / 0.5)" : "none",
+                              boxShadow: isAdj ? "0 2px 10px -4px color-mix(in oklab, var(--accent-emerald) 50%, transparent)" : "none",
                             }}
                             onMouseEnter={(e) => { if (!isAdj && !isSaving) e.currentTarget.style.background = "oklch(0.32 0.005 270)"; }}
                             onMouseLeave={(e) => { if (!isAdj) e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
@@ -1743,7 +1743,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
 
       {/* Summary */}
       {adjMap.size > 0 && (
-        <div style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", borderRadius: 12, padding: "14px 16px" }}>
+        <div style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)", borderRadius: 12, padding: "14px 16px" }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: "oklch(0.50 0 0)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
             Resumen de adjudicación
           </div>
@@ -1755,7 +1755,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
               const complete = tot && tot.cobertura === r.items.length;
               return (
                 <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14.5 }}>
-                  <span style={{ fontFamily: "ui-monospace, monospace", color: "#86efac", fontWeight: 600, width: 96, flexShrink: 0 }}>Renglón {r.numero}</span>
+                  <span style={{ fontFamily: "ui-monospace, monospace", color: "var(--accent-green)", fontWeight: 600, width: 96, flexShrink: 0 }}>Renglón {r.numero}</span>
                   {adjOf ? (
                     <>
                       <span style={{ color: "oklch(0.88 0 0)", fontWeight: 500 }}>{adjOf.nombre}</span>
@@ -1797,8 +1797,8 @@ function PlaceholderTab({ tab }: { tab: WizardTab }) {
       className="text-center"
       style={{
         padding: "70px 24px", color: "oklch(0.50 0 0)",
-        background: "oklch(0.205 0.005 270)",
-        border: "1px dashed oklch(1 0 0 / 0.07)",
+        background: "var(--panel-2)",
+        border: "1px dashed var(--hairline)",
         borderRadius: 14,
       }}
     >
@@ -1988,8 +1988,8 @@ function RenglonesTab({
               key={r.id}
               className="border rounded-lg bg-card overflow-hidden transition-colors"
               style={{
-                borderColor: isDropTarget ? "#86efac" : undefined,
-                boxShadow: isDropTarget ? "0 0 0 1px #86efac, 0 0 18px -6px rgba(134,239,172,0.5)" : undefined,
+                borderColor: isDropTarget ? "var(--accent-green)" : undefined,
+                boxShadow: isDropTarget ? "0 0 0 1px var(--accent-green), 0 0 18px -6px rgba(134,239,172,0.5)" : undefined,
               }}
               onDragOver={(e) => {
                 if (!canDrop) return;
@@ -2018,7 +2018,7 @@ function RenglonesTab({
                     <span className="text-sm font-semibold text-foreground">Renglón {r.numero}</span>
                     <span className="text-xs text-muted-foreground">· {r.items.length} ítem{r.items.length === 1 ? "" : "s"}</span>
                     {isDropTarget && (
-                      <span className="text-[11px] font-medium" style={{ color: "#86efac" }}>Soltá para copiar aquí</span>
+                      <span className="text-[11px] font-medium" style={{ color: "var(--accent-green)" }}>Soltá para copiar aquí</span>
                     )}
                   </div>
                   {r.condicion_adjudicacion && (
@@ -2195,7 +2195,7 @@ function RenglonesTab({
               : `Aplicará al conjunto de los ${renglones.length} renglones.`
             : "Requiere al menos 2 renglones cargados para tener efecto.";
         return (
-          <div style={{ background: "oklch(0.205 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)", borderRadius: 12, padding: "14px 16px" }}>
+          <div style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)", borderRadius: 12, padding: "14px 16px" }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: "oklch(0.50 0 0)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
               Condiciones del pliego
             </div>
@@ -2206,8 +2206,8 @@ function RenglonesTab({
               onMouseEnter={(e) => { e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
             >
-              <div style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, marginTop: 1, background: licitacion.exclusividad_renglones ? "oklch(0.30 0.10 155 / 0.45)" : "oklch(0.16 0.005 270)", border: `1px solid ${licitacion.exclusividad_renglones ? "oklch(0.55 0.15 155 / 0.5)" : "oklch(1 0 0 / 0.12)"}`, display: "flex", alignItems: "center", justifyContent: "center", transition: "background .15s, border-color .15s" }}>
-                {licitacion.exclusividad_renglones && <Check className="w-3 h-3" style={{ color: "#86efac" }} strokeWidth={2.5} />}
+              <div style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, marginTop: 1, background: licitacion.exclusividad_renglones ? "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)" : "var(--panel-input)", border: `1px solid ${licitacion.exclusividad_renglones ? "color-mix(in oklab, var(--accent-emerald) 50%, transparent)" : "oklch(1 0 0 / 0.12)"}`, display: "flex", alignItems: "center", justifyContent: "center", transition: "background .15s, border-color .15s" }}>
+                {licitacion.exclusividad_renglones && <Check className="w-3 h-3" style={{ color: "var(--accent-green)" }} strokeWidth={2.5} />}
               </div>
               <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                 <div style={{ fontSize: 13.5, fontWeight: 500, color: "oklch(0.92 0 0)" }}>Exclusividad entre renglones</div>
@@ -2425,7 +2425,7 @@ function DivisaPicker({ value, onChange, size = "md" }: { value: Divisa; onChang
   return (
     <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
       <button type="button" onClick={() => setOpen((o) => !o)}
-        style={{ height: h, padding: "0 10px", borderRadius: 8, background: "oklch(0.16 0.005 270)", border: `1px solid ${open ? "oklch(0.55 0.15 155 / 0.6)" : "oklch(1 0 0 / 0.09)"}`, color: value === "USD" ? "#86efac" : "oklch(0.82 0 0)", fontSize: fs, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, minWidth: 68, transition: "border-color .15s" }}>
+        style={{ height: h, padding: "0 10px", borderRadius: 8, background: "var(--panel-input)", border: `1px solid ${open ? "color-mix(in oklab, var(--accent-emerald) 60%, transparent)" : "oklch(1 0 0 / 0.09)"}`, color: value === "USD" ? "var(--accent-green)" : "oklch(0.82 0 0)", fontSize: fs, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, minWidth: 68, transition: "border-color .15s" }}>
         {value}
         <ChevronDown className="w-3 h-3" style={{ opacity: 0.55, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
       </button>
@@ -2434,7 +2434,7 @@ function DivisaPicker({ value, onChange, size = "md" }: { value: Divisa; onChang
           {(["ARS", "USD"] as Divisa[]).map((d) => (
             <button key={d} type="button"
               onClick={() => { onChange(d); setOpen(false); }}
-              style={{ display: "block", width: "100%", padding: "9px 13px", background: d === value ? "oklch(0.27 0.005 270)" : "transparent", color: d === "USD" ? "#86efac" : "oklch(0.85 0 0)", fontSize: fs, fontWeight: 600, textAlign: "left", border: "none", cursor: "pointer" }}>
+              style={{ display: "block", width: "100%", padding: "9px 13px", background: d === value ? "oklch(0.27 0.005 270)" : "transparent", color: d === "USD" ? "var(--accent-green)" : "oklch(0.85 0 0)", fontSize: fs, fontWeight: 600, textAlign: "left", border: "none", cursor: "pointer" }}>
               {d}
             </button>
           ))}
@@ -2586,7 +2586,7 @@ function OfertasTab({
         <div className="flex items-center gap-3">
           <span style={{ fontSize: 12.5, color: "oklch(0.50 0 0)", fontWeight: 500 }}>Cambiar todas las divisas:</span>
           <button onClick={() => setAllDivisas("USD")}
-            style={{ padding: "5px 14px", borderRadius: 7, border: "1px solid oklch(1 0 0 / 0.10)", background: "oklch(0.20 0.005 270)", color: "#86efac", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            style={{ padding: "5px 14px", borderRadius: 7, border: "1px solid oklch(1 0 0 / 0.10)", background: "oklch(0.20 0.005 270)", color: "var(--accent-green)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
             USD
           </button>
           <button onClick={() => setAllDivisas("ARS")}
@@ -2666,7 +2666,7 @@ function OfertasTab({
                             onBlur={() => saveCell(item.id, of.id)}
                             placeholder="—"
                             className="oferta-price-input w-full min-w-0 h-9 px-2.5 rounded border text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-ring/20"
-                            style={{ background: "oklch(0.16 0.005 270)", borderColor: "oklch(1 0 0 / 0.09)", color: "oklch(0.92 0 0)", fontSize: 14.5 }}
+                            style={{ background: "var(--panel-input)", borderColor: "oklch(1 0 0 / 0.09)", color: "oklch(0.92 0 0)", fontSize: 14.5 }}
                           />
                           <DivisaPicker size="sm" value={cell.divisa} onChange={(divisa) => {
                               setCell(item.id, of.id, { divisa });
@@ -2892,13 +2892,13 @@ function ItemModal({
       <div style={{ width: "100%", maxWidth: 520, background: "oklch(0.18 0.005 270)", border: "1px solid oklch(1 0 0 / 0.09)", borderRadius: 16, boxShadow: "0 24px 64px -12px oklch(0 0 0 / 0.7)", overflow: "hidden" }}>
 
         {/* Header */}
-        <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid oklch(1 0 0 / 0.07)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid var(--hairline)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div>
             <div style={{ fontSize: 18, fontWeight: 700, color: "oklch(0.97 0 0)" }}>
               {mode === "create" ? "Nuevo ítem" : "Editar ítem"}
             </div>
             <div style={{ fontSize: 13, color: "oklch(0.52 0 0)", marginTop: 3 }}>
-              {renglonNumero ? <><span style={{ color: "#86efac", fontFamily: "ui-monospace, monospace", fontWeight: 600 }}>Renglón {renglonNumero}</span> — </> : ""}
+              {renglonNumero ? <><span style={{ color: "var(--accent-green)", fontFamily: "ui-monospace, monospace", fontWeight: 600 }}>Renglón {renglonNumero}</span> — </> : ""}
               Ingresá la matrícula para autocompletar la descripción.
             </div>
           </div>
@@ -2916,8 +2916,8 @@ function ItemModal({
             transition: border-color .15s, box-shadow .15s; box-sizing: border-box;
           }
           .im-input:focus {
-            border-color: oklch(0.55 0.15 155 / 0.7);
-            box-shadow: 0 0 0 3px oklch(0.55 0.15 155 / 0.12);
+            border-color: var(--ring-green);
+            box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent-emerald) 12%, transparent);
           }
           .im-input::placeholder { color: oklch(0.38 0 0); }
           .im-input-sm {
@@ -2928,8 +2928,8 @@ function ItemModal({
             transition: border-color .15s, box-shadow .15s; box-sizing: border-box;
           }
           .im-input-sm:focus {
-            border-color: oklch(0.55 0.15 155 / 0.7);
-            box-shadow: 0 0 0 3px oklch(0.55 0.15 155 / 0.12);
+            border-color: var(--ring-green);
+            box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent-emerald) 12%, transparent);
           }
           .im-textarea {
             width: 100%; padding: 10px 13px; border-radius: 9px;
@@ -2938,8 +2938,8 @@ function ItemModal({
             transition: border-color .15s, box-shadow .15s; box-sizing: border-box; line-height: 1.6;
           }
           .im-textarea:focus {
-            border-color: oklch(0.55 0.15 155 / 0.7);
-            box-shadow: 0 0 0 3px oklch(0.55 0.15 155 / 0.12);
+            border-color: var(--ring-green);
+            box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent-emerald) 12%, transparent);
           }
           .im-textarea::placeholder { color: oklch(0.38 0 0); }
         `}</style>
@@ -2996,13 +2996,13 @@ function ItemModal({
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "14px 24px 20px", borderTop: "1px solid oklch(1 0 0 / 0.07)", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+        <div style={{ padding: "14px 24px 20px", borderTop: "1px solid var(--hairline)", display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <button onClick={onClose} disabled={saving}
             style={{ padding: "10px 20px", borderRadius: 9, border: "1px solid oklch(1 0 0 / 0.10)", background: "transparent", color: "oklch(0.65 0 0)", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
             Cancelar
           </button>
           <button onClick={handle} disabled={saving}
-            style={{ padding: "10px 24px", borderRadius: 9, border: "none", background: saving ? "oklch(0.35 0.005 270)" : "#86efac", color: saving ? "oklch(0.60 0 0)" : "oklch(0.12 0.02 155)", fontSize: 14, fontWeight: 700, cursor: saving ? "wait" : "pointer", display: "flex", alignItems: "center", gap: 7 }}>
+            style={{ padding: "10px 24px", borderRadius: 9, border: "none", background: saving ? "oklch(0.35 0.005 270)" : "var(--accent-green)", color: saving ? "oklch(0.60 0 0)" : "oklch(0.12 0.02 155)", fontSize: 14, fontWeight: 700, cursor: saving ? "wait" : "pointer", display: "flex", alignItems: "center", gap: 7 }}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             {mode === "create" ? "Agregar" : "Guardar"}
           </button>
@@ -3020,13 +3020,13 @@ const HELP_STEPS_META = [
   { id: "oferentes",    icon: Users,         label: "Oferentes",           color: "#a78bfa", subtitle: "Registro de participantes" },
   { id: "ofertas",      icon: Tag,           label: "Ofertas",             color: "#fbbf24", subtitle: "Carga de precios por oferente" },
   { id: "evaluacion",   icon: ClipboardCheck,label: "Evaluación técnica",  color: "#f87171", subtitle: "Aptitud técnica por renglón" },
-  { id: "adjudicacion", icon: Trophy,        label: "Adjudicación",        color: "#86efac", subtitle: "Comparativa y selección final" },
+  { id: "adjudicacion", icon: Trophy,        label: "Adjudicación",        color: "var(--accent-green)", subtitle: "Comparativa y selección final" },
 ] as const;
 
 function HelpTip({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", gap: 10, padding: "10px 14px", borderRadius: 9, background: "oklch(0.30 0.10 155 / 0.12)", border: "1px solid oklch(0.55 0.15 155 / 0.22)", marginTop: 8 }}>
-      <Lightbulb className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#86efac" }} />
+    <div style={{ display: "flex", gap: 10, padding: "10px 14px", borderRadius: 9, background: "color-mix(in oklab, var(--accent-emerald-deep) 12%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 22%, transparent)", marginTop: 8 }}>
+      <Lightbulb className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--accent-green)" }} />
       <span style={{ fontSize: 13, color: "oklch(0.78 0 0)", lineHeight: 1.55 }}>{children}</span>
     </div>
   );
@@ -3035,7 +3035,7 @@ function HelpTip({ children }: { children: React.ReactNode }) {
 function HelpWarning({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", gap: 10, padding: "10px 14px", borderRadius: 9, background: "oklch(0.35 0.12 55 / 0.15)", border: "1px solid oklch(0.65 0.15 55 / 0.25)", marginTop: 8 }}>
-      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#fcd34d" }} />
+      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--accent-amber)" }} />
       <span style={{ fontSize: 13, color: "oklch(0.78 0 0)", lineHeight: 1.55 }}>{children}</span>
     </div>
   );
@@ -3056,7 +3056,7 @@ function HelpSection({ title, children }: { title: string; children: React.React
 function HelpField({ name, desc }: { name: string; desc: string }) {
   return (
     <div style={{ display: "flex", gap: 8, paddingBottom: 7, borderBottom: "1px solid oklch(1 0 0 / 0.04)", alignItems: "flex-start" }}>
-      <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5, fontWeight: 600, color: "#86efac", paddingTop: 1, minWidth: 160, flexShrink: 0 }}>{name}</span>
+      <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5, fontWeight: 600, color: "var(--accent-green)", paddingTop: 1, minWidth: 160, flexShrink: 0 }}>{name}</span>
       <span style={{ fontSize: 13, color: "oklch(0.68 0 0)", lineHeight: 1.5 }}>{desc}</span>
     </div>
   );
@@ -3237,9 +3237,9 @@ function HelpModal({ onClose }: { onClose: () => void }) {
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* Modal header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid oklch(1 0 0 / 0.07)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid var(--hairline)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 8, background: "oklch(0.30 0.10 155 / 0.35)", border: "1px solid oklch(0.55 0.15 155 / 0.45)", color: "#86efac" }}>
+            <div style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 8, background: "color-mix(in oklab, var(--accent-emerald-deep) 35%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 45%, transparent)", color: "var(--accent-green)" }}>
               <HelpCircle className="w-4 h-4" />
             </div>
             <span style={{ fontSize: 17, fontWeight: 600, color: "oklch(0.95 0 0)", letterSpacing: -0.3 }}>Guía de uso — Informe Técnico</span>
@@ -3307,7 +3307,7 @@ function HelpModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Footer navigation */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderTop: "1px solid oklch(1 0 0 / 0.07)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderTop: "1px solid var(--hairline)", flexShrink: 0 }}>
           <button
             onClick={() => setStep((s) => Math.max(0, s - 1))}
             disabled={step === 0}
@@ -3327,14 +3327,14 @@ function HelpModal({ onClose }: { onClose: () => void }) {
           {step < total - 1 ? (
             <button
               onClick={() => setStep((s) => Math.min(total - 1, s + 1))}
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "none", background: current.color === "#86efac" ? "#86efac" : current.color, color: "oklch(0.10 0 0)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "none", background: current.color === "var(--accent-green)" ? "var(--accent-green)" : current.color, color: "oklch(0.10 0 0)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
             >
               Siguiente <ChevronRight className="w-4 h-4" />
             </button>
           ) : (
             <button
               onClick={onClose}
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "none", background: "#86efac", color: "oklch(0.10 0 0)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--accent-green)", color: "oklch(0.10 0 0)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
             >
               <Check className="w-4 h-4" /> Entendido
             </button>
