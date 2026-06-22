@@ -537,7 +537,7 @@ const DEFAULT_KPI_ORDER = KPI_DEFS.map(k => k.id);
 
 const BLOCK_ORDER_KEY = "transformadores_block_order";
 
-const DEFAULT_BLOCK_ORDER = ["filtros", "variacion", "evolucion", "distribucion", "stockKva", "ultimaPlanilla"];
+const DEFAULT_BLOCK_ORDER = ["filtros", "stockReserva", "variacion", "evolucion", "distribucion", "stockKva", "ultimaPlanilla"];
 
 function SortableBlock({ id, children }: { id: string; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -1242,6 +1242,72 @@ export function TransformadoresResumenSection() {
         </div>
       </div>
     ),
+    stockReserva: (
+      <div
+        className="px-4 py-6 sm:px-6 overflow-hidden"
+        style={{
+          background: "var(--panel)",
+          border: "1px solid var(--hairline)",
+          borderRadius: 14,
+        }}
+      >
+        <div className="flex items-center gap-3 mb-2">
+          <div
+            className="grid place-items-center"
+            style={{
+              width: 30, height: 30, borderRadius: 8,
+              background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
+              border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
+              color: "#86efac",
+            }}
+          >
+            <Package className="w-4 h-4" strokeWidth={2} />
+          </div>
+          <h2 className="text-[20px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.3, margin: 0 }}>
+            Stock de Reserva
+          </h2>
+        </div>
+        <p className="ml-[42px] mb-7 text-[14.5px]" style={{ color: "oklch(0.58 0 0)" }}>
+          Indicadores actuales de stock de transformadores en reserva.
+        </p>
+
+        <div className="space-y-4">
+
+        {/* 4 KPI cards — drag & drop reordering */}
+        <DndContext sensors={kpiSensors} collisionDetection={closestCenter} onDragEnd={handleKpiDragEnd}>
+          <SortableContext items={kpiOrder} strategy={rectSortingStrategy}>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {kpiOrder.map((id, idx) => {
+                const def = KPI_DEFS.find(k => k.id === id);
+                if (!def) return null;
+                return (
+                  <SortableItem key={id} id={id}>
+                    {handle => (
+                      <KpiStatCard
+                        label={def.label}
+                        value={kpiValues[id] ?? 0}
+                        tone={def.tone}
+                        sub={def.sub}
+                        showSign={def.showSign}
+                        idx={idx}
+                        dragHandle={handle}
+                      />
+                    )}
+                  </SortableItem>
+                );
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
+
+        {currentLabel && (
+          <p className="text-[11px] text-muted-foreground text-right">
+            Planilla: {currentLabel}
+          </p>
+        )}
+        </div>
+      </div>
+    ),
     variacion: (
       <div className="space-y-6">
         <ChartPanel title="Gráfico de Variación Neta" subtitle={`Stock neto en comparación con ${weekly ? "la semana anterior" : "el mes anterior"}`}>
@@ -1664,73 +1730,7 @@ export function TransformadoresResumenSection() {
         </div>
       </div>
 
-      {/* ── Stock de Reserva ── */}
-      <div
-        className="px-4 py-6 sm:px-6 overflow-hidden"
-        style={{
-          background: "var(--panel)",
-          border: "1px solid var(--hairline)",
-          borderRadius: 14,
-        }}
-      >
-        <div className="flex items-center gap-3 mb-2">
-          <div
-            className="grid place-items-center"
-            style={{
-              width: 30, height: 30, borderRadius: 8,
-              background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
-              border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
-              color: "#86efac",
-            }}
-          >
-            <Package className="w-4 h-4" strokeWidth={2} />
-          </div>
-          <h2 className="text-[20px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.3, margin: 0 }}>
-            Stock de Reserva
-          </h2>
-        </div>
-        <p className="ml-[42px] mb-7 text-[14.5px]" style={{ color: "oklch(0.58 0 0)" }}>
-          Indicadores actuales de stock de transformadores en reserva.
-        </p>
-
-        <div className="space-y-4">
-
-        {/* 4 KPI cards — drag & drop reordering */}
-        <DndContext sensors={kpiSensors} collisionDetection={closestCenter} onDragEnd={handleKpiDragEnd}>
-          <SortableContext items={kpiOrder} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              {kpiOrder.map((id, idx) => {
-                const def = KPI_DEFS.find(k => k.id === id);
-                if (!def) return null;
-                return (
-                  <SortableItem key={id} id={id}>
-                    {handle => (
-                      <KpiStatCard
-                        label={def.label}
-                        value={kpiValues[id] ?? 0}
-                        tone={def.tone}
-                        sub={def.sub}
-                        showSign={def.showSign}
-                        idx={idx}
-                        dragHandle={handle}
-                      />
-                    )}
-                  </SortableItem>
-                );
-              })}
-            </div>
-          </SortableContext>
-        </DndContext>
-
-        {currentLabel && (
-          <p className="text-[11px] text-muted-foreground text-right">
-            Planilla: {currentLabel}
-          </p>
-        )}
-        </div>
-      </div>
-
-      {/* ── Bloques de gráficos (reordenables) ── */}
+      {/* ── Bloques reordenables (filtros, KPIs y gráficos) ── */}
       <DndContext sensors={blockSensors} collisionDetection={closestCenter} onDragEnd={handleBlockDragEnd}>
         <SortableContext items={blockOrder} strategy={verticalListSortingStrategy}>
           <div className="space-y-6">
