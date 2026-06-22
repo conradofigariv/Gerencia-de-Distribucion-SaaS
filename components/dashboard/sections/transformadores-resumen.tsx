@@ -537,7 +537,7 @@ const DEFAULT_KPI_ORDER = KPI_DEFS.map(k => k.id);
 
 const BLOCK_ORDER_KEY = "transformadores_block_order";
 
-const DEFAULT_BLOCK_ORDER = ["variacion", "evolucion", "distribucion", "stockKva", "ultimaPlanilla"];
+const DEFAULT_BLOCK_ORDER = ["filtros", "variacion", "evolucion", "distribucion", "stockKva", "ultimaPlanilla"];
 
 function SortableBlock({ id, children }: { id: string; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -1062,6 +1062,186 @@ export function TransformadoresResumenSection() {
 
   // ── Reorderable chart blocks ──────────────────────────────────────────────
   const blockContent: Record<string, React.ReactNode> = {
+    filtros: (
+      <div
+        className="px-4 py-6 sm:px-6 overflow-hidden"
+        style={{
+          background: "var(--panel)",
+          border: "1px solid var(--hairline)",
+          borderRadius: 14,
+        }}
+      >
+        <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div
+              className="grid place-items-center"
+              style={{
+                width: 30, height: 30, borderRadius: 8,
+                background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
+                border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
+                color: "#86efac",
+              }}
+            >
+              <Package className="w-4 h-4" strokeWidth={2} />
+            </div>
+            <h2 className="text-[20px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.3, margin: 0 }}>
+              Filtros
+            </h2>
+          </div>
+
+          {/* Alarm button */}
+          <div ref={alarmsRef} className="relative">
+            <button
+              onClick={() => setShowAlarms(v => !v)}
+              className={`flex items-center gap-2 pl-3 pr-3.5 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200 ${
+                alarms.length > 0
+                  ? "bg-amber-500/10 border-amber-500/40 text-amber-400 hover:bg-amber-500/15"
+                  : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
+              }`}
+            >
+              {alarms.length > 0 ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+              <span>Alarmas</span>
+              {alarms.length > 0 && (
+                <span className="w-5 h-5 rounded-full bg-amber-500 text-[10px] font-bold text-black flex items-center justify-center">
+                  {alarms.length}
+                </span>
+              )}
+            </button>
+
+            {showAlarms && (
+              <div className="absolute right-0 top-full mt-2 w-[420px] bg-card border border-border rounded-2xl shadow-2xl z-50">
+                {/* Panel header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-border rounded-t-2xl">
+                  <div className="flex items-center gap-2">
+                    <BellRing className="w-4 h-4 text-amber-400" />
+                    <span className="text-sm font-semibold text-foreground">Configurar alarmas de stock</span>
+                  </div>
+                  <button onClick={() => setShowAlarms(false)} className="text-muted-foreground hover:text-foreground transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Existing alarms */}
+                {alarms.length > 0 && (
+                  <div className="px-4 py-3 space-y-2 border-b border-border max-h-52 overflow-y-auto">
+                    {alarms.map(a => {
+                      const parts = [
+                        a.potencia && `${a.potencia} kVA`,
+                        a.relacion && (a.relacion === "33" ? "33/0,4 kV" : "13,2/0,4 kV"),
+                        a.fases && (a.fases === "mono" ? "Mono" : "Tri"),
+                        a.zona,
+                      ].filter(Boolean);
+                      return (
+                        <div key={a.id} className="flex items-center justify-between gap-2 bg-secondary/50 rounded-lg px-3 py-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-foreground truncate">
+                              {parts.length ? parts.join(" · ") : "Todos"}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">Umbral: stock neto ≤ {a.threshold}</p>
+                          </div>
+                          <button onClick={() => removeAlarm(a.id)} className="text-muted-foreground hover:text-red-400 transition-colors shrink-0">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* New alarm form */}
+                <div className="px-4 py-3 space-y-3 rounded-b-2xl">
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Nueva alarma</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <FilterSelect value={newAlarm.potencia} onChange={v => setNewAlarm(p => ({ ...p, potencia: v }))} placeholder="Potencia" options={(newAlarm.relacion === "33" ? POT_33 : POT_13).map(k => ({ value: String(k), label: `${k} kVA` }))} />
+                    <FilterSelect value={newAlarm.relacion} onChange={v => setNewAlarm(p => ({ ...p, relacion: v, potencia: "" }))} placeholder="Relación" options={[{ value: "13", label: "13,2/0,4 kV" }, { value: "33", label: "33/0,4 kV" }]} />
+                    <FilterSelect value={newAlarm.fases} onChange={v => setNewAlarm(p => ({ ...p, fases: v }))} placeholder="Fases" options={[{ value: "mono", label: "Monofásico" }, { value: "tri", label: "Trifásico" }]} />
+                    <FilterSelect value={newAlarm.zona} onChange={v => setNewAlarm(p => ({ ...p, zona: v }))} placeholder="Zona" options={availableZonas.map(z => ({ value: z, label: z }))} />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 flex-1 bg-secondary/50 border border-border rounded-xl px-3 py-2">
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">Stock neto ≤</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={newAlarm.threshold}
+                        onChange={e => setNewAlarm(p => ({ ...p, threshold: Number(e.target.value) }))}
+                        className="flex-1 bg-transparent text-sm font-semibold text-foreground focus:outline-none w-0 min-w-0"
+                      />
+                    </div>
+                    <button
+                      onClick={addAlarm}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-accent text-accent-foreground text-sm font-semibold hover:bg-accent/90 transition-colors shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Agregar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        <p className="ml-[42px] mb-7 text-[14.5px]" style={{ color: "oklch(0.58 0 0)" }}>
+          Filtrá por año, mes, potencia, relación, fases o zona para ver los indicadores actuales.
+        </p>
+
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          <MultiSelect
+            placeholder="Año"
+            noun="años"
+            values={filterAnos}
+            onChange={setFilterAnos}
+            options={availableYears.map(y => ({ value: y, label: y }))}
+          />
+          <MultiSelect
+            placeholder="Mes"
+            noun="meses"
+            values={filterMeses}
+            onChange={setFilterMeses}
+            options={MONTHS.map(m => ({ value: m.value, label: m.label }))}
+          />
+          <FilterSelect
+            fullWidth
+            value={filterPotencia}
+            onChange={setFilterPotencia}
+            placeholder="Potencia"
+            options={(filterRelacion === "33" ? POT_33 : POT_13).map(k => ({ value: String(k), label: `${k} kVA` }))}
+          />
+          <FilterSelect
+            fullWidth
+            value={filterRelacion}
+            onChange={v => { setFilterRelacion(v); setFilterPotencia(""); }}
+            placeholder="Relación"
+            options={[{ value: "13", label: "13,2/0,4 kV" }, { value: "33", label: "33/0,4 kV" }]}
+          />
+          <FilterSelect
+            fullWidth
+            value={filterFases}
+            onChange={setFilterFases}
+            placeholder="Fases"
+            options={[{ value: "mono", label: "Monofásico" }, { value: "tri", label: "Trifásico" }]}
+          />
+          <FilterSelect
+            fullWidth
+            value={filterZona}
+            onChange={setFilterZona}
+            placeholder="Zona"
+            options={availableZonas.map(z => ({ value: z, label: z }))}
+          />
+          </div>
+
+          {(filterAnos.length || filterMeses.length || filterPotencia || filterRelacion || filterFases || filterZona) && (
+            <button
+              onClick={() => { setFilterAnos([]); setFilterMeses([]); setFilterPotencia(""); setFilterRelacion(""); setFilterFases(""); setFilterZona(""); }}
+              className="px-3.5 py-2.5 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-secondary border border-border transition-colors"
+            >
+              Limpiar
+            </button>
+          )}
+        </div>
+      </div>
+    ),
     variacion: (
       <div className="space-y-6">
         <ChartPanel title="Gráfico de Variación Neta" subtitle={`Stock neto en comparación con ${weekly ? "la semana anterior" : "el mes anterior"}`}>
@@ -1484,7 +1664,7 @@ export function TransformadoresResumenSection() {
         </div>
       </div>
 
-      {/* ── Filtros y Stock de Reserva ── */}
+      {/* ── Stock de Reserva ── */}
       <div
         className="px-4 py-6 sm:px-6 overflow-hidden"
         style={{
@@ -1510,161 +1690,10 @@ export function TransformadoresResumenSection() {
           </h2>
         </div>
         <p className="ml-[42px] mb-7 text-[14.5px]" style={{ color: "oklch(0.58 0 0)" }}>
-          Filtrá por año, mes, potencia, relación, fases o zona para ver los indicadores actuales.
+          Indicadores actuales de stock de transformadores en reserva.
         </p>
 
         <div className="space-y-4">
-
-        {/* Filters row */}
-        <div className="space-y-2">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-          <MultiSelect
-            placeholder="Año"
-            noun="años"
-            values={filterAnos}
-            onChange={setFilterAnos}
-            options={availableYears.map(y => ({ value: y, label: y }))}
-          />
-          <MultiSelect
-            placeholder="Mes"
-            noun="meses"
-            values={filterMeses}
-            onChange={setFilterMeses}
-            options={MONTHS.map(m => ({ value: m.value, label: m.label }))}
-          />
-          <FilterSelect
-            fullWidth
-            value={filterPotencia}
-            onChange={setFilterPotencia}
-            placeholder="Potencia"
-            options={(filterRelacion === "33" ? POT_33 : POT_13).map(k => ({ value: String(k), label: `${k} kVA` }))}
-          />
-          <FilterSelect
-            fullWidth
-            value={filterRelacion}
-            onChange={v => { setFilterRelacion(v); setFilterPotencia(""); }}
-            placeholder="Relación"
-            options={[{ value: "13", label: "13,2/0,4 kV" }, { value: "33", label: "33/0,4 kV" }]}
-          />
-          <FilterSelect
-            fullWidth
-            value={filterFases}
-            onChange={setFilterFases}
-            placeholder="Fases"
-            options={[{ value: "mono", label: "Monofásico" }, { value: "tri", label: "Trifásico" }]}
-          />
-          <FilterSelect
-            fullWidth
-            value={filterZona}
-            onChange={setFilterZona}
-            placeholder="Zona"
-            options={availableZonas.map(z => ({ value: z, label: z }))}
-          />
-          </div>
-
-          <div className="flex items-center gap-2">
-          {(filterAnos.length || filterMeses.length || filterPotencia || filterRelacion || filterFases || filterZona) && (
-            <button
-              onClick={() => { setFilterAnos([]); setFilterMeses([]); setFilterPotencia(""); setFilterRelacion(""); setFilterFases(""); setFilterZona(""); }}
-              className="px-3.5 py-2.5 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-secondary border border-border transition-colors"
-            >
-              Limpiar
-            </button>
-          )}
-
-          {/* Alarm button */}
-          <div ref={alarmsRef} className="relative ml-auto">
-            <button
-              onClick={() => setShowAlarms(v => !v)}
-              className={`flex items-center gap-2 pl-3 pr-3.5 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200 ${
-                alarms.length > 0
-                  ? "bg-amber-500/10 border-amber-500/40 text-amber-400 hover:bg-amber-500/15"
-                  : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
-              }`}
-            >
-              {alarms.length > 0 ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-              <span>Alarmas</span>
-              {alarms.length > 0 && (
-                <span className="w-5 h-5 rounded-full bg-amber-500 text-[10px] font-bold text-black flex items-center justify-center">
-                  {alarms.length}
-                </span>
-              )}
-            </button>
-
-            {showAlarms && (
-              <div className="absolute right-0 top-full mt-2 w-[420px] bg-card border border-border rounded-2xl shadow-2xl z-50">
-                {/* Panel header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-border rounded-t-2xl">
-                  <div className="flex items-center gap-2">
-                    <BellRing className="w-4 h-4 text-amber-400" />
-                    <span className="text-sm font-semibold text-foreground">Configurar alarmas de stock</span>
-                  </div>
-                  <button onClick={() => setShowAlarms(false)} className="text-muted-foreground hover:text-foreground transition-colors">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* Existing alarms */}
-                {alarms.length > 0 && (
-                  <div className="px-4 py-3 space-y-2 border-b border-border max-h-52 overflow-y-auto">
-                    {alarms.map(a => {
-                      const parts = [
-                        a.potencia && `${a.potencia} kVA`,
-                        a.relacion && (a.relacion === "33" ? "33/0,4 kV" : "13,2/0,4 kV"),
-                        a.fases && (a.fases === "mono" ? "Mono" : "Tri"),
-                        a.zona,
-                      ].filter(Boolean);
-                      return (
-                        <div key={a.id} className="flex items-center justify-between gap-2 bg-secondary/50 rounded-lg px-3 py-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-foreground truncate">
-                              {parts.length ? parts.join(" · ") : "Todos"}
-                            </p>
-                            <p className="text-[11px] text-muted-foreground">Umbral: stock neto ≤ {a.threshold}</p>
-                          </div>
-                          <button onClick={() => removeAlarm(a.id)} className="text-muted-foreground hover:text-red-400 transition-colors shrink-0">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* New alarm form */}
-                <div className="px-4 py-3 space-y-3 rounded-b-2xl">
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Nueva alarma</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <FilterSelect value={newAlarm.potencia} onChange={v => setNewAlarm(p => ({ ...p, potencia: v }))} placeholder="Potencia" options={(newAlarm.relacion === "33" ? POT_33 : POT_13).map(k => ({ value: String(k), label: `${k} kVA` }))} />
-                    <FilterSelect value={newAlarm.relacion} onChange={v => setNewAlarm(p => ({ ...p, relacion: v, potencia: "" }))} placeholder="Relación" options={[{ value: "13", label: "13,2/0,4 kV" }, { value: "33", label: "33/0,4 kV" }]} />
-                    <FilterSelect value={newAlarm.fases} onChange={v => setNewAlarm(p => ({ ...p, fases: v }))} placeholder="Fases" options={[{ value: "mono", label: "Monofásico" }, { value: "tri", label: "Trifásico" }]} />
-                    <FilterSelect value={newAlarm.zona} onChange={v => setNewAlarm(p => ({ ...p, zona: v }))} placeholder="Zona" options={availableZonas.map(z => ({ value: z, label: z }))} />
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 flex-1 bg-secondary/50 border border-border rounded-xl px-3 py-2">
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">Stock neto ≤</span>
-                      <input
-                        type="number"
-                        min={1}
-                        value={newAlarm.threshold}
-                        onChange={e => setNewAlarm(p => ({ ...p, threshold: Number(e.target.value) }))}
-                        className="flex-1 bg-transparent text-sm font-semibold text-foreground focus:outline-none w-0 min-w-0"
-                      />
-                    </div>
-                    <button
-                      onClick={addAlarm}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-accent text-accent-foreground text-sm font-semibold hover:bg-accent/90 transition-colors shrink-0"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Agregar
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-          </div>
-        </div>
 
         {/* 4 KPI cards — drag & drop reordering */}
         <DndContext sensors={kpiSensors} collisionDetection={closestCenter} onDragEnd={handleKpiDragEnd}>
