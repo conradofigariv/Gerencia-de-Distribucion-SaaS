@@ -1656,20 +1656,8 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
         </div>
       )}
 
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-          <div style={{ width: 4, height: 30, borderRadius: 2, background: "var(--accent-green)" }} />
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "oklch(0.95 0 0)", letterSpacing: "-0.015em" }}>Adjudicación</div>
-            <div style={{ fontSize: 13, color: "oklch(0.55 0 0)", marginTop: 4 }}>
-              {licitacion.numero_sic ? (
-                <>Licitación SIC <span style={{ fontFamily: "ui-monospace, monospace", color: "var(--accent-green)", fontWeight: 600 }}>{licitacion.numero_sic}</span></>
-              ) : "Licitación"}
-              {licitacion.titulo ? <> · {licitacion.titulo}</> : null}
-            </div>
-          </div>
-        </div>
+      {/* Currency toggle */}
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
           {!canShowUSD ? (
             <span style={{ fontSize: 10.5, color: "oklch(0.42 0 0)", fontFamily: "ui-monospace, monospace" }}>Cargá el Dólar OP para ver en USD</span>
