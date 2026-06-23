@@ -1434,6 +1434,8 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
   const [adjMap, setAdjMap] = useState<Map<string, string>>(new Map()); // renglonId → oferenteId
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const [showUSD, setShowUSD] = useState(false);
+  const [ordersOverride, setOrdersOverride] = useState<Map<string, string[]>>(new Map());
+  const [dragInfo, setDragInfo] = useState<{ renglonId: string; oferenteId: string } | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -1543,6 +1545,34 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
     finally { setSaving((p) => { const n = new Set(p); n.delete(renglonId); return n; }); }
   };
 
+  const initialsOf = (nombre: string): string => {
+    const w = nombre.replace(/[.]/g, "").split(/\s+/).filter(Boolean);
+    return ((w[0]?.[0] ?? "") + (w[1]?.[0] ?? "")).toUpperCase();
+  };
+
+  const AVATAR_PALETTE = [
+    { bg: "oklch(0.32 0.07 185 / 0.4)", fg: "oklch(0.80 0.10 185)" },
+    { bg: "oklch(0.34 0.10 300 / 0.4)", fg: "oklch(0.82 0.12 300)" },
+    { bg: "oklch(0.36 0.10 70 / 0.4)",  fg: "oklch(0.82 0.12 70)"  },
+    { bg: "oklch(0.34 0.10 250 / 0.4)", fg: "oklch(0.82 0.10 250)" },
+    { bg: "oklch(0.34 0.10 25 / 0.4)",  fg: "oklch(0.82 0.12 25)"  },
+  ];
+  const avatarOf = (idx: number) => AVATAR_PALETTE[idx % AVATAR_PALETTE.length];
+
+  const reorderOferentes = (renglonId: string, baseOrder: string[], fromId: string, toId: string) => {
+    setOrdersOverride((prev) => {
+      const cur = prev.get(renglonId) ?? baseOrder;
+      const arr = [...cur];
+      const from = arr.indexOf(fromId), to = arr.indexOf(toId);
+      if (from < 0 || to < 0 || from === to) return prev;
+      arr.splice(from, 1);
+      arr.splice(to, 0, fromId);
+      const next = new Map(prev);
+      next.set(renglonId, arr);
+      return next;
+    });
+  };
+
   if (loading) return (
     <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
       <Loader2 className="w-4 h-4 animate-spin" /> Cargando...
@@ -1563,6 +1593,53 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
 
   const missingRates = !fdSic || !fdOp;
 
+  // KPI banner: presupuesto SIC oficial vs. mejor combinación posible (×cantidad)
+  const sicQtyTotals = renglones.reduce(
+    (acc, r) => {
+      const sic = calcSicTotals(r);
+      if (!sic) return acc;
+      return {
+        ars: acc.ars + (sic.arsQty ?? 0), arsOk: acc.arsOk && sic.arsQty !== null,
+        usd: acc.usd + (sic.usdQty ?? 0), usdOk: acc.usdOk && sic.usdQty !== null,
+      };
+    },
+    { ars: 0, arsOk: true, usd: 0, usdOk: true },
+  );
+  const bestQtyTotals = renglones.reduce(
+    (acc, r) => {
+      const sic = calcSicTotals(r);
+      let bestArs: number | null = null, bestUsd: number | null = null;
+      for (const of_ of oferentes) {
+        const tot = calcOfertaTotals(r, of_.id);
+        if (tot.cobertura === r.items.length && tot.arsQty !== null && (bestArs === null || tot.arsQty < bestArs)) {
+          bestArs = tot.arsQty; bestUsd = tot.usdQty;
+        }
+      }
+      const ars = bestArs ?? sic?.arsQty ?? null;
+      const usd = bestUsd ?? sic?.usdQty ?? null;
+      return {
+        ars: acc.ars + (ars ?? 0), arsOk: acc.arsOk && ars !== null,
+        usd: acc.usd + (usd ?? 0), usdOk: acc.usdOk && usd !== null,
+      };
+    },
+    { ars: 0, arsOk: true, usd: 0, usdOk: true },
+  );
+  const ahorroArs = sicQtyTotals.arsOk && bestQtyTotals.arsOk ? sicQtyTotals.ars - bestQtyTotals.ars : null;
+  const ahorroUsd = sicQtyTotals.usdOk && bestQtyTotals.usdOk ? sicQtyTotals.usd - bestQtyTotals.usd : null;
+  const ahorroPct = ahorroArs !== null && sicQtyTotals.ars > 0 ? (ahorroArs / sicQtyTotals.ars) * 100 : null;
+
+  const kpiCards: { label: string; value: string; sub?: string; color?: string }[] = [
+    { label: "Presupuesto SIC oficial", value: fmt(sicQtyTotals.arsOk ? sicQtyTotals.ars : null, sicQtyTotals.usdOk ? sicQtyTotals.usd : null) ?? "—" },
+    { label: "Mejor combinación de oferentes", value: fmt(bestQtyTotals.arsOk ? bestQtyTotals.ars : null, bestQtyTotals.usdOk ? bestQtyTotals.usd : null) ?? "—" },
+    {
+      label: "Ahorro potencial total",
+      value: ahorroArs !== null ? fmt(ahorroArs, ahorroUsd) ?? "—" : "—",
+      sub: ahorroPct !== null ? `${ahorroPct >= 0 ? "" : "+"}${(-ahorroPct).toFixed(1)}% vs. SIC` : undefined,
+      color: ahorroArs !== null ? (ahorroArs >= 0 ? "var(--accent-green)" : "var(--accent-red)") : undefined,
+    },
+    { label: "Oferentes participando", value: String(oferentes.length) },
+  ];
+
   return (
     <div className="space-y-4">
       {missingRates && (
@@ -1571,11 +1648,30 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
         </div>
       )}
 
+      {/* KPI banner */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {kpiCards.map((k) => (
+          <div key={k.label} style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)", borderRadius: 12, padding: "12px 14px" }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "oklch(0.46 0 0)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+              {k.label}
+            </div>
+            <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 17, fontWeight: 700, color: k.color ?? "oklch(0.92 0 0)" }}>
+              {k.value}
+            </div>
+            {k.sub && (
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: k.color ?? "oklch(0.55 0 0)", marginTop: 2 }}>{k.sub}</div>
+            )}
+          </div>
+        ))}
+      </div>
+
       {/* Currency toggle */}
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
-        {!canShowUSD && (
+        {!canShowUSD ? (
           <span style={{ fontSize: 12, color: "oklch(0.40 0 0)" }}>Cargá el Dólar OP para ver en USD</span>
-        )}
+        ) : showUSD ? (
+          <span style={{ fontSize: 12, color: "oklch(0.40 0 0)" }}>1 USD = {fdOp!.toLocaleString("es-AR")} ARS ref.</span>
+        ) : null}
         <div style={{ display: "inline-flex", borderRadius: 8, border: "1px solid oklch(1 0 0 / 0.10)", overflow: "hidden" }}>
           {(["ARS", "USD"] as const).map((cur) => {
             const isActive = cur === (showUSD ? "USD" : "ARS");
@@ -1605,6 +1701,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
         const sicARS = sic?.arsUnit ?? null; // unitario ARS used for % comparison
         const adjOfId = adjMap.get(r.id);
         const isSaving = saving.has(r.id);
+        const nombreRenglon = r.items[0]?.descripcion || r.items[0]?.matricula || "";
 
         // Ranking: use arsUnit for consistent comparison
         const pctByOf = new Map<string, number>();
@@ -1614,12 +1711,11 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
           if (pct !== null) pctByOf.set(of_.id, pct);
         }
         const rankedOfIds = [...pctByOf.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id);
-        const rankColor = (ofId: string): string => {
-          const idx = rankedOfIds.indexOf(ofId);
-          if (idx === 0) return "var(--accent-green)";
-          if (idx === 1) return "var(--accent-amber)";
-          return "oklch(0.92 0 0)";
-        };
+        const restIds = oferentes.map((o) => o.id).filter((id) => !rankedOfIds.includes(id));
+        const baseOrder = [...rankedOfIds, ...restIds];
+        const order = ordersOverride.get(r.id) ?? baseOrder;
+        const orderedOferentes = order.map((id) => oferentes.find((o) => o.id === id)).filter((o): o is Oferente => !!o);
+        const bestOfId = rankedOfIds[0];
 
         return (
           <div key={r.id} style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)", borderRadius: 12 }}>
@@ -1627,8 +1723,11 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
             <div style={{ padding: "11px 16px", borderBottom: "1px solid oklch(1 0 0 / 0.06)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "oklch(0.48 0 0)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Renglón</span>
               <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 18, fontWeight: 700, color: "var(--accent-green)" }}>{r.numero}</span>
+              {nombreRenglon && (
+                <span style={{ fontSize: 12.5, color: "oklch(0.58 0 0)", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nombreRenglon}</span>
+              )}
               {r.condicion_adjudicacion && (
-                <span style={{ fontSize: 12.5, color: "oklch(0.58 0 0)" }}>{r.condicion_adjudicacion}</span>
+                <span style={{ fontSize: 12.5, color: "oklch(0.42 0 0)" }}>· {r.condicion_adjudicacion}</span>
               )}
               {/* SIC totals: unitario + ×cantidad, clickeable para toggle divisa */}
               {sic !== null && (
@@ -1666,163 +1765,146 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
               )}
             </div>
 
-            {/* Comparison table */}
-            <div className="overflow-x-auto">
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.06)" }}>
-                    <th style={{ textAlign: "left", padding: "9px 16px", fontSize: 11, fontWeight: 600, color: "oklch(0.43 0 0)", textTransform: "uppercase", letterSpacing: "0.05em", width: 130 }}>
-                      Criterio
-                    </th>
-                    {oferentes.map((of) => {
-                      const isAdj = adjOfId === of.id;
-                      return (
-                        <th key={of.id} style={{ textAlign: "center", padding: "11px 16px", fontSize: 15.5, fontWeight: 600, minWidth: 200, color: isAdj ? "var(--accent-green)" : "oklch(0.85 0 0)", background: isAdj ? "oklch(0.24 0.04 155 / 0.20)" : "transparent", borderBottom: isAdj ? "2px solid color-mix(in oklab, var(--accent-emerald) 55%, transparent)" : "none" }}>
+            {/* Offer cards grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
+              {orderedOferentes.map((of, idx) => {
+                const tot = calcOfertaTotals(r, of.id);
+                const complete = tot.cobertura === r.items.length;
+                const pct = complete ? calcPct(tot.arsUnit, sicARS) : null;
+                const over = pct !== null && pct > umbral;
+                const isAdj = adjOfId === of.id;
+                const isBest = of.id === bestOfId;
+                const rankIdx = rankedOfIds.indexOf(of.id);
+                const medal = rankIdx === 0 ? "🥇" : rankIdx === 1 ? "🥈" : rankIdx === 2 ? "🥉" : null;
+                const cumple = evalsMap.get(`${r.id}|${of.id}`)?.cumple ?? null;
+                const av = avatarOf(oferentes.findIndex((o2) => o2.id === of.id));
+                const ahorroOfArs = pct !== null && sic?.arsQty !== null && sic?.arsQty !== undefined && tot.arsQty !== null ? sic.arsQty - tot.arsQty : null;
+                const barWidth = pct !== null ? Math.min(Math.abs(pct), 100) : 0;
+                const isDragging = dragInfo?.renglonId === r.id && dragInfo?.oferenteId === of.id;
+
+                return (
+                  <div
+                    key={of.id}
+                    draggable
+                    onDragStart={() => setDragInfo({ renglonId: r.id, oferenteId: of.id })}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (dragInfo && dragInfo.renglonId === r.id && dragInfo.oferenteId !== of.id) {
+                        reorderOferentes(r.id, baseOrder, dragInfo.oferenteId, of.id);
+                      }
+                      setDragInfo(null);
+                    }}
+                    onDragEnd={() => setDragInfo(null)}
+                    style={{
+                      background: "var(--panel)",
+                      border: isAdj ? "1px solid color-mix(in oklab, var(--accent-emerald) 55%, transparent)" : isBest ? "1px solid color-mix(in oklab, var(--accent-emerald) 35%, transparent)" : "1px solid var(--hairline)",
+                      borderRadius: 12, padding: "12px 14px",
+                      boxShadow: isAdj ? "0 0 0 1px color-mix(in oklab, var(--accent-emerald) 30%, transparent), 0 6px 16px -8px color-mix(in oklab, var(--accent-emerald) 40%, transparent)" : "none",
+                      cursor: "grab", opacity: isDragging ? 0.4 : 1,
+                      display: "flex", flexDirection: "column", gap: 8,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{
+                        width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        background: av.bg, color: av.fg, fontSize: 11.5, fontWeight: 700,
+                      }}>
+                        {initialsOf(of.nombre)}
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, color: "oklch(0.90 0 0)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {of.nombre}
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* Precio total ofertado: unitario + ×cantidad, celdas clickeables para toggle */}
-                  <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.04)" }}>
-                    <td style={{ padding: "10px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500, verticalAlign: "top" }}>
-                      Precio total<br />
-                      <span style={{ fontSize: 11, color: "oklch(0.40 0 0)", fontWeight: 400 }}>unitario / ×cant.</span>
-                    </td>
-                    {oferentes.map((of) => {
-                      const tot = calcOfertaTotals(r, of.id);
-                      const isAdj = adjOfId === of.id;
-                      const complete = tot.cobertura === r.items.length;
-                      const unitStr = fmt(tot.arsUnit, tot.usdUnit);
-                      const qtyStr  = fmt(tot.arsQty,  tot.usdQty);
-                      return (
-                        <td key={of.id}
-                          onClick={() => canShowUSD && setShowUSD((v) => !v)}
-                          style={{
-                            textAlign: "center", padding: "10px 12px", verticalAlign: "top",
-                            background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent",
-                            cursor: canShowUSD ? "pointer" : "default",
-                          }}
-                          title={canShowUSD ? `Clic para ver en ${showUSD ? "ARS" : "USD"}` : undefined}
-                        >
-                          {complete && unitStr !== null ? (
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                              <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 13, color: "oklch(0.68 0 0)", fontWeight: 400 }}>
-                                {unitStr}
-                              </span>
-                              <div style={{ width: "100%", height: 1, background: "oklch(1 0 0 / 0.06)" }} />
-                              <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 15, color: "oklch(0.92 0 0)", fontWeight: 600 }}>
-                                {qtyStr ?? "—"}
+                        </div>
+                        {medal && <div style={{ fontSize: 11, color: "var(--accent-amber)", fontWeight: 600 }}>{medal} {isBest ? "Mejor oferta" : `#${rankIdx + 1}`}</div>}
+                      </div>
+                      {isAdj && <span style={{ fontSize: 16 }} title="Adjudicado">✓</span>}
+                    </div>
+
+                    {complete ? (
+                      <>
+                        <div>
+                          <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 19, fontWeight: 700, color: "oklch(0.94 0 0)" }}>
+                            {fmt(tot.arsQty, tot.usdQty) ?? "—"}
+                          </div>
+                          <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 11.5, color: "oklch(0.50 0 0)" }}>
+                            {fmt(tot.arsUnit, tot.usdUnit) ?? "—"} unitario
+                          </div>
+                        </div>
+
+                        {pct !== null && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{
+                              fontSize: 12.5, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                              color: over ? "var(--accent-red)" : pct < 0 ? "var(--accent-green)" : "var(--accent-amber)",
+                              background: over ? "color-mix(in oklab, var(--accent-red) 14%, transparent)" : pct < 0 ? "color-mix(in oklab, var(--accent-green) 14%, transparent)" : "color-mix(in oklab, var(--accent-amber) 14%, transparent)",
+                            }}>
+                              {pct < 0 ? "▼" : "▲"} {pct >= 0 ? "+" : ""}{pct.toFixed(2)}% vs. SIC
+                            </span>
+                            {over && <span style={{ fontSize: 11, color: "var(--accent-red)" }}>⚠ supera umbral</span>}
+                          </div>
+                        )}
+
+                        {ahorroOfArs !== null && (
+                          <div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "oklch(0.46 0 0)", marginBottom: 3 }}>
+                              <span>Ahorro vs. SIC</span>
+                              <span style={{ fontFamily: "ui-monospace, monospace", color: ahorroOfArs >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>
+                                {ahorroOfArs >= 0 ? "" : "−"}{fmtARS(Math.abs(ahorroOfArs))}
                               </span>
                             </div>
-                          ) : tot.cobertura > 0 ? (
-                            <span style={{ fontSize: 13.5, color: "oklch(0.52 0 0)" }}>parcial</span>
-                          ) : (
-                            <span style={{ fontSize: 14.5, color: "oklch(0.33 0 0)" }}>—</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
+                            <div style={{ height: 5, borderRadius: 3, background: "oklch(0.30 0.005 270)", overflow: "hidden" }}>
+                              <div style={{ height: "100%", width: `${barWidth}%`, borderRadius: 3, background: ahorroOfArs >= 0 ? "var(--accent-green)" : "var(--accent-red)" }} />
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div style={{ fontSize: 13, color: "oklch(0.48 0 0)", padding: "6px 0" }}>
+                        {tot.cobertura > 0 ? `Cobertura parcial (${tot.cobertura}/${r.items.length})` : "Sin ofertar"}
+                      </div>
+                    )}
 
-                  {/* % vs SIC (based on arsUnit for consistency) */}
-                  <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.04)" }}>
-                    <td style={{ padding: "9px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500 }}>% vs. SIC</td>
-                    {oferentes.map((of) => {
-                      const tot = calcOfertaTotals(r, of.id);
-                      const pct = tot.cobertura === r.items.length ? calcPct(tot.arsUnit, sicARS) : null;
-                      const isAdj = adjOfId === of.id;
-                      const over = pct !== null && pct > umbral;
-                      return (
-                        <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
-                          {pct !== null ? (
-                            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 16, fontWeight: 700, color: over ? "var(--accent-red)" : rankColor(of.id) }}>
-                              {pct >= 0 ? "+" : ""}{pct.toFixed(2)}%
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: 14.5, color: "oklch(0.33 0 0)" }}>—</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      {cumple === true ? (
+                        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--accent-green)" }}>✓ Cumple técnico</span>
+                      ) : cumple === false ? (
+                        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--accent-red)" }}>✗ No cumple</span>
+                      ) : evalsMap.has(`${r.id}|${of.id}`) ? (
+                        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--accent-amber)" }}>⏳ Pendiente</span>
+                      ) : (
+                        <span style={{ fontSize: 11.5, color: "oklch(0.42 0 0)" }}>Sin evaluar</span>
+                      )}
+                      <span style={{ fontSize: 11.5, color: "oklch(0.42 0 0)" }}>·</span>
+                      {r.items.length === 0 ? (
+                        <span style={{ fontSize: 11.5, color: "oklch(0.42 0 0)" }}>—</span>
+                      ) : tot.cobertura === r.items.length ? (
+                        <span style={{ fontSize: 11.5, color: "var(--accent-green)" }}>✓ Completo</span>
+                      ) : tot.cobertura > 0 ? (
+                        <span style={{ fontSize: 11.5, color: "var(--accent-amber)" }}>⚠ {tot.cobertura}/{r.items.length}</span>
+                      ) : (
+                        <span style={{ fontSize: 11.5, color: "oklch(0.42 0 0)" }}>Sin ofertar</span>
+                      )}
+                    </div>
 
-                  {/* Técnica */}
-                  <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.04)" }}>
-                    <td style={{ padding: "9px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500 }}>Técnica</td>
-                    {oferentes.map((of) => {
-                      const cumple = evalsMap.get(`${r.id}|${of.id}`)?.cumple ?? null;
-                      const isAdj = adjOfId === of.id;
-                      return (
-                        <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
-                          {cumple === true ? (
-                            <span style={{ fontSize: 14, color: "var(--accent-green)", fontWeight: 500 }}>✓ Cumple</span>
-                          ) : cumple === false ? (
-                            <span style={{ fontSize: 14, color: "var(--accent-red)", fontWeight: 500 }}>✗ No cumple</span>
-                          ) : cumple === null && evalsMap.has(`${r.id}|${of.id}`) ? (
-                            <span style={{ fontSize: 14, color: "var(--accent-amber)", fontWeight: 500 }}>⏳ Pendiente</span>
-                          ) : (
-                            <span style={{ fontSize: 14, color: "oklch(0.42 0 0)" }}>Sin evaluar</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-
-                  {/* Cobertura */}
-                  <tr style={{ borderBottom: "1px solid oklch(1 0 0 / 0.06)" }}>
-                    <td style={{ padding: "9px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 500 }}>Cobertura</td>
-                    {oferentes.map((of) => {
-                      const { cobertura } = calcOfertaTotals(r, of.id);
-                      const total = r.items.length;
-                      const isAdj = adjOfId === of.id;
-                      return (
-                        <td key={of.id} style={{ textAlign: "center", padding: "9px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
-                          {total === 0 ? (
-                            <span style={{ fontSize: 14, color: "oklch(0.42 0 0)" }}>—</span>
-                          ) : cobertura === total ? (
-                            <span style={{ fontSize: 14, color: "var(--accent-green)", fontWeight: 500 }}>✓ Completo</span>
-                          ) : cobertura > 0 ? (
-                            <span style={{ fontSize: 14, color: "var(--accent-amber)" }}>⚠ {cobertura}/{total}</span>
-                          ) : (
-                            <span style={{ fontSize: 14, color: "oklch(0.42 0 0)" }}>Sin ofertar</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-
-                  {/* Adjudicar row */}
-                  <tr>
-                    <td style={{ padding: "10px 16px", fontSize: 13.5, color: "oklch(0.58 0 0)", fontWeight: 600 }}>Adjudicar</td>
-                    {oferentes.map((of) => {
-                      const isAdj = adjOfId === of.id;
-                      return (
-                        <td key={of.id} style={{ textAlign: "center", padding: "10px 12px", background: isAdj ? "oklch(0.22 0.03 155 / 0.12)" : "transparent" }}>
-                          <button
-                            onClick={() => handleAdjudicar(r.id, of.id)}
-                            disabled={isSaving}
-                            style={{
-                              padding: "9px 22px", borderRadius: 8, border: "none", cursor: isSaving ? "wait" : "pointer",
-                              background: isAdj ? "var(--accent-green)" : "oklch(0.27 0.005 270)",
-                              color: isAdj ? "oklch(0.10 0.02 155)" : "oklch(0.62 0 0)",
-                              fontSize: 14, fontWeight: 600,
-                              transition: "background .15s, color .15s",
-                              boxShadow: isAdj ? "0 2px 10px -4px color-mix(in oklab, var(--accent-emerald) 50%, transparent)" : "none",
-                            }}
-                            onMouseEnter={(e) => { if (!isAdj && !isSaving) e.currentTarget.style.background = "oklch(0.32 0.005 270)"; }}
-                            onMouseLeave={(e) => { if (!isAdj) e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
-                          >
-                            {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin inline" /> : isAdj ? "✓ Adjudicado" : "Adjudicar"}
-                          </button>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                </tbody>
-              </table>
+                    <button
+                      onClick={() => handleAdjudicar(r.id, of.id)}
+                      disabled={isSaving}
+                      style={{
+                        marginTop: "auto", padding: "8px 0", borderRadius: 8, border: "none", cursor: isSaving ? "wait" : "pointer",
+                        background: isAdj ? "var(--accent-green)" : "oklch(0.27 0.005 270)",
+                        color: isAdj ? "oklch(0.10 0.02 155)" : "oklch(0.62 0 0)",
+                        fontSize: 13, fontWeight: 600,
+                        transition: "background .15s, color .15s",
+                      }}
+                      onMouseEnter={(e) => { if (!isAdj && !isSaving) e.currentTarget.style.background = "oklch(0.32 0.005 270)"; }}
+                      onMouseLeave={(e) => { if (!isAdj) e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
+                    >
+                      {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin inline" /> : isAdj ? "✓ Adjudicado — Deshacer" : "Adjudicar"}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         );
