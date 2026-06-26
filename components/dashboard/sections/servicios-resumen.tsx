@@ -9,8 +9,22 @@ import {
   XCircle,
   CalendarClock,
   Loader2,
+  Pencil,
+  Check,
+  RotateCcw,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { toast } from "sonner";
+import {
+  getColumnLabels,
+  saveColumnLabel,
+  resetColumnLabel,
+  resetAllColumnLabels,
+  type ColumnLabelMap,
+} from "@/lib/columnLabels";
+
+// Scope de las etiquetas editables para esta sección.
+const LABELS_SCOPE = "servicios-resumen";
 
 type Alerta = {
   id: string;
@@ -80,6 +94,57 @@ export function ServiciosResumenSection() {
   const [colWidths,    setColWidths]    = useState<Record<string, number>>(DEFAULT_WIDTHS_R);
   const [isResizing,   setIsResizing]   = useState(false);
   const resizing = useRef<{ col: string; startX: number; startW: number } | null>(null);
+
+  // ── Nombres de columna editables (solo visual; la columna real no cambia) ──
+  const [labels,         setLabels]         = useState<ColumnLabelMap>({});
+  const [editingHeaders, setEditingHeaders] = useState(false);
+  const [savingLabels,   setSavingLabels]   = useState(false);
+
+  useEffect(() => { getColumnLabels(LABELS_SCOPE).then(setLabels).catch(() => {}); }, []);
+
+  // Nombre visible de una columna: override del usuario o el label por defecto.
+  const labelOf = (col: string, fallback: string) => labels[col] ?? fallback;
+
+  // Guarda el nuevo nombre de una columna (o lo revierte si queda vacío/igual).
+  const commitLabel = async (col: string, fallback: string, raw: string) => {
+    const next = raw.trim();
+    const current = labels[col] ?? "";
+    if (next === current || (next === "" && !(col in labels))) return;
+    // Optimista
+    setLabels(prev => {
+      const n = { ...prev };
+      if (next === "" || next === fallback) delete n[col];
+      else n[col] = next;
+      return n;
+    });
+    try {
+      if (next === "" || next === fallback) {
+        // Revertir a default = borrar override
+        await resetColumnLabel(LABELS_SCOPE, col);
+      } else {
+        await saveColumnLabel(LABELS_SCOPE, col, next);
+      }
+    } catch (e) {
+      toast.error(`No se pudo guardar el nombre: ${e instanceof Error ? e.message : "error"}`);
+      getColumnLabels(LABELS_SCOPE).then(setLabels).catch(() => {});
+    }
+  };
+
+  // Restaura todos los nombres por defecto.
+  const restoreLabels = async () => {
+    setSavingLabels(true);
+    const prev = labels;
+    setLabels({});
+    try {
+      await resetAllColumnLabels(LABELS_SCOPE);
+      toast.success("Nombres de columna restaurados");
+    } catch (e) {
+      setLabels(prev);
+      toast.error(`No se pudo restaurar: ${e instanceof Error ? e.message : "error"}`);
+    } finally {
+      setSavingLabels(false);
+    }
+  };
 
   // Conteos fijos (siempre activos)
   useEffect(() => {
@@ -337,7 +402,33 @@ export function ServiciosResumenSection() {
               </p>
             )}
           </div>
-          {tableLoading && <Loader2 className="w-4 h-4 text-accent animate-spin" />}
+          <div className="flex items-center gap-2">
+            {tableLoading && <Loader2 className="w-4 h-4 text-accent animate-spin" />}
+            {editingHeaders && (
+              <button
+                onClick={restoreLabels}
+                disabled={savingLabels}
+                title="Restaurar los nombres por defecto"
+                className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground border border-border hover:bg-secondary transition-colors disabled:opacity-40"
+              >
+                {savingLabels ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                Restaurar
+              </button>
+            )}
+            <button
+              onClick={() => setEditingHeaders(v => !v)}
+              title={editingHeaders ? "Terminar de editar nombres" : "Editar los nombres de las columnas"}
+              className={cn(
+                "flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs border transition-colors",
+                editingHeaders
+                  ? "bg-accent/15 text-accent border-accent/40"
+                  : "text-muted-foreground hover:text-foreground border-border hover:bg-secondary"
+              )}
+            >
+              {editingHeaders ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+              {editingHeaders ? "Listo" : "Editar columnas"}
+            </button>
+          </div>
         </div>
 
         {tableLoading ? (
@@ -375,28 +466,45 @@ export function ServiciosResumenSection() {
                           setIsResizing(false);
                         }}
                       >
-                        <span className="block truncate">{c.label}</span>
-                        <div
-                          className="absolute right-0 top-0 h-full w-2 flex items-center justify-center cursor-col-resize group/handle hover:bg-accent/10"
-                          onPointerDown={e => {
-                            e.preventDefault(); e.stopPropagation();
-                            e.currentTarget.setPointerCapture(e.pointerId);
-                            resizing.current = { col: c.db, startX: e.clientX, startW: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 };
-                            setIsResizing(true);
-                          }}
-                          onPointerMove={e => {
-                            if (!resizing.current) return;
-                            const newW = Math.max(50, resizing.current.startW + (e.clientX - resizing.current.startX));
-                            setColWidths(prev => ({ ...prev, [resizing.current!.col]: newW }));
-                          }}
-                          onPointerUp={e => {
-                            e.currentTarget.releasePointerCapture(e.pointerId);
-                            resizing.current = null;
-                            setIsResizing(false);
-                          }}
-                        >
-                          <div className="w-px h-4 bg-border group-hover/handle:bg-accent transition-colors" />
-                        </div>
+                        {editingHeaders ? (
+                          <input
+                            defaultValue={labelOf(c.db, c.label)}
+                            onClick={e => e.stopPropagation()}
+                            onKeyDown={e => {
+                              if (e.key === "Enter")  { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
+                              if (e.key === "Escape") { (e.target as HTMLInputElement).value = labelOf(c.db, c.label); (e.target as HTMLInputElement).blur(); }
+                            }}
+                            onBlur={e => commitLabel(c.db, c.label, e.target.value)}
+                            placeholder={c.label}
+                            className="w-full bg-secondary border border-accent rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-foreground focus:outline-none focus:ring-1 focus:ring-accent normal-case"
+                            style={{ textTransform: "none" }}
+                          />
+                        ) : (
+                          <span className="block truncate" title={labelOf(c.db, c.label)}>{labelOf(c.db, c.label)}</span>
+                        )}
+                        {!editingHeaders && (
+                          <div
+                            className="absolute right-0 top-0 h-full w-2 flex items-center justify-center cursor-col-resize group/handle hover:bg-accent/10"
+                            onPointerDown={e => {
+                              e.preventDefault(); e.stopPropagation();
+                              e.currentTarget.setPointerCapture(e.pointerId);
+                              resizing.current = { col: c.db, startX: e.clientX, startW: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 };
+                              setIsResizing(true);
+                            }}
+                            onPointerMove={e => {
+                              if (!resizing.current) return;
+                              const newW = Math.max(50, resizing.current.startW + (e.clientX - resizing.current.startX));
+                              setColWidths(prev => ({ ...prev, [resizing.current!.col]: newW }));
+                            }}
+                            onPointerUp={e => {
+                              e.currentTarget.releasePointerCapture(e.pointerId);
+                              resizing.current = null;
+                              setIsResizing(false);
+                            }}
+                          >
+                            <div className="w-px h-4 bg-border group-hover/handle:bg-accent transition-colors" />
+                          </div>
+                        )}
                       </th>
                     ))}
                   </tr>
