@@ -13,8 +13,6 @@ const DISPLAY_COLS: { db: string; label: string }[] = [
   { db: "zona",                  label: "ZONA"                    },
   { db: "op",                    label: "OP"                      },
   { db: "op_madre",              label: "OP MADRE"                },
-  { db: "sc",                    label: "SC"                      },
-  { db: "descripcion_sc",        label: "DESCRIPCIÓN DE SC"       },
   { db: "linea",                 label: "LÍNEA"                   },
   { db: "matricula",             label: "MATRICULA"               },
   { db: "descripcion_matricula", label: "DESCRIPCIÓN DE MATRICULA"},
