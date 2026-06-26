@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
@@ -9,8 +9,24 @@ import {
   XCircle,
   CalendarClock,
   Loader2,
+  Pencil,
+  Check,
+  RotateCcw,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { toast } from "sonner";
+import {
+  getColumnLabels,
+  saveColumnLabel,
+  resetColumnLabel,
+  resetAllColumnLabels,
+  type ColumnLabelMap,
+} from "@/lib/columnLabels";
+import { getMatriculasInfo, getFamilies, type ArticuloTipo } from "@/lib/stockFamilies";
+import { normArticulo } from "@/lib/tableroOp";
+
+// Scope de las etiquetas editables para esta sección.
+const LABELS_SCOPE = "servicios-resumen";
 
 type Alerta = {
   id: string;
@@ -28,44 +44,56 @@ const CYCLE_CONSUMO = [30, 40, null] as const;
 type FiltroVencer  = 3 | 4 | null;
 type FiltroConsumo = 30 | 40 | null;
 
+// Columnas por defecto del Resumen, enfocadas en el control de vencimientos de
+// servicios (grano del cubo). `dias_vencer` es calculada (no existe en la BD).
+// Los nombres son editables desde el sistema (ver ui_column_labels).
 const TABLE_COLS: { db: string; label: string }[] = [
-  { db: "zona",                  label: "ZONA"                    },
-  { db: "op",                    label: "OP"                      },
-  { db: "op_madre",              label: "OP MADRE"                },
-  { db: "sc",                    label: "SC"                      },
-  { db: "descripcion_sc",        label: "DESCRIPCIÓN SC"          },
-  { db: "linea",                 label: "LÍNEA"                   },
-  { db: "matricula",             label: "MATRICULA"               },
-  { db: "cantidad",              label: "CANTIDAD"                },
-  { db: "cantidad_recibida",     label: "CANT. RECIBIDA"          },
-  { db: "saldo_linea",           label: "SALDO"                   },
-  { db: "fecha_pactada",         label: "FECHA PACTADA"           },
-  { db: "proveedor",             label: "PROVEEDOR"               },
-  { db: "estado",                label: "ESTADO"                  },
-  { db: "estado_plazo",          label: "E. PLAZO"                },
-  { db: "estado_cantidades",     label: "E. CANT."                },
-  { db: "revision",              label: "REVISION"                },
-  { db: "disponibilidad_meses",  label: "DISPONIB."               },
+  { db: "zona",                  label: "ZONA"            },
+  { db: "op",                    label: "OP"              },
+  { db: "sc",                    label: "SC"              },
+  { db: "matricula",             label: "MATRÍCULA"       },
+  { db: "descripcion_matricula", label: "DESCRIPCIÓN"     },
+  { db: "cantidad",              label: "CANTIDAD"        },
+  { db: "saldo_linea",           label: "SALDO"           },
+  { db: "fecha_pactada",         label: "FECHA PACTADA"   },
+  { db: "dias_vencer",           label: "DÍAS P/ VENCER"  },
+  { db: "estado",                label: "ESTADO"          },
+  { db: "proveedor",             label: "PROVEEDOR"       },
 ];
-const STATUS_COLS_T = new Set(["estado_plazo", "estado_cantidades", "revision"]);
-const RAW_COLS_T    = new Set(["op", "op_madre", "linea"]);
-const PAGE_SIZE     = 50;
+const RAW_COLS_T     = new Set(["op", "op_madre", "linea"]);
+const PAGE_SIZE      = 50;
 
 const DEFAULT_WIDTHS_R: Record<string, number> = {
-  zona: 80, op: 90, op_madre: 90, sc: 100, descripcion_sc: 200,
-  linea: 60, matricula: 110, cantidad: 90, cantidad_recibida: 110,
-  saldo_linea: 100, fecha_pactada: 110, proveedor: 160,
-  estado: 90, estado_plazo: 100, estado_cantidades: 120,
-  revision: 90, disponibilidad_meses: 130,
+  zona: 80, op: 90, sc: 100, matricula: 110, descripcion_matricula: 240,
+  cantidad: 90, saldo_linea: 100, fecha_pactada: 120, dias_vencer: 130,
+  estado: 100, proveedor: 170,
 };
 
 type SeguimientoRow = Record<string, unknown>;
 
+const MS_DAY = 86_400_000;
+
+// Días hasta la fecha pactada (negativo = vencido). null si no hay fecha válida.
+function diasParaVencer(fechaPactada: unknown, today: Date): number | null {
+  if (!fechaPactada) return null;
+  const d = new Date(String(fechaPactada));
+  if (Number.isNaN(d.getTime())) return null;
+  return Math.ceil((d.getTime() - today.getTime()) / MS_DAY);
+}
+
+// ¿La OP de esta fila está abierta? (estado guarda el estado_cierre de la OP)
+function isAbierto(estado: unknown): boolean {
+  return String(estado ?? "").trim().toLowerCase().startsWith("abiert");
+}
+
 export function ServiciosResumenSection() {
-  const [activos,       setActivos]       = useState<number | null>(null);
-  const [vencidos,      setVencidos]      = useState<number | null>(null);
-  const [porVencer,     setPorVencer]     = useState<number | null>(null);
-  const [porConsumirse, setPorConsumirse] = useState<number | null>(null);
+  // Carga única de los datos; todo lo demás se deriva en memoria.
+  const [allRows,     setAllRows]     = useState<SeguimientoRow[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
+  const [tipoMap,     setTipoMap]     = useState<Map<string, ArticuloTipo>>(new Map());
+
+  // Universo: solo servicios abiertos (cubo) vs. todas las líneas.
+  const [soloServicios, setSoloServicios] = useState(true);
 
   // filtros: null = sin selección
   const [filtroVencer,   setFiltroVencer]   = useState<FiltroVencer>(null);
@@ -73,155 +101,232 @@ export function ServiciosResumenSection() {
   const [filtroActivos,  setFiltroActivos]  = useState(false);
   const [filtroVencidos, setFiltroVencidos] = useState(false);
 
-  const [tableRows,    setTableRows]    = useState<SeguimientoRow[]>([]);
-  const [tableLoading, setTableLoading] = useState(true);
   const [tablePage,    setTablePage]    = useState(0);
-  const [alertas,      setAlertas]      = useState<Alerta[]>([]);
   const [colWidths,    setColWidths]    = useState<Record<string, number>>(DEFAULT_WIDTHS_R);
   const [isResizing,   setIsResizing]   = useState(false);
   const resizing = useRef<{ col: string; startX: number; startW: number } | null>(null);
 
-  // Conteos fijos (siempre activos)
+  // ── Nombres de columna editables (solo visual; la columna real no cambia) ──
+  const [labels,         setLabels]         = useState<ColumnLabelMap>({});
+  const [editingHeaders, setEditingHeaders] = useState(false);
+  const [savingLabels,   setSavingLabels]   = useState(false);
+
+  useEffect(() => { getColumnLabels(LABELS_SCOPE).then(setLabels).catch(() => {}); }, []);
+
+  // Nombre visible de una columna: override del usuario o el label por defecto.
+  const labelOf = (col: string, fallback: string) => labels[col] ?? fallback;
+
+  // Guarda el nuevo nombre de una columna (o lo revierte si queda vacío/igual).
+  const commitLabel = async (col: string, fallback: string, raw: string) => {
+    const next = raw.trim();
+    const current = labels[col] ?? "";
+    if (next === current || (next === "" && !(col in labels))) return;
+    // Optimista
+    setLabels(prev => {
+      const n = { ...prev };
+      if (next === "" || next === fallback) delete n[col];
+      else n[col] = next;
+      return n;
+    });
+    try {
+      if (next === "" || next === fallback) {
+        // Revertir a default = borrar override
+        await resetColumnLabel(LABELS_SCOPE, col);
+      } else {
+        await saveColumnLabel(LABELS_SCOPE, col, next);
+      }
+    } catch (e) {
+      toast.error(`No se pudo guardar el nombre: ${e instanceof Error ? e.message : "error"}`);
+      getColumnLabels(LABELS_SCOPE).then(setLabels).catch(() => {});
+    }
+  };
+
+  // Restaura todos los nombres por defecto.
+  const restoreLabels = async () => {
+    setSavingLabels(true);
+    const prev = labels;
+    setLabels({});
+    try {
+      await resetAllColumnLabels(LABELS_SCOPE);
+      toast.success("Nombres de columna restaurados");
+    } catch (e) {
+      setLabels(prev);
+      toast.error(`No se pudo restaurar: ${e instanceof Error ? e.message : "error"}`);
+    } finally {
+      setSavingLabels(false);
+    }
+  };
+
+  // ── Carga única: filas de seguimiento + clasificación de matrículas ────────
   useEffect(() => {
     (async () => {
-      const [actRes, venRes] = await Promise.all([
-        supabase.from("seguimiento").select("*", { count: "exact", head: true }).eq("estado_plazo", "OK").eq("estado_cantidades", "VIGENTE"),
-        supabase.from("seguimiento").select("*", { count: "exact", head: true }).eq("estado_plazo", "VENCIDA"),
-      ]);
-      setActivos(actRes.count ?? 0);
-      setVencidos(venRes.count ?? 0);
+      setLoadingData(true);
+      try {
+        const PAGE = 1000; const all: SeguimientoRow[] = []; let from = 0;
+        while (true) {
+          const { data, error } = await supabase.from("seguimiento").select("*").range(from, from + PAGE - 1);
+          if (error || !data?.length) break;
+          all.push(...data); if (data.length < PAGE) break; from += PAGE;
+        }
+        setAllRows(all);
+
+        // Clasificación Material/Servicio: catálogo (matriculas.mat_serv) +
+        // override manual (stock_article_families.tipo). El override gana.
+        const [matInfo, fams] = await Promise.all([getMatriculasInfo(), getFamilies()]);
+        const map = new Map<string, ArticuloTipo>();
+        const setTipo = (art: string, tipo: ArticuloTipo) => {
+          if (!art || !tipo) return;
+          map.set(art, tipo);
+          const n = normArticulo(art);
+          if (n !== art && !map.has(n)) map.set(n, tipo);   // fallback normalizado
+        };
+        for (const [art, info] of matInfo) setTipo(art, info.tipo);
+        for (const f of fams) if (f.tipo) setTipo(f.articulo, f.tipo);
+        setTipoMap(map);
+      } catch { /* la UI degrada con datos vacíos */ }
+      setLoadingData(false);
     })();
   }, []);
 
-  // Conteo Por vencer
-  useEffect(() => {
-    if (filtroVencer === null) { setPorVencer(null); return; }
-    (async () => {
-      setPorVencer(null);
-      const today = new Date(); const limite = new Date(today);
-      limite.setMonth(limite.getMonth() + filtroVencer);
-      const { count } = await supabase.from("seguimiento")
-        .select("*", { count: "exact", head: true })
-        .gte("fecha_pactada", today.toISOString().split("T")[0])
-        .lte("fecha_pactada", limite.toISOString().split("T")[0]);
-      setPorVencer(count ?? 0);
-    })();
-  }, [filtroVencer]);
+  // Tipo efectivo de una matrícula (override > catálogo). "" si no se conoce.
+  const tipoOf = (matricula: unknown): ArticuloTipo => {
+    const raw = String(matricula ?? "");
+    return tipoMap.get(raw) ?? tipoMap.get(normArticulo(raw)) ?? "";
+  };
 
-  // Conteo Por consumirse
-  useEffect(() => {
-    if (filtroConsumo === null) { setPorConsumirse(null); return; }
-    (async () => {
-      setPorConsumirse(null);
-      const PAGE = 1000; const rows: { saldo_linea: unknown; cantidad: unknown }[] = []; let from = 0;
-      while (true) {
-        const { data, error } = await supabase.from("seguimiento").select("saldo_linea, cantidad").range(from, from + PAGE - 1);
-        if (error || !data?.length) break;
-        rows.push(...data); if (data.length < PAGE) break; from += PAGE;
-      }
+  // ── Universo base: solo servicios abiertos (cubo) o todas las líneas ───────
+  const baseRows = useMemo(() => {
+    if (!soloServicios || tipoMap.size === 0) return allRows;
+    return allRows.filter(r => tipoOf(r.matricula) === "servicio" && isAbierto(r.estado));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allRows, soloServicios, tipoMap]);
+
+  // KPIs fijos (Activos / Vencidos) sobre el universo base.
+  const { activos, vencidos } = useMemo(() => {
+    let a = 0, v = 0;
+    for (const r of baseRows) {
+      if (r.estado_plazo === "OK" && r.estado_cantidades === "VIGENTE") a++;
+      if (r.estado_plazo === "VENCIDA") v++;
+    }
+    return { activos: a, vencidos: v };
+  }, [baseRows]);
+
+  // Conteo "Por vencer" según el bucket seleccionado (3M / 4M).
+  const porVencer = useMemo(() => {
+    if (filtroVencer === null) return null;
+    const t = new Date(); const lim = new Date(t); lim.setMonth(lim.getMonth() + filtroVencer);
+    const ts = t.toISOString().split("T")[0]; const ls = lim.toISOString().split("T")[0];
+    return baseRows.filter(r => {
+      const f = r.fecha_pactada ? String(r.fecha_pactada).split("T")[0] : null;
+      return f !== null && f >= ts && f <= ls;
+    }).length;
+  }, [baseRows, filtroVencer]);
+
+  // Conteo "Por consumirse" (saldo / cantidad ≤ pct).
+  const porConsumirse = useMemo(() => {
+    if (filtroConsumo === null) return null;
+    const pct = filtroConsumo / 100;
+    return baseRows.filter(r => { const c = Number(r.cantidad); const s = Number(r.saldo_linea); return c > 0 && s / c <= pct; }).length;
+  }, [baseRows, filtroConsumo]);
+
+  // Filas de la tabla: universo base + filtros activos.
+  const tableRows = useMemo(() => {
+    let res = baseRows;
+    if (filtroVencer !== null) {
+      const t = new Date(); const lim = new Date(t); lim.setMonth(lim.getMonth() + filtroVencer);
+      const ts = t.toISOString().split("T")[0]; const ls = lim.toISOString().split("T")[0];
+      res = res.filter(r => { const f = r.fecha_pactada ? String(r.fecha_pactada).split("T")[0] : null; return f !== null && f >= ts && f <= ls; });
+    }
+    if (filtroActivos)  res = res.filter(r => r.estado_plazo === "OK" && r.estado_cantidades === "VIGENTE");
+    if (filtroVencidos) res = res.filter(r => r.estado_plazo === "VENCIDA");
+    if (filtroConsumo !== null) {
       const pct = filtroConsumo / 100;
-      setPorConsumirse(rows.filter(r => { const c = Number(r.cantidad); const s = Number(r.saldo_linea); return c > 0 && s / c <= pct; }).length);
-    })();
-  }, [filtroConsumo]);
+      res = res.filter(r => { const c = Number(r.cantidad); const s = Number(r.saldo_linea); return c > 0 && s / c <= pct; });
+    }
+    return res;
+  }, [baseRows, filtroVencer, filtroConsumo, filtroActivos, filtroVencidos]);
 
-  // Tabla — re-ejecuta cuando cambia cualquier filtro
-  useEffect(() => {
-    (async () => {
-      setTableLoading(true); setTablePage(0);
-      const todayStr = new Date().toISOString().split("T")[0];
-      const PAGE = 1000; const all: SeguimientoRow[] = []; let from = 0;
-      while (true) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let q: any = supabase.from("seguimiento").select("*");
-        if (filtroVencer !== null) {
-          const l = new Date(); l.setMonth(l.getMonth() + filtroVencer);
-          q = q.gte("fecha_pactada", todayStr).lte("fecha_pactada", l.toISOString().split("T")[0]);
-        }
-        if (filtroActivos)  q = q.eq("estado_plazo", "OK").eq("estado_cantidades", "VIGENTE");
-        if (filtroVencidos) q = q.eq("estado_plazo", "VENCIDA");
-        const { data, error } = await q.range(from, from + PAGE - 1);
-        if (error || !data?.length) break;
-        all.push(...data); if (data.length < PAGE) break; from += PAGE;
-      }
-      let result = all;
-      if (filtroConsumo !== null) {
-        const pct = filtroConsumo / 100;
-        result = all.filter(r => { const c = Number(r.cantidad); const s = Number(r.saldo_linea); return c > 0 && s / c <= pct; });
-      }
-      setTableRows(result); setTableLoading(false);
-    })();
-  }, [filtroVencer, filtroConsumo, filtroActivos, filtroVencidos]);
+  // Reinicia la paginación cuando cambia el conjunto mostrado.
+  useEffect(() => { setTablePage(0); }, [tableRows.length, soloServicios]);
 
-  // Generar alertas dinámicamente
-  useEffect(() => {
-    (async () => {
-      const PAGE = 1000; const all: SeguimientoRow[] = []; let from = 0;
-      while (true) {
-        const { data, error } = await supabase.from("seguimiento").select("*").range(from, from + PAGE - 1);
-        if (error || !data?.length) break;
-        all.push(...data); if (data.length < PAGE) break; from += PAGE;
-      }
-      const today = new Date();
-      const alertasGen: Alerta[] = [];
-      const alertIds = new Set<string>();
-      for (const row of all) {
-        const op = Number(row.op);
-        const zona = String(row.zona ?? "—");
-        const descripcion = String(row.descripcion_sc ?? row.descripcion_matricula ?? "");
-        const fecha_pactada = row.fecha_pactada ? new Date(String(row.fecha_pactada)) : null;
-        const cantidad = Number(row.cantidad);
-        const saldo = Number(row.saldo_linea);
-        const razon = cantidad > 0 ? saldo / cantidad : 1;
-        const alertId = `${op}-${zona}`;
+  // Alertas recientes (por vencer / alto consumo) sobre el universo base.
+  const alertas = useMemo(() => {
+    const today = new Date();
+    const alertasGen: Alerta[] = [];
+    const alertIds = new Set<string>();
+    for (const row of baseRows) {
+      const op = Number(row.op);
+      const zona = String(row.zona ?? "—");
+      const descripcion = String(row.descripcion_matricula ?? row.descripcion_sc ?? "");
+      const fecha_pactada = row.fecha_pactada ? new Date(String(row.fecha_pactada)) : null;
+      const cantidad = Number(row.cantidad);
+      const saldo = Number(row.saldo_linea);
+      const razon = cantidad > 0 ? saldo / cantidad : 1;
+      const alertId = `${op}-${zona}`;
 
-        // Vencimiento 3M (rojo)
-        if (fecha_pactada && fecha_pactada >= today && fecha_pactada.getTime() - today.getTime() <= 3 * 30 * 86400000) {
-          const id = `${alertId}-3m`;
-          if (!alertIds.has(id)) {
-            alertasGen.push({ id, tipo: "Vencimiento 3M", op, zona, descripcion, fecha: fecha_pactada.toISOString().split("T")[0], severity: "high" });
-            alertIds.add(id);
-          }
-        }
-        // Vencimiento 4M (amarillo)
-        else if (fecha_pactada && fecha_pactada >= today && fecha_pactada.getTime() - today.getTime() <= 4 * 30 * 86400000) {
-          const id = `${alertId}-4m`;
-          if (!alertIds.has(id)) {
-            alertasGen.push({ id, tipo: "Vencimiento 4M", op, zona, descripcion, fecha: fecha_pactada.toISOString().split("T")[0], severity: "medium" });
-            alertIds.add(id);
-          }
-        }
-
-        // Consumo 30% (rojo)
-        if (cantidad > 0 && razon <= 0.3) {
-          const id = `${alertId}-30p`;
-          if (!alertIds.has(id)) {
-            alertasGen.push({ id, tipo: "Consumo 30%", op, zona, descripcion, fecha: today.toISOString().split("T")[0], severity: "high" });
-            alertIds.add(id);
-          }
-        }
-        // Consumo 40% (amarillo)
-        else if (cantidad > 0 && razon <= 0.4) {
-          const id = `${alertId}-40p`;
-          if (!alertIds.has(id)) {
-            alertasGen.push({ id, tipo: "Consumo 40%", op, zona, descripcion, fecha: today.toISOString().split("T")[0], severity: "medium" });
-            alertIds.add(id);
-          }
-        }
+      if (fecha_pactada && fecha_pactada >= today && fecha_pactada.getTime() - today.getTime() <= 3 * 30 * MS_DAY) {
+        const id = `${alertId}-3m`;
+        if (!alertIds.has(id)) { alertasGen.push({ id, tipo: "Vencimiento 3M", op, zona, descripcion, fecha: fecha_pactada.toISOString().split("T")[0], severity: "high" }); alertIds.add(id); }
+      } else if (fecha_pactada && fecha_pactada >= today && fecha_pactada.getTime() - today.getTime() <= 4 * 30 * MS_DAY) {
+        const id = `${alertId}-4m`;
+        if (!alertIds.has(id)) { alertasGen.push({ id, tipo: "Vencimiento 4M", op, zona, descripcion, fecha: fecha_pactada.toISOString().split("T")[0], severity: "medium" }); alertIds.add(id); }
       }
-      alertasGen.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
-      setAlertas(alertasGen.slice(0, 10));
-    })();
-  }, []);
+
+      if (cantidad > 0 && razon <= 0.3) {
+        const id = `${alertId}-30p`;
+        if (!alertIds.has(id)) { alertasGen.push({ id, tipo: "Consumo 30%", op, zona, descripcion, fecha: today.toISOString().split("T")[0], severity: "high" }); alertIds.add(id); }
+      } else if (cantidad > 0 && razon <= 0.4) {
+        const id = `${alertId}-40p`;
+        if (!alertIds.has(id)) { alertasGen.push({ id, tipo: "Consumo 40%", op, zona, descripcion, fecha: today.toISOString().split("T")[0], severity: "medium" }); alertIds.add(id); }
+      }
+    }
+    alertasGen.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+    return alertasGen.slice(0, 10);
+  }, [baseRows]);
 
   const cycleVencer  = () => { const i = CYCLE_VENCER.indexOf(filtroVencer);   setFiltroVencer(CYCLE_VENCER[(i + 1) % CYCLE_VENCER.length]);   };
   const cycleConsumo = () => { const i = CYCLE_CONSUMO.indexOf(filtroConsumo); setFiltroConsumo(CYCLE_CONSUMO[(i + 1) % CYCLE_CONSUMO.length]); };
 
+  const tableLoading = loadingData;
   const fmt = (n: number | null) => n === null ? "—" : n.toLocaleString("es-AR");
   const totalPages = Math.ceil(tableRows.length / PAGE_SIZE);
   const pagedRows  = tableRows.slice(tablePage * PAGE_SIZE, (tablePage + 1) * PAGE_SIZE);
+  const todayRef   = useMemo(() => new Date(), []);
 
   return (
     <div className="space-y-6">
+      {/* Universo: solo servicios abiertos (cubo) vs. todas las líneas */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5">
+          <button
+            onClick={() => setSoloServicios(true)}
+            className={cn(
+              "px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+              soloServicios ? "bg-accent/15 text-accent" : "text-muted-foreground hover:text-foreground"
+            )}
+            title="Solo matrículas de tipo Servicio con OP abierta"
+          >
+            Solo servicios
+          </button>
+          <button
+            onClick={() => setSoloServicios(false)}
+            className={cn(
+              "px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+              !soloServicios ? "bg-accent/15 text-accent" : "text-muted-foreground hover:text-foreground"
+            )}
+            title="Todas las líneas (materiales y servicios)"
+          >
+            Todas
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {soloServicios
+            ? "Universo: servicios (Mat/Serv = Servicio) con OP abierta"
+            : "Universo: todas las líneas de seguimiento"}
+          {!loadingData && <> · <span className="text-foreground font-medium">{baseRows.length.toLocaleString("es-AR")}</span> líneas</>}
+        </p>
+      </div>
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
@@ -337,7 +442,33 @@ export function ServiciosResumenSection() {
               </p>
             )}
           </div>
-          {tableLoading && <Loader2 className="w-4 h-4 text-accent animate-spin" />}
+          <div className="flex items-center gap-2">
+            {tableLoading && <Loader2 className="w-4 h-4 text-accent animate-spin" />}
+            {editingHeaders && (
+              <button
+                onClick={restoreLabels}
+                disabled={savingLabels}
+                title="Restaurar los nombres por defecto"
+                className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground border border-border hover:bg-secondary transition-colors disabled:opacity-40"
+              >
+                {savingLabels ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                Restaurar
+              </button>
+            )}
+            <button
+              onClick={() => setEditingHeaders(v => !v)}
+              title={editingHeaders ? "Terminar de editar nombres" : "Editar los nombres de las columnas"}
+              className={cn(
+                "flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs border transition-colors",
+                editingHeaders
+                  ? "bg-accent/15 text-accent border-accent/40"
+                  : "text-muted-foreground hover:text-foreground border-border hover:bg-secondary"
+              )}
+            >
+              {editingHeaders ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+              {editingHeaders ? "Listo" : "Editar columnas"}
+            </button>
+          </div>
         </div>
 
         {tableLoading ? (
@@ -375,28 +506,45 @@ export function ServiciosResumenSection() {
                           setIsResizing(false);
                         }}
                       >
-                        <span className="block truncate">{c.label}</span>
-                        <div
-                          className="absolute right-0 top-0 h-full w-2 flex items-center justify-center cursor-col-resize group/handle hover:bg-accent/10"
-                          onPointerDown={e => {
-                            e.preventDefault(); e.stopPropagation();
-                            e.currentTarget.setPointerCapture(e.pointerId);
-                            resizing.current = { col: c.db, startX: e.clientX, startW: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 };
-                            setIsResizing(true);
-                          }}
-                          onPointerMove={e => {
-                            if (!resizing.current) return;
-                            const newW = Math.max(50, resizing.current.startW + (e.clientX - resizing.current.startX));
-                            setColWidths(prev => ({ ...prev, [resizing.current!.col]: newW }));
-                          }}
-                          onPointerUp={e => {
-                            e.currentTarget.releasePointerCapture(e.pointerId);
-                            resizing.current = null;
-                            setIsResizing(false);
-                          }}
-                        >
-                          <div className="w-px h-4 bg-border group-hover/handle:bg-accent transition-colors" />
-                        </div>
+                        {editingHeaders ? (
+                          <input
+                            defaultValue={labelOf(c.db, c.label)}
+                            onClick={e => e.stopPropagation()}
+                            onKeyDown={e => {
+                              if (e.key === "Enter")  { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
+                              if (e.key === "Escape") { (e.target as HTMLInputElement).value = labelOf(c.db, c.label); (e.target as HTMLInputElement).blur(); }
+                            }}
+                            onBlur={e => commitLabel(c.db, c.label, e.target.value)}
+                            placeholder={c.label}
+                            className="w-full bg-secondary border border-accent rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-foreground focus:outline-none focus:ring-1 focus:ring-accent normal-case"
+                            style={{ textTransform: "none" }}
+                          />
+                        ) : (
+                          <span className="block truncate" title={labelOf(c.db, c.label)}>{labelOf(c.db, c.label)}</span>
+                        )}
+                        {!editingHeaders && (
+                          <div
+                            className="absolute right-0 top-0 h-full w-2 flex items-center justify-center cursor-col-resize group/handle hover:bg-accent/10"
+                            onPointerDown={e => {
+                              e.preventDefault(); e.stopPropagation();
+                              e.currentTarget.setPointerCapture(e.pointerId);
+                              resizing.current = { col: c.db, startX: e.clientX, startW: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 };
+                              setIsResizing(true);
+                            }}
+                            onPointerMove={e => {
+                              if (!resizing.current) return;
+                              const newW = Math.max(50, resizing.current.startW + (e.clientX - resizing.current.startX));
+                              setColWidths(prev => ({ ...prev, [resizing.current!.col]: newW }));
+                            }}
+                            onPointerUp={e => {
+                              e.currentTarget.releasePointerCapture(e.pointerId);
+                              resizing.current = null;
+                              setIsResizing(false);
+                            }}
+                          >
+                            <div className="w-px h-4 bg-border group-hover/handle:bg-accent transition-colors" />
+                          </div>
+                        )}
                       </th>
                     ))}
                   </tr>
@@ -406,24 +554,46 @@ export function ServiciosResumenSection() {
                     <tr key={idx} className="border-b border-border last:border-0 even:bg-secondary/20 hover:bg-secondary/40 transition-colors">
                       <td className="py-2.5 px-3 text-muted-foreground">{tablePage * PAGE_SIZE + idx + 1}</td>
                       {TABLE_COLS.map(c => {
+                        // Columna calculada: días para vencer + color por riesgo.
+                        if (c.db === "dias_vencer") {
+                          const dias  = diasParaVencer(row.fecha_pactada, todayRef);
+                          const saldo = Number(row.saldo_linea);
+                          let content = <span className="text-muted-foreground">—</span>;
+                          if (dias !== null) {
+                            if (dias < 0) {
+                              content = saldo > 0
+                                ? <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-destructive/15 text-destructive">Vencido {Math.abs(dias)} d</span>
+                                : <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-secondary text-muted-foreground">Vencido</span>;
+                            } else {
+                              const tone = dias <= 90 ? "bg-destructive/15 text-destructive"
+                                         : dias <= 120 ? "bg-warning/15 text-warning"
+                                         : "bg-success/15 text-success";
+                              content = <span className={cn("px-1.5 py-0.5 rounded text-[11px] font-medium", tone)}>{dias} d</span>;
+                            }
+                          }
+                          return <td key={c.db} className="py-2.5 px-3 whitespace-nowrap overflow-hidden">{content}</td>;
+                        }
+
                         const val     = row[c.db];
                         const display = typeof val === "number" && !RAW_COLS_T.has(c.db)
                           ? val.toLocaleString("es-AR")
                           : String(val ?? "");
-                        const isStat  = STATUS_COLS_T.has(c.db);
-                        return (
-                          <td key={c.db} className="py-2.5 px-3 whitespace-nowrap overflow-hidden" title={display}>
-                            {isStat ? (
+
+                        // Estado de cierre como pill (Abierto = verde).
+                        if (c.db === "estado") {
+                          return (
+                            <td key={c.db} className="py-2.5 px-3 whitespace-nowrap overflow-hidden" title={display}>
                               <span className={cn(
                                 "px-1.5 py-0.5 rounded text-[11px] font-medium",
-                                val === "VENCIDA" || val === "CERRAR" ? "bg-destructive/15 text-destructive" :
-                                val === "SIN SALDO"                   ? "bg-warning/15 text-warning"         :
-                                val === "OK" || val === "VIGENTE"     ? "bg-success/15 text-success"         :
-                                "bg-secondary text-muted-foreground"
+                                isAbierto(val) ? "bg-success/15 text-success" : "bg-secondary text-muted-foreground"
                               )}>{display || "—"}</span>
-                            ) : (
-                              <span className="text-foreground truncate block">{display || "—"}</span>
-                            )}
+                            </td>
+                          );
+                        }
+
+                        return (
+                          <td key={c.db} className="py-2.5 px-3 whitespace-nowrap overflow-hidden" title={display}>
+                            <span className="text-foreground truncate block">{display || "—"}</span>
                           </td>
                         );
                       })}
