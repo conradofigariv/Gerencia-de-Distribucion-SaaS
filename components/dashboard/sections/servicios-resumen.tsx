@@ -50,7 +50,6 @@ type FiltroConsumo = 30 | 40 | null;
 const TABLE_COLS: { db: string; label: string }[] = [
   { db: "zona",                  label: "ZONA"            },
   { db: "op",                    label: "OP"              },
-  { db: "sc",                    label: "SC"              },
   { db: "matricula",             label: "MATRÍCULA"       },
   { db: "descripcion_matricula", label: "DESCRIPCIÓN"     },
   { db: "cantidad",              label: "CANTIDAD"        },
@@ -64,7 +63,7 @@ const RAW_COLS_T     = new Set(["op", "op_madre", "linea"]);
 const PAGE_SIZE      = 50;
 
 const DEFAULT_WIDTHS_R: Record<string, number> = {
-  zona: 80, op: 90, sc: 100, matricula: 110, descripcion_matricula: 240,
+  zona: 80, op: 90, matricula: 110, descripcion_matricula: 240,
   cantidad: 90, saldo_linea: 100, fecha_pactada: 120, dias_vencer: 130,
   estado: 100, proveedor: 170,
 };

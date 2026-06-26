@@ -7,7 +7,7 @@ import { fetchUpcomingBirthdays, birthdayLabel, type BirthdayNotice } from "@/li
 
 const ALL_REMINDER_KEYS = [
   { key: "planillas-OP",         label: "OP — Órdenes de compra",              section: "Carga de datos" },
-  { key: "planillas-QW",         label: "QW — Expedientes / SCs",               section: "Carga de datos" },
+  { key: "planillas-SIC",        label: "SICs del Ing. Soler",                  section: "Carga de datos" },
   { key: "planillas-MATRICULAS", label: "MATRICULAS — Catálogo de materiales",  section: "Carga de datos" },
   { key: "servicios-carga",          label: "Crear seguimiento",                    section: "Control de Servicios" },
   { key: "transformadores-carga",    label: "Carga de datos — Transformadores",      section: "Transformadores" },

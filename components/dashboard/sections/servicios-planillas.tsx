@@ -10,6 +10,10 @@ import {
   AlertTriangle, RefreshCw, Database, BellRing, X,
 } from "lucide-react";
 import { markUpdated, fetchReminders, upsertConfig } from "@/lib/reminders";
+import { replaceSicSoler, upsertSicSoler, clearSicSoler, getSicSolerStatus, type SicSolerRow } from "@/lib/sicSoler";
+
+// Modo de subida de la planilla de SICs: reemplazar todo o actualizar lo existente.
+type SicUploadMode = "replace" | "update";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -63,7 +67,7 @@ const parseFile = async (
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type PlanillaType = "OP" | "QW" | "MATRICULAS";
+type PlanillaType = "OP" | "SIC" | "MATRICULAS";
 
 interface PlanillaState {
   count:      number;
@@ -76,7 +80,7 @@ const INIT: PlanillaState = { count: 0, uploadedAt: null, loading: true, uploadi
 
 const REMINDER_DEFS = [
   { key: "planillas-OP",         planilla: "OP" as PlanillaType,         label: "OP",         name: "OP — Órdenes de compra",              descripcion: "Órdenes de compra",      accentClass: "text-blue-400" },
-  { key: "planillas-QW",         planilla: "QW" as PlanillaType,         label: "QW",         name: "QW — Expedientes / SCs",               descripcion: "Expedientes / SCs",       accentClass: "text-purple-400" },
+  { key: "planillas-SIC",        planilla: "SIC" as PlanillaType,        label: "SIC",        name: "SICs del Ing. Soler",                 descripcion: "SICs del Ing. Soler",     accentClass: "text-purple-400" },
   { key: "planillas-MATRICULAS", planilla: "MATRICULAS" as PlanillaType, label: "MATRICULAS", name: "MATRICULAS — Catálogo de materiales",  descripcion: "Catálogo de materiales",  accentClass: "text-emerald-400" },
 ] as const;
 
@@ -84,6 +88,7 @@ const REMINDER_DEFS = [
 
 function PlanillaCard({
   tipo, label, descripcion, accentClass, state, onUpload, onClear,
+  mode, onModeChange,
 }: {
   tipo:        PlanillaType;
   label:       string;
@@ -92,6 +97,8 @@ function PlanillaCard({
   state:       PlanillaState;
   onUpload:    (file: File) => void;
   onClear:     () => void;
+  mode?:        SicUploadMode;
+  onModeChange?: (m: SicUploadMode) => void;
 }) {
   const [drag, setDrag] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
@@ -140,6 +147,33 @@ function PlanillaCard({
         </div>
       )}
 
+      {mode && onModeChange && (
+        <div className="flex items-center gap-1 rounded-lg bg-secondary/40 border border-border p-0.5">
+          <button
+            onClick={() => onModeChange("replace")}
+            disabled={busy}
+            title="Borra la planilla actual y carga el archivo de cero"
+            className={cn(
+              "flex-1 px-2 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-50",
+              mode === "replace" ? "bg-accent/15 text-accent" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Sobreescribir
+          </button>
+          <button
+            onClick={() => onModeChange("update")}
+            disabled={busy}
+            title="Actualiza las SICs que coinciden y agrega las nuevas, conservando el resto"
+            className={cn(
+              "flex-1 px-2 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-50",
+              mode === "update" ? "bg-accent/15 text-accent" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Actualizar
+          </button>
+        </div>
+      )}
+
       <div
         onClick={() => !busy && ref.current?.click()}
         onDragOver={e => { e.preventDefault(); setDrag(true); }}
@@ -184,9 +218,12 @@ function PlanillaCard({
 export function ServiciosPlanillasSection() {
   const [states, setStates] = useState<Record<PlanillaType, PlanillaState>>({
     OP:         { ...INIT },
-    QW:         { ...INIT },
+    SIC:        { ...INIT },
     MATRICULAS: { ...INIT },
   });
+
+  // Modo de subida de la planilla de SICs (reemplazar vs actualizar).
+  const [sicMode, setSicMode] = useState<SicUploadMode>("replace");
 
   // Auth / role
   const [userId,    setUserId]    = useState<string | null>(null);
@@ -197,13 +234,13 @@ export function ServiciosPlanillasSection() {
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [savingConfig,  setSavingConfig]  = useState(false);
   const [reminderFreq, setReminderFreq] = useState<Record<string, number>>({
-    "planillas-OP": 7, "planillas-QW": 7, "planillas-MATRICULAS": 7,
+    "planillas-OP": 7, "planillas-SIC": 7, "planillas-MATRICULAS": 7,
   });
   const [reminderTime, setReminderTime] = useState<Record<string, string>>({
-    "planillas-OP": "09:00", "planillas-QW": "09:00", "planillas-MATRICULAS": "09:00",
+    "planillas-OP": "09:00", "planillas-SIC": "09:00", "planillas-MATRICULAS": "09:00",
   });
   const [reminderLastUpdate, setReminderLastUpdate] = useState<Record<string, string | null>>({
-    "planillas-OP": null, "planillas-QW": null, "planillas-MATRICULAS": null,
+    "planillas-OP": null, "planillas-SIC": null, "planillas-MATRICULAS": null,
   });
 
   const setS = (tipo: PlanillaType, u: Partial<PlanillaState>) =>
@@ -229,25 +266,23 @@ export function ServiciosPlanillasSection() {
   const loadStatus = useCallback(async () => {
     setStates(prev => ({
       OP:         { ...prev.OP,         loading: true },
-      QW:         { ...prev.QW,         loading: true },
+      SIC:        { ...prev.SIC,        loading: true },
       MATRICULAS: { ...prev.MATRICULAS, loading: true },
     }));
-    const [opCnt, opTs, qwCnt, qwTs, matCnt, matTs] = await Promise.all([
+    const [opCnt, opTs, sicStatus, matCnt, matTs] = await Promise.all([
       supabase.from("planillas_op").select("*",        { count: "exact", head: true }),
       supabase.from("planillas_op").select("uploaded_at").order("uploaded_at", { ascending: false }).limit(1),
-      supabase.from("planillas_qw").select("*",        { count: "exact", head: true }),
-      supabase.from("planillas_qw").select("uploaded_at").order("uploaded_at", { ascending: false }).limit(1),
+      getSicSolerStatus().catch(() => ({ count: 0, uploadedAt: null })),
       supabase.from("matriculas").select("*",          { count: "exact", head: true }),
       supabase.from("matriculas").select("updated_at").order("updated_at", { ascending: false }).limit(1),
     ]);
     const isMissing = (msg: string) =>
       msg.includes("Invalid path") || msg.includes("does not exist") || msg.includes("Invalid api key");
     if (opCnt.error  && !isMissing(opCnt.error.message))  toast.error(`Error OP: ${opCnt.error.message}`);
-    if (qwCnt.error  && !isMissing(qwCnt.error.message))  toast.error(`Error QW: ${qwCnt.error.message}`);
     if (matCnt.error && !isMissing(matCnt.error.message)) toast.error(`Error MATRICULAS: ${matCnt.error.message}`);
     setStates({
       OP:         { count: opCnt.count  ?? 0, uploadedAt: (opTs.data  as {uploaded_at: string}[]|null)?.[0]?.uploaded_at  ?? null, loading: false, uploading: false },
-      QW:         { count: qwCnt.count  ?? 0, uploadedAt: (qwTs.data  as {uploaded_at: string}[]|null)?.[0]?.uploaded_at  ?? null, loading: false, uploading: false },
+      SIC:        { count: sicStatus.count,   uploadedAt: sicStatus.uploadedAt,                                                    loading: false, uploading: false },
       MATRICULAS: { count: matCnt.count ?? 0, uploadedAt: (matTs.data as {updated_at:  string}[]|null)?.[0]?.updated_at   ?? null, loading: false, uploading: false },
     });
   }, []);
@@ -260,9 +295,9 @@ export function ServiciosPlanillasSection() {
     setLoadingConfig(true);
     fetchReminders(REMINDER_DEFS.map(d => d.key))
       .then(cfgs => {
-        const freq:  Record<string, number>       = { "planillas-OP": 7,      "planillas-QW": 7,      "planillas-MATRICULAS": 7 };
-        const time:  Record<string, string>       = { "planillas-OP": "09:00", "planillas-QW": "09:00", "planillas-MATRICULAS": "09:00" };
-        const lastUp: Record<string, string|null> = { "planillas-OP": null,   "planillas-QW": null,   "planillas-MATRICULAS": null };
+        const freq:  Record<string, number>       = { "planillas-OP": 7,      "planillas-SIC": 7,      "planillas-MATRICULAS": 7 };
+        const time:  Record<string, string>       = { "planillas-OP": "09:00", "planillas-SIC": "09:00", "planillas-MATRICULAS": "09:00" };
+        const lastUp: Record<string, string|null> = { "planillas-OP": null,   "planillas-SIC": null,   "planillas-MATRICULAS": null };
         for (const cfg of cfgs) {
           freq[cfg.section_id]   = cfg.frequency_days;
           lastUp[cfg.section_id] = cfg.last_updated_at;
@@ -340,55 +375,49 @@ export function ServiciosPlanillasSection() {
     }
   };
 
-  const uploadQW = async (file: File) => {
-    setS("QW", { uploading: true });
+  const uploadSIC = async (file: File, mode: SicUploadMode) => {
+    setS("SIC", { uploading: true });
     try {
-      const rows = await parseFile(file);
-      if (!rows.length) { toast.error("QW: sin datos (headers en fila 2)"); return; }
-      const now = new Date().toISOString();
-      const mapped = rows.map(r => ({
-        combinacion:                  str(r["COMBINACION"]),
-        oc_numero:                    str(r["OC_NUMERO"]),
-        sc_numero_linea:              str(r["SC_NUMERO_LINEA"]),
-        expediente_plazo_entrega:     str(r["EXPEDIENTE_PLAZO_ENTREGA"]),
-        sc_descripcion:               str(r["SC_DESCRIPCION"]),
-        sc_numero:                    str(r["SC_NUMERO"]),
-        expediente_numero:            str(r["EXPEDIENTE_NUMERO"]),
-        expediente_nro_contratacion:  str(r["EXPEDIENTE_NRO_CONTRATACION"]),
-        expediente_tipo_contratacion: str(r["EXPEDIENTE_TIPO_CONTRATACION"]),
-        sc_fecha_creacion:            str(r["SC_FECHA_CREACION"]),
-        sc_estado:                    str(r["SC_ESTADO"]),
-        estado_siga:                  str(r["ESTADO_SIGA"]),
-        ult_responsable:              str(r["ULT_RESPONSABLE"]),
-        ult_reparto:                  str(r["ULT_REPARTO"]),
-        expediente_fecha_apertura:    str(r["EXPEDIENTE_FECHA_APERTURA"]),
-        ult_cant_dias:                r["ULT_CANT_DIAS"]        != null ? Number(r["ULT_CANT_DIAS"])        : null,
-        articulo_codigo:              str(r["ARTICULO_CODIGO"]),
-        sc_cantidad_solicitada:       r["SC_CANTIDAD_SOLICITADA"] != null ? Number(r["SC_CANTIDAD_SOLICITADA"]) : null,
-        oc_precio_unitario:           r["OC_PRECIO_UNITARIO"]   != null ? Number(r["OC_PRECIO_UNITARIO"])   : null,
-        proveedor_nombre:             str(r["PROVEEDOR_NOMBRE"]),
-        oc_fecha_aprobacion:          str(r["OC_FECHA_APROBACION"]),
-        sc_es_inversion:              str(r["SC_ES_INVERSION"]),
-        sc_preparador_nombre:         str(r["SC_PREPARADOR_NOMBRE"]),
-        articulo_id:                  str(r["ARTICULO_ID"]),
-        articulo_descripcion:         str(r["ARTICULO_DESCRIPCION"]),
-        oc_fecha_pactada:             str(r["OC_FECHA_PACTADA"]),
-        oc_estado_cierre:             str(r["OC_ESTADO_CIERRE"]),
-        uploaded_at:                  now,
-      })).filter(r => r.combinacion);
-      if (!mapped.length) { toast.error("QW: no se encontró columna COMBINACION"); return; }
-      const { error: del } = await supabase.from("planillas_qw").delete().not("id", "is", null);
-      if (del) { toast.error(`Error limpiando QW: ${del.message}`); return; }
-      for (let i = 0; i < mapped.length; i += BATCH) {
-        const { error } = await supabase.from("planillas_qw").insert(mapped.slice(i, i + BATCH));
-        if (error) { toast.error(`Error insertando QW: ${error.message}`); return; }
-      }
-      toast.success(`QW: ${mapped.length.toLocaleString("es-AR")} filas guardadas`);
-      if (userId) await markUpdated("planillas-QW", "QW — Expedientes / SCs", userId).catch(() => {});
+      // Encabezados esperados (con/sin tildes). Si el archivo usa otros nombres,
+      // ajustar los alias acá. Se autodetecta la fila de headers por estas anclas.
+      const rows = await parseFile(file, 1, ["Número", "Artículo", "Cantidad", "Número Pedido", "Línea"]);
+      if (!rows.length) { toast.error("SIC: sin datos"); return; }
+
+      // Toma el primer alias presente en la fila (normalizando el encabezado).
+      const pick = (r: Record<string, unknown>, aliases: string[]): unknown => {
+        const want = aliases.map(normHeader);
+        for (const k of Object.keys(r)) {
+          if (want.includes(normHeader(k))) return r[k];
+        }
+        return null;
+      };
+
+      const mapped: SicSolerRow[] = rows.map(r => {
+        const cant = pick(r, ["Cantidad", "Ctd", "Cant"]);
+        return {
+          numero_sic:     str(pick(r, ["Número", "Numero", "N° SIC", "Nro SIC", "SIC", "Número SIC", "Numero SIC"])),
+          linea:          str(pick(r, ["Línea", "Linea"])),
+          articulo:       str(pick(r, ["Artículo", "Articulo", "Artículo Código", "Articulo Codigo"])),
+          descripcion:    str(pick(r, ["Descripción", "Descripcion", "Descripción Artículo", "Descripcion Articulo"])),
+          cantidad:       cant != null && cant !== "" ? Number(cant) : null,
+          udm:            str(pick(r, ["UDM", "UdM", "Unidad Medida", "Unidad de Medida", "Unidad Medida Primaria"])),
+          preparador:     str(pick(r, ["Preparador", "Preparador Nombre", "SC Preparador Nombre"])),
+          numero_op:      str(pick(r, ["Número Pedido", "Numero Pedido", "Nro Pedido", "Número OP", "Numero OP", "OP", "Pedido"])),
+          fecha_creacion: str(pick(r, ["Fecha Creación", "Fecha Creacion", "Fecha de Creación", "Fecha de Creacion"])),
+        };
+      }).filter(r => r.numero_sic);
+
+      if (!mapped.length) { toast.error("SIC: no se encontró la columna 'Número' (N° de SIC)"); return; }
+
+      if (mode === "replace") await replaceSicSoler(mapped);
+      else                    await upsertSicSoler(mapped);
+
+      toast.success(`SIC: ${mapped.length.toLocaleString("es-AR")} filas ${mode === "replace" ? "cargadas" : "actualizadas"}`);
+      if (userId) await markUpdated("planillas-SIC", "SICs del Ing. Soler", userId).catch(() => {});
     } catch (e) {
-      toast.error(`Error QW: ${e instanceof Error ? e.message : "Error"}`);
+      toast.error(`Error SIC: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
-      setS("QW", { uploading: false });
+      setS("SIC", { uploading: false });
       await loadStatus();
     }
   };
@@ -435,18 +464,26 @@ export function ServiciosPlanillasSection() {
   };
 
   const handleUpload = (tipo: PlanillaType, file: File) => {
-    if (tipo === "OP")      uploadOP(file);
-    else if (tipo === "QW") uploadQW(file);
-    else                    uploadMatriculas(file);
+    if (tipo === "OP")       uploadOP(file);
+    else if (tipo === "SIC") uploadSIC(file, sicMode);
+    else                     uploadMatriculas(file);
   };
 
-  const handleClear = (tipo: PlanillaType) => {
-    const tabla = tipo === "OP" ? "planillas_op" : tipo === "QW" ? "planillas_qw" : "matriculas";
+  const handleClear = async (tipo: PlanillaType) => {
+    if (tipo === "SIC") {
+      if (!confirm("¿Limpiar toda la tabla SIC?")) return;
+      setS("SIC", { loading: true });
+      try { await clearSicSoler(); toast.success("SIC limpiada"); }
+      catch (e) { toast.error(`Error: ${e instanceof Error ? e.message : "Error"}`); }
+      await loadStatus();
+      return;
+    }
+    const tabla = tipo === "OP" ? "planillas_op" : "matriculas";
     clearTable(tipo, tabla);
   };
 
-  const allLoaded = !states.OP.loading && !states.QW.loading && !states.MATRICULAS.loading;
-  const allReady  = states.OP.count > 0 && states.QW.count > 0 && states.MATRICULAS.count > 0;
+  const allLoaded = !states.OP.loading && !states.SIC.loading && !states.MATRICULAS.loading;
+  const allReady  = states.OP.count > 0 && states.SIC.count > 0 && states.MATRICULAS.count > 0;
 
   return (
     <div className="space-y-6">
@@ -481,7 +518,7 @@ export function ServiciosPlanillasSection() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         <PlanillaCard tipo="OP"         label="OP"         descripcion="Órdenes de compra"       accentClass="text-blue-400"    state={states.OP}         onUpload={f => handleUpload("OP",         f)} onClear={() => handleClear("OP")}         />
-        <PlanillaCard tipo="QW"         label="QW"         descripcion="Expedientes / SCs"        accentClass="text-purple-400"  state={states.QW}         onUpload={f => handleUpload("QW",         f)} onClear={() => handleClear("QW")}         />
+        <PlanillaCard tipo="SIC"        label="SIC"        descripcion="SICs del Ing. Soler"     accentClass="text-purple-400"  state={states.SIC}        onUpload={f => handleUpload("SIC",        f)} onClear={() => handleClear("SIC")}        mode={sicMode} onModeChange={setSicMode} />
         <PlanillaCard tipo="MATRICULAS" label="MATRICULAS" descripcion="Catálogo de materiales"   accentClass="text-emerald-400" state={states.MATRICULAS} onUpload={f => handleUpload("MATRICULAS", f)} onClear={() => handleClear("MATRICULAS")} />
       </div>
 
