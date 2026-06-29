@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { markUpdated, fetchReminders, upsertConfig } from "@/lib/reminders";
 import { getSicSoler } from "@/lib/sicSoler";
+import { normArticulo } from "@/lib/tableroOp";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -55,26 +56,30 @@ const num = (v: unknown) => { const n = Number(v); return isNaN(n) ? 0 : n; };
 const str = (v: unknown) => String(v ?? "").trim();
 const isoDate = (d: Date | null) => d ? d.toISOString().split("T")[0] : null;
 
-type OpRow  = { relacion: string; cantidad: unknown; cantidad_recibida: unknown; fecha_creacion: unknown; fecha_pactada: unknown; proveedor: unknown; estado_cierre: unknown };
+type OpRow  = { numero: string; linea: string; relacion: string; cantidad: unknown; cantidad_recibida: unknown; fecha_creacion: unknown; fecha_pactada: unknown; proveedor: unknown; estado_cierre: unknown };
 type MatRow = { articulo: string; descripcion: unknown };
 
+// Clave de cruce OP robusta: Número Pedido + Línea normalizados a número (ignora
+// el sufijo .0 y los ceros, que rompen el match por texto). Independiente de la
+// columna `relacion` (que puede venir vacía o con otro formato).
+const opCrossKey = (op: unknown, linea: unknown) => `${num(op)}|${num(linea)}`;
+
 // Construye una fila de preview cruzando OP (cantidades/fecha/proveedor/estado)
-// y matrículas (descripción). El cruce es por (op+línea) → planillas_op.relacion
-// y matrícula → matriculas.articulo. (QW/expedientes ya no se usa.)
+// y matrículas (descripción). Cruce OP por (Número Pedido + Línea) normalizados;
+// matrícula por valor literal con respaldo normalizado (sin .0). El valor de la
+// matrícula se conserva literal para mostrar/guardar. (QW/expedientes ya no se usa.)
 function buildPreviewRow(
   input: { zona: string; op: number; op_madre: number; linea: number; matricula: string },
   opMap: Map<string, OpRow>,
   matMap: Map<string, MatRow>,
   today: Date,
 ): PreviewRow {
-  const opKey  = String(input.op) + String(input.linea);
-  const matKey = input.matricula;
-  const opRow  = opMap.get(opKey);
-  const matRow = matMap.get(matKey);
+  const opRow  = opMap.get(opCrossKey(input.op, input.linea));
+  const matRow = matMap.get(input.matricula) ?? matMap.get(normArticulo(input.matricula));
 
   const errs: string[] = [];
-  if (!opRow)  errs.push(`OP "${opKey}" no encontrado en planillas_op`);
-  if (!matRow) errs.push(`MATRÍCULA "${matKey}" no encontrada en matriculas`);
+  if (!opRow)  errs.push(`OP "${input.op}/${input.linea}" no encontrada en planillas_op`);
+  if (!matRow) errs.push(`MATRÍCULA "${input.matricula}" no encontrada en matriculas`);
 
   const cantidad         = num(opRow?.cantidad);
   const cantidadRecibida = num(opRow?.cantidad_recibida);
@@ -299,14 +304,25 @@ export function ServiciosCargaSection() {
     } finally { setAdding(false); }
   };
 
-  // Carga las planillas base para el cruce (OP + matrículas).
+  // Carga las planillas base para el cruce (OP + matrículas) y arma los mapas
+  // con claves robustas (ver opCrossKey / normArticulo).
   const loadCrossMaps = async () => {
     const [opData, matData] = await Promise.all([
-      fetchAll<OpRow> ("planillas_op", "relacion, cantidad, cantidad_recibida, fecha_creacion, fecha_pactada, proveedor, estado_cierre"),
+      fetchAll<OpRow> ("planillas_op", "numero, linea, relacion, cantidad, cantidad_recibida, fecha_creacion, fecha_pactada, proveedor, estado_cierre"),
       fetchAll<MatRow>("matriculas",   "articulo, descripcion"),
     ]);
-    const opMap  = new Map(opData .map(r => [String(r.relacion), r]));
-    const matMap = new Map(matData.map(r => [String(r.articulo), r]));
+    const opMap = new Map<string, OpRow>();
+    for (const r of opData) {
+      const k = opCrossKey(r.numero, r.linea);
+      if (!opMap.has(k)) opMap.set(k, r);   // primer envío de la línea
+    }
+    const matMap = new Map<string, MatRow>();
+    for (const r of matData) {
+      const a = String(r.articulo);
+      matMap.set(a, r);                                   // literal (con .0)
+      const n = normArticulo(a);
+      if (!matMap.has(n)) matMap.set(n, r);               // respaldo sin .0
+    }
     return { opMap, matMap };
   };
 
