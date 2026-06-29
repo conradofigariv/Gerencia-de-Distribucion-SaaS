@@ -50,10 +50,14 @@ function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
   );
 }
 
-/** Escapa un valor para CSV (comillas, comas, saltos de línea). */
+// Separador de campos: punto y coma (es el que espera Excel en español →
+// si se usa coma, Excel mete todo en una sola columna).
+const CSV_SEP = ";";
+
+/** Escapa un valor para CSV (comillas, separador, saltos de línea). */
 function csvCell(v: unknown): string {
   const s = String(v ?? "");
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return new RegExp(`["${CSV_SEP}\\n\\r]`).test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 // ─── Badge de tipo (Material/Servicio) ──────────────────────────────────────
@@ -383,16 +387,17 @@ export function MatriculasSection() {
     if (filtered.length === 0) { toast.error("No hay matrículas para exportar"); return; }
     const headers = ["Matrícula", "Descripción", "Unidad de medida", "Tipo", "Estado"];
     const lines = [
-      headers.map(csvCell).join(","),
+      headers.map(csvCell).join(CSV_SEP),
       ...filtered.map(r => [
         r.articulo, r.descripcion, r.unidad_medida,
         tipoFromMatServ(r.mat_serv) === "material" ? "Material"
           : tipoFromMatServ(r.mat_serv) === "servicio" ? "Servicio" : "",
         r.estado,
-      ].map(csvCell).join(",")),
+      ].map(csvCell).join(CSV_SEP)),
     ];
-    // BOM para que Excel respete los acentos.
-    const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+    // 1ª línea `sep=;` → fuerza a Excel a usar punto y coma como separador.
+    // BOM (﻿) → respeta los acentos.
+    const blob = new Blob([`﻿sep=${CSV_SEP}\r\n` + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
