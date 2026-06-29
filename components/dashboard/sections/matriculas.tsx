@@ -50,14 +50,28 @@ function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
   );
 }
 
-// Separador de campos: punto y coma (es el que espera Excel en español →
-// si se usa coma, Excel mete todo en una sola columna).
-const CSV_SEP = ";";
+// Separador de campos: tabulador. Combinado con BOM UTF-16LE es el formato
+// que Excel siempre reconoce sin ambigüedad (es lo mismo que genera
+// "Guardar como → Texto Unicode"). Con coma o punto y coma, Excel puede
+// terminar interpretando mal el separador o los acentos según la configuración
+// regional del usuario.
+const CSV_SEP = "\t";
 
 /** Escapa un valor para CSV (comillas, separador, saltos de línea). */
 function csvCell(v: unknown): string {
   const s = String(v ?? "");
-  return new RegExp(`["${CSV_SEP}\\n\\r]`).test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return /["\t\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** Codifica texto a UTF-16LE (con BOM) — formato que Excel siempre reconoce. */
+function toUtf16LeBytes(text: string): ArrayBuffer {
+  const withBom = "﻿" + text;
+  const buf = new ArrayBuffer(withBom.length * 2);
+  const view = new DataView(buf);
+  for (let i = 0; i < withBom.length; i++) {
+    view.setUint16(i * 2, withBom.charCodeAt(i), /* littleEndian */ true);
+  }
+  return buf;
 }
 
 // ─── Badge de tipo (Material/Servicio) ──────────────────────────────────────
@@ -395,9 +409,9 @@ export function MatriculasSection() {
         r.estado,
       ].map(csvCell).join(CSV_SEP)),
     ];
-    // 1ª línea `sep=;` → fuerza a Excel a usar punto y coma como separador.
-    // BOM (﻿) → respeta los acentos.
-    const blob = new Blob([`﻿sep=${CSV_SEP}\r\n` + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+    // UTF-16LE + BOM + tabulador: formato que Excel reconoce siempre sin
+    // ambigüedad de codificación regional (evita el "Ã­" en vez de "í").
+    const blob = new Blob([toUtf16LeBytes(lines.join("\r\n"))], { type: "text/csv;charset=utf-16le;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
