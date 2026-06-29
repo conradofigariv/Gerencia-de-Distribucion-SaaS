@@ -69,7 +69,7 @@ const opCrossKey = (op: unknown, linea: unknown) => `${num(op)}|${num(linea)}`;
 // matrícula por valor literal con respaldo normalizado (sin .0). El valor de la
 // matrícula se conserva literal para mostrar/guardar. (QW/expedientes ya no se usa.)
 function buildPreviewRow(
-  input: { zona: string; op: number; op_madre: number; linea: number; matricula: string },
+  input: { zona: string; op: number; op_madre: number; linea: number; matricula: string; descripcion?: string },
   opMap: Map<string, OpRow>,
   matMap: Map<string, MatRow>,
   today: Date,
@@ -79,7 +79,10 @@ function buildPreviewRow(
 
   const errs: string[] = [];
   if (!opRow)  errs.push(`OP "${input.op}/${input.linea}" no encontrada en planillas_op`);
-  if (!matRow) errs.push(`MATRÍCULA "${input.matricula}" no encontrada en matriculas`);
+  if (!matRow) errs.push(`MATRÍCULA "${input.matricula}" no está en el catálogo (matriculas)`);
+
+  // Descripción: catálogo primero; si la matrícula no está, usa la de la SIC.
+  const descripcion = String(matRow?.descripcion ?? input.descripcion ?? "");
 
   const cantidad         = num(opRow?.cantidad);
   const cantidadRecibida = num(opRow?.cantidad_recibida);
@@ -103,7 +106,7 @@ function buildPreviewRow(
     op_madre:               input.op_madre,
     linea:                  input.linea,
     matricula:              input.matricula,
-    descripcion_matricula:  String(matRow?.descripcion ?? ""),
+    descripcion_matricula:  descripcion,
     cantidad,
     cantidad_recibida:      cantidadRecibida,
     saldo_linea:            parseFloat(saldoLinea.toFixed(4)),
@@ -361,7 +364,7 @@ export function ServiciosCargaSection() {
       const today = new Date();
       const rows = conOp.map(s =>
         buildPreviewRow(
-          { zona: "", op: num(s.numero_op), op_madre: 0, linea: num(s.linea), matricula: str(s.articulo) },
+          { zona: "", op: num(s.numero_op), op_madre: 0, linea: num(s.linea), matricula: str(s.articulo), descripcion: str(s.descripcion) },
           maps.opMap, maps.matMap, today,
         ),
       );
