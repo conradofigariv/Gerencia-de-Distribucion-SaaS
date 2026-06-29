@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   Plus, Pencil, Trash2, Search, RefreshCw, Loader2, X,
-  Database, AlertTriangle, Tag,
+  Database, AlertTriangle, Tag, Download,
 } from "lucide-react";
 import {
   listMatriculas, createMatricula, updateMatricula, deleteMatricula,
@@ -20,6 +20,41 @@ type TipoFilter = "todos" | "material" | "servicio";
 const EMPTY_INPUT: MatriculaInput = {
   articulo: "", descripcion: "", unidad_medida: "", estado: "", mat_serv: "",
 };
+
+const COLWIDTHS_KEY = "matriculas-colwidths";
+
+// Columnas redimensionables (en orden). "Acciones" queda con ancho fijo.
+type ColKey = "articulo" | "descripcion" | "udm" | "tipo" | "estado";
+const COLS: { key: ColKey; label: string; align: "left" | "right" }[] = [
+  { key: "articulo",    label: "Matrícula",   align: "left" },
+  { key: "descripcion", label: "Descripción", align: "left" },
+  { key: "udm",         label: "UDM",         align: "left" },
+  { key: "tipo",        label: "Tipo",        align: "left" },
+  { key: "estado",      label: "Estado",      align: "left" },
+];
+const DEFAULT_WIDTHS: Record<ColKey, number> = {
+  articulo: 150, descripcion: 380, udm: 90, tipo: 120, estado: 130,
+};
+const ACCIONES_W = 96;
+
+// ─── Handle para redimensionar columnas ─────────────────────────────────────
+function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
+  return (
+    <div
+      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none group/rh"
+      onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onStart(e.nativeEvent); }}
+      onClick={e => e.stopPropagation()}
+    >
+      <div className="absolute right-0 top-1/4 h-1/2 w-px bg-border group-hover/rh:bg-accent/60 transition-colors" />
+    </div>
+  );
+}
+
+/** Escapa un valor para CSV (comillas, comas, saltos de línea). */
+function csvCell(v: unknown): string {
+  const s = String(v ?? "");
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
 
 // ─── Badge de tipo (Material/Servicio) ──────────────────────────────────────
 function TipoBadge({ matServ }: { matServ: string }) {
@@ -255,6 +290,37 @@ export function MatriculasSection() {
   const [modal, setModal]   = useState<{ mode: "create" | "edit"; row: Matricula | null } | null>(null);
   const [toDelete, setToDelete] = useState<Matricula | null>(null);
 
+  // Ancho de columnas (redimensionable + persistido en localStorage)
+  const [colWidths, setColWidths] = useState<Record<ColKey, number>>({ ...DEFAULT_WIDTHS });
+  const colWidthsLoaded = useRef(false);
+  const resizingRef = useRef<{ col: ColKey; startX: number; startWidth: number } | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(COLWIDTHS_KEY);
+      if (raw) setColWidths(c => ({ ...c, ...(JSON.parse(raw) as Partial<Record<ColKey, number>>) }));
+    } catch { /* ignorar */ }
+    colWidthsLoaded.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!colWidthsLoaded.current) return;
+    try { localStorage.setItem(COLWIDTHS_KEY, JSON.stringify(colWidths)); } catch { /* ignorar */ }
+  }, [colWidths]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const { col, startX, startWidth } = resizingRef.current;
+      const newW = Math.max(60, startWidth + e.clientX - startX);
+      setColWidths(p => ({ ...p, [col]: newW }));
+    };
+    const onUp = () => { resizingRef.current = null; };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -312,7 +378,34 @@ export function MatriculasSection() {
     }
   };
 
+  // Exporta la lista actualmente visible (respeta búsqueda y filtro) a CSV.
+  const exportCsv = () => {
+    if (filtered.length === 0) { toast.error("No hay matrículas para exportar"); return; }
+    const headers = ["Matrícula", "Descripción", "Unidad de medida", "Tipo", "Estado"];
+    const lines = [
+      headers.map(csvCell).join(","),
+      ...filtered.map(r => [
+        r.articulo, r.descripcion, r.unidad_medida,
+        tipoFromMatServ(r.mat_serv) === "material" ? "Material"
+          : tipoFromMatServ(r.mat_serv) === "servicio" ? "Servicio" : "",
+        r.estado,
+      ].map(csvCell).join(",")),
+    ];
+    // BOM para que Excel respete los acentos.
+    const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `matriculas_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success(`${filtered.length.toLocaleString("es-AR")} matrículas exportadas`);
+  };
+
   const thBase = "px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground sticky top-0 z-[2] bg-secondary border-b border-border";
+  const totalWidth = COLS.reduce((s, c) => s + colWidths[c.key], 0) + ACCIONES_W;
   const vItems = virtualizer.getVirtualItems();
   const totalH = virtualizer.getTotalSize();
   const padTop = vItems.length ? vItems[0].start : 0;
@@ -334,6 +427,13 @@ export function MatriculasSection() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={exportCsv}
+            disabled={loading || filtered.length === 0}
+            className="flex items-center gap-1.5 h-9 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all disabled:opacity-40"
+          >
+            <Download className="w-3.5 h-3.5" />Exportar CSV
+          </button>
           <button
             onClick={load}
             className="flex items-center gap-1.5 h-9 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all"
@@ -396,22 +496,19 @@ export function MatriculasSection() {
       {/* Tabla */}
       <div className="rounded-xl border border-border overflow-hidden bg-card">
         <div ref={scrollRef} className="overflow-auto" style={{ maxHeight: "calc(100vh - 320px)", minHeight: 240 }}>
-          <table className="w-full text-sm" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
+          <table className="text-sm" style={{ tableLayout: "fixed", width: totalWidth, borderCollapse: "separate", borderSpacing: 0 }}>
             <colgroup>
-              <col style={{ width: 150 }} />
-              <col />
-              <col style={{ width: 90 }} />
-              <col style={{ width: 110 }} />
-              <col style={{ width: 120 }} />
-              <col style={{ width: 90 }} />
+              {COLS.map(c => <col key={c.key} style={{ width: colWidths[c.key] }} />)}
+              <col style={{ width: ACCIONES_W }} />
             </colgroup>
             <thead>
               <tr>
-                <th className={thBase}>Matrícula</th>
-                <th className={thBase}>Descripción</th>
-                <th className={thBase}>UDM</th>
-                <th className={thBase}>Tipo</th>
-                <th className={thBase}>Estado</th>
+                {COLS.map(c => (
+                  <th key={c.key} className={cn(thBase, "relative")}>
+                    {c.label}
+                    <ResizeHandle onStart={e => { resizingRef.current = { col: c.key, startX: e.clientX, startWidth: colWidths[c.key] }; }} />
+                  </th>
+                ))}
                 <th className={cn(thBase, "text-right")}>Acciones</th>
               </tr>
             </thead>
@@ -440,13 +537,13 @@ export function MatriculasSection() {
                     const border = isLast ? {} : { borderBottom: "1px solid hsl(var(--border))" };
                     return (
                       <tr key={r.id ?? r.articulo} className="group hover:bg-secondary/40 transition-colors">
-                        <td style={border} className="px-3 py-2.5 font-mono text-xs text-accent-green whitespace-nowrap">{r.articulo}</td>
-                        <td style={border} className="px-3 py-2.5 text-foreground">
-                          <span className="block truncate" title={r.descripcion}>{r.descripcion || <span className="text-muted-foreground/50">—</span>}</span>
+                        <td style={border} className="px-3 py-2.5 font-mono text-xs text-accent-green truncate" title={r.articulo}>{r.articulo}</td>
+                        <td style={border} className="px-3 py-2.5 text-foreground truncate" title={r.descripcion}>
+                          {r.descripcion || <span className="text-muted-foreground/50">—</span>}
                         </td>
-                        <td style={border} className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">{r.unidad_medida || "—"}</td>
-                        <td style={border} className="px-3 py-2.5"><TipoBadge matServ={r.mat_serv} /></td>
-                        <td style={border} className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">{r.estado || "—"}</td>
+                        <td style={border} className="px-3 py-2.5 text-muted-foreground truncate" title={r.unidad_medida}>{r.unidad_medida || "—"}</td>
+                        <td style={border} className="px-3 py-2.5 truncate"><TipoBadge matServ={r.mat_serv} /></td>
+                        <td style={border} className="px-3 py-2.5 text-muted-foreground truncate" title={r.estado}>{r.estado || "—"}</td>
                         <td style={border} className="px-3 py-2.5">
                           <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                             <button
