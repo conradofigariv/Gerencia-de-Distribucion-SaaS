@@ -22,6 +22,7 @@ import {
   Gavel,
   Gauge,
   ClipboardList,
+  Tag,
   LogOut,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
@@ -72,6 +73,7 @@ type NavItemDef = NavLink | NavGroup;
 
 const navItems: NavItemDef[] = [
   { kind: "link", id: "servicios-planillas", label: "Carga de datos", icon: Layers },
+  { kind: "link", id: "matriculas", label: "Matrículas", icon: Tag },
   {
     kind: "group",
     id: "servicios",

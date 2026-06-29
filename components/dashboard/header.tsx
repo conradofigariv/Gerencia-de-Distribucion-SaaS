@@ -36,6 +36,7 @@ const sectionTitles: Record<Section, string> = {
   "transformadores-tabla":    "Stock de Transformadores — Informe de Reservas",
   "transformadores-resumen":  "Stock de Transformadores — Resumen",
   "stock-zona":               "Stock por Zona",
+  "matriculas":               "Matrículas",
   "informe-tecnico":          "Informe Técnico",
   "indice-ido-resumen":       "Índice IDO — Resumen",
   "indice-ido-carga":         "Índice IDO — Carga de datos",

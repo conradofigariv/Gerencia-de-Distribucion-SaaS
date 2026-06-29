@@ -24,6 +24,7 @@ import { TransformadoresCargaSection } from "@/components/dashboard/sections/tra
 import { TransformadoresTablaSection } from "@/components/dashboard/sections/transformadores-tabla";
 import { TransformadoresResumenSection } from "@/components/dashboard/sections/transformadores-resumen";
 import { StockZonaSection } from "@/components/dashboard/sections/stock-zona";
+import { MatriculasSection } from "@/components/dashboard/sections/matriculas";
 import { InformeTecnicoSection } from "@/components/dashboard/sections/informe-tecnico";
 import { IndiceIdoResumenSection } from "@/components/dashboard/sections/indice-ido-resumen";
 import { IndiceIdoCargaSection } from "@/components/dashboard/sections/indice-ido-carga";
@@ -45,6 +46,7 @@ export type Section =
   | "sic-diagrama"
   | "transformadores-carga" | "transformadores-tabla" | "transformadores-resumen"
   | "stock-zona"
+  | "matriculas"
   | "informe-tecnico"
   | "indice-ido-resumen" | "indice-ido-carga"
   | "tablero-op-resumen" | "tablero-op-carga";
@@ -144,6 +146,7 @@ export default function Dashboard() {
       case "transformadores-tabla":  return <TransformadoresTablaSection />;
       case "transformadores-resumen": return <TransformadoresResumenSection />;
       case "stock-zona":              return <StockZonaSection />;
+      case "matriculas":              return <MatriculasSection />;
       case "informe-tecnico":         return <InformeTecnicoSection />;
       case "indice-ido-resumen":      return <IndiceIdoResumenSection />;
       case "indice-ido-carga":        return <IndiceIdoCargaSection />;
