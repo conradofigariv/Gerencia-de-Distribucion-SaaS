@@ -1,13 +1,15 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, ChevronDown, Trash2, Search } from "lucide-react";
+import { Loader2, RefreshCw, ChevronDown, Trash2, Search, X, CheckCircle2 } from "lucide-react";
 import { SearchInput } from "@/components/ui/floating-input";
 
-const KVA_ROWS = [5, 10, 16, 25, 50, 63, 80, 100, 125, 160, 200, 250, 315, 500, 630, 800, 1000];
+const POT_13 = [5, 10, 16, 25, 50, 63, 80, 100, 125, 160, 200, 250, 315, 500, 630, 800, 1000];
 const REL33_ROWS = [25, 63, 160, 315, 500, 630];
+const RURAL_KVA = new Set([5, 10, 16, 25]);
 
 interface Celda { t: number; m: number; ct: number; tipo?: string }
 interface PlanillaRow {
@@ -25,20 +27,51 @@ interface PlanillaRow {
   created_at: string;
 }
 
+// ─── Read-only report micro-components (mismo formato visual que Carga de datos) ──
+
+function NV({ val }: { val: number }) {
+  return (
+    <div className="flex items-center justify-center mx-auto bg-panel-input border border-border rounded w-7 px-1 py-1">
+      <span className="text-xs text-foreground select-none">{val || "0"}</span>
+    </div>
+  );
+}
+
+function TH({ c, rs, cs, children }: { c?: string; rs?: number; cs?: number; children: React.ReactNode }) {
+  return (
+    <th rowSpan={rs} colSpan={cs}
+      className={`px-0.5 py-1 text-[8px] font-bold text-muted-foreground border border-border bg-panel-header uppercase tracking-wide leading-tight ${c ?? ""}`}>
+      {children}
+    </th>
+  );
+}
+
+function TD({ c, children }: { c?: string; children: React.ReactNode }) {
+  return (
+    <td className={`px-0.5 py-1 text-[10px] border border-border text-center text-muted-foreground ${c ?? ""}`}>
+      {children}
+    </td>
+  );
+}
+
+function TotalRow({ label, span, values }: { label: string; span?: number; values: (string | number | React.ReactNode)[] }) {
+  return (
+    <tr className="bg-panel-header font-bold">
+      <td colSpan={span ?? 1} className="px-1 py-1 border border-border text-[10px] font-bold text-muted-foreground text-center">{label}</td>
+      {values.map((v, i) => (
+        <td key={i} className="px-1 py-1 border border-border text-xs text-center text-accent-green font-bold">{v || "—"}</td>
+      ))}
+    </tr>
+  );
+}
+
 export function TransformadoresTablaSection() {
   const [rows, setRows] = useState<PlanillaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterYear, setFilterYear] = useState("");
   const [filterMonth, setFilterMonth] = useState("");
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [expandedSections, setExpandedSections] = useState({
-    nuevos: true,
-    reparados: true,
-    totales: true,
-    relacion: true,
-    notas: true,
-  });
+  const [openId, setOpenId] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -56,6 +89,14 @@ export function TransformadoresTablaSection() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  useEffect(() => {
+    if (openId === null) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpenId(null); };
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
+  }, [openId]);
+
   const computeTotals = (p: PlanillaRow) => {
     const totTerceros = Object.values(p.datos.terceros).reduce((s, r) => s + r.t + r.m, 0);
     const totTaller   = Object.values(p.datos.taller).reduce((s, r) => s + r.t + r.m, 0);
@@ -63,10 +104,6 @@ export function TransformadoresTablaSection() {
     const totAuto     = Object.values(p.datos.autorizados).reduce((s, v) => s + v, 0);
     const totDisp     = totGeneral - totAuto;
     return { totGeneral, totTerceros, totTaller, totAuto, totDisp };
-  };
-
-  const toggleSection = (section: keyof typeof expandedSections) => {
-    setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
   const deleteRecord = async (id: number) => {
@@ -83,6 +120,7 @@ export function TransformadoresTablaSection() {
 
       toast.success("Informe eliminado correctamente");
       setRows(prev => prev.filter(r => r.id !== id));
+      setOpenId(prev => (prev === id ? null : prev));
     } catch (err) {
       toast.error((err as Error).message || "Error al eliminar");
     }
@@ -106,6 +144,8 @@ export function TransformadoresTablaSection() {
     if (search      && !r.fecha.includes(search)) return false;
     return true;
   });
+
+  const openPlanilla = rows.find(r => r.id === openId) ?? null;
 
   if (loading) {
     return (
@@ -171,341 +211,290 @@ export function TransformadoresTablaSection() {
 
       {filtered.map((planilla) => {
         const totals = computeTotals(planilla);
-        const isExpanded = expandedId === planilla.id;
 
         return (
-          <div key={planilla.id} className="space-y-4">
-            {/* Planilla Header */}
-            <div className="bg-secondary/40 rounded-xl shadow-sm border border-border p-6 hover:bg-secondary transition-colors">
-              <div className="flex items-center justify-between">
+          <div key={planilla.id} className="bg-secondary/40 rounded-xl shadow-sm border border-border p-6 hover:bg-secondary transition-colors">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => setOpenId(planilla.id)}
+                className="flex-1 text-left hover:opacity-80 transition-opacity"
+              >
+                <h2 className="text-xl font-bold text-foreground">
+                  Informe de Reservas — {planilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
+                  {planilla.datos.deposito && <span className="text-muted-foreground font-normal"> — {planilla.datos.deposito}</span>}
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  <span className="font-semibold text-accent-green">{totals.totGeneral}</span> total
+                  {" | "}
+                  <span className="font-semibold text-green-400">{totals.totDisp}</span> disponibles
+                  {" | "}
+                  <span className="font-semibold text-cyan-400">{totals.totTerceros}</span> terceros
+                  {" | "}
+                  <span className="font-semibold text-amber-400">{totals.totTaller}</span> taller
+                </p>
+              </button>
+              <div className="flex items-center gap-2 ml-4">
                 <button
-                  onClick={() => setExpandedId(isExpanded ? null : planilla.id)}
-                  className="flex-1 text-left hover:opacity-80 transition-opacity"
+                  onClick={() => deleteRecord(planilla.id)}
+                  className="p-2 rounded-lg text-red-400 hover:bg-red-500/20 transition-colors"
+                  title="Eliminar informe"
                 >
-                  <h2 className="text-xl font-bold text-foreground">
-                    Informe de Reservas — {planilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
-                    {planilla.datos.deposito && <span className="text-muted-foreground font-normal"> — {planilla.datos.deposito}</span>}
-                  </h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    <span className="font-semibold text-accent-green">{totals.totGeneral}</span> total
-                    {" | "}
-                    <span className="font-semibold text-green-400">{totals.totDisp}</span> disponibles
-                    {" | "}
-                    <span className="font-semibold text-cyan-400">{totals.totTerceros}</span> terceros
-                    {" | "}
-                    <span className="font-semibold text-amber-400">{totals.totTaller}</span> taller
-                  </p>
+                  <Trash2 className="w-5 h-5" />
                 </button>
-                <div className="flex items-center gap-2 ml-4">
-                  <button
-                    onClick={() => deleteRecord(planilla.id)}
-                    className="p-2 rounded-lg text-red-400 hover:bg-red-500/20 transition-colors"
-                    title="Eliminar informe"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                  <ChevronDown className={`w-6 h-6 text-muted-foreground transition-transform cursor-pointer ${isExpanded ? "rotate-180" : ""}`} />
-                </div>
+                <ChevronDown className="w-6 h-6 text-muted-foreground -rotate-90 cursor-pointer" onClick={() => setOpenId(planilla.id)} />
               </div>
             </div>
-
-            {isExpanded && (
-              <>
-                {/* Reporte Header */}
-                <div className="bg-secondary/40 rounded-xl shadow-sm border border-border p-6">
-                  <h1 className="text-2xl font-bold text-foreground">Reporte de Transformadores</h1>
-                  <p className="text-sm text-muted-foreground mt-1">Actualización: 08:00 HRS</p>
-                </div>
-
-                {/* Top 3 Panels */}
-                <div className="grid grid-cols-3 gap-6">
-
-                  {/* Nuevos y Reparados por Terceros */}
-                  <div className="bg-secondary/40 rounded-xl shadow-sm border border-border overflow-hidden">
-                    <button
-                      onClick={() => toggleSection("nuevos")}
-                      className="w-full bg-gradient-to-r from-accent/20 to-accent/20 border-b border-border px-6 py-4 flex items-center justify-between hover:from-accent/30 hover:to-accent/30 transition-all"
-                    >
-                      <h2 className="text-sm font-semibold text-accent-green uppercase tracking-wide">
-                        Nuevos y Reparados por Terceros
-                      </h2>
-                      <svg
-                        className={`w-5 h-5 text-accent-green transition-transform ${expandedSections.nuevos ? "rotate-180" : ""}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    {expandedSections.nuevos && (
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead className="bg-panel-header border-b border-border">
-                            <tr>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">POTENCIA KVA</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">T</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">M</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">Con tanque</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">TOTAL</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">TIPO DE USO</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-700/50">
-                            {KVA_ROWS.map((kva) => {
-                              const r = planilla.datos.terceros[String(kva)] ?? { t: 0, m: 0, ct: 0 };
-                              const tot = r.t + r.m;
-                              return (
-                                <tr key={kva} className="hover:bg-accent/10 transition-colors">
-                                  <td className="px-4 py-2.5 text-sm font-medium text-center text-foreground">{kva}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.t || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.m || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.ct || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center font-semibold text-accent-green">{tot || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.tipo ?? ""}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Reparados por Taller */}
-                  <div className="bg-secondary/40 rounded-xl shadow-sm border border-border overflow-hidden">
-                    <button
-                      onClick={() => toggleSection("reparados")}
-                      className="w-full bg-gradient-to-r from-emerald-600/20 to-emerald-700/20 border-b border-border px-6 py-4 flex items-center justify-between hover:from-emerald-600/30 hover:to-emerald-700/30 transition-all"
-                    >
-                      <h2 className="text-sm font-semibold text-emerald-300 uppercase tracking-wide">
-                        Reparados por Taller de Transformadores
-                      </h2>
-                      <svg
-                        className={`w-5 h-5 text-emerald-400 transition-transform ${expandedSections.reparados ? "rotate-180" : ""}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    {expandedSections.reparados && (
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead className="bg-panel-header border-b border-border">
-                            <tr>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">POTENCIA KVA</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">T</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">M</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">Con tanque</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">TOTAL</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">TIPO DE USO</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-700/50">
-                            {KVA_ROWS.map((kva) => {
-                              const r = planilla.datos.taller[String(kva)] ?? { t: 0, m: 0, ct: 0 };
-                              const tot = r.t + r.m;
-                              return (
-                                <tr key={kva} className="hover:bg-emerald-600/10 transition-colors">
-                                  <td className="px-4 py-2.5 text-sm font-medium text-center text-foreground">{kva}</td>
-                                  <td className="px-3 py-2.5 text-sm text-center text-muted-foreground">{r.t || ""}</td>
-                                  <td className="px-3 py-2.5 text-sm text-center text-muted-foreground">{r.m || ""}</td>
-                                  <td className="px-3 py-2.5 text-sm text-center text-muted-foreground">{r.ct || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center font-semibold text-emerald-400">{tot || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.tipo ?? ""}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Total de Transformadores */}
-                  <div className="bg-secondary/40 rounded-xl shadow-sm border border-border overflow-hidden">
-                    <button
-                      onClick={() => toggleSection("totales")}
-                      className="w-full bg-gradient-to-r from-purple-600/20 to-purple-700/20 border-b border-border px-6 py-4 flex items-center justify-between hover:from-purple-600/30 hover:to-purple-700/30 transition-all"
-                    >
-                      <h2 className="text-sm font-semibold text-purple-300 uppercase tracking-wide">
-                        Total de Transformadores
-                      </h2>
-                      <svg
-                        className={`w-5 h-5 text-purple-400 transition-transform ${expandedSections.totales ? "rotate-180" : ""}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    {expandedSections.totales && (
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead className="bg-panel-header border-b border-border">
-                            <tr>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">POTENCIA KVA</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">TOTAL DE TRANSFORMADORES</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">Autorizados Pendiente de Retiro</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">Disponibles para Retiro</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-700/50">
-                            {KVA_ROWS.map((kva) => {
-                              const terc = planilla.datos.terceros[String(kva)] ?? { t: 0, m: 0, ct: 0 };
-                              const tall = planilla.datos.taller[String(kva)] ?? { t: 0, m: 0, ct: 0 };
-                              const total = terc.t + terc.m + tall.t + tall.m;
-                              const auto = planilla.datos.autorizados[String(kva)] ?? 0;
-                              const disp = total - auto;
-                              return (
-                                <tr key={kva} className="hover:bg-purple-600/10 transition-colors">
-                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{kva}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center font-semibold text-purple-400">{total || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center font-semibold text-amber-400">{auto || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{disp || ""}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                          <tfoot className="bg-panel-header border-t-2 border-border">
-                            <tr>
-                              <td className="px-4 py-3 text-sm font-bold text-muted-foreground text-center">TOTAL</td>
-                              <td className="px-4 py-3 text-sm font-bold text-purple-300 text-center">{totals.totGeneral}</td>
-                              <td className="px-4 py-3 text-sm font-bold text-amber-300 text-center">Tot. Disp.</td>
-                              <td className="px-4 py-3 text-sm font-bold text-muted-foreground text-center">{totals.totDisp}</td>
-                            </tr>
-                          </tfoot>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Bottom 2 Panels */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                  {/* Relación: 33/0.4 KV */}
-                  <div className="bg-secondary/40 rounded-xl shadow-sm border border-border overflow-hidden">
-                    <button
-                      onClick={() => toggleSection("relacion")}
-                      className="w-full bg-gradient-to-r from-amber-600/20 to-amber-700/20 border-b border-border px-6 py-4 flex items-center justify-between hover:from-amber-600/30 hover:to-amber-700/30 transition-all"
-                    >
-                      <h2 className="text-sm font-semibold text-amber-300 uppercase tracking-wide">
-                        Relación: 33/0.4 KV
-                      </h2>
-                      <svg
-                        className={`w-5 h-5 text-amber-400 transition-transform ${expandedSections.relacion ? "rotate-180" : ""}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    {expandedSections.relacion && (
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead className="bg-panel-header border-b border-border">
-                            <tr>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">POTENCIA</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground" colSpan={2}>TRAFOS NUEVOS</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground" colSpan={2}>TRAFOS REPARADOS</th>
-                            </tr>
-                            <tr className="bg-panel-header border-b border-border">
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground"></th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">T</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">M</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">T</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">M</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-700/50">
-                            {REL33_ROWS.map((kva) => {
-                              const r = planilla.datos.rel33[String(kva)] ?? { tN: 0, mN: 0, tR: 0, mR: 0 };
-                              return (
-                                <tr key={kva} className="hover:bg-amber-600/10 transition-colors">
-                                  <td className="px-4 py-2.5 text-sm font-medium text-center text-foreground">{kva}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.tN || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.mN || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.tR || ""}</td>
-                                  <td className="px-4 py-2.5 text-sm text-center text-muted-foreground">{r.mR || ""}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                          <tfoot className="bg-panel-header border-t-2 border-border">
-                            <tr>
-                              <td className="px-4 py-3 text-sm font-bold text-amber-300 text-center">TOTAL</td>
-                              <td className="px-4 py-3 text-sm font-bold text-amber-300 text-center">
-                                {Object.values(planilla.datos.rel33).reduce((s, r) => s + (r.tN || 0), 0) || ""}
-                              </td>
-                              <td className="px-4 py-3 text-sm font-bold text-amber-300 text-center">
-                                {Object.values(planilla.datos.rel33).reduce((s, r) => s + (r.mN || 0), 0) || ""}
-                              </td>
-                              <td className="px-4 py-3 text-sm font-bold text-amber-300 text-center">
-                                {Object.values(planilla.datos.rel33).reduce((s, r) => s + (r.tR || 0), 0) || ""}
-                              </td>
-                              <td className="px-4 py-3 text-sm font-bold text-amber-300 text-center">
-                                {Object.values(planilla.datos.rel33).reduce((s, r) => s + (r.mR || 0), 0) || ""}
-                              </td>
-                            </tr>
-                          </tfoot>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Observaciones */}
-                  <div className="bg-secondary/40 rounded-xl shadow-sm border border-border overflow-hidden">
-                    <button
-                      onClick={() => toggleSection("notas")}
-                      className="w-full bg-gradient-to-r from-secondary/40 to-secondary/20 border-b border-border px-6 py-4 flex items-center justify-between hover:from-secondary/60 hover:to-secondary/40 transition-all"
-                    >
-                      <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                        Observaciones
-                      </h2>
-                      <svg
-                        className={`w-5 h-5 text-muted-foreground transition-transform ${expandedSections.notas ? "rotate-180" : ""}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    {expandedSections.notas && (
-                      <div className="p-6 space-y-4">
-                        {planilla.datos.obs && (
-                          <div className="bg-accent/20 border-l-4 border-accent p-4 rounded-r">
-                            <h3 className="text-sm font-semibold text-accent-green mb-2">OBSERVACIONES:</h3>
-                            <p className="text-xs text-accent-green whitespace-pre-wrap">{planilla.datos.obs}</p>
-                          </div>
-                        )}
-                        {planilla.datos.pend && (
-                          <div className="bg-green-600/20 border-l-4 border-green-400 p-4 rounded-r">
-                            <h3 className="text-sm font-semibold text-green-300 mb-2">PENDIENTES DE ENTREGAS:</h3>
-                            <p className="text-xs text-green-200 whitespace-pre-wrap">{planilla.datos.pend}</p>
-                          </div>
-                        )}
-                        {!planilla.datos.obs && !planilla.datos.pend && (
-                          <p className="text-sm text-muted-foreground text-center py-4">Sin observaciones ni pendientes</p>
-                        )}
-                        <div className="bg-panel-header rounded-lg p-4 text-center">
-                          <p className="text-xs text-muted-foreground font-medium">PLANILLA REALIZADA POR:</p>
-                          <p className="text-xs text-muted-foreground mt-1">HORA DE ACTUALIZACIÓN: 08:00 HRS</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
           </div>
         );
       })}
+
+      {/* ── Modal de informe (pantalla completa, fondo difuminado, mismo formato que Carga de datos) ── */}
+      {openPlanilla && typeof document !== "undefined" && createPortal(
+        (() => {
+          const p = openPlanilla;
+          const terceros = p.datos.terceros;
+          const taller   = p.datos.taller;
+          const auto     = p.datos.autorizados;
+          const rel33    = p.datos.rel33;
+          const sum2 = (r?: Celda) => (r ? r.t + r.m : 0);
+          const totGeneral = POT_13.reduce((s, kva) => s + sum2(terceros[kva]) + sum2(taller[kva]), 0);
+          const totAuto    = POT_13.reduce((s, kva) => s + (auto[kva] ?? 0), 0);
+          const totDisp    = totGeneral - totAuto;
+          const tot33N     = REL33_ROWS.reduce((s, kva) => { const r = rel33[kva]; return s + (r ? r.tN + r.mN : 0); }, 0);
+          const tot33R     = REL33_ROWS.reduce((s, kva) => { const r = rel33[kva]; return s + (r ? r.tR + r.mR : 0); }, 0);
+
+          return (
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-5">
+              <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setOpenId(null)} />
+              <div className="relative w-full h-full bg-secondary/30 border border-border rounded-2xl shadow-2xl overflow-y-auto">
+
+                {/* Title */}
+                <div className="sticky top-0 z-10 border-b border-border bg-secondary/95 backdrop-blur px-4 py-3 flex items-center justify-between">
+                  <div className="text-center flex-1">
+                    <p className="text-xs font-bold text-muted-foreground tracking-wide">
+                      RESERVA DE TRANSFORMADORES DE DISTRIBUCIÓN (RELAC: 13,2/0,4 — 33/0,4 KV)
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      ÁREA TÉCNICA — DPTO. TRANSFORMADORES — GCIA. TRANSMISIÓN
+                      {" — "}
+                      {p.fecha.split("-").reverse().join("/")}
+                      {p.datos.deposito && ` — ${p.datos.deposito}`}
+                    </p>
+                  </div>
+                  <button onClick={() => setOpenId(null)} className="absolute right-4 text-muted-foreground hover:text-foreground transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-4 space-y-5">
+
+                  {/* ── Row 1: Terceros + Taller + Resumen ── */}
+                  <div className="overflow-x-auto">
+                  <div className="grid grid-cols-[5fr_6fr_4fr] gap-3 min-w-[1200px]">
+
+                    {/* Table A: Nuevos y Reparados por Terceros */}
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
+                        Nuevos y Reparados por Terceros
+                      </p>
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr>
+                            <TH>Pot. KVA</TH>
+                            <TH>T</TH><TH>M</TH><TH c="leading-[1.1]">C/<br/>Tanque</TH>
+                            <TH>Total</TH>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {POT_13.map(kva => {
+                            const r = terceros[kva] ?? { t: 0, m: 0, ct: 0 };
+                            const tot = r.t + r.m;
+                            return (
+                              <tr key={kva} className={tot > 0 ? "bg-accent/5" : ""}>
+                                <TD c="font-semibold text-foreground">{kva}</TD>
+                                <TD><NV val={r.t} /></TD>
+                                <TD><NV val={r.m} /></TD>
+                                <TD><NV val={r.ct} /></TD>
+                                <TD c={tot > 0 ? "font-bold text-accent" : "text-muted-foreground"}>{tot || "—"}</TD>
+                              </tr>
+                            );
+                          })}
+                          <TotalRow label="TOTAL" span={4} values={[POT_13.reduce((s,kva)=>s+sum2(terceros[kva]),0)]} />
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Table B: Reparados por Taller */}
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
+                        Reparados por Taller de Transformadores
+                      </p>
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr>
+                            <TH>Tipo</TH><TH>Pot. KVA</TH>
+                            <TH>T</TH><TH>M</TH><TH c="leading-[1.1]">C/<br/>Tanque</TH>
+                            <TH>Total</TH>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {POT_13.map(kva => {
+                            const r = taller[kva] ?? { t: 0, m: 0, ct: 0 };
+                            const tot = r.t + r.m;
+                            return (
+                              <tr key={kva} className={tot > 0 ? "bg-accent/5" : ""}>
+                                {RURAL_KVA.has(kva)
+                                  ? <TD c="text-[9px] text-muted-foreground">RURAL</TD>
+                                  : <td className="px-0.5 py-1 text-[10px] text-center text-muted-foreground" />}
+                                <TD c="font-semibold text-foreground">{kva}</TD>
+                                <TD><NV val={r.t} /></TD>
+                                <TD><NV val={r.m} /></TD>
+                                <TD><NV val={r.ct} /></TD>
+                                <TD c={tot > 0 ? "font-bold text-accent" : "text-muted-foreground"}>{tot || "—"}</TD>
+                              </tr>
+                            );
+                          })}
+                          <TotalRow label="TOTAL" span={5} values={[POT_13.reduce((s,kva)=>s+sum2(taller[kva]),0)]} />
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Table C: Resumen */}
+                    <div>
+                      <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
+                        Total de Transformadores
+                      </p>
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr>
+                            <TH>Tipo</TH>
+                            <TH c="leading-[1.1]">Total<br/>Trafos</TH>
+                            <TH c="leading-[1.1]">Autorizados<br/>p/Retiro</TH>
+                            <TH c="leading-[1.1]">Disponibles<br/>p/Retiro</TH>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {POT_13.map(kva => {
+                            const tot  = sum2(terceros[kva]) + sum2(taller[kva]);
+                            const a    = auto[kva] ?? 0;
+                            const disp = Math.max(0, tot - a);
+                            return (
+                              <tr key={kva}>
+                                {RURAL_KVA.has(kva)
+                                  ? <TD c="text-[9px] text-muted-foreground">RURAL</TD>
+                                  : <td className="px-0.5 py-1 text-[10px] text-center text-muted-foreground" />}
+                                <TD><NV val={tot} /></TD>
+                                <TD><NV val={a} /></TD>
+                                <TD c={disp > 0 ? "text-accent-green font-bold" : "text-muted-foreground"}>{disp || "—"}</TD>
+                              </tr>
+                            );
+                          })}
+                          <tr className="bg-panel-header font-bold">
+                            <td className="px-1 py-1 border border-border text-[9px] font-bold text-foreground text-center">TOTAL</td>
+                            <td className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{totGeneral || "—"}</td>
+                            <td className="px-1 py-1 border border-border text-xs text-center text-accent-amber font-bold">{totAuto || "—"}</td>
+                            <td className="px-1 py-1 border border-border text-xs text-center text-accent-green font-bold">{totDisp || "—"}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  </div>
+
+                  {/* ── Row 2: Relación 33 + Observaciones + Pendientes ── */}
+                  <div className="overflow-x-auto">
+                  <div className="grid grid-cols-1 md:grid-cols-[440px_1fr] gap-5 min-w-[900px]">
+
+                    {/* Table D: Relación 33/0,4 kV */}
+                    <div>
+                      <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
+                        Relación 33/0,4 KV
+                      </p>
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr>
+                            <TH rs={2}>Pot. KVA</TH>
+                            <TH cs={2}>Trafos Nuevos</TH>
+                            <TH cs={2}>Trafos Reparados</TH>
+                          </tr>
+                          <tr>
+                            <TH>T</TH><TH>M</TH>
+                            <TH>T</TH><TH>M</TH>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {REL33_ROWS.map(kva => {
+                            const r = rel33[kva] ?? { tN: 0, mN: 0, tR: 0, mR: 0 };
+                            return (
+                              <tr key={kva}>
+                                <TD c="font-semibold text-foreground">{kva}</TD>
+                                <TD><NV val={r.tN} /></TD>
+                                <TD><NV val={r.mN} /></TD>
+                                <TD><NV val={r.tR} /></TD>
+                                <TD><NV val={r.mR} /></TD>
+                              </tr>
+                            );
+                          })}
+                          <tr className="bg-panel-header font-bold">
+                            <td className="px-1 py-1 border border-border text-[9px] font-bold text-foreground text-center">TOTAL</td>
+                            <td colSpan={2} className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{tot33N || "—"}</td>
+                            <td colSpan={2} className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{tot33R || "—"}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Observaciones + Pendientes */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                          Observaciones (13,2/0,4 KV)
+                        </p>
+                        <div className="flex-1 min-h-[120px] rounded-lg bg-panel-input border border-border px-2.5 py-2 text-xs text-foreground whitespace-pre-wrap">
+                          {p.datos.obs || <span className="text-muted-foreground">Sin observaciones</span>}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                          Pendientes de Entregas
+                        </p>
+                        <div className="flex-1 min-h-[120px] rounded-lg bg-panel-input border border-border px-2.5 py-2 text-xs text-foreground whitespace-pre-wrap">
+                          {p.datos.pend || <span className="text-muted-foreground">Sin pendientes</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="sticky bottom-0 border-t border-border px-5 py-3 flex items-center justify-between bg-secondary/95 backdrop-blur">
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span>Total: <strong className="text-accent-green">{totGeneral}</strong></span>
+                    <span>Autorizados: <strong className="text-accent-amber">{totAuto}</strong></span>
+                    <span>Disponibles: <strong className="text-accent-green">{totDisp}</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => deleteRecord(p.id)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-red-400 hover:bg-red-500/20 text-sm font-medium transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" /> Eliminar
+                    </button>
+                    <button
+                      onClick={() => setOpenId(null)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors"
+                    >
+                      <CheckCircle2 className="w-4 h-4" /> Cerrar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })(),
+        document.body
+      )}
     </div>
   );
 }

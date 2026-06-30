@@ -57,6 +57,17 @@ function init33()       { return Object.fromEntries(POT_33.map(p => [p, { tN: 0,
 // ─── Micro-components ─────────────────────────────────────────────────────────
 
 function NI({ val, onChange }: { val: number; onChange: (v: number) => void }) {
+  const [text, setText] = useState(String(val || 0));
+
+  useEffect(() => { setText(String(val || 0)); }, [val]);
+
+  const commit = () => {
+    const n = parseInt(text, 10);
+    if (Number.isNaN(n) || n < 0) { setText(String(val || 0)); return; }
+    onChange(n);
+    setText(String(n));
+  };
+
   return (
     <div className="flex items-center justify-center gap-1 mx-auto bg-panel-input border border-border rounded w-fit">
       <button
@@ -65,7 +76,16 @@ function NI({ val, onChange }: { val: number; onChange: (v: number) => void }) {
       >
         −
       </button>
-      <span className="w-7 text-center text-xs text-foreground select-none">{val || "0"}</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={text}
+        onChange={e => setText(e.target.value.replace(/[^\d]/g, ""))}
+        onFocus={e => e.target.select()}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+        className="w-7 text-center text-xs text-foreground select-none bg-transparent focus:outline-none"
+      />
       <button
         onClick={() => onChange(val + 1)}
         className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"

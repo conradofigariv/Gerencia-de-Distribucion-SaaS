@@ -705,16 +705,35 @@ export function TransformadoresResumenSection() {
   const [alarms, setAlarms]           = useState<AlarmRule[]>([]);
   const [newAlarm, setNewAlarm]       = useState<Omit<AlarmRule, "id">>({ potencia: "", relacion: "", fases: "", zona: "", threshold: 5 });
   const alarmsRef                     = useRef<HTMLDivElement>(null);
+  const alarmsMenuRef                 = useRef<HTMLDivElement>(null);
+  const [alarmsCoords, setAlarmsCoords] = useState<{ top: number; right: number } | null>(null);
 
   useEffect(() => { setAlarms(loadAlarms()); }, []);
 
+  const repositionAlarms = useCallback(() => {
+    const r = alarmsRef.current?.getBoundingClientRect();
+    if (r) setAlarmsCoords({ top: r.bottom + 8, right: window.innerWidth - r.right });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (showAlarms) repositionAlarms();
+  }, [showAlarms, repositionAlarms]);
+
   useEffect(() => {
     function onDown(e: MouseEvent) {
-      if (alarmsRef.current && !alarmsRef.current.contains(e.target as Node)) setShowAlarms(false);
+      const t = e.target as Node;
+      if (alarmsRef.current?.contains(t) || alarmsMenuRef.current?.contains(t)) return;
+      setShowAlarms(false);
     }
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, []);
+    window.addEventListener("scroll", repositionAlarms, true);
+    window.addEventListener("resize", repositionAlarms);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("scroll", repositionAlarms, true);
+      window.removeEventListener("resize", repositionAlarms);
+    };
+  }, [repositionAlarms]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -1108,8 +1127,21 @@ export function TransformadoresResumenSection() {
               )}
             </button>
 
-            {showAlarms && (
-              <div className="absolute right-0 top-full mt-2 w-[420px] bg-card border border-border rounded-2xl shadow-2xl z-50">
+            {showAlarms && alarmsCoords && createPortal(
+              <div
+                ref={alarmsMenuRef}
+                className="bg-card border border-border rounded-2xl shadow-2xl"
+                style={{
+                  position: "fixed",
+                  top: alarmsCoords.top,
+                  right: alarmsCoords.right,
+                  width: 420,
+                  maxWidth: "calc(100vw - 24px)",
+                  maxHeight: "min(560px, calc(100vh - 24px))",
+                  overflowY: "auto",
+                  zIndex: 1000,
+                }}
+              >
                 {/* Panel header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-border rounded-t-2xl">
                   <div className="flex items-center gap-2">
@@ -1177,7 +1209,8 @@ export function TransformadoresResumenSection() {
                     </button>
                   </div>
                 </div>
-              </div>
+              </div>,
+              document.body
             )}
           </div>
         </div>
