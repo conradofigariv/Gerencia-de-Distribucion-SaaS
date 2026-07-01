@@ -164,6 +164,7 @@ export function ServiciosCargaSection() {
   const [generating, setGenerating] = useState(false);
   const [generatingSIC, setGeneratingSIC] = useState(false);
   const [saving, setSaving]       = useState(false);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [selected, setSelected]   = useState<Set<string>>(new Set());
   const [deletingSelected, setDeletingSelected] = useState(false);
   const [clearingAll, setClearingAll] = useState(false);
@@ -384,21 +385,33 @@ export function ServiciosCargaSection() {
   };
 
   // ── GUARDAR
-  const handleSave = async (saveMode: "replace" | "accumulate") => {
+  //  replace_all : borra TODO el seguimiento y guarda lo del preview.
+  //  replace_sic : borra solo lo cargado por la masiva (origen 'sic' o legado
+  //                null) y conserva los casos manuales (origen 'manual').
+  //  accumulate  : no borra nada, solo agrega.
+  type SaveMode = "replace_all" | "replace_sic" | "accumulate";
+  const handleSave = async (saveMode: SaveMode) => {
+    setSaveModalOpen(false);
     setSaving(true);
     try {
-      if (saveMode === "replace") {
+      if (saveMode === "replace_all") {
         const { error } = await supabase.from("seguimiento").delete().not("id", "is", null);
         if (error) throw new Error(`Error al limpiar: ${error.message}`);
+      } else if (saveMode === "replace_sic") {
+        const { error } = await supabase.from("seguimiento").delete().or("origen.is.null,origen.eq.sic");
+        if (error) throw new Error(`Error al limpiar SICs: ${error.message}`);
       }
-      const toInsert = preview.map(({ _errors: _, ...r }) => r);
+      const toInsert = preview.map(({ _errors: _, ...r }) => ({ ...r, origen: previewSource }));
       for (let i = 0; i < toInsert.length; i += 500) {
         const { error } = await supabase.from("seguimiento").insert(toInsert.slice(i, i + 500));
         if (error) throw new Error(`Error al insertar: ${error.message}`);
       }
-      toast.success(saveMode === "replace"
-        ? `Seguimiento reemplazado — ${toInsert.length} registros`
-        : `${toInsert.length} registros agregados al seguimiento`);
+      const n = toInsert.length;
+      toast.success(
+        saveMode === "accumulate"  ? `${n} registros agregados al seguimiento` :
+        saveMode === "replace_sic" ? `SICs reemplazadas — ${n} registros (casos manuales conservados)` :
+                                     `Seguimiento reemplazado — ${n} registros`
+      );
       if (userId) await markUpdated(REMINDER_KEY, REMINDER_NAME, userId).catch(() => {});
       setStep("input");
       setPreview([]);
@@ -410,6 +423,48 @@ export function ServiciosCargaSection() {
   };
 
   const colCount = (t: string) => { const n = splitCol(t).length; return n > 0 ? `${n} fila${n !== 1 ? "s" : ""}` : ""; };
+
+  // ════════════════════════════════════════════════════════════════
+  // DIÁLOGO de opciones de guardado (solo para la carga masiva de SICs)
+  // ════════════════════════════════════════════════════════════════
+  const saveModal = saveModalOpen && createPortal(
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+      onClick={() => !saving && setSaveModalOpen(false)}>
+      <div className="bg-popover border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <span className="text-sm font-semibold text-foreground">¿Cómo guardar la carga masiva?</span>
+          <button onClick={() => setSaveModalOpen(false)} disabled={saving}
+            className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-40">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-4 space-y-2.5">
+          <button onClick={() => handleSave("replace_sic")} disabled={saving}
+            className="w-full text-left p-3.5 rounded-lg border border-accent/40 bg-accent/10 hover:bg-accent/15 transition-colors disabled:opacity-50">
+            <p className="text-sm font-semibold text-foreground">Reemplazar solo las SICs de Soler</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Recarga el maestro de SICs y <span className="text-foreground">conserva los casos manuales</span> ya cargados. Recomendado.</p>
+          </button>
+          <button onClick={() => handleSave("replace_all")} disabled={saving}
+            className="w-full text-left p-3.5 rounded-lg border border-border bg-secondary/30 hover:bg-secondary/50 transition-colors disabled:opacity-50">
+            <p className="text-sm font-semibold text-foreground">Reemplazar todo el seguimiento</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Borra todo (incluidos los casos manuales) y deja solo estas SICs.</p>
+          </button>
+          <button onClick={() => handleSave("accumulate")} disabled={saving}
+            className="w-full text-left p-3.5 rounded-lg border border-border bg-secondary/30 hover:bg-secondary/50 transition-colors disabled:opacity-50">
+            <p className="text-sm font-semibold text-foreground">Solo agregar</p>
+            <p className="text-xs text-muted-foreground mt-0.5">No borra nada; suma estas filas a lo que ya está (puede duplicar).</p>
+          </button>
+        </div>
+        {saving && (
+          <div className="flex items-center justify-center gap-2 px-5 py-3 border-t border-border text-xs text-muted-foreground">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />Guardando…
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
 
   // ════════════════════════════════════════════════════════════════
   // REMINDER DIALOG (shared between both steps)
@@ -541,18 +596,12 @@ export function ServiciosCargaSection() {
                 {saving ? "Guardando..." : "Agregar al seguimiento"}
               </button>
             ) : (
-              // Carga masiva (SIC): reemplaza el maestro, o agrega si se prefiere.
-              <>
-                <button onClick={() => handleSave("accumulate")} disabled={saving}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-all disabled:opacity-50 border border-border">
-                  <Plus className="w-4 h-4" />Agregar
-                </button>
-                <button onClick={() => handleSave("replace")} disabled={saving}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-medium transition-all disabled:opacity-50">
-                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-                  {saving ? "Guardando..." : "Reemplazar seguimiento"}
-                </button>
-              </>
+              // Carga masiva (SIC): abre el diálogo con las opciones de guardado.
+              <button onClick={() => setSaveModalOpen(true)} disabled={saving}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-medium transition-all disabled:opacity-50">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+                {saving ? "Guardando..." : "Guardar seguimiento"}
+              </button>
             )}
           </div>
         </div>
@@ -625,6 +674,7 @@ export function ServiciosCargaSection() {
         </div>
       </div>
       {reminderDialog}
+      {saveModal}
       </>
     );
   }
