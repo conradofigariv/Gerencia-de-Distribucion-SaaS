@@ -155,6 +155,8 @@ export function ServiciosCargaSection() {
   const [step, setStep]       = useState<Step>("input");
   const [filas, setFilas]     = useState<FilaManual[]>([]);
   const [preview, setPreview] = useState<PreviewRow[]>([]);
+  // Origen del preview: la carga masiva (SIC) puede reemplazar; la manual solo agrega.
+  const [previewSource, setPreviewSource] = useState<"sic" | "manual">("manual");
   const [bulk, setBulk]       = useState({ zona: "", op: "", op_madre: "", linea: "", matricula: "" });
   const [bulkErr, setBulkErr] = useState("");
   const [adding, setAdding]       = useState(false);
@@ -343,6 +345,7 @@ export function ServiciosCargaSection() {
         ),
       );
       setPreview(rows);
+      setPreviewSource("manual");
       setStep("preview");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error al generar");
@@ -370,6 +373,7 @@ export function ServiciosCargaSection() {
       );
       const sinOp = sicRows.length - conOp.length;
       setPreview(rows);
+      setPreviewSource("sic");
       setStep("preview");
       toast.success(`${rows.length} SIC(s) cargadas para revisar${sinOp ? ` · ${sinOp} sin OP omitidas` : ""}`);
     } catch (e) {
@@ -392,7 +396,9 @@ export function ServiciosCargaSection() {
         const { error } = await supabase.from("seguimiento").insert(toInsert.slice(i, i + 500));
         if (error) throw new Error(`Error al insertar: ${error.message}`);
       }
-      toast.success(`${toInsert.length} registros guardados en seguimiento`);
+      toast.success(saveMode === "replace"
+        ? `Seguimiento reemplazado — ${toInsert.length} registros`
+        : `${toInsert.length} registros agregados al seguimiento`);
       if (userId) await markUpdated(REMINDER_KEY, REMINDER_NAME, userId).catch(() => {});
       setStep("input");
       setPreview([]);
@@ -526,12 +532,28 @@ export function ServiciosCargaSection() {
               <AlertCircle className="w-3.5 h-3.5" />{errCount} con errores (se guardan igual)
             </span>
           )}
-          <div className="ml-auto">
-            <button onClick={() => handleSave("replace")} disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-medium transition-all disabled:opacity-50">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-              {saving ? "Guardando..." : "Guardar seguimiento"}
-            </button>
+          <div className="ml-auto flex items-center gap-2">
+            {previewSource === "manual" ? (
+              // Carga manual: SOLO agrega, nunca reemplaza (no pisa la carga masiva).
+              <button onClick={() => handleSave("accumulate")} disabled={saving}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-medium transition-all disabled:opacity-50">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                {saving ? "Guardando..." : "Agregar al seguimiento"}
+              </button>
+            ) : (
+              // Carga masiva (SIC): reemplaza el maestro, o agrega si se prefiere.
+              <>
+                <button onClick={() => handleSave("accumulate")} disabled={saving}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-all disabled:opacity-50 border border-border">
+                  <Plus className="w-4 h-4" />Agregar
+                </button>
+                <button onClick={() => handleSave("replace")} disabled={saving}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-medium transition-all disabled:opacity-50">
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+                  {saving ? "Guardando..." : "Reemplazar seguimiento"}
+                </button>
+              </>
+            )}
           </div>
         </div>
 
