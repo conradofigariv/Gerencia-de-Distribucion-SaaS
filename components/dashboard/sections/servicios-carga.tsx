@@ -22,8 +22,8 @@ interface FilaManual {
   zona:      string;
   op:        number;
   op_madre:  number;
-  linea:     number;
-  matricula: string;
+  linea:     number | null;   // opcional: null = todas las líneas de la OP
+  matricula: string;          // opcional: "" = todas las matrículas de la OP
 }
 
 interface PreviewRow {
@@ -56,8 +56,33 @@ const num = (v: unknown) => { const n = Number(v); return isNaN(n) ? 0 : n; };
 const str = (v: unknown) => String(v ?? "").trim();
 const isoDate = (d: Date | null) => d ? d.toISOString().split("T")[0] : null;
 
-type OpRow  = { numero: string; linea: string; relacion: string; cantidad: unknown; cantidad_recibida: unknown; fecha_creacion: unknown; fecha_pactada: unknown; proveedor: unknown; estado_cierre: unknown };
+type OpRow  = { numero: string; linea: string; articulo: string; cantidad: unknown; cantidad_recibida: unknown; fecha_creacion: unknown; fecha_pactada: unknown; proveedor: unknown; estado_cierre: unknown };
 type MatRow = { articulo: string; descripcion: unknown };
+
+// Métricas calculadas de una fila de OP (cantidades, estado, plazos).
+function opMetrics(opRow: OpRow | undefined, today: Date) {
+  const cantidad         = num(opRow?.cantidad);
+  const cantidadRecibida = num(opRow?.cantidad_recibida);
+  const saldoLinea       = cantidad - cantidadRecibida;
+  const fechaCreac = opRow?.fecha_creacion ? new Date(String(opRow.fecha_creacion)) : null;
+  const fechaPact  = opRow?.fecha_pactada  ? new Date(String(opRow.fecha_pactada))  : null;
+  const estadoPlazo      = fechaPact && fechaPact < today ? "VENCIDA" : "OK";
+  const estadoCantidades = Math.round(saldoLinea) === 0   ? "SIN SALDO" : "VIGENTE";
+  const revision         = estadoPlazo === "VENCIDA" || estadoCantidades === "SIN SALDO" ? "CERRAR" : "OK";
+  const dias      = fechaCreac ? Math.floor((today.getTime() - fechaCreac.getTime()) / 86_400_000) : 0;
+  const meses     = dias / 30;
+  const consMes   = meses === 0 ? 0 : cantidadRecibida / meses;
+  const dispMeses = consMes === 0 ? 0 : saldoLinea / consMes;
+  return {
+    cantidad, cantidadRecibida,
+    saldo_linea: parseFloat(saldoLinea.toFixed(4)),
+    fecha_pactada: isoDate(fechaPact),
+    proveedor: String(opRow?.proveedor ?? ""),
+    estado: String(opRow?.estado_cierre ?? ""),
+    estado_plazo: estadoPlazo, estado_cantidades: estadoCantidades, revision,
+    disponibilidad_meses: parseFloat(dispMeses.toFixed(2)),
+  };
+}
 
 // Clave de cruce OP robusta: Número Pedido + Línea normalizados a número (ignora
 // el sufijo .0 y los ceros, que rompen el match por texto). Independiente de la
@@ -82,45 +107,49 @@ function buildPreviewRow(
   if (!matRow) errs.push(`MATRÍCULA "${input.matricula}" no está en el catálogo (matriculas)`);
 
   // Descripción: catálogo primero; si la matrícula no está, usa la de la SIC.
-  const descripcion = String(matRow?.descripcion ?? input.descripcion ?? "");
-
-  const cantidad         = num(opRow?.cantidad);
-  const cantidadRecibida = num(opRow?.cantidad_recibida);
-  const saldoLinea       = cantidad - cantidadRecibida;
-
-  const fechaCreac = opRow?.fecha_creacion ? new Date(String(opRow.fecha_creacion)) : null;
-  const fechaPact  = opRow?.fecha_pactada  ? new Date(String(opRow.fecha_pactada))  : null;
-
-  const estadoPlazo      = fechaPact && fechaPact < today ? "VENCIDA" : "OK";
-  const estadoCantidades = Math.round(saldoLinea) === 0   ? "SIN SALDO" : "VIGENTE";
-  const revision         = estadoPlazo === "VENCIDA" || estadoCantidades === "SIN SALDO" ? "CERRAR" : "OK";
-
-  const dias      = fechaCreac ? Math.floor((today.getTime() - fechaCreac.getTime()) / 86_400_000) : 0;
-  const meses     = dias / 30;
-  const consMes   = meses === 0 ? 0 : cantidadRecibida / meses;
-  const dispMeses = consMes === 0 ? 0 : saldoLinea / consMes;
-
+  const m = opMetrics(opRow, today);
   return {
-    zona:                   input.zona,
-    op:                     input.op,
-    op_madre:               input.op_madre,
-    linea:                  input.linea,
-    matricula:              input.matricula,
-    descripcion_matricula:  descripcion,
-    cantidad,
-    cantidad_recibida:      cantidadRecibida,
-    saldo_linea:            parseFloat(saldoLinea.toFixed(4)),
-    fecha_pactada:          isoDate(fechaPact),
-    proveedor:              String(opRow?.proveedor ?? ""),
-    fecha_redeterminacion:  null,
-    precio_redeterminacion: null,
-    estado:                 String(opRow?.estado_cierre ?? ""),
-    estado_plazo:           estadoPlazo,
-    estado_cantidades:      estadoCantidades,
-    revision,
-    observacion:            null,
-    disponibilidad_meses:   parseFloat(dispMeses.toFixed(2)),
-    _errors:                errs,
+    zona: input.zona, op: input.op, op_madre: input.op_madre, linea: input.linea,
+    matricula: input.matricula,
+    descripcion_matricula: String(matRow?.descripcion ?? input.descripcion ?? ""),
+    cantidad: m.cantidad, cantidad_recibida: m.cantidadRecibida, saldo_linea: m.saldo_linea,
+    fecha_pactada: m.fecha_pactada, proveedor: m.proveedor,
+    fecha_redeterminacion: null, precio_redeterminacion: null,
+    estado: m.estado, estado_plazo: m.estado_plazo, estado_cantidades: m.estado_cantidades,
+    revision: m.revision, observacion: null, disponibilidad_meses: m.disponibilidad_meses,
+    _errors: errs,
+  };
+}
+
+// Fila de preview a partir de una línea real de planillas_op (carga manual:
+// se busca por OP y la matrícula/línea salen de la propia OP).
+function buildRowFromOp(zona: string, opRow: OpRow, matMap: Map<string, MatRow>, today: Date): PreviewRow {
+  const art = String(opRow.articulo ?? "");
+  const matRow = matMap.get(art) ?? matMap.get(normArticulo(art));
+  const m = opMetrics(opRow, today);
+  const errs: string[] = [];
+  if (!matRow) errs.push(`MATRÍCULA "${art}" no está en el catálogo (matriculas)`);
+  return {
+    zona, op: num(opRow.numero), op_madre: 0, linea: num(opRow.linea),
+    matricula: art, descripcion_matricula: String(matRow?.descripcion ?? ""),
+    cantidad: m.cantidad, cantidad_recibida: m.cantidadRecibida, saldo_linea: m.saldo_linea,
+    fecha_pactada: m.fecha_pactada, proveedor: m.proveedor,
+    fecha_redeterminacion: null, precio_redeterminacion: null,
+    estado: m.estado, estado_plazo: m.estado_plazo, estado_cantidades: m.estado_cantidades,
+    revision: m.revision, observacion: null, disponibilidad_meses: m.disponibilidad_meses,
+    _errors: errs,
+  };
+}
+
+// Fila de error cuando la OP buscada no está en planillas_op.
+function opNotFoundRow(zona: string, op: number, linea: number | null): PreviewRow {
+  return {
+    zona, op, op_madre: 0, linea: linea ?? 0, matricula: "", descripcion_matricula: "",
+    cantidad: 0, cantidad_recibida: 0, saldo_linea: 0, fecha_pactada: null, proveedor: "",
+    fecha_redeterminacion: null, precio_redeterminacion: null,
+    estado: "", estado_plazo: "OK", estado_cantidades: "SIN SALDO", revision: "CERRAR",
+    observacion: null, disponibilidad_meses: 0,
+    _errors: [`OP "${op}" no encontrada en planillas_op`],
   };
 }
 
@@ -276,37 +305,43 @@ export function ServiciosCargaSection() {
     setClearingAll(false);
   };
 
-  // ── Agregar múltiples filas
+  // ── Agregar múltiples filas. Solo la OP es obligatoria; zona, línea y
+  //    matrícula son opcionales (las columnas opcionales, si se pegan, deben
+  //    tener la misma cantidad de filas que OP).
   const handleBulkAdd = async () => {
     setBulkErr("");
     const zonas  = splitCol(bulk.zona);
     const ops    = splitCol(bulk.op);
     const lineas = splitCol(bulk.linea);
     const mats   = splitCol(bulk.matricula);
-    if (!ops.length)    { setBulkErr("La columna OP está vacía.");        return; }
-    if (!mats.length)   { setBulkErr("La columna MATRÍCULA está vacía."); return; }
+    if (!ops.length) { setBulkErr("La columna OP está vacía (es lo único obligatorio)."); return; }
     const n = ops.length;
-    if (mats.length !== n) {
-      setBulkErr(`Columnas con distinto número de filas — OP: ${n}, MATRÍCULA: ${mats.length}`);
-      return;
+    for (const [name, col] of [["ZONA", zonas], ["LÍNEA", lineas], ["MATRÍCULA", mats]] as const) {
+      if (col.length && col.length !== n) { setBulkErr(`La columna ${name} tiene ${col.length} filas y OP tiene ${n}.`); return; }
     }
-    const lineaFinal = lineas.length === n ? lineas : Array(n).fill("1");
     const zonaFinal  = zonas.length  === n ? zonas  : Array(n).fill("");
+    const lineaFinal = lineas.length === n ? lineas : Array(n).fill("");
+    const matFinal   = mats.length   === n ? mats   : Array(n).fill("");
     const errs: string[] = [];
     for (let i = 0; i < n; i++) {
-      if (isNaN(Number(ops[i])))        errs.push(`Fila ${i+1}: OP no es número`);
-      if (isNaN(Number(lineaFinal[i]))) errs.push(`Fila ${i+1}: LÍNEA no es número`);
-      if (!mats[i])                     errs.push(`Fila ${i+1}: MATRÍCULA vacía`);
+      if (isNaN(Number(ops[i])))                                     errs.push(`Fila ${i+1}: OP no es número`);
+      if (lineaFinal[i] !== "" && isNaN(Number(lineaFinal[i])))      errs.push(`Fila ${i+1}: LÍNEA no es número`);
     }
     if (errs.length) { setBulkErr(errs.slice(0, 5).join(" · ")); return; }
-    const payload = ops.map((op, i) => ({ zona: zonaFinal[i], op: Number(op), op_madre: 0, linea: Number(lineaFinal[i]), matricula: mats[i] }));
+    const payload = ops.map((op, i) => ({
+      zona:      zonaFinal[i],
+      op:        Number(op),
+      op_madre:  0,
+      linea:     lineaFinal[i] === "" ? null : Number(lineaFinal[i]),
+      matricula: matFinal[i],
+    }));
     setAdding(true);
     try {
       const { data, error } = await supabase.from("filas_manuales").insert(payload).select("id, zona, op, op_madre, linea, matricula");
       if (error) { toast.error(`Error: ${error.message}`); return; }
       setFilas(prev => [...prev, ...((data ?? []) as FilaManual[])]);
       setBulk({ zona: "", op: "", op_madre: "", linea: "", matricula: "" });
-      toast.success(`${payload.length} filas agregadas`);
+      toast.success(`${payload.length} fila${payload.length !== 1 ? "s" : ""} agregada${payload.length !== 1 ? "s" : ""}`);
     } finally { setAdding(false); }
   };
 
@@ -314,7 +349,7 @@ export function ServiciosCargaSection() {
   // con claves robustas (ver opCrossKey / normArticulo).
   const loadCrossMaps = async () => {
     const [opData, matData] = await Promise.all([
-      fetchAll<OpRow> ("planillas_op", "numero, linea, relacion, cantidad, cantidad_recibida, fecha_creacion, fecha_pactada, proveedor, estado_cierre"),
+      fetchAll<OpRow> ("planillas_op", "numero, linea, articulo, cantidad, cantidad_recibida, fecha_creacion, fecha_pactada, proveedor, estado_cierre"),
       fetchAll<MatRow>("matriculas",   "articulo, descripcion"),
     ]);
     const opMap = new Map<string, OpRow>();
@@ -329,22 +364,31 @@ export function ServiciosCargaSection() {
       const n = normArticulo(a);
       if (!matMap.has(n)) matMap.set(n, r);               // respaldo sin .0
     }
-    return { opMap, matMap };
+    return { opData, opMap, matMap };
   };
 
-  // ── GENERAR (desde las filas manuales)
+  // ── GENERAR (carga manual): se busca SOLO por OP. Línea y matrícula son
+  //    filtros opcionales; sin ellos se traen todas las líneas de la OP.
   const handleGenerate = async () => {
     if (!filas.length) { toast.error("No hay filas para generar"); return; }
     setGenerating(true);
     try {
-      const { opMap, matMap } = await loadCrossMaps();
+      const { opData, matMap } = await loadCrossMaps();
       const today = new Date();
-      const rows = filas.map(fila =>
-        buildPreviewRow(
-          { zona: fila.zona, op: fila.op, op_madre: fila.op_madre, linea: fila.linea, matricula: fila.matricula },
-          opMap, matMap, today,
-        ),
-      );
+      const rows: PreviewRow[] = [];
+      for (const fila of filas) {
+        const opnum   = num(fila.op);
+        const wantLin = fila.linea != null;
+        const wantMat = str(fila.matricula) !== "";
+        const matN    = wantMat ? normArticulo(String(fila.matricula)) : "";
+        const cands = opData.filter(r =>
+          num(r.numero) === opnum
+          && (!wantLin || num(r.linea) === Number(fila.linea))
+          && (!wantMat || String(r.articulo) === String(fila.matricula) || normArticulo(String(r.articulo)) === matN)
+        );
+        if (!cands.length) rows.push(opNotFoundRow(fila.zona, opnum, fila.linea));
+        else for (const opRow of cands) rows.push(buildRowFromOp(fila.zona, opRow, matMap, today));
+      }
       setPreview(rows);
       setPreviewSource("manual");
       setStep("preview");
@@ -732,7 +776,7 @@ export function ServiciosCargaSection() {
       {/* ── Pegar columnas (carga manual) ── */}
       {!loading && (
         <div className="bg-card border border-border rounded-xl p-5 space-y-4">
-          <p className="text-xs text-muted-foreground">O cargá filas a mano: pegá los valores de cada columna (una por una, de arriba hacia abajo). Podés pegar una sola línea o columnas completas. LÍNEA es opcional (default 1).</p>
+          <p className="text-xs text-muted-foreground">O cargá casos especiales a mano: solo <span className="text-foreground font-medium">OP es obligatorio</span>. ZONA, LÍNEA y MATRÍCULA son opcionales. Si no ponés línea/matrícula, se traen <span className="text-foreground font-medium">todas las líneas de esa OP</span>. Pegá una sola línea o columnas completas.</p>
           <div className="grid grid-cols-4 gap-4">
             {([
               { key: "zona",      label: "ZONA"      },
@@ -831,8 +875,8 @@ export function ServiciosCargaSection() {
                   <td className="py-2 px-3 text-muted-foreground">{i + 1}</td>
                   <td className="py-2 px-3">{fila.zona || "—"}</td>
                   <td className="py-2 px-3 font-mono">{fila.op}</td>
-                  <td className="py-2 px-3">{fila.linea}</td>
-                  <td className="py-2 px-3 font-mono">{fila.matricula}</td>
+                  <td className="py-2 px-3">{fila.linea ?? "—"}</td>
+                  <td className="py-2 px-3 font-mono">{fila.matricula || "—"}</td>
                   <td className="py-2 px-3">
                     <button onClick={() => handleDelete(fila.id)}
                       className="text-muted-foreground hover:text-destructive transition-colors">
