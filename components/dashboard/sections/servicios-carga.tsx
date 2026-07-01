@@ -312,27 +312,24 @@ export function ServiciosCargaSection() {
     setBulkErr("");
     const zonas  = splitCol(bulk.zona);
     const ops    = splitCol(bulk.op);
-    const lineas = splitCol(bulk.linea);
     const mats   = splitCol(bulk.matricula);
     if (!ops.length) { setBulkErr("La columna OP está vacía (es lo único obligatorio)."); return; }
     const n = ops.length;
-    for (const [name, col] of [["ZONA", zonas], ["LÍNEA", lineas], ["MATRÍCULA", mats]] as const) {
+    for (const [name, col] of [["ZONA", zonas], ["MATRÍCULA", mats]] as const) {
       if (col.length && col.length !== n) { setBulkErr(`La columna ${name} tiene ${col.length} filas y OP tiene ${n}.`); return; }
     }
-    const zonaFinal  = zonas.length  === n ? zonas  : Array(n).fill("");
-    const lineaFinal = lineas.length === n ? lineas : Array(n).fill("");
-    const matFinal   = mats.length   === n ? mats   : Array(n).fill("");
+    const zonaFinal = zonas.length === n ? zonas : Array(n).fill("");
+    const matFinal  = mats.length  === n ? mats  : Array(n).fill("");
     const errs: string[] = [];
     for (let i = 0; i < n; i++) {
-      if (isNaN(Number(ops[i])))                                     errs.push(`Fila ${i+1}: OP no es número`);
-      if (lineaFinal[i] !== "" && isNaN(Number(lineaFinal[i])))      errs.push(`Fila ${i+1}: LÍNEA no es número`);
+      if (isNaN(Number(ops[i]))) errs.push(`Fila ${i+1}: OP no es número`);
     }
     if (errs.length) { setBulkErr(errs.slice(0, 5).join(" · ")); return; }
     const payload = ops.map((op, i) => ({
       zona:      zonaFinal[i],
       op:        Number(op),
       op_madre:  0,
-      linea:     lineaFinal[i] === "" ? null : Number(lineaFinal[i]),
+      linea:     null,           // sin filtro de línea: se traen todas las de la OP
       matricula: matFinal[i],
     }));
     setAdding(true);
@@ -776,12 +773,11 @@ export function ServiciosCargaSection() {
       {/* ── Pegar columnas (carga manual) ── */}
       {!loading && (
         <div className="bg-card border border-border rounded-xl p-5 space-y-4">
-          <p className="text-xs text-muted-foreground">O cargá casos especiales a mano: solo <span className="text-foreground font-medium">OP es obligatorio</span>. ZONA, LÍNEA y MATRÍCULA son opcionales. Si no ponés línea/matrícula, se traen <span className="text-foreground font-medium">todas las líneas de esa OP</span>. Pegá una sola línea o columnas completas.</p>
-          <div className="grid grid-cols-4 gap-4">
+          <p className="text-xs text-muted-foreground">O cargá casos especiales a mano: solo <span className="text-foreground font-medium">OP es obligatorio</span>. ZONA y MATRÍCULA son opcionales. Con solo la OP se traen <span className="text-foreground font-medium">todas sus líneas</span>. Pegá una sola línea o columnas completas.</p>
+          <div className="grid grid-cols-3 gap-4">
             {([
               { key: "zona",      label: "ZONA"      },
               { key: "op",        label: "OP"        },
-              { key: "linea",     label: "LÍNEA"     },
               { key: "matricula", label: "MATRÍCULA" },
             ] as const).map(({ key, label }) => (
               <div key={key} className="flex flex-col gap-1.5">
@@ -852,7 +848,7 @@ export function ServiciosCargaSection() {
                     className="accent-accent w-3.5 h-3.5 cursor-pointer"
                   />
                 </th>
-                {["#", "ZONA", "OP", "LÍNEA", "MATRÍCULA", ""].map((h, i) => (
+                {["#", "ZONA", "OP", "MATRÍCULA", ""].map((h, i) => (
                   <th key={i} className="py-2 px-3 text-left text-muted-foreground font-medium">{h}</th>
                 ))}
               </tr>
@@ -875,7 +871,6 @@ export function ServiciosCargaSection() {
                   <td className="py-2 px-3 text-muted-foreground">{i + 1}</td>
                   <td className="py-2 px-3">{fila.zona || "—"}</td>
                   <td className="py-2 px-3 font-mono">{fila.op}</td>
-                  <td className="py-2 px-3">{fila.linea ?? "—"}</td>
                   <td className="py-2 px-3 font-mono">{fila.matricula || "—"}</td>
                   <td className="py-2 px-3">
                     <button onClick={() => handleDelete(fila.id)}
