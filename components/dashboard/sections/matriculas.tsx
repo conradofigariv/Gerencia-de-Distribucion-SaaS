@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   Plus, Pencil, Trash2, Search, RefreshCw, Loader2, X,
-  Database, AlertTriangle, Tag, Download,
+  Database, AlertTriangle, Tag, Download, ChevronUp, ChevronDown,
 } from "lucide-react";
 import {
   listMatriculas, createMatricula, updateMatricula, deleteMatricula,
@@ -305,6 +305,14 @@ export function MatriculasSection() {
   const [search, setSearch]   = useState("");
   const [tipoFilter, setTipoFilter] = useState<TipoFilter>("todos");
 
+  const [sortKey, setSortKey] = useState<ColKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const toggleSort = (key: ColKey) => {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+
   const [modal, setModal]   = useState<{ mode: "create" | "edit"; row: Matricula | null } | null>(null);
   const [toDelete, setToDelete] = useState<Matricula | null>(null);
 
@@ -354,7 +362,7 @@ export function MatriculasSection() {
 
   const filtered = useMemo(() => {
     const lo = search.trim().toLowerCase();
-    return rows.filter(r => {
+    let result = rows.filter(r => {
       if (tipoFilter !== "todos" && tipoFromMatServ(r.mat_serv) !== tipoFilter) return false;
       if (!lo) return true;
       return (
@@ -362,7 +370,26 @@ export function MatriculasSection() {
         (r.descripcion ?? "").toLowerCase().includes(lo)
       );
     });
-  }, [rows, search, tipoFilter]);
+    if (sortKey) {
+      const dir = sortDir === "asc" ? 1 : -1;
+      result = [...result].sort((a, b) => {
+        let va: string, vb: string;
+        if      (sortKey === "articulo")    { va = a.articulo;                  vb = b.articulo; }
+        else if (sortKey === "descripcion") { va = a.descripcion ?? "";          vb = b.descripcion ?? ""; }
+        else if (sortKey === "udm")         { va = a.unidad_medida ?? "";        vb = b.unidad_medida ?? ""; }
+        else if (sortKey === "tipo")        { va = tipoFromMatServ(a.mat_serv); vb = tipoFromMatServ(b.mat_serv); }
+        else                               { va = a.estado ?? "";               vb = b.estado ?? ""; }
+        return dir * va.localeCompare(vb, "es", { numeric: sortKey === "articulo" });
+      });
+    }
+    return result;
+  }, [rows, search, tipoFilter, sortKey, sortDir]);
+
+  const duplicates = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of rows) counts.set(r.articulo, (counts.get(r.articulo) ?? 0) + 1);
+    return [...counts.entries()].filter(([, c]) => c > 1).map(([art]) => art);
+  }, [rows]);
 
   // Virtualización
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -499,6 +526,15 @@ export function MatriculasSection() {
         </div>
       </div>
 
+      {/* Banner de duplicados */}
+      {duplicates.length > 0 && (
+        <div className="flex items-center gap-2 text-sm text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded-lg px-4 py-3">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          {duplicates.length} número{duplicates.length > 1 ? "s" : ""} de matrícula duplicado{duplicates.length > 1 ? "s" : ""}:{" "}
+          <span className="font-mono">{duplicates.slice(0, 4).join(", ")}{duplicates.length > 4 ? "…" : ""}</span>
+        </div>
+      )}
+
       {/* Conteo */}
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Database className="w-3.5 h-3.5" />
@@ -523,8 +559,20 @@ export function MatriculasSection() {
             <thead>
               <tr>
                 {COLS.map(c => (
-                  <th key={c.key} className={cn(thBase, "relative")}>
-                    {c.label}
+                  <th
+                    key={c.key}
+                    className={cn(thBase, "relative cursor-pointer select-none hover:text-foreground transition-colors")}
+                    onClick={() => toggleSort(c.key)}
+                  >
+                    <span className="flex items-center gap-1">
+                      {c.label}
+                      {sortKey === c.key
+                        ? (sortDir === "asc"
+                            ? <ChevronUp className="w-3 h-3 shrink-0" />
+                            : <ChevronDown className="w-3 h-3 shrink-0" />)
+                        : <ChevronUp className="w-3 h-3 shrink-0 opacity-0" />
+                      }
+                    </span>
                     <ResizeHandle onStart={e => { resizingRef.current = { col: c.key, startX: e.clientX, startWidth: colWidths[c.key] }; }} />
                   </th>
                 ))}
