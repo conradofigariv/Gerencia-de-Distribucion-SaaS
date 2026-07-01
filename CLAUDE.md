@@ -56,6 +56,8 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
 | Section ID | Archivo | Grupo sidebar | Descripción |
 |---|---|---|---|
 | `servicios-planillas` | servicios-planillas.tsx | (raíz) | Carga de planillas Excel: OP, QW, MATRICULAS |
+| `matriculas` | matriculas.tsx | Matrículas | Catálogo de matrículas: CRUD manual, orden, export CSV |
+| `matriculas-familias` | matriculas-familias.tsx | Matrículas | Familias como entidad: carga masiva por pegado + selección del catálogo |
 | `servicios-resumen` | servicios-resumen.tsx | Control de servicios | Alertas de vencimiento y consumo por OP/zona |
 | `servicios-tabla` | servicios-tabla.tsx | Control de servicios | Tabla completa de seguimiento de servicios |
 | `servicios-carga` | servicios-carga.tsx | Control de servicios | Creación manual de filas de seguimiento |
@@ -75,7 +77,9 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
 | servicios-carga | `filas_manuales` |
 | servicios-tabla | `filas_servicios` |
 | servicios-resumen | `filas_servicios` (lectura) |
-| stock-zona | `stock_uploads`, `stock_article_families`, `matriculas` (lectura del catálogo) |
+| matriculas | `matriculas` |
+| matriculas-familias | `familias`, `familia_matriculas`, `matricula_tipo`, `matriculas` (lectura del catálogo) |
+| stock-zona | `stock_uploads`, `familias` + `familia_matriculas` + `matricula_tipo` (lectura para el filtro), `matriculas` (lectura del catálogo) |
 | transformadores-carga | `planillas_reserva` |
 | transformadores-tabla | `planillas_reserva` (lectura) |
 | transformadores-resumen | `planillas_reserva`, `transformador_alarms` |
@@ -124,6 +128,35 @@ CREATE TABLE stock_article_families (
 
 ---
 
+## Sección Matrículas → Familias (`components/dashboard/sections/matriculas-familias.tsx`)
+
+En el sidebar, **Matrículas** es un grupo con dos hijos: **Catálogo** (`matriculas`) y
+**Familias** (`matriculas-familias`).
+
+- **Propósito:** agrupar matrículas del catálogo en **familias** (entidad propia). Reemplaza
+  la vieja pestaña Familias de Stock por Zona.
+- **Modelo (entidad, no etiqueta):**
+  - `familias(id uuid PK, nombre text UNIQUE, created_at)` — una familia existe por sí misma.
+  - `familia_matriculas(familia_id → familias, articulo text, PK(familia_id, articulo))` —
+    asignación **many-to-many** (una matrícula puede estar en varias familias).
+  - `matricula_tipo(articulo PK, tipo)` — override manual de Material/Servicio, independiente
+    de las familias. Migrado desde `stock_article_families.tipo`.
+- **Lib `lib/familias.ts`:** `listFamilias`, `createFamilia`, `renameFamilia`, `deleteFamilia`,
+  `listAsignaciones`, `assignMatriculas`, `removeMatriculas`, `bulkImport`,
+  `validarContraCatalogo`, `getTipoOverrides`, `setTipoOverride`, y `getFamilyRowsCompat()`
+  (devuelve el shape legado `FamilyRow` para que Stock por Zona lea sin reescribir su lógica).
+  Reexporta `getMatriculasInfo` / `MatriculaInfo` / `ArticuloTipo` de `stockFamilies`.
+- **UI:** panel izquierdo con la lista de familias (crear/renombrar/borrar/buscar); panel derecho
+  con las matrículas de la familia elegida (virtualizado, quitar con X).
+  - **Importar familia (masivo):** modal con *nombre de familia* + *pegar lista de matrículas*
+    (una por línea; tolera coma/tab). **Preview** antes de confirmar: N reconocidas vs N no
+    encontradas (cruce **exacto por número** contra `matriculas`; las no encontradas se omiten).
+  - **Agregar matrículas (selección):** picker del catálogo completo (virtualizado, buscador,
+    checkboxes) para sumar a la familia seleccionada.
+- **Migración:** `supabase/familias.sql` (crea tablas) + `scripts/migrate-familias.mjs`
+  (idempotente; copia `stock_article_families` → tablas nuevas). La tabla vieja queda de backup.
+- **El número de matrícula se respeta tal cual** (con `.0` y ceros); nunca se normaliza.
+
 ## Sección Stock por Zona (`components/dashboard/sections/stock-zona.tsx`)
 
 - **Propósito:** Ver y cargar el stock de materiales (con matrícula) agrupado por zona de depósito, clasificarlos en familias y consultar su tipo (Material/Servicio).
@@ -134,7 +167,7 @@ CREATE TABLE stock_article_families (
 |---|---|---|---|
 | Carga de datos → MATRICULAS | `matriculas` | Lista completa de matrículas + **descripción** + UDM + **mat_serv** (Material/Servicio) | ✅ La más actualizada |
 | Stock por Zona → Cargar datos | `stock_uploads` | **Cantidad** de stock por zona | Otro procedimiento (extracción SIGA) |
-| Familias (manual / Agregar familia) | `stock_article_families` | **Familias** (etiquetas) + override manual de tipo | Manual |
+| Familias (Matrículas → Familias) | `familias` + `familia_matriculas` + `matricula_tipo` | **Familias** (entidad) + override manual de tipo | Manual (se editan en Matrículas, acá se leen) |
 
 El stock y las familias son enriquecimientos sobre la lista maestra de matrículas. **El número de matrícula se muestra, busca y guarda tal cual (con el `.0` y los ceros) — NUNCA normalizar el formato visible.** El cruce entre tablas es por matrícula exacta.
 
@@ -146,19 +179,15 @@ El stock y las familias son enriquecimientos sobre la lista maestra de matrícul
   - `getFamilies`, `upsertFamily`, `upsertFamiliesBulk`, `deleteFamily`, `deleteFamiliesBulk`.
   - `interface MatriculaInfo { descripcion; udm; tipo }` + `getMatriculasInfo()` → Map `articulo → MatriculaInfo` leyendo `matriculas` (descripción, UDM y `mat_serv` normalizado a tipo). **Descarga paralela:** 1ª página con conteo exacto + resto con `Promise.all` (Supabase corta en ~1000 filas).
 
-### Tres pestañas
+### Dos pestañas (la edición de Familias se movió a Matrículas → Familias)
 - **Resumen de stock:** tabla pivot virtualizada — una fila por matrícula. Columnas fijas: Matrícula, Descripción, UDM, **Tipo** (Material/Servicio), Total + columnas dinámicas por zona (colapsables con animación). Filtros: zona, familia, **Servicio/Material** y búsqueda por Nro/Nombre. Orden y redimensión por columna.
   - Descripción/UDM salen del catálogo maestro (prioridad) con respaldo en el stock.
   - **Servicios** del catálogo aparecen aunque no tengan stock (Total 0). Materiales sin stock NO se agregan (ruido). Matrículas con alguna familia asignada también se incluyen aunque no tengan stock.
+  - El filtro por familia y el tipo efectivo se leen (solo lectura) desde las tablas nuevas vía `getFamilyRowsCompat()` de `lib/familias.ts`.
 - **Cargar datos:** textarea para pegar datos del sistema (tab-separado). Encabezado en la 1ª fila: `Artículo`, `Desc Artículo`, `UDM Primaria`, `En Mano`, `Organización`. La zona se detecta desde Organización. Flujo: pegar → previsualizar zonas → Importar → vuelve a "Resumen".
-- **Familias:** lista de matrículas virtualizada con casillas de selección.
-  - **Botón "Agregar familia":** modal (nombre de familia + pegar lista de matrículas, una por línea/tab/coma) → asigna esa familia a todas (suma a las existentes).
-  - **Por fila:** familias como **chips** (cada una con X para quitar) + input «+ familia» (Enter) para agregar. Selector de **Tipo** (override manual; si no hay, usa el del catálogo).
-  - **Asignación masiva** (al tildar varias): **Agregar** (suma sin pisar), **Quitar familia**, **Aplicar tipo**, **Borrar todo**.
-  - Filtros: por familia, **Sin clasificar** (sin ninguna familia), búsqueda por número/descripción.
 
 ### Tipo efectivo (`tipoOf`)
-`tipoOf(articulo)` = override manual de `stock_article_families.tipo` si existe, si no el `mat_serv` del catálogo `matriculas`.
+`tipoOf(articulo)` = override manual (`matricula_tipo.tipo`) si existe, si no el `mat_serv` del catálogo `matriculas`.
 
 ### Rendimiento
 - **Tablas virtualizadas** con `@tanstack/react-virtual` (técnica de filas espaciadoras + header sticky). Solo se renderizan las filas visibles → fluidez con miles de filas.
