@@ -12,7 +12,7 @@ import {
 import {
   listFamilias, createFamilia, renameFamilia, deleteFamilia,
   listAsignaciones, assignMatriculas, removeMatriculas, bulkImport,
-  validarContraCatalogo, getMatriculasInfo, getTipoOverrides,
+  validarContraCatalogo, getMatriculasInfo, getTipoOverrides, setTipoOverride,
   type Familia, type MatriculaInfo, type ArticuloTipo,
 } from "@/lib/familias";
 
@@ -23,6 +23,82 @@ function TipoBadge({ tipo }: { tipo: ArticuloTipo }) {
   if (tipo === "servicio")
     return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/25">Servicio</span>;
   return null;
+}
+
+// ─── Control de override de tipo (Material / Servicio / del catálogo) ────────
+function TipoOverrideControl({
+  effective, hasOverride, onSet,
+}: {
+  effective: ArticuloTipo;
+  hasOverride: boolean;
+  onSet: (tipo: ArticuloTipo) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node) && !btnRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const toggle = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 4, left: Math.max(8, r.right - 150) });
+    setOpen(o => !o);
+  };
+
+  const pick = (tipo: ArticuloTipo) => { onSet(tipo); setOpen(false); };
+
+  const opts: { v: ArticuloTipo; label: string }[] = [
+    { v: "material", label: "Material" },
+    { v: "servicio", label: "Servicio" },
+    { v: "",         label: "Del catálogo" },
+  ];
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={toggle}
+        title={hasOverride ? "Tipo con override manual — clic para cambiar" : "Tipo del catálogo — clic para override manual"}
+        className="inline-flex items-center gap-1 shrink-0 rounded-md px-1 py-0.5 hover:bg-secondary transition-colors"
+      >
+        {effective ? <TipoBadge tipo={effective} /> : <span className="text-[11px] text-muted-foreground/60 px-1">Sin tipo</span>}
+        {hasOverride && <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" title="Override manual" />}
+      </button>
+      {open && pos && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: "fixed", top: pos.top, left: pos.left, width: 150, zIndex: 10000 }}
+          className="rounded-lg border border-border bg-popover shadow-2xl p-1"
+        >
+          {opts.map(o => {
+            const active = o.v ? effective === o.v && hasOverride : !hasOverride;
+            return (
+              <button
+                key={o.label}
+                onClick={() => pick(o.v)}
+                className={cn(
+                  "w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md text-xs text-left transition-colors",
+                  active ? "bg-accent/15 text-accent" : "text-foreground hover:bg-secondary",
+                )}
+              >
+                {o.label}
+                {active && <Check className="w-3 h-3 shrink-0" />}
+              </button>
+            );
+          })}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
 }
 
 // ─── Modal: importar familia (nombre + pegar matrículas + preview) ───────────
@@ -458,6 +534,17 @@ export function MatriculasFamiliasSection() {
     await refresh();
   };
 
+  const handleSetTipo = async (articulo: string, tipo: ArticuloTipo) => {
+    const err = await setTipoOverride(articulo, tipo);
+    if (err) { toast.error(`Error: ${err}`); return; }
+    setOverrides(prev => {
+      const next = new Map(prev);
+      if (tipo) next.set(articulo, tipo);
+      else next.delete(articulo);
+      return next;
+    });
+  };
+
   const handleRename = async (nombre: string) => {
     if (!renameTarget) return;
     const err = await renameFamilia(renameTarget.id, nombre);
@@ -634,7 +721,11 @@ export function MatriculasFamiliasSection() {
                           >
                             <span className="font-mono text-xs text-foreground shrink-0 w-28 truncate">{d.articulo}</span>
                             <span className="text-xs text-muted-foreground truncate flex-1">{d.info?.descripcion || "—"}</span>
-                            <TipoBadge tipo={tipoFor(d.articulo)} />
+                            <TipoOverrideControl
+                              effective={tipoFor(d.articulo)}
+                              hasOverride={overrides.has(d.articulo)}
+                              onSet={tipo => handleSetTipo(d.articulo, tipo)}
+                            />
                             <button
                               onClick={() => handleRemoveMatricula(d.articulo)}
                               title="Quitar de la familia"
