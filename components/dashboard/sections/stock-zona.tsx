@@ -5,9 +5,9 @@ import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { DirectionAwareTabs } from "@/components/ui/direction-aware-tabs";
 import {
-  Trash2, Loader2, X, PackageOpen, RefreshCw,
+  Loader2, X, PackageOpen, RefreshCw,
   ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight,
-  Download, Sparkles, Tag, Wrench, Package, Check, Plus, HelpCircle,
+  Download, Sparkles, Wrench, Package, Check, HelpCircle,
   ChevronLeft, ArrowRight, Lightbulb, ListChecks, Pin, Filter,
 } from "lucide-react";
 import { CheckIcon } from "lucide-react";
@@ -15,11 +15,12 @@ import { SearchInput } from "@/components/ui/floating-input";
 import { Button } from "@/components/ui/button";
 import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
 import type { ZonaUpload, CompraRow } from "@/lib/stockStorage";
-import { getFamilies, upsertFamiliesBulk, deleteFamiliesBulk, getMatriculasInfo } from "@/lib/stockFamilies";
+import { getMatriculasInfo } from "@/lib/stockFamilies";
 import type { FamilyRow, ArticuloTipo, MatriculaInfo } from "@/lib/stockFamilies";
+import { getFamilyRowsCompat } from "@/lib/familias";
 import { toast } from "sonner";
 
-type Tab            = "resumen" | "cargar" | "familias";
+type Tab            = "resumen" | "cargar";
 type ArticuloFiltro = "nro" | "nombre";
 type SortDir        = "asc" | "desc";
 
@@ -33,7 +34,6 @@ const RESUMEN_STATE_KEY = "stock-zona-resumen-state";
 const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] = [
   { id: "resumen",  label: "Resumen de stock", icon: PackageOpen, desc: "Stock consolidado por artículo y zona de depósito." },
   { id: "cargar",   label: "Cargar datos",     icon: Download,    desc: "Importá stock pegando los datos directamente desde el sistema." },
-  { id: "familias", label: "Familias",         icon: Tag,         desc: "Clasificá las matrículas en familias (una matrícula puede tener varias)." },
 ];
 
 interface PivotRow {
@@ -520,24 +520,9 @@ export function StockZonaSection() {
   const [matriculasInfo, setMatriculasInfo] = useState<Map<string, MatriculaInfo>>(new Map());
   const [matriculasLoading, setMatriculasLoading] = useState(false);
 
-  // Families tab
+  // Familias: solo se leen para el filtro del Resumen. La edición/carga de
+  // familias se movió a la sección Matrículas → Familias.
   const [families, setFamilies]             = useState<FamilyRow[]>([]);
-  const [savingArticulo, setSavingArticulo] = useState<string | null>(null);
-  const [familiaSearch, setFamiliaSearch]   = useState("");
-  const [onlyUnclassified, setOnlyUnclassified] = useState(false);
-  const [familiaFilter, setFamiliaFilter]   = useState("");   // filtrar la lista por una familia
-
-  // Modal "Agregar familia" (nombre + pegar lista de matrículas)
-  const [addFamilyOpen, setAddFamilyOpen]   = useState(false);
-  const [addFamilyName, setAddFamilyName]   = useState("");
-  const [addFamilyList, setAddFamilyList]   = useState("");
-  const [addingFamily, setAddingFamily]     = useState(false);
-
-  // Bulk assignment
-  const [selectedArticulos, setSelectedArticulos] = useState<Set<string>>(new Set());
-  const [bulkFamilia, setBulkFamilia]       = useState("");
-  const [bulkTipo, setBulkTipo]             = useState<ArticuloTipo>("");
-  const [applyingBulk, setApplyingBulk]     = useState(false);
 
   // ── Resize events ─────────────────────────────────────────────────────────
 
@@ -564,7 +549,7 @@ export function StockZonaSection() {
   }, []);
 
   const refreshFamilies = useCallback(async () => {
-    setFamilies(await getFamilies());
+    setFamilies(await getFamilyRowsCompat());
   }, []);
 
   const refreshMatriculas = useCallback(async () => {
@@ -747,32 +732,13 @@ export function StockZonaSection() {
     return baseZonas.filter(z => conStock.has(z));
   }, [baseZonas, onlyZonasConStock, pivotRows]);
 
-  const allArticles = useMemo(() => Array.from(pivotMap.values())
-    .sort((a, b) => a.articulo.localeCompare(b.articulo, "es", { numeric: true })), [pivotMap]);
-
-  const filteredFamiliaArticles = useMemo(() => allArticles.filter(a => {
-    const fams = familiasOf(a.articulo);
-    if (onlyUnclassified && fams.length > 0) return false;
-    if (familiaFilter && !fams.includes(familiaFilter)) return false;
-    if (!familiaSearch) return true;
-    const lo = familiaSearch.toLowerCase();
-    return a.articulo.toLowerCase().includes(lo) || a.descArticulo.toLowerCase().includes(lo);
-  }), [allArticles, familiaSearch, onlyUnclassified, familiaFilter, familiasOf]);
-
   // ── Virtualización de tablas (rinde solo las filas visibles) ────────────────
   const resumenScrollRef  = useRef<HTMLDivElement>(null);
-  const familiasScrollRef = useRef<HTMLDivElement>(null);
 
   const resumenVirtualizer = useVirtualizer({
     count: pivotRows.length,
     getScrollElement: () => resumenScrollRef.current,
     estimateSize: () => 41,
-    overscan: 14,
-  });
-  const familiasVirtualizer = useVirtualizer({
-    count: filteredFamiliaArticles.length,
-    getScrollElement: () => familiasScrollRef.current,
-    estimateSize: () => 46,
     overscan: 14,
   });
 
@@ -787,168 +753,6 @@ export function StockZonaSection() {
     const head = textLines[0] || "";
     return REQUIRED_COLS.map(c => ({ name: c, found: head.includes(c) }));
   }, [text]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Persistencia de familias (multi) y tipo ─────────────────────────────────
-
-  /** Construye la FamilyRow resultante para un artículo a partir de su estado guardado. */
-  const buildRow = (articulo: string, familias: string[], tipo: ArticuloTipo): FamilyRow => ({ articulo, familias, tipo });
-
-  /** Guarda un conjunto de filas: las vacías (sin familias ni tipo) se borran. */
-  const persistRows = async (rows: FamilyRow[]) => {
-    const toUpsert = rows.filter(r => r.familias.length > 0 || r.tipo);
-    const toDelete = rows.filter(r => r.familias.length === 0 && !r.tipo).map(r => r.articulo);
-    if (toUpsert.length) {
-      const CHUNK = 500;
-      for (let i = 0; i < toUpsert.length; i += CHUNK) {
-        const err = await upsertFamiliesBulk(toUpsert.slice(i, i + CHUNK));
-        if (err) return err;
-      }
-    }
-    if (toDelete.length) {
-      const err = await deleteFamiliesBulk(toDelete);
-      if (err) return err;
-    }
-    return null;
-  };
-
-  /** Agrega una familia a un artículo (sin pisar las demás). */
-  const addFamiliaToArticulo = async (articulo: string, familia: string) => {
-    const fam = familia.trim();
-    if (!fam) return;
-    const saved = familyMap.get(articulo);
-    if (saved?.familias.includes(fam)) return;
-    setSavingArticulo(articulo);
-    const err = await persistRows([buildRow(articulo, [...(saved?.familias ?? []), fam], saved?.tipo ?? "")]);
-    if (err) toast.error(`Error al guardar: ${err}`);
-    await refreshFamilies();
-    setSavingArticulo(null);
-  };
-
-  /** Quita una familia puntual de un artículo. */
-  const removeFamiliaFromArticulo = async (articulo: string, familia: string) => {
-    const saved = familyMap.get(articulo);
-    if (!saved) return;
-    setSavingArticulo(articulo);
-    const err = await persistRows([buildRow(articulo, saved.familias.filter(f => f !== familia), saved.tipo)]);
-    if (err) toast.error(`Error al quitar: ${err}`);
-    await refreshFamilies();
-    setSavingArticulo(null);
-  };
-
-  /** Setea el tipo (override manual) de un artículo. */
-  const setArticuloTipo = async (articulo: string, tipo: ArticuloTipo) => {
-    const saved = familyMap.get(articulo);
-    setSavingArticulo(articulo);
-    const err = await persistRows([buildRow(articulo, saved?.familias ?? [], tipo)]);
-    if (err) toast.error(`Error al guardar: ${err}`);
-    await refreshFamilies();
-    setSavingArticulo(null);
-  };
-
-  /** Quita TODAS las familias y el tipo de un artículo (borra su fila). */
-  const clearArticulo = async (articulo: string) => {
-    setSavingArticulo(articulo);
-    const err = await deleteFamiliesBulk([articulo]);
-    if (err) toast.error(`Error al quitar: ${err}`);
-    await refreshFamilies();
-    setSavingArticulo(null);
-  };
-
-  // ── Selección y asignación masiva ───────────────────────────────────────────
-
-  const toggleSelect = (articulo: string) => {
-    setSelectedArticulos(prev => {
-      const next = new Set(prev);
-      if (next.has(articulo)) next.delete(articulo); else next.add(articulo);
-      return next;
-    });
-  };
-
-  /** Aplica a la selección: agrega/quita familia (suma, no pisa) y/o setea tipo. */
-  const applyBulk = async (mode: "add" | "remove") => {
-    const fam = bulkFamilia.trim();
-    if (!fam && !bulkTipo) { toast.error("Escribí una familia o elegí un tipo para aplicar."); return; }
-    if (mode === "remove" && !fam) { toast.error("Escribí la familia que querés quitar."); return; }
-    setApplyingBulk(true);
-    const rows: FamilyRow[] = [...selectedArticulos].map(articulo => {
-      const saved = familyMap.get(articulo);
-      let familias = saved?.familias ?? [];
-      if (fam) {
-        familias = mode === "add"
-          ? [...new Set([...familias, fam])]
-          : familias.filter(f => f !== fam);
-      }
-      const tipo = (bulkTipo || saved?.tipo || "") as ArticuloTipo;
-      return buildRow(articulo, familias, tipo);
-    });
-    const err = await persistRows(rows);
-    if (err) { toast.error(`Error al aplicar: ${err}`); setApplyingBulk(false); return; }
-    await refreshFamilies();
-    const verbo = mode === "add" ? "actualizada" : "quitada";
-    toast.success(`${rows.length} matrícula${rows.length === 1 ? "" : "s"} ${verbo}${rows.length === 1 ? "" : "s"}`);
-    setSelectedArticulos(new Set());
-    setBulkFamilia(""); setBulkTipo("");
-    setApplyingBulk(false);
-  };
-
-  /** Borra TODAS las familias/tipo de la selección. */
-  const clearBulkSelection = async (deleteRows = false) => {
-    if (deleteRows && selectedArticulos.size > 0) {
-      setApplyingBulk(true);
-      const arts = [...selectedArticulos];
-      const err = await deleteFamiliesBulk(arts);
-      if (err) { toast.error(`Error al quitar: ${err}`); setApplyingBulk(false); return; }
-      await refreshFamilies();
-      toast.success(`${arts.length} asignación${arts.length === 1 ? "" : "es"} quitada${arts.length === 1 ? "" : "s"}`);
-      setApplyingBulk(false);
-    }
-    setSelectedArticulos(new Set());
-    setBulkFamilia(""); setBulkTipo("");
-  };
-
-  // ── Modal "Agregar familia" (nombre + pegar lista de matrículas) ─────────────
-
-  const addFamilyMatriculas = useMemo(() => {
-    // Acepta matrículas separadas por salto de línea, tab, coma o punto y coma.
-    // Respeta el formato tal cual (con el .0). No corta por espacios para no
-    // romper matrículas que pudieran tenerlos.
-    return [...new Set(
-      addFamilyList.split(/[\r\n\t,;]+/).map(s => s.trim()).filter(Boolean)
-    )];
-  }, [addFamilyList]);
-
-  const handleAddFamily = async () => {
-    const fam = addFamilyName.trim();
-    if (!fam) { toast.error("Ponele un nombre a la familia."); return; }
-    if (addFamilyMatriculas.length === 0) { toast.error("Pegá al menos una matrícula."); return; }
-    setAddingFamily(true);
-    const rows: FamilyRow[] = addFamilyMatriculas.map(articulo => {
-      const saved = familyMap.get(articulo);
-      return buildRow(articulo, [...new Set([...(saved?.familias ?? []), fam])], saved?.tipo ?? "");
-    });
-    const err = await persistRows(rows);
-    if (err) { toast.error(`Error al guardar: ${err}`); setAddingFamily(false); return; }
-    await refreshFamilies();
-    toast.success(`Familia «${fam}»: ${rows.length} matrícula${rows.length === 1 ? "" : "s"} asignada${rows.length === 1 ? "" : "s"}`);
-    setAddFamilyName(""); setAddFamilyList(""); setAddFamilyOpen(false); setAddingFamily(false);
-  };
-
-  const allVisibleSelected = useMemo(
-    () => filteredFamiliaArticles.length > 0 && filteredFamiliaArticles.every(a => selectedArticulos.has(a.articulo)),
-    [filteredFamiliaArticles, selectedArticulos],
-  );
-
-  const toggleSelectAll = () => {
-    setSelectedArticulos(prev => {
-      const next = new Set(prev);
-      if (filteredFamiliaArticles.length > 0 && filteredFamiliaArticles.every(a => prev.has(a.articulo))) {
-        for (const a of filteredFamiliaArticles) next.delete(a.articulo);
-      } else {
-        for (const a of filteredFamiliaArticles) next.add(a.articulo);
-      }
-      return next;
-    });
-  };
 
   // ── Carga handlers ────────────────────────────────────────────────────────
 
@@ -1606,410 +1410,8 @@ export function StockZonaSection() {
           </div>
         </div>
       )}
-
-      {/* ── FAMILIAS ───────────────────────────────────────────────────────── */}
-      {tab === "familias" && (
-        <div className="space-y-4">
-          {pivotMap.size === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground">
-              <Tag className="w-12 h-12 opacity-30" />
-              <p className="text-sm">Primero cargá datos de stock para poder asignar familias.</p>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-3 flex-wrap">
-                <Button variant="accent" onClick={() => setAddFamilyOpen(true)}>
-                  <Plus className="w-3.5 h-3.5" strokeWidth={2.6} />
-                  Agregar familia
-                </Button>
-
-                <SearchInput
-                  value={familiaSearch}
-                  onChange={setFamiliaSearch}
-                  placeholder="Buscar matrícula..."
-                  style={{ flex: 1, minWidth: 180, maxWidth: 320 }}
-                />
-
-                {familiasDisponibles.length > 0 && (
-                  <BeastSelect
-                    options={familiasDisponibles.map(f => ({ value: f, label: f }))}
-                    value={familiaFilter}
-                    onChange={setFamiliaFilter}
-                    placeholder="Todas las familias"
-                    minWidth={170}
-                    clearable
-                  />
-                )}
-
-                <button
-                  onClick={() => setOnlyUnclassified(v => !v)}
-                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium transition-colors"
-                  style={{
-                    background: onlyUnclassified ? "#8B5CF6" : "hsl(var(--secondary))",
-                    color: onlyUnclassified ? "#fff" : "hsl(var(--muted-foreground))",
-                    border: `1px solid ${onlyUnclassified ? "transparent" : "hsl(var(--border))"}`,
-                    cursor: "pointer",
-                  }}
-                >
-                  <Tag className="w-3.5 h-3.5" />
-                  Sin clasificar
-                </button>
-
-                <p className="text-[12.5px] text-muted-foreground whitespace-nowrap">
-                  {filteredFamiliaArticles.length} de {allArticles.length} matrículas
-                  {asignadosCount > 0 && <> · <span className="text-accent">{asignadosCount} asignadas</span></>}
-                </p>
-              </div>
-
-              {/* Barra de asignación masiva */}
-              {selectedArticulos.size > 0 && (
-                <div
-                  className="flex items-center gap-2.5 flex-wrap rounded-[12px] p-3"
-                  style={{ background: "color-mix(in oklab, var(--accent-violet-deep) 35%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-violet) 45%, transparent)" }}
-                >
-                  <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-foreground shrink-0">
-                    <span
-                      className="inline-flex items-center justify-center rounded-md"
-                      style={{ width: 22, height: 22, background: "#8B5CF6", color: "#fff", fontSize: 12, fontWeight: 700 }}
-                    >
-                      {selectedArticulos.size}
-                    </span>
-                    seleccionadas
-                  </span>
-
-                  <input
-                    type="text"
-                    list="familias-list"
-                    value={bulkFamilia}
-                    onChange={e => setBulkFamilia(e.target.value)}
-                    placeholder="Familia…"
-                    className="h-9 px-3 rounded-lg bg-secondary border border-border text-[13px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent/40"
-                    style={{ minWidth: 160 }}
-                  />
-                  <button
-                    onClick={() => applyBulk("add")}
-                    disabled={applyingBulk || !bulkFamilia.trim()}
-                    className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[13px] font-semibold transition-all disabled:opacity-40"
-                    style={{ background: "#8B5CF6", color: "#fff", border: "none", cursor: applyingBulk ? "wait" : "pointer" }}
-                    title="Agregar esta familia a las seleccionadas (no pisa las que ya tengan)"
-                  >
-                    {applyingBulk ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" strokeWidth={2.6} />}
-                    Agregar
-                  </button>
-                  <button
-                    onClick={() => applyBulk("remove")}
-                    disabled={applyingBulk || !bulkFamilia.trim()}
-                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium transition-all disabled:opacity-40"
-                    style={{ background: "transparent", color: "var(--accent-red)", border: "1px solid oklch(0.5 0.15 25 / 0.4)", cursor: "pointer" }}
-                    title="Quitar esta familia de las seleccionadas"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                    Quitar familia
-                  </button>
-
-                  <span className="w-px h-6 bg-border/60" />
-
-                  <BeastSelect
-                    options={TIPO_OPTIONS.map(t => ({ value: t.value, label: t.label, node: <TipoPill tipo={t.value} /> }))}
-                    value={bulkTipo}
-                    onChange={v => { setBulkTipo(v as ArticuloTipo); }}
-                    placeholder="Tipo…"
-                    minWidth={140}
-                    clearable
-                  />
-                  <button
-                    onClick={() => applyBulk("add")}
-                    disabled={applyingBulk || !bulkTipo}
-                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium transition-all disabled:opacity-40"
-                    style={{ background: "hsl(var(--secondary))", color: "hsl(var(--foreground))", border: "1px solid hsl(var(--border))", cursor: "pointer" }}
-                    title="Aplicar el tipo a las seleccionadas"
-                  >
-                    Aplicar tipo
-                  </button>
-
-                  <div className="flex-1" />
-
-                  <button
-                    onClick={() => clearBulkSelection(true)}
-                    disabled={applyingBulk}
-                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium transition-colors disabled:opacity-50"
-                    style={{ background: "transparent", color: "var(--accent-red)", border: "1px solid oklch(0.5 0.15 25 / 0.4)", cursor: "pointer" }}
-                    title="Borrar todas las familias y el tipo de las seleccionadas"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Borrar todo
-                  </button>
-                  <button
-                    onClick={() => clearBulkSelection(false)}
-                    disabled={applyingBulk}
-                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                    style={{ background: "transparent", border: "1px solid hsl(var(--border))", cursor: "pointer" }}
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              )}
-
-              <datalist id="familias-list">
-                {familiasDisponibles.map(f => <option key={f} value={f} />)}
-              </datalist>
-
-              <div className="rounded-[14px] overflow-hidden" style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)" }}>
-                <div ref={familiasScrollRef} className="overflow-auto" style={{ maxHeight: "70vh" }}>
-                  <table className="text-sm" style={{ tableLayout: "fixed", width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
-                    <colgroup>
-                      <col style={{ width: 44 }} />
-                      <col style={{ width: 130 }} />
-                      <col style={{ width: 240 }} />
-                      <col />
-                      <col style={{ width: 150 }} />
-                      <col style={{ width: 32 }} />
-                    </colgroup>
-                    <thead>
-                      <tr>
-                        <th style={{ padding: "14px 0 14px 14px", width: 44, position: "sticky", top: 0, zIndex: 2, background: "var(--panel-header)", borderBottom: "1px solid hsl(var(--border))" }}>
-                          <button
-                            onClick={toggleSelectAll}
-                            title={allVisibleSelected ? "Deseleccionar todo" : "Seleccionar todo"}
-                            className="inline-flex items-center justify-center rounded-[5px] transition-colors"
-                            style={{
-                              width: 18, height: 18,
-                              background: allVisibleSelected ? "#8B5CF6" : "transparent",
-                              border: `1.5px solid ${allVisibleSelected ? "#8B5CF6" : "hsl(var(--border))"}`,
-                              color: "#fff", cursor: "pointer",
-                            }}
-                          >
-                            {allVisibleSelected && <Check className="w-3 h-3" strokeWidth={3} />}
-                          </button>
-                        </th>
-                        <th style={{ padding: "14px 14px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 130, position: "sticky", top: 0, zIndex: 2, background: "var(--panel-header)", borderBottom: "1px solid hsl(var(--border))" }}>Matrícula</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 240, position: "sticky", top: 0, zIndex: 2, background: "var(--panel-header)", borderBottom: "1px solid hsl(var(--border))" }}>Descripción</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", position: "sticky", top: 0, zIndex: 2, background: "var(--panel-header)", borderBottom: "1px solid hsl(var(--border))" }}>Familias</th>
-                        <th style={{ padding: "14px 12px", textAlign: "left", fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", width: 150, position: "sticky", top: 0, zIndex: 2, background: "var(--panel-header)", borderBottom: "1px solid hsl(var(--border))" }}>Tipo</th>
-                        <th style={{ width: 32, position: "sticky", top: 0, zIndex: 2, background: "var(--panel-header)", borderBottom: "1px solid hsl(var(--border))" }} />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredFamiliaArticles.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} style={{ padding: "48px 24px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 13 }}>
-                            No hay matrículas que coincidan con la búsqueda
-                          </td>
-                        </tr>
-                      ) : (() => {
-                        const vItems = familiasVirtualizer.getVirtualItems();
-                        const totalH = familiasVirtualizer.getTotalSize();
-                        const padTop = vItems.length ? vItems[0].start : 0;
-                        const padBot = vItems.length ? totalH - vItems[vItems.length - 1].end : 0;
-                        return (
-                          <>
-                            {padTop > 0 && <tr style={{ height: padTop }}><td colSpan={6} style={{ padding: 0, border: "none" }} /></tr>}
-                            {vItems.map(vi => {
-                        const row = filteredFamiliaArticles[vi.index];
-                        const saved      = familyMap.get(row.articulo);
-                        const fams       = saved?.familias ?? [];
-                        const isSaving   = savingArticulo === row.articulo;
-                        const hasFamily  = fams.length > 0;
-                        // Tipo del catálogo maestro (Carga de datos); el manual lo pisa.
-                        const catalogTipo = matriculasInfo.get(row.articulo)?.tipo ?? "";
-                        const isSelected = selectedArticulos.has(row.articulo);
-                        const isLast = vi.index === filteredFamiliaArticles.length - 1;
-                        const bottomBorder = isLast ? {} : { borderBottom: cellBorder };
-
-                        return (
-                          <tr
-                            key={row.articulo}
-                            style={{ opacity: hasFamily || isSelected ? 1 : 0.65, transition: "opacity 0.15s", background: isSelected ? "color-mix(in oklab, var(--accent-violet) 12%, transparent)" : undefined }}
-                            onMouseEnter={e => { e.currentTarget.style.opacity = "1"; if (!isSelected) e.currentTarget.style.background = "hsl(var(--secondary) / 0.3)"; }}
-                            onMouseLeave={e => { e.currentTarget.style.opacity = hasFamily || isSelected ? "1" : "0.65"; e.currentTarget.style.background = isSelected ? "color-mix(in oklab, var(--accent-violet) 12%, transparent)" : ""; }}
-                          >
-                            <td style={{ ...bottomBorder, padding: "0 0 0 14px", textAlign: "center" }}>
-                              <button
-                                onClick={() => toggleSelect(row.articulo)}
-                                className="inline-flex items-center justify-center rounded-[5px] transition-colors"
-                                style={{
-                                  width: 18, height: 18,
-                                  background: isSelected ? "#8B5CF6" : "transparent",
-                                  border: `1.5px solid ${isSelected ? "#8B5CF6" : "hsl(var(--border))"}`,
-                                  color: "#fff", cursor: "pointer",
-                                }}
-                              >
-                                {isSelected && <Check className="w-3 h-3" strokeWidth={3} />}
-                              </button>
-                            </td>
-                            <td style={{ ...bottomBorder, padding: "9px 14px", fontFamily: "ui-monospace, monospace", fontSize: 12.5, color: "#7ee2a8", whiteSpace: "nowrap" }}>{row.articulo}</td>
-                            <td style={{ ...bottomBorder, padding: "9px 12px", color: "hsl(var(--foreground))", fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.descArticulo}</td>
-                            <td style={{ ...bottomBorder, padding: "6px 8px" }}>
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                {fams.map(f => (
-                                  <span
-                                    key={f}
-                                    className="inline-flex items-center gap-1"
-                                    style={{ padding: "2px 4px 2px 8px", borderRadius: 999, background: "color-mix(in oklab, var(--accent-violet-deep) 50%, transparent)", color: "#d6c2ff", border: "1px solid color-mix(in oklab, var(--accent-violet) 45%, transparent)", fontSize: 11.5, fontWeight: 500, whiteSpace: "nowrap" }}
-                                  >
-                                    {f}
-                                    <button
-                                      onClick={() => removeFamiliaFromArticulo(row.articulo, f)}
-                                      disabled={isSaving}
-                                      className="inline-flex items-center justify-center rounded-full hover:bg-white/10 transition-colors disabled:opacity-40"
-                                      style={{ width: 15, height: 15, color: "#d6c2ff" }}
-                                      title={`Quitar «${f}»`}
-                                    >
-                                      <X className="w-2.5 h-2.5" strokeWidth={2.6} />
-                                    </button>
-                                  </span>
-                                ))}
-                                {isSaving ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
-                                ) : (
-                                  <input
-                                    type="text"
-                                    list="familias-list"
-                                    placeholder="+ familia"
-                                    onKeyDown={e => {
-                                      if (e.key === "Enter") {
-                                        const v = (e.target as HTMLInputElement).value.trim();
-                                        if (v) { addFamiliaToArticulo(row.articulo, v); (e.target as HTMLInputElement).value = ""; }
-                                      }
-                                    }}
-                                    onBlur={e => {
-                                      const v = e.target.value.trim();
-                                      if (v) { addFamiliaToArticulo(row.articulo, v); e.target.value = ""; }
-                                    }}
-                                    className="h-7 px-2 rounded-md bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-accent/30 transition-all"
-                                    style={{ width: 92 }}
-                                  />
-                                )}
-                              </div>
-                            </td>
-                            <td style={{ ...bottomBorder, padding: "6px 8px" }}>
-                              {!isSaving && (
-                                <BeastSelect
-                                  options={TIPO_OPTIONS.map(t => ({ value: t.value, label: t.label, node: <TipoPill tipo={t.value} /> }))}
-                                  value={(saved?.tipo || catalogTipo) as string}
-                                  onChange={v => setArticuloTipo(row.articulo, v as ArticuloTipo)}
-                                  placeholder="—"
-                                  minWidth={130}
-                                  clearable
-                                  portal
-                                />
-                              )}
-                            </td>
-                            <td style={{ ...bottomBorder, padding: "6px 4px", textAlign: "center" }}>
-                              {hasFamily && !isSaving && (
-                                <button
-                                  onClick={() => clearArticulo(row.articulo)}
-                                  className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                                  title="Quitar todas las familias"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                            })}
-                            {padBot > 0 && <tr style={{ height: padBot }}><td colSpan={6} style={{ padding: 0, border: "none" }} /></tr>}
-                          </>
-                        );
-                      })()}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <p className="text-xs text-muted-foreground">
-                Una matrícula puede tener varias familias. Agregá familias por fila con «+ familia» (Enter), o tildá varias y usá «Agregar / Quitar familia» en lote. Para cargar muchas de una, usá «Agregar familia» y pegá la lista.
-              </p>
-            </>
-          )}
-        </div>
-      )}
       </div>
       </DirectionAwareTabs>
-
-      {/* Modal: Agregar familia (nombre + pegar lista de matrículas) */}
-      {addFamilyOpen && createPortal(
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-          style={{ background: "rgba(0,0,0,0.55)" }}
-          onMouseDown={e => { if (e.target === e.currentTarget && !addingFamily) setAddFamilyOpen(false); }}
-        >
-          <div
-            className="w-full max-w-lg rounded-[16px] overflow-hidden"
-            style={{ background: "var(--panel)", border: "1px solid oklch(1 0 0 / 0.08)", boxShadow: "0 24px 60px -20px rgba(0,0,0,0.7)" }}
-          >
-            <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-3">
-              <div className="flex items-start gap-3">
-                <div className="grid place-items-center mt-0.5" style={{ width: 34, height: 34, borderRadius: 9, background: "color-mix(in oklab, var(--accent-violet-deep) 50%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-violet) 45%, transparent)", color: "#c4b5fd" }}>
-                  <Tag className="w-4 h-4" strokeWidth={2} />
-                </div>
-                <div>
-                  <h3 className="text-[16px] font-semibold tracking-tight text-foreground">Agregar familia</h3>
-                  <p className="mt-0.5 text-[12.5px] text-muted-foreground">Ponele un nombre y pegá las matrículas que la integran.</p>
-                </div>
-              </div>
-              <button onClick={() => { if (!addingFamily) setAddFamilyOpen(false); }} className="text-muted-foreground hover:text-foreground shrink-0 mt-1">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="px-5 pb-5 space-y-3">
-              <div>
-                <label className="block text-[11.5px] uppercase tracking-[0.5px] text-muted-foreground mb-1.5">Nombre de la familia</label>
-                <input
-                  type="text"
-                  list="familias-list"
-                  value={addFamilyName}
-                  onChange={e => setAddFamilyName(e.target.value)}
-                  placeholder="Ej: Cables, Transformadores…"
-                  autoFocus
-                  className="w-full h-10 px-3 rounded-[9px] text-[14px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
-                  style={{ background: "var(--panel-input)", border: "1px solid var(--hairline)" }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11.5px] uppercase tracking-[0.5px] text-muted-foreground mb-1.5">
-                  Matrículas <span className="normal-case tracking-normal text-muted-foreground/60">(una por línea, como vienen del Excel)</span>
-                </label>
-                <textarea
-                  value={addFamilyList}
-                  onChange={e => setAddFamilyList(e.target.value)}
-                  placeholder={"00000022.0\n00000023.0\n00000024.0"}
-                  rows={8}
-                  className="w-full px-3 py-2.5 rounded-[9px] outline-none resize-y text-foreground placeholder:text-muted-foreground/35"
-                  style={{ background: "var(--panel-input)", border: "1px solid var(--hairline)", fontFamily: "ui-monospace, monospace", fontSize: 12.5, lineHeight: 1.7 }}
-                />
-                {addFamilyMatriculas.length > 0 && (
-                  <p className="mt-1.5 text-[12px]" style={{ color: "var(--accent-green)" }}>
-                    {addFamilyMatriculas.length} matrícula{addFamilyMatriculas.length === 1 ? "" : "s"} detectada{addFamilyMatriculas.length === 1 ? "" : "s"}
-                  </p>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2.5 pt-1">
-                <Button
-                  variant="accent"
-                  onClick={handleAddFamily}
-                  loading={addingFamily}
-                  disabled={!addFamilyName.trim() || addFamilyMatriculas.length === 0}
-                >
-                  {!addingFamily && <Plus className="w-3.5 h-3.5" strokeWidth={2.6} />}
-                  {addingFamily ? "Guardando…" : "Crear y asignar"}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => { if (!addingFamily) setAddFamilyOpen(false); }}
-                >
-                  Cancelar
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )}
 
       {/* Centro de ayuda (mismo diseño y concepto que Informe Técnico) */}
       {helpOpen && (
@@ -2027,7 +1429,6 @@ export function StockZonaSection() {
 const STOCK_HELP_META = [
   { id: "cargar",   icon: Download,    label: "Cargar datos",     color: "#60a5fa", subtitle: "Extraer de SIGA y pegar" },
   { id: "resumen",  icon: PackageOpen, label: "Resumen de stock", color: "#34d399", subtitle: "Consulta consolidada" },
-  { id: "familias", icon: Tag,         label: "Familias",         color: "#a78bfa", subtitle: "Etiquetas de matrículas" },
 ] as const;
 
 function HelpTip({ children }: { children: React.ReactNode }) {
@@ -2103,7 +1504,6 @@ function StockHelpStepContent({ step, onGoCargar }: { step: number; onGoCargar: 
       </>
     );
   }
-  if (step === 1) {
     return (
       <>
         <p style={{ fontSize: 14, color: "oklch(0.72 0 0)", lineHeight: 1.65, marginBottom: 4 }}>
@@ -2122,24 +1522,6 @@ function StockHelpStepContent({ step, onGoCargar }: { step: number; onGoCargar: 
         <HelpTip>La descripción y la UDM salen del catálogo de «Carga de datos» (la lista de matrículas más actualizada).</HelpTip>
       </>
     );
-  }
-  return (
-    <>
-      <p style={{ fontSize: 14, color: "oklch(0.72 0 0)", lineHeight: 1.65, marginBottom: 4 }}>
-        Las familias son etiquetas para agrupar matrículas. Una matrícula puede pertenecer a <strong>varias</strong> a la vez.
-      </p>
-      <HelpSection title="Cómo asignar">
-        <HelpAction label="Agregar familia" desc="Botón violeta: ponés un nombre y pegás una lista de matrículas (una por línea, como del Excel). Se asigna a todas." />
-        <HelpAction label="Por fila" desc="Cada matrícula muestra sus familias como chips: quitás con la X, o agregás escribiendo en «+ familia» y Enter." />
-        <HelpAction label="En lote" desc="Tildá varias y usá «Agregar» (suma sin pisar) o «Quitar familia». También «Aplicar tipo» Material/Servicio." />
-      </HelpSection>
-      <HelpSection title="Buscar y filtrar">
-        <HelpAction label="Filtros" desc="Por familia, por «sin clasificar» (las que no tienen ninguna) o por número/descripción." />
-        <HelpAction label="Tipo" desc="Material/Servicio sale del catálogo; podés pisarlo manualmente por matrícula." />
-      </HelpSection>
-      <HelpTip>El número de matrícula se respeta tal cual (con el punto y los ceros). Pegá las matrículas en el mismo formato que en el catálogo.</HelpTip>
-    </>
-  );
 }
 
 function StockHelpModal({ onClose, onGoCargar }: { onClose: () => void; onGoCargar: () => void }) {
