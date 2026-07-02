@@ -1893,12 +1893,12 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                           <span style={{ fontSize: 12, color: "oklch(0.55 0 0)" }}>% vs. SIC</span>
                           {pct === null ? (
                             <span style={{ fontSize: 12, color: "oklch(0.42 0 0)" }}>—</span>
-                          ) : over ? (
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: "var(--accent-red)", background: "color-mix(in oklab, var(--accent-red) 13%, transparent)", padding: "3px 9px", borderRadius: 6 }}>▲ +{pct.toFixed(2)}%</span>
                           ) : cheaper ? (
                             <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: "var(--accent-green)", background: "color-mix(in oklab, var(--accent-green) 13%, transparent)", padding: "3px 9px", borderRadius: 6 }}>▼ {pct.toFixed(2)}%</span>
-                          ) : (
+                          ) : equal ? (
                             <span style={{ display: "inline-flex", alignItems: "center", fontSize: 12, fontWeight: 700, color: "oklch(0.62 0 0)", background: "oklch(1 0 0 / 0.05)", padding: "3px 9px", borderRadius: 6 }}>+{pct.toFixed(2)}%</span>
+                          ) : (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: "var(--accent-red)", background: "color-mix(in oklab, var(--accent-red) 13%, transparent)", padding: "3px 9px", borderRadius: 6 }}>{over ? "⚠ " : ""}▲ +{pct.toFixed(2)}%</span>
                           )}
                         </div>
 
@@ -1912,11 +1912,15 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                             ) : equal ? (
                               <span style={{ fontSize: 12, color: "oklch(0.55 0 0)" }}>Sin ahorro</span>
                             ) : (
-                              <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 14, fontWeight: 700, color: "var(--accent-red)" }}>−{fmtNum(Math.abs(ahorroOfArs), Math.abs(ahorroOfArs) / (fdOp ?? 1)) ?? ""} <span style={{ fontSize: 11, fontWeight: 400 }}>{curLabel}</span></span>
+                              <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 14, fontWeight: 700, color: "var(--accent-red)", background: "color-mix(in oklab, var(--accent-red) 14%, transparent)", padding: "2px 8px", borderRadius: 6 }}>−{fmtNum(Math.abs(ahorroOfArs), Math.abs(ahorroOfArs) / (fdOp ?? 1)) ?? ""} <span style={{ fontSize: 11, fontWeight: 400 }}>{curLabel}</span> sobre SIC</span>
                             )}
                           </div>
                           <div style={{ height: 6, borderRadius: 4, background: "oklch(1 0 0 / 0.06)", overflow: "hidden" }}>
-                            <div style={{ height: "100%", borderRadius: 4, width: `${barPct}%`, background: "linear-gradient(90deg, var(--accent-emerald, var(--accent-green)), var(--accent-green))" }} />
+                            {cheaper ? (
+                              <div style={{ height: "100%", borderRadius: 4, width: `${barPct}%`, background: "linear-gradient(90deg, var(--accent-emerald, var(--accent-green)), var(--accent-green))" }} />
+                            ) : ahorroOfArs != null && ahorroOfArs < 0 ? (
+                              <div style={{ height: "100%", borderRadius: 4, width: `${Math.min(Math.abs(pct ?? 0), 100)}%`, background: "var(--accent-red)" }} />
+                            ) : null}
                           </div>
                         </div>
 
