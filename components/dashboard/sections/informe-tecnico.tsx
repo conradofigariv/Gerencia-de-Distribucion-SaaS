@@ -1641,10 +1641,12 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
     ? `${ahorroArs >= 0 ? "+" : "−"}${fmtNum(Math.abs(ahorroArs), ahorroUsd !== null ? Math.abs(ahorroUsd) : null) ?? "—"}`
     : "—";
 
-  const kpiCards: { label: string; value: string; cur?: boolean; highlight?: boolean; wide?: boolean; color?: string }[] = [
+  const ahorroDanger = ahorroArs !== null && ahorroArs < 0;
+
+  const kpiCards: { label: string; value: string; cur?: boolean; highlight?: boolean; danger?: boolean; wide?: boolean; color?: string }[] = [
     { label: "Presupuesto de SIC oficial", value: fmtNum(sicQtyTotals.arsOk ? sicQtyTotals.ars : null, sicQtyTotals.usdOk ? sicQtyTotals.usd : null) ?? "—", cur: true, color: "oklch(0.82 0 0)" },
     { label: "Mejor combinación de los oferentes", value: fmtNum(bestQtyTotals.arsOk ? bestQtyTotals.ars : null, bestQtyTotals.usdOk ? bestQtyTotals.usd : null) ?? "—", cur: true, color: "oklch(0.94 0 0)" },
-    { label: "Ahorro potencial total", value: ahorroDisplay, cur: ahorroArs !== null, highlight: true, color: "var(--accent-green)" },
+    { label: ahorroDanger ? "Sobrecosto potencial total" : "Ahorro potencial total", value: ahorroDisplay, cur: ahorroArs !== null, highlight: !ahorroDanger, danger: ahorroDanger, color: ahorroDanger ? "var(--accent-red)" : "var(--accent-green)" },
     { label: "Oferentes", value: String(oferentes.length), wide: true, color: "oklch(0.82 0 0)" },
   ];
 
@@ -1692,15 +1694,15 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
         {kpiCards.map((k) => (
           <div key={k.label} style={{
             flex: k.wide ? "1 1 160px" : "1 1 220px",
-            background: k.highlight ? "color-mix(in oklab, var(--accent-green) 7%, transparent)" : "var(--panel-2)",
-            border: k.highlight ? "1px solid color-mix(in oklab, var(--accent-green) 34%, transparent)" : "1px solid var(--hairline)",
+            background: k.danger ? "color-mix(in oklab, var(--accent-red) 8%, transparent)" : k.highlight ? "color-mix(in oklab, var(--accent-green) 7%, transparent)" : "var(--panel-2)",
+            border: k.danger ? "1px solid color-mix(in oklab, var(--accent-red) 38%, transparent)" : k.highlight ? "1px solid color-mix(in oklab, var(--accent-green) 34%, transparent)" : "1px solid var(--hairline)",
             borderRadius: 12, padding: "16px 18px",
           }}>
-            <div style={{ fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700, color: k.highlight ? "var(--accent-green)" : "oklch(0.46 0 0)" }}>
+            <div style={{ fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700, color: k.danger ? "var(--accent-red)" : k.highlight ? "var(--accent-green)" : "oklch(0.46 0 0)" }}>
               {k.label}
             </div>
             <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 22, fontWeight: 700, color: k.color, marginTop: 5, letterSpacing: "-0.01em" }}>
-              {k.value}{k.cur ? <span style={{ fontSize: 12, color: k.highlight ? "color-mix(in oklab, var(--accent-green) 75%, transparent)" : "oklch(0.42 0 0)", marginLeft: 5 }}>{curLabel}</span> : null}
+              {k.value}{k.cur ? <span style={{ fontSize: 12, color: k.danger ? "color-mix(in oklab, var(--accent-red) 75%, transparent)" : k.highlight ? "color-mix(in oklab, var(--accent-green) 75%, transparent)" : "oklch(0.42 0 0)", marginLeft: 5 }}>{curLabel}</span> : null}
             </div>
           </div>
         ))}
