@@ -15,6 +15,8 @@ import {
   Wrench,
   Layers,
   LockOpen,
+  Trash2,
+  GripVertical,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
@@ -62,17 +64,23 @@ const TABLE_COLS: { db: string; label: string }[] = [
   { db: "dias_vencer",           label: "DÍAS P/ VENCER"  },
   { db: "estado",                label: "ESTADO"          },
   { db: "proveedor",             label: "PROVEEDOR"       },
+  { db: "observacion",           label: "OBSERVACIONES"   },
 ];
 const RAW_COLS_T     = new Set(["op", "op_madre", "linea"]);
+// Columnas editables inline desde el Resumen (mismo mecanismo que Lista de seguimiento).
+const EDITABLE_COLS  = new Set(["zona", "nombre_corto", "observacion"]);
 const PAGE_SIZE      = 50;
 
 const DEFAULT_WIDTHS_R: Record<string, number> = {
   zona: 80, nombre_corto: 140, op: 90, matricula: 110, descripcion_matricula: 240,
   cantidad: 90, saldo_linea: 100, fecha_pactada: 120, dias_vencer: 130,
-  estado: 100, proveedor: 170,
+  estado: 100, proveedor: 170, observacion: 200,
 };
 
-type SeguimientoRow = Record<string, unknown>;
+// Orden de columnas persistido (drag & drop) — por navegador.
+const COLORDER_KEY = "servicios-resumen-colorder";
+
+type SeguimientoRow = Record<string, unknown> & { id: string };
 
 const MS_DAY = 86_400_000;
 
@@ -114,6 +122,59 @@ export function ServiciosResumenSection() {
   const [labels,         setLabels]         = useState<ColumnLabelMap>({});
   const [editingHeaders, setEditingHeaders] = useState(false);
   const [savingLabels,   setSavingLabels]   = useState(false);
+
+  // ── Edición inline de celdas (zona, nombre_corto, observacion) ─────────────
+  const [editingCell,  setEditingCell]  = useState<{ rowId: string; col: string } | null>(null);
+  const [editingValue, setEditingValue] = useState("");
+
+  // ── Selección y borrado de filas ────────────────────────────────────────────
+  const [selected,        setSelected]        = useState<Set<string>>(new Set());
+  const [deletingSelected, setDeletingSelected] = useState(false);
+
+  // ── Orden de columnas (drag & drop), persistido por navegador ──────────────
+  const [colOrder, setColOrder] = useState<string[]>(TABLE_COLS.map(c => c.db));
+  const [dragCol,  setDragCol]  = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+  const colOrderLoaded = useRef(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(COLORDER_KEY);
+      if (raw) {
+        const saved: string[] = JSON.parse(raw);
+        const known = new Set(TABLE_COLS.map(c => c.db));
+        // Conserva el orden guardado; agrega al final columnas nuevas que no estaban guardadas.
+        const merged = [...saved.filter(k => known.has(k)), ...TABLE_COLS.map(c => c.db).filter(k => !saved.includes(k))];
+        setColOrder(merged);
+      }
+    } catch { /* ignorar */ }
+    colOrderLoaded.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!colOrderLoaded.current) return;
+    try { localStorage.setItem(COLORDER_KEY, JSON.stringify(colOrder)); } catch { /* ignorar */ }
+  }, [colOrder]);
+
+  const orderedCols = useMemo(
+    () => colOrder.map(db => TABLE_COLS.find(c => c.db === db)).filter((c): c is { db: string; label: string } => !!c),
+    [colOrder]
+  );
+
+  const handleColDrop = (targetDb: string) => {
+    if (!dragCol || dragCol === targetDb) { setDragCol(null); setDragOverCol(null); return; }
+    setColOrder(prev => {
+      const arr = [...prev];
+      const from = arr.indexOf(dragCol);
+      const to   = arr.indexOf(targetDb);
+      if (from === -1 || to === -1) return prev;
+      arr.splice(from, 1);
+      arr.splice(to, 0, dragCol);
+      return arr;
+    });
+    setDragCol(null);
+    setDragOverCol(null);
+  };
 
   useEffect(() => { getColumnLabels(LABELS_SCOPE).then(setLabels).catch(() => {}); }, []);
 
@@ -159,6 +220,53 @@ export function ServiciosResumenSection() {
     } finally {
       setSavingLabels(false);
     }
+  };
+
+  // ── Edición inline (zona, nombre_corto, observacion) ────────────────────────
+  const startEdit = (rowId: string, col: string, val: unknown) => {
+    setEditingCell({ rowId, col });
+    setEditingValue(val == null ? "" : String(val));
+  };
+
+  const saveEdit = async () => {
+    if (!editingCell) return;
+    const { rowId, col } = editingCell;
+    setEditingCell(null);
+    const newVal = editingValue.trim() === "" ? null : editingValue.trim();
+    // Optimista
+    setAllRows(prev => prev.map(r => r.id === rowId ? { ...r, [col]: newVal } : r));
+    const { error } = await supabase.from("seguimiento").update({ [col]: newVal }).eq("id", rowId);
+    if (error) {
+      toast.error(`Error al guardar: ${error.message}`);
+      // Revertir consultando de nuevo la fila
+      const { data } = await supabase.from("seguimiento").select("*").eq("id", rowId).single();
+      if (data) setAllRows(prev => prev.map(r => r.id === rowId ? (data as SeguimientoRow) : r));
+    }
+  };
+
+  // ── Borrado de filas ─────────────────────────────────────────────────────────
+  const handleDeleteRow = async (id: string) => {
+    const prevRows = allRows;
+    setAllRows(prev => prev.filter(r => r.id !== id));
+    setSelected(prev => { const s = new Set(prev); s.delete(id); return s; });
+    const { error } = await supabase.from("seguimiento").delete().eq("id", id);
+    if (error) { toast.error(`Error al eliminar: ${error.message}`); setAllRows(prevRows); }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (!selected.size) return;
+    if (!confirm(`¿Eliminar ${selected.size} fila${selected.size !== 1 ? "s" : ""} del seguimiento?`)) return;
+    setDeletingSelected(true);
+    const ids = [...selected];
+    const { error } = await supabase.from("seguimiento").delete().in("id", ids);
+    if (error) {
+      toast.error(`Error al eliminar: ${error.message}`);
+    } else {
+      setAllRows(prev => prev.filter(r => !selected.has(r.id)));
+      setSelected(new Set());
+      toast.success(`${ids.length} fila${ids.length !== 1 ? "s" : ""} eliminada${ids.length !== 1 ? "s" : ""}`);
+    }
+    setDeletingSelected(false);
   };
 
   // ── Carga única: filas de seguimiento + clasificación de matrículas ────────
@@ -298,6 +406,16 @@ export function ServiciosResumenSection() {
   const totalPages = Math.ceil(tableRows.length / PAGE_SIZE);
   const pagedRows  = tableRows.slice(tablePage * PAGE_SIZE, (tablePage + 1) * PAGE_SIZE);
   const todayRef   = useMemo(() => new Date(), []);
+
+  // ── Selección de filas (checkbox por página) ────────────────────────────────
+  const pagedIds    = pagedRows.map(r => String(r.id));
+  const allPageSel  = pagedIds.length > 0 && pagedIds.every(id => selected.has(id));
+  const somePageSel = pagedIds.some(id => selected.has(id));
+  const toggleRow = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleAllPage = () => {
+    if (allPageSel) setSelected(prev => { const n = new Set(prev); pagedIds.forEach(id => n.delete(id)); return n; });
+    else            setSelected(prev => { const n = new Set(prev); pagedIds.forEach(id => n.add(id));    return n; });
+  };
 
   return (
     <div className="space-y-6">
@@ -468,6 +586,16 @@ export function ServiciosResumenSection() {
           </div>
           <div className="flex items-center gap-2">
             {tableLoading && <Loader2 className="w-4 h-4 text-accent animate-spin" />}
+            {selected.size > 0 && (
+              <button
+                onClick={handleDeleteSelected}
+                disabled={deletingSelected}
+                className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs text-destructive bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 transition-colors disabled:opacity-50"
+              >
+                {deletingSelected ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                Eliminar seleccionadas ({selected.size})
+              </button>
+            )}
             {editingHeaders && (
               <button
                 onClick={restoreLabels}
@@ -506,19 +634,39 @@ export function ServiciosResumenSection() {
         ) : (
           <>
             <div className={cn("overflow-auto max-h-[62vh]", isResizing && "select-none cursor-col-resize")}>
-              <table className="text-xs" style={{ tableLayout: "fixed", width: 40 + TABLE_COLS.reduce((s, c) => s + (colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100), 0) }}>
+              <table className="text-xs" style={{ tableLayout: "fixed", width: 32 + 40 + 40 + orderedCols.reduce((s, c) => s + (colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100), 0) }}>
                 <colgroup>
+                  <col style={{ width: 32 }} />
                   <col style={{ width: 40 }} />
-                  {TABLE_COLS.map(c => <col key={c.db} style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 }} />)}
+                  {orderedCols.map(c => <col key={c.db} style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 }} />)}
+                  <col style={{ width: 40 }} />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-border">
+                    <th className="sticky top-0 z-10 bg-panel-header py-2.5 px-3">
+                      <input type="checkbox" checked={allPageSel}
+                        ref={el => { if (el) el.indeterminate = somePageSel && !allPageSel; }}
+                        onChange={toggleAllPage}
+                        className="w-3.5 h-3.5 rounded accent-accent cursor-pointer"
+                        title="Seleccionar todos en esta página"
+                      />
+                    </th>
                     <th className="sticky top-0 z-10 bg-panel-header py-2.5 px-3 text-left text-muted-foreground font-semibold">#</th>
-                    {TABLE_COLS.map(c => (
+                    {orderedCols.map(c => (
                       <th
                         key={c.db}
+                        draggable={!editingHeaders}
                         style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 }}
-                        className="sticky top-0 z-10 bg-panel-header relative group/th py-2.5 pl-3 pr-4 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider"
+                        className={cn(
+                          "sticky top-0 z-10 bg-panel-header relative group/th py-2.5 pl-2 pr-4 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider transition-opacity",
+                          dragCol === c.db && "opacity-40",
+                          dragOverCol === c.db && dragCol !== c.db && "bg-accent/10 ring-1 ring-inset ring-accent/40"
+                        )}
+                        onDragStart={() => setDragCol(c.db)}
+                        onDragOver={e => { e.preventDefault(); if (dragCol && dragCol !== c.db) setDragOverCol(c.db); }}
+                        onDragLeave={() => setDragOverCol(prev => (prev === c.db ? null : prev))}
+                        onDrop={e => { e.preventDefault(); handleColDrop(c.db); }}
+                        onDragEnd={() => { setDragCol(null); setDragOverCol(null); }}
                         onPointerMove={e => {
                           if (!resizing.current) return;
                           const newW = Math.max(50, resizing.current.startW + (e.clientX - resizing.current.startX));
@@ -530,25 +678,31 @@ export function ServiciosResumenSection() {
                           setIsResizing(false);
                         }}
                       >
-                        {editingHeaders ? (
-                          <input
-                            defaultValue={labelOf(c.db, c.label)}
-                            onClick={e => e.stopPropagation()}
-                            onKeyDown={e => {
-                              if (e.key === "Enter")  { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
-                              if (e.key === "Escape") { (e.target as HTMLInputElement).value = labelOf(c.db, c.label); (e.target as HTMLInputElement).blur(); }
-                            }}
-                            onBlur={e => commitLabel(c.db, c.label, e.target.value)}
-                            placeholder={c.label}
-                            className="w-full bg-secondary border border-accent rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-foreground focus:outline-none focus:ring-1 focus:ring-accent normal-case"
-                            style={{ textTransform: "none" }}
-                          />
-                        ) : (
-                          <span className="block truncate" title={labelOf(c.db, c.label)}>{labelOf(c.db, c.label)}</span>
-                        )}
+                        <div className="flex items-center gap-1">
+                          {!editingHeaders && (
+                            <GripVertical className="w-3 h-3 shrink-0 text-muted-foreground/30 cursor-move" />
+                          )}
+                          {editingHeaders ? (
+                            <input
+                              defaultValue={labelOf(c.db, c.label)}
+                              onClick={e => e.stopPropagation()}
+                              onKeyDown={e => {
+                                if (e.key === "Enter")  { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
+                                if (e.key === "Escape") { (e.target as HTMLInputElement).value = labelOf(c.db, c.label); (e.target as HTMLInputElement).blur(); }
+                              }}
+                              onBlur={e => commitLabel(c.db, c.label, e.target.value)}
+                              placeholder={c.label}
+                              className="w-full bg-secondary border border-accent rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-foreground focus:outline-none focus:ring-1 focus:ring-accent normal-case"
+                              style={{ textTransform: "none" }}
+                            />
+                          ) : (
+                            <span className="block truncate" title={labelOf(c.db, c.label)}>{labelOf(c.db, c.label)}</span>
+                          )}
+                        </div>
                         {!editingHeaders && (
                           <div
                             className="absolute right-0 top-0 h-full w-2 flex items-center justify-center cursor-col-resize group/handle hover:bg-accent/10"
+                            draggable={false}
                             onPointerDown={e => {
                               e.preventDefault(); e.stopPropagation();
                               e.currentTarget.setPointerCapture(e.pointerId);
@@ -571,13 +725,26 @@ export function ServiciosResumenSection() {
                         )}
                       </th>
                     ))}
+                    <th className="sticky top-0 z-10 bg-panel-header w-10" />
                   </tr>
                 </thead>
                 <tbody>
-                  {pagedRows.map((row, idx) => (
-                    <tr key={idx} className="border-b border-border last:border-0 even:bg-secondary/20 hover:bg-secondary/40 transition-colors">
+                  {pagedRows.map((row, idx) => {
+                    const rowId = String(row.id);
+                    const isSelected = selected.has(rowId);
+                    return (
+                    <tr key={rowId} className={cn(
+                      "border-b border-border last:border-0 transition-colors",
+                      isSelected ? "bg-accent/8 hover:bg-accent/12" : "even:bg-secondary/20 hover:bg-secondary/40"
+                    )}>
+                      <td className="py-2.5 px-3">
+                        <input type="checkbox" checked={isSelected}
+                          onChange={() => toggleRow(rowId)}
+                          className="w-3.5 h-3.5 rounded accent-accent cursor-pointer"
+                        />
+                      </td>
                       <td className="py-2.5 px-3 text-muted-foreground">{tablePage * PAGE_SIZE + idx + 1}</td>
-                      {TABLE_COLS.map(c => {
+                      {orderedCols.map(c => {
                         // Columna calculada: días para vencer + color por riesgo.
                         if (c.db === "dias_vencer") {
                           const dias  = diasParaVencer(row.fecha_pactada, todayRef);
@@ -615,14 +782,50 @@ export function ServiciosResumenSection() {
                           );
                         }
 
+                        // Columnas editables inline (zona, nombre_corto, observacion).
+                        if (EDITABLE_COLS.has(c.db)) {
+                          const isEditing = editingCell?.rowId === rowId && editingCell.col === c.db;
+                          return (
+                            <td key={c.db} className="py-1.5 px-3 whitespace-nowrap overflow-hidden group" title={isEditing ? undefined : display}>
+                              {isEditing ? (
+                                <input
+                                  autoFocus
+                                  value={editingValue}
+                                  onChange={e => setEditingValue(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter")  { e.preventDefault(); saveEdit(); }
+                                    if (e.key === "Escape") { setEditingCell(null); }
+                                  }}
+                                  onBlur={saveEdit}
+                                  className="w-full min-w-[80px] bg-secondary border border-accent rounded px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+                                />
+                              ) : (
+                                <div
+                                  className="flex items-center gap-1.5 cursor-pointer"
+                                  onClick={() => startEdit(rowId, c.db, val)}
+                                >
+                                  <span className="text-foreground truncate block">{display || "—"}</span>
+                                  <Pencil className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 shrink-0 transition-opacity duration-150" />
+                                </div>
+                              )}
+                            </td>
+                          );
+                        }
+
                         return (
                           <td key={c.db} className="py-2.5 px-3 whitespace-nowrap overflow-hidden" title={display}>
                             <span className="text-foreground truncate block">{display || "—"}</span>
                           </td>
                         );
                       })}
+                      <td className="py-2.5 px-3">
+                        <button onClick={() => handleDeleteRow(rowId)}
+                          className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             </div>
