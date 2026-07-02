@@ -16,7 +16,6 @@ import {
   Layers,
   LockOpen,
   Trash2,
-  GripVertical,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
@@ -658,7 +657,8 @@ export function ServiciosResumenSection() {
                         draggable={!editingHeaders}
                         style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 }}
                         className={cn(
-                          "sticky top-0 z-10 bg-panel-header relative group/th py-2.5 pl-2 pr-4 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider transition-opacity",
+                          "sticky top-0 z-10 bg-panel-header relative group/th py-2.5 pl-3 pr-4 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider transition-opacity",
+                          !editingHeaders && "cursor-move",
                           dragCol === c.db && "opacity-40",
                           dragOverCol === c.db && dragCol !== c.db && "bg-accent/10 ring-1 ring-inset ring-accent/40"
                         )}
@@ -679,9 +679,6 @@ export function ServiciosResumenSection() {
                         }}
                       >
                         <div className="flex items-center gap-1">
-                          {!editingHeaders && (
-                            <GripVertical className="w-3 h-3 shrink-0 text-muted-foreground/30 cursor-move" />
-                          )}
                           {editingHeaders ? (
                             <input
                               defaultValue={labelOf(c.db, c.label)}
