@@ -16,6 +16,7 @@ import {
   Layers,
   LockOpen,
   Trash2,
+  Pin,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
@@ -78,6 +79,8 @@ const DEFAULT_WIDTHS_R: Record<string, number> = {
 
 // Orden de columnas persistido (drag & drop) — por navegador.
 const COLORDER_KEY = "servicios-resumen-colorder";
+// Filas fijadas — por navegador (igual patrón que Stock por Zona).
+const PINNED_KEY = "servicios-resumen-pinned";
 
 type SeguimientoRow = Record<string, unknown> & { id: string };
 
@@ -154,6 +157,29 @@ export function ServiciosResumenSection() {
     if (!colOrderLoaded.current) return;
     try { localStorage.setItem(COLORDER_KEY, JSON.stringify(colOrder)); } catch { /* ignorar */ }
   }, [colOrder]);
+
+  // ── Filas fijadas (pin), persistidas por navegador ──────────────────────────
+  const [pinned, setPinned] = useState<Set<string>>(new Set());
+  const pinnedLoaded = useRef(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PINNED_KEY);
+      if (raw) setPinned(new Set(JSON.parse(raw)));
+    } catch { /* ignorar */ }
+    pinnedLoaded.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!pinnedLoaded.current) return;
+    try { localStorage.setItem(PINNED_KEY, JSON.stringify([...pinned])); } catch { /* ignorar */ }
+  }, [pinned]);
+
+  const togglePin = (id: string) => setPinned(prev => {
+    const n = new Set(prev);
+    n.has(id) ? n.delete(id) : n.add(id);
+    return n;
+  });
 
   const orderedCols = useMemo(
     () => colOrder.map(db => TABLE_COLS.find(c => c.db === db)).filter((c): c is { db: string; label: string } => !!c),
@@ -356,8 +382,14 @@ export function ServiciosResumenSection() {
       const pct = filtroConsumo / 100;
       res = res.filter(r => { const c = Number(r.cantidad); const s = Number(r.saldo_linea); return c > 0 && s / c <= pct; });
     }
+    // Las filas fijadas van primero (mantienen su orden relativo entre sí).
+    if (pinned.size > 0) {
+      const pin: SeguimientoRow[] = []; const rest: SeguimientoRow[] = [];
+      for (const r of res) (pinned.has(String(r.id)) ? pin : rest).push(r);
+      res = [...pin, ...rest];
+    }
     return res;
-  }, [baseRows, filtroVencer, filtroConsumo, filtroActivos, filtroVencidos]);
+  }, [baseRows, filtroVencer, filtroConsumo, filtroActivos, filtroVencidos, pinned]);
 
   // Reinicia la paginación cuando cambia el conjunto mostrado.
   useEffect(() => { setTablePage(0); }, [tableRows.length, soloServicios, filtroAbierto]);
@@ -580,6 +612,9 @@ export function ServiciosResumenSection() {
             {!tableLoading && (
               <p className="text-xs text-muted-foreground mt-0.5">
                 {tableRows.length} resultado{tableRows.length !== 1 ? "s" : ""}
+                {pinned.size > 0 && (
+                  <> · <Pin className="w-3 h-3 inline -mt-0.5" fill="currentColor" strokeWidth={2} /> {pinned.size} fijada{pinned.size !== 1 ? "s" : ""}</>
+                )}
               </p>
             )}
           </div>
@@ -633,8 +668,9 @@ export function ServiciosResumenSection() {
         ) : (
           <>
             <div className={cn("overflow-auto max-h-[62vh]", isResizing && "select-none cursor-col-resize")}>
-              <table className="text-xs" style={{ tableLayout: "fixed", width: 32 + 40 + 40 + orderedCols.reduce((s, c) => s + (colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100), 0) }}>
+              <table className="text-xs" style={{ tableLayout: "fixed", width: 32 + 32 + 40 + 40 + orderedCols.reduce((s, c) => s + (colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100), 0) }}>
                 <colgroup>
+                  <col style={{ width: 32 }} />
                   <col style={{ width: 32 }} />
                   <col style={{ width: 40 }} />
                   {orderedCols.map(c => <col key={c.db} style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 }} />)}
@@ -650,6 +686,7 @@ export function ServiciosResumenSection() {
                         title="Seleccionar todos en esta página"
                       />
                     </th>
+                    <th className="sticky top-0 z-10 bg-panel-header py-2.5 px-1" title="Fijar arriba" />
                     <th className="sticky top-0 z-10 bg-panel-header py-2.5 px-3 text-left text-muted-foreground font-semibold">#</th>
                     {orderedCols.map(c => (
                       <th
@@ -658,7 +695,7 @@ export function ServiciosResumenSection() {
                         style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 }}
                         className={cn(
                           "sticky top-0 z-10 bg-panel-header relative group/th py-2.5 pl-3 pr-4 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider transition-opacity",
-                          !editingHeaders && "cursor-move",
+                          !editingHeaders && "cursor-grab active:cursor-grabbing",
                           dragCol === c.db && "opacity-40",
                           dragOverCol === c.db && dragCol !== c.db && "bg-accent/10 ring-1 ring-inset ring-accent/40"
                         )}
@@ -729,16 +766,29 @@ export function ServiciosResumenSection() {
                   {pagedRows.map((row, idx) => {
                     const rowId = String(row.id);
                     const isSelected = selected.has(rowId);
+                    const isPinned   = pinned.has(rowId);
                     return (
                     <tr key={rowId} className={cn(
                       "border-b border-border last:border-0 transition-colors",
-                      isSelected ? "bg-accent/8 hover:bg-accent/12" : "even:bg-secondary/20 hover:bg-secondary/40"
+                      isSelected ? "bg-accent/8 hover:bg-accent/12" : isPinned ? "bg-accent/5 hover:bg-accent/10" : "even:bg-secondary/20 hover:bg-secondary/40"
                     )}>
                       <td className="py-2.5 px-3">
                         <input type="checkbox" checked={isSelected}
                           onChange={() => toggleRow(rowId)}
                           className="w-3.5 h-3.5 rounded accent-accent cursor-pointer"
                         />
+                      </td>
+                      <td className="py-2.5 px-1">
+                        <button
+                          onClick={() => togglePin(rowId)}
+                          title={isPinned ? "Quitar de fijadas" : "Fijar arriba"}
+                          className={cn(
+                            "w-5 h-5 flex items-center justify-center rounded transition-colors",
+                            isPinned ? "text-accent" : "text-muted-foreground/30 hover:text-muted-foreground"
+                          )}
+                        >
+                          <Pin className="w-3.5 h-3.5" strokeWidth={2} fill={isPinned ? "currentColor" : "none"} />
+                        </button>
                       </td>
                       <td className="py-2.5 px-3 text-muted-foreground">{tablePage * PAGE_SIZE + idx + 1}</td>
                       {orderedCols.map(c => {
@@ -798,11 +848,11 @@ export function ServiciosResumenSection() {
                                 />
                               ) : (
                                 <div
-                                  className="flex items-center gap-1.5 cursor-pointer"
+                                  className="flex items-center justify-between gap-1.5 cursor-pointer"
                                   onClick={() => startEdit(rowId, c.db, val)}
                                 >
                                   <span className="text-foreground truncate block">{display || "—"}</span>
-                                  <Pencil className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 shrink-0 transition-opacity duration-150" />
+                                  <Pencil className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 shrink-0 transition-opacity duration-150 ml-auto" />
                                 </div>
                               )}
                             </td>
