@@ -12,6 +12,9 @@ import {
   Pencil,
   Check,
   RotateCcw,
+  Wrench,
+  Layers,
+  LockOpen,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
@@ -49,6 +52,7 @@ type FiltroConsumo = 30 | 40 | null;
 // Los nombres son editables desde el sistema (ver ui_column_labels).
 const TABLE_COLS: { db: string; label: string }[] = [
   { db: "zona",                  label: "ZONA"            },
+  { db: "nombre_corto",          label: "NOMBRE CORTO"    },
   { db: "op",                    label: "OP"              },
   { db: "matricula",             label: "MATRÍCULA"       },
   { db: "descripcion_matricula", label: "DESCRIPCIÓN"     },
@@ -63,7 +67,7 @@ const RAW_COLS_T     = new Set(["op", "op_madre", "linea"]);
 const PAGE_SIZE      = 50;
 
 const DEFAULT_WIDTHS_R: Record<string, number> = {
-  zona: 80, op: 90, matricula: 110, descripcion_matricula: 240,
+  zona: 80, nombre_corto: 140, op: 90, matricula: 110, descripcion_matricula: 240,
   cantidad: 90, saldo_linea: 100, fecha_pactada: 120, dias_vencer: 130,
   estado: 100, proveedor: 170,
 };
@@ -91,8 +95,9 @@ export function ServiciosResumenSection() {
   const [loadingData, setLoadingData] = useState(true);
   const [tipoMap,     setTipoMap]     = useState<Map<string, ArticuloTipo>>(new Map());
 
-  // Universo: solo servicios abiertos (cubo) vs. todas las líneas.
+  // Universo: tipo (servicios vs. todas) y estado de la OP (abierto), filtros independientes.
   const [soloServicios, setSoloServicios] = useState(true);
+  const [filtroAbierto, setFiltroAbierto] = useState(true);
 
   // filtros: null = sin selección
   const [filtroVencer,   setFiltroVencer]   = useState<FiltroVencer>(null);
@@ -193,12 +198,14 @@ export function ServiciosResumenSection() {
     return tipoMap.get(raw) ?? tipoMap.get(normArticulo(raw)) ?? "";
   };
 
-  // ── Universo base: solo servicios abiertos (cubo) o todas las líneas ───────
+  // ── Universo base: tipo (servicios/todas) y estado (abierto), combinables ──
   const baseRows = useMemo(() => {
-    if (!soloServicios || tipoMap.size === 0) return allRows;
-    return allRows.filter(r => tipoOf(r.matricula) === "servicio" && isAbierto(r.estado));
+    let rows = allRows;
+    if (soloServicios && tipoMap.size > 0) rows = rows.filter(r => tipoOf(r.matricula) === "servicio");
+    if (filtroAbierto) rows = rows.filter(r => isAbierto(r.estado));
+    return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allRows, soloServicios, tipoMap]);
+  }, [allRows, soloServicios, filtroAbierto, tipoMap]);
 
   // KPIs fijos (Activos / Vencidos) sobre el universo base.
   const { activos, vencidos } = useMemo(() => {
@@ -246,7 +253,7 @@ export function ServiciosResumenSection() {
   }, [baseRows, filtroVencer, filtroConsumo, filtroActivos, filtroVencidos]);
 
   // Reinicia la paginación cuando cambia el conjunto mostrado.
-  useEffect(() => { setTablePage(0); }, [tableRows.length, soloServicios]);
+  useEffect(() => { setTablePage(0); }, [tableRows.length, soloServicios, filtroAbierto]);
 
   // Alertas recientes (por vencer / alto consumo) sobre el universo base.
   const alertas = useMemo(() => {
@@ -294,34 +301,52 @@ export function ServiciosResumenSection() {
 
   return (
     <div className="space-y-6">
-      {/* Universo: solo servicios abiertos (cubo) vs. todas las líneas */}
+      {/* Universo: tipo (servicios/todas) + estado (abierto), filtros independientes */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="inline-flex items-center rounded-xl border border-border bg-card p-1 gap-1">
+            <button
+              onClick={() => setSoloServicios(true)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all",
+                soloServicios
+                  ? "bg-accent text-accent-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+              )}
+              title="Solo matrículas de tipo Servicio"
+            >
+              <Wrench className="w-4 h-4" />Solo servicios
+            </button>
+            <button
+              onClick={() => setSoloServicios(false)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all",
+                !soloServicios
+                  ? "bg-accent text-accent-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+              )}
+              title="Todas las líneas (materiales y servicios)"
+            >
+              <Layers className="w-4 h-4" />Todas
+            </button>
+          </div>
+
           <button
-            onClick={() => setSoloServicios(true)}
+            onClick={() => setFiltroAbierto(v => !v)}
             className={cn(
-              "px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              soloServicios ? "bg-accent/15 text-accent" : "text-muted-foreground hover:text-foreground"
+              "flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all",
+              filtroAbierto
+                ? "border-success/40 bg-success/15 text-success shadow-sm"
+                : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-success/30"
             )}
-            title="Solo matrículas de tipo Servicio con OP abierta"
+            title="Solo líneas con OP abierta"
           >
-            Solo servicios
-          </button>
-          <button
-            onClick={() => setSoloServicios(false)}
-            className={cn(
-              "px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              !soloServicios ? "bg-accent/15 text-accent" : "text-muted-foreground hover:text-foreground"
-            )}
-            title="Todas las líneas (materiales y servicios)"
-          >
-            Todas
+            <LockOpen className="w-4 h-4" />Abierto
           </button>
         </div>
         <p className="text-xs text-muted-foreground">
-          {soloServicios
-            ? "Universo: servicios (Mat/Serv = Servicio) con OP abierta"
-            : "Universo: todas las líneas de seguimiento"}
+          {soloServicios ? "Servicios (Mat/Serv = Servicio)" : "Todas las líneas"}
+          {filtroAbierto && " · OP abierta"}
           {!loadingData && <> · <span className="text-foreground font-medium">{baseRows.length.toLocaleString("es-AR")}</span> líneas</>}
         </p>
       </div>

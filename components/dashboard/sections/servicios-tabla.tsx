@@ -11,6 +11,7 @@ import { toast } from "sonner";
 
 const DISPLAY_COLS: { db: string; label: string }[] = [
   { db: "zona",                  label: "ZONA"                    },
+  { db: "nombre_corto",          label: "NOMBRE CORTO"            },
   { db: "op",                    label: "OP"                      },
   { db: "op_madre",              label: "OP MADRE"                },
   { db: "linea",                 label: "LÍNEA"                   },
@@ -38,6 +39,7 @@ const DATE_COLS   = new Set(["fecha_pactada", "fecha_redeterminacion"]);
 
 const DEFAULT_WIDTHS: Record<string, number> = {
   zona:                  80,
+  nombre_corto:          140,
   op:                    90,
   op_madre:              90,
   sc:                    100,
