@@ -22,7 +22,7 @@ const BATCH = 500;
 
 // Normaliza un encabezado para comparar sin tildes, mayúsculas ni espacios.
 const normHeader = (h: unknown): string =>
-  str(h).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+  str(h).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
 
 // Lee la primera hoja y detecta la fila de encabezados automáticamente.
 // `anchors`: nombres de columna esperados (sin tildes/case). Se escanean las
@@ -69,16 +69,6 @@ const parseFile = async (
 
 type PlanillaType = "OP" | "SIC" | "MATRICULAS";
 
-interface ParsedMatricula {
-  articulo: string; descripcion: string; unidad_medida: string; estado: string; mat_serv: string;
-}
-interface MatPreview {
-  fileName: string;
-  rawCount: number;
-  deduped: ParsedMatricula[];
-  dupCount: number;
-}
-
 interface PlanillaState {
   count:      number;
   uploadedAt: string | null;
@@ -98,7 +88,6 @@ const REMINDER_DEFS = [
 
 function PlanillaCard({
   tipo, label, descripcion, accentClass, state, onUpload, onClear,
-  mode, onModeChange,
 }: {
   tipo:        PlanillaType;
   label:       string;
@@ -107,8 +96,6 @@ function PlanillaCard({
   state:       PlanillaState;
   onUpload:    (file: File) => void;
   onClear:     () => void;
-  mode?:        SicUploadMode;
-  onModeChange?: (m: SicUploadMode) => void;
 }) {
   const [drag, setDrag] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
@@ -157,33 +144,6 @@ function PlanillaCard({
         </div>
       )}
 
-      {mode && onModeChange && (
-        <div className="flex items-center gap-1 rounded-lg bg-secondary/40 border border-border p-0.5">
-          <button
-            onClick={() => onModeChange("replace")}
-            disabled={busy}
-            title="Borra la planilla actual y carga el archivo de cero"
-            className={cn(
-              "flex-1 px-2 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-50",
-              mode === "replace" ? "bg-accent/15 text-accent" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            Sobreescribir
-          </button>
-          <button
-            onClick={() => onModeChange("update")}
-            disabled={busy}
-            title="Actualiza las SICs que coinciden y agrega las nuevas, conservando el resto"
-            className={cn(
-              "flex-1 px-2 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-50",
-              mode === "update" ? "bg-accent/15 text-accent" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            Actualizar
-          </button>
-        </div>
-      )}
-
       <div
         onClick={() => !busy && ref.current?.click()}
         onDragOver={e => { e.preventDefault(); setDrag(true); }}
@@ -223,114 +183,6 @@ function PlanillaCard({
   );
 }
 
-// ─── Preview modal MATRICULAS ─────────────────────────────────────────────────
-
-function MatPreviewModal({
-  preview, onConfirm, onCancel,
-}: {
-  preview: MatPreview;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const sample = preview.deduped.slice(0, 5);
-  return createPortal(
-    <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
-      onClick={onCancel}
-    >
-      <div
-        className="bg-popover border border-border rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <UploadCloud className="w-4 h-4 text-emerald-400" />
-            <span className="text-sm font-semibold text-foreground">Vista previa — MATRICULAS</span>
-          </div>
-          <button
-            onClick={onCancel}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-4">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground shrink-0">Archivo:</span>
-            <span className="font-medium text-foreground truncate">{preview.fileName}</span>
-          </div>
-
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
-              <Database className="w-4 h-4 text-emerald-400" />
-              <span className="text-sm font-semibold text-emerald-400">{preview.deduped.length.toLocaleString("es-AR")}</span>
-              <span className="text-xs text-muted-foreground">matrículas a importar</span>
-            </div>
-            {preview.dupCount > 0 && (
-              <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-                <AlertTriangle className="w-4 h-4 text-amber-400" />
-                <span className="text-sm font-semibold text-amber-400">{preview.dupCount}</span>
-                <span className="text-xs text-muted-foreground">duplicados en el archivo eliminados</span>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <p className="text-xs text-muted-foreground mb-2">Primeras filas:</p>
-            <div className="rounded-lg border border-border overflow-hidden">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-secondary border-b border-border">
-                    {["Matrícula", "Descripción", "UDM", "Estado", "Tipo"].map(h => (
-                      <th key={h} className="px-3 py-2 text-left font-semibold text-muted-foreground">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sample.map((r, i) => (
-                    <tr key={i} className="border-b border-border last:border-0 hover:bg-secondary/30">
-                      <td className="px-3 py-2 font-mono text-accent">{r.articulo}</td>
-                      <td className="px-3 py-2 text-foreground truncate max-w-[200px]">{r.descripcion || "—"}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{r.unidad_medida || "—"}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{r.estado || "—"}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{r.mat_serv || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {preview.deduped.length > 5 && (
-                <div className="px-3 py-2 text-xs text-muted-foreground border-t border-border bg-secondary/20">
-                  … y {(preview.deduped.length - 5).toLocaleString("es-AR")} filas más
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between px-5 py-4 border-t border-border">
-          <p className="text-xs text-muted-foreground">Esta acción reemplazará todo el catálogo actual.</p>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onCancel}
-              className="h-8 px-4 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={onConfirm}
-              className="h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-all flex items-center gap-1.5"
-            >
-              <UploadCloud className="w-3.5 h-3.5" />Importar
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export function ServiciosPlanillasSection() {
@@ -340,12 +192,8 @@ export function ServiciosPlanillasSection() {
     MATRICULAS: { ...INIT },
   });
 
-  // Modo de subida de la planilla de SICs (reemplazar vs actualizar).
-  const [sicMode, setSicMode] = useState<SicUploadMode>("replace");
-
-  // Preview y resultado de importación de MATRICULAS
-  const [matPreview, setMatPreview] = useState<MatPreview | null>(null);
-  const [matLastImport, setMatLastImport] = useState<{ inserted: number; dupsInFile: number } | null>(null);
+  // Archivo de SICs pendiente de confirmar el modo de subida (abre el diálogo).
+  const [sicFile, setSicFile] = useState<File | null>(null);
 
   // Auth / role
   const [userId,    setUserId]    = useState<string | null>(null);
@@ -544,48 +392,29 @@ export function ServiciosPlanillasSection() {
     }
   };
 
-  const parseMatriculas = (rows: Record<string, unknown>[]) => {
-    const rawMapped: ParsedMatricula[] = rows.map(r => ({
-      articulo:      str(r["Artículo"]              ?? r["Articulo"]),
-      descripcion:   str(r["Descripción"]          ?? r["Descripcion"]),
-      unidad_medida: str(r["Unidad Medida Primaria"] ?? r["Unidad de medida"] ?? r["UDM"] ?? r["UdM"]),
-      estado:        str(r["Estado Artículo"]      ?? r["Estado Articulo"] ?? r["Estado"] ?? ""),
-      mat_serv:      str(r["Mat/Serv"]             ?? r["Mat./serv."]    ?? r["MAT_SERV"] ?? ""),
-    })).filter(r => r.articulo);
-    const dedupMap = new Map<string, ParsedMatricula>();
-    for (const r of rawMapped) dedupMap.set(r.articulo, r);
-    return { rawCount: rawMapped.length, deduped: [...dedupMap.values()] };
-  };
-
-  const previewMatriculas = async (file: File) => {
+  const uploadMatriculas = async (file: File) => {
     setS("MATRICULAS", { uploading: true });
     try {
       const rows = await parseFile(file);
       if (!rows.length) { toast.error("MATRICULAS: sin datos (headers en fila 2)"); return; }
-      const { rawCount, deduped } = parseMatriculas(rows);
-      if (!deduped.length) { toast.error("No se encontró columna 'Artículo'"); return; }
-      setMatPreview({ fileName: file.name, rawCount, deduped, dupCount: rawCount - deduped.length });
-    } catch (e) {
-      toast.error(`Error MATRICULAS: ${e instanceof Error ? e.message : "Error"}`);
-    } finally {
-      setS("MATRICULAS", { uploading: false });
-    }
-  };
-
-  const confirmUploadMatriculas = async () => {
-    if (!matPreview) return;
-    const { deduped, dupCount } = matPreview;
-    setMatPreview(null);
-    setS("MATRICULAS", { uploading: true });
-    try {
+      const rawMapped = rows.map(r => ({
+        articulo:      str(r["Artículo"]              ?? r["Articulo"]),
+        descripcion:   str(r["Descripción"]          ?? r["Descripcion"]),
+        unidad_medida: str(r["Unidad Medida Primaria"] ?? r["Unidad de medida"] ?? r["UDM"] ?? r["UdM"]),
+        estado:        str(r["Estado Artículo"]      ?? r["Estado Articulo"] ?? r["Estado"] ?? ""),
+        mat_serv:      str(r["Mat/Serv"]             ?? r["Mat./serv."]    ?? r["MAT_SERV"] ?? ""),
+      })).filter(r => r.articulo);
+      if (!rawMapped.length) { toast.error("No se encontró columna 'Artículo'"); return; }
+      const dedupMap = new Map<string, typeof rawMapped[0]>();
+      for (const r of rawMapped) dedupMap.set(r.articulo, r);
+      const mapped = [...dedupMap.values()];
       const { error: del } = await supabase.from("matriculas").delete().not("id", "is", null);
       if (del) { toast.error(`Error limpiando MATRICULAS: ${del.message}`); return; }
-      for (let i = 0; i < deduped.length; i += BATCH) {
-        const { error } = await supabase.from("matriculas").insert(deduped.slice(i, i + BATCH));
+      for (let i = 0; i < mapped.length; i += BATCH) {
+        const { error } = await supabase.from("matriculas").insert(mapped.slice(i, i + BATCH));
         if (error) { toast.error(`Error insertando MATRICULAS: ${error.message}`); return; }
       }
-      setMatLastImport({ inserted: deduped.length, dupsInFile: dupCount });
-      toast.success(`MATRICULAS: ${deduped.length.toLocaleString("es-AR")} matrículas cargadas`);
+      toast.success(`MATRICULAS: ${mapped.length.toLocaleString("es-AR")} filas guardadas`);
       if (userId) await markUpdated("planillas-MATRICULAS", "MATRICULAS — Catálogo de materiales", userId).catch(() => {});
     } catch (e) {
       toast.error(`Error MATRICULAS: ${e instanceof Error ? e.message : "Error"}`);
@@ -605,9 +434,16 @@ export function ServiciosPlanillasSection() {
   };
 
   const handleUpload = (tipo: PlanillaType, file: File) => {
-    if (tipo === "OP")         uploadOP(file);
-    else if (tipo === "SIC")   uploadSIC(file, sicMode);
-    else                       previewMatriculas(file);
+    if (tipo === "OP")       uploadOP(file);
+    else if (tipo === "SIC") setSicFile(file);   // abre el diálogo Sobreescribir/Actualizar
+    else                     uploadMatriculas(file);
+  };
+
+  // Confirma el modo elegido en el diálogo y sube la planilla de SICs.
+  const confirmSicUpload = (mode: SicUploadMode) => {
+    const file = sicFile;
+    setSicFile(null);
+    if (file) uploadSIC(file, mode);
   };
 
   const handleClear = async (tipo: PlanillaType) => {
@@ -657,30 +493,53 @@ export function ServiciosPlanillasSection() {
         </div>
       )}
 
-      {matLastImport && (
-        <div className="flex items-center gap-2 text-sm text-success bg-success/10 border border-success/20 rounded-lg px-4 py-3">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
-          Última importación MATRICULAS:{" "}
-          <span className="font-medium">{matLastImport.inserted.toLocaleString("es-AR")} matrículas cargadas</span>
-          {matLastImport.dupsInFile > 0 && (
-            <span className="text-muted-foreground"> · {matLastImport.dupsInFile} duplicados del archivo eliminados</span>
-          )}
-        </div>
-      )}
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         <PlanillaCard tipo="OP"         label="OP"         descripcion="Órdenes de compra"       accentClass="text-blue-400"    state={states.OP}         onUpload={f => handleUpload("OP",         f)} onClear={() => handleClear("OP")}         />
-        <PlanillaCard tipo="SIC"        label="SIC"        descripcion="SICs del Ing. Soler"     accentClass="text-purple-400"  state={states.SIC}        onUpload={f => handleUpload("SIC",        f)} onClear={() => handleClear("SIC")}        mode={sicMode} onModeChange={setSicMode} />
+        <PlanillaCard tipo="SIC"        label="SIC"        descripcion="SICs del Ing. Soler"     accentClass="text-purple-400"  state={states.SIC}        onUpload={f => handleUpload("SIC",        f)} onClear={() => handleClear("SIC")}        />
         <PlanillaCard tipo="MATRICULAS" label="MATRICULAS" descripcion="Catálogo de materiales"   accentClass="text-emerald-400" state={states.MATRICULAS} onUpload={f => handleUpload("MATRICULAS", f)} onClear={() => handleClear("MATRICULAS")} />
       </div>
 
-      {/* Preview modal MATRICULAS */}
-      {matPreview && (
-        <MatPreviewModal
-          preview={matPreview}
-          onConfirm={confirmUploadMatriculas}
-          onCancel={() => setMatPreview(null)}
-        />
+      {/* Diálogo Sobreescribir / Actualizar al subir la planilla de SICs */}
+      {sicFile && createPortal(
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          onClick={() => setSicFile(null)}
+        >
+          <div
+            className="bg-popover border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <span className="text-sm font-semibold text-foreground">¿Cómo cargar las SICs?</span>
+              <button
+                onClick={() => setSicFile(null)}
+                className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2.5">
+              <p className="text-xs text-muted-foreground px-0.5">
+                Archivo: <span className="text-foreground font-medium">{sicFile.name}</span>
+              </p>
+              <button
+                onClick={() => confirmSicUpload("replace")}
+                className="w-full text-left p-3.5 rounded-lg border border-accent/40 bg-accent/10 hover:bg-accent/15 transition-colors"
+              >
+                <p className="text-sm font-semibold text-foreground">Sobreescribir</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Borra la planilla de SICs actual y carga el archivo de cero.</p>
+              </button>
+              <button
+                onClick={() => confirmSicUpload("update")}
+                className="w-full text-left p-3.5 rounded-lg border border-border bg-secondary/30 hover:bg-secondary/50 transition-colors"
+              >
+                <p className="text-sm font-semibold text-foreground">Actualizar</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Actualiza las SICs que coinciden (por N° SIC + línea), agrega las nuevas y conserva el resto.</p>
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
 
       {/* Reminder config dialog — rendered via portal to escape stacking context */}
