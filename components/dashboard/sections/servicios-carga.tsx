@@ -401,9 +401,13 @@ export function ServiciosCargaSection() {
     setGeneratingSIC(true);
     try {
       const [sicRows, maps] = await Promise.all([getSicSoler(), loadCrossMaps()]);
+      if (!sicRows.length) {
+        toast.error("La planilla de SICs está vacía en la base. Subila en 'Carga de datos'.");
+        return;
+      }
       const conOp = sicRows.filter(s => str(s.numero_op) !== "");
       if (!conOp.length) {
-        toast.error("No hay SICs con OP cargadas. Subí la planilla en 'Carga de datos'.");
+        toast.error(`${sicRows.length} SICs cargadas, pero ninguna tiene N° de OP (columna "Número Pedido"). Re-subí la planilla en 'Carga de datos'.`);
         return;
       }
       const today = new Date();

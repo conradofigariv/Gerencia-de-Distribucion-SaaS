@@ -382,7 +382,9 @@ export function ServiciosPlanillasSection() {
       if (mode === "replace") await replaceSicSoler(mapped);
       else                    await upsertSicSoler(mapped);
 
-      toast.success(`SIC: ${mapped.length.toLocaleString("es-AR")} filas ${mode === "replace" ? "cargadas" : "actualizadas"}`);
+      const conOp = mapped.filter(r => r.numero_op !== "").length;
+      toast.success(`SIC: ${mapped.length.toLocaleString("es-AR")} filas ${mode === "replace" ? "cargadas" : "actualizadas"} · ${conOp.toLocaleString("es-AR")} con OP`);
+      if (conOp === 0) toast.error("Ojo: ninguna fila trae N° de OP (columna 'Número Pedido'). Revisá el archivo.");
       if (userId) await markUpdated("planillas-SIC", "SICs del Ing. Soler", userId).catch(() => {});
     } catch (e) {
       toast.error(`Error SIC: ${e instanceof Error ? e.message : "Error"}`);
