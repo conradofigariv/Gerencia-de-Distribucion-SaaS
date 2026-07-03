@@ -55,6 +55,7 @@ type FiltroConsumo = 30 | 40 | null;
 const TABLE_COLS: { db: string; label: string }[] = [
   { db: "zona",                  label: "ZONA"            },
   { db: "nombre_corto",          label: "NOMBRE CORTO"    },
+  { db: "observacion",           label: "OBSERVACIONES"   },
   { db: "op",                    label: "OP"              },
   { db: "matricula",             label: "MATRÍCULA"       },
   { db: "descripcion_matricula", label: "DESCRIPCIÓN"     },
@@ -64,7 +65,6 @@ const TABLE_COLS: { db: string; label: string }[] = [
   { db: "dias_vencer",           label: "DÍAS P/ VENCER"  },
   { db: "estado",                label: "ESTADO"          },
   { db: "proveedor",             label: "PROVEEDOR"       },
-  { db: "observacion",           label: "OBSERVACIONES"   },
 ];
 const RAW_COLS_T     = new Set(["op", "op_madre", "linea"]);
 // Columnas editables inline desde el Resumen (mismo mecanismo que Lista de seguimiento).
@@ -78,7 +78,8 @@ const DEFAULT_WIDTHS_R: Record<string, number> = {
 };
 
 // Orden de columnas persistido (drag & drop) — por navegador.
-const COLORDER_KEY = "servicios-resumen-colorder";
+// v2: se reubicó Observaciones cerca del frente (reset del orden guardado viejo).
+const COLORDER_KEY = "servicios-resumen-colorder-v2";
 // Filas fijadas — por navegador (igual patrón que Stock por Zona).
 const PINNED_KEY = "servicios-resumen-pinned";
 
@@ -668,7 +669,7 @@ export function ServiciosResumenSection() {
         ) : (
           <>
             <div className={cn("overflow-auto max-h-[62vh]", isResizing && "select-none cursor-col-resize")}>
-              <table className="text-xs" style={{ tableLayout: "fixed", width: 32 + 32 + 40 + 40 + orderedCols.reduce((s, c) => s + (colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100), 0) }}>
+              <table className="text-xs" style={{ tableLayout: "fixed", borderCollapse: "separate", borderSpacing: 0, width: 32 + 32 + 40 + 40 + orderedCols.reduce((s, c) => s + (colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100), 0) }}>
                 <colgroup>
                   <col style={{ width: 32 }} />
                   <col style={{ width: 32 }} />
@@ -677,8 +678,8 @@ export function ServiciosResumenSection() {
                   <col style={{ width: 40 }} />
                 </colgroup>
                 <thead>
-                  <tr className="border-b border-border">
-                    <th className="sticky top-0 z-10 bg-panel-header py-2.5 px-3">
+                  <tr>
+                    <th className="sticky top-0 z-10 bg-panel-header border-b border-border py-2.5 px-3">
                       <input type="checkbox" checked={allPageSel}
                         ref={el => { if (el) el.indeterminate = somePageSel && !allPageSel; }}
                         onChange={toggleAllPage}
@@ -686,15 +687,15 @@ export function ServiciosResumenSection() {
                         title="Seleccionar todos en esta página"
                       />
                     </th>
-                    <th className="sticky top-0 z-10 bg-panel-header py-2.5 px-1" title="Fijar arriba" />
-                    <th className="sticky top-0 z-10 bg-panel-header py-2.5 px-3 text-left text-muted-foreground font-semibold">#</th>
+                    <th className="sticky top-0 z-10 bg-panel-header border-b border-border py-2.5 px-1" title="Fijar arriba" />
+                    <th className="sticky top-0 z-10 bg-panel-header border-b border-border py-2.5 px-3 text-left text-muted-foreground font-semibold">#</th>
                     {orderedCols.map(c => (
                       <th
                         key={c.db}
                         draggable={!editingHeaders}
                         style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 }}
                         className={cn(
-                          "sticky top-0 z-10 bg-panel-header relative group/th py-2.5 pl-3 pr-4 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider transition-opacity",
+                          "sticky top-0 z-10 bg-panel-header border-b border-border relative group/th py-2.5 pl-3 pr-4 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider transition-opacity",
                           !editingHeaders && "cursor-grab active:cursor-grabbing",
                           dragCol === c.db && "opacity-40",
                           dragOverCol === c.db && dragCol !== c.db && "bg-accent/10 ring-1 ring-inset ring-accent/40"
@@ -759,7 +760,7 @@ export function ServiciosResumenSection() {
                         )}
                       </th>
                     ))}
-                    <th className="sticky top-0 z-10 bg-panel-header w-10" />
+                    <th className="sticky top-0 z-10 bg-panel-header border-b border-border w-10" />
                   </tr>
                 </thead>
                 <tbody>
@@ -768,8 +769,10 @@ export function ServiciosResumenSection() {
                     const isSelected = selected.has(rowId);
                     const isPinned   = pinned.has(rowId);
                     return (
-                    <tr key={rowId} className={cn(
-                      "border-b border-border last:border-0 transition-colors",
+                    <tr key={rowId}
+                      style={idx < pagedRows.length - 1 ? { boxShadow: "inset 0 -1px 0 hsl(var(--border))" } : undefined}
+                      className={cn(
+                      "transition-colors",
                       isSelected ? "bg-accent/8 hover:bg-accent/12" : isPinned ? "bg-accent/5 hover:bg-accent/10" : "even:bg-secondary/20 hover:bg-secondary/40"
                     )}>
                       <td className="py-2.5 px-3">

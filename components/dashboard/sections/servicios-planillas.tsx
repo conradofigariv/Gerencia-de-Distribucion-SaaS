@@ -88,7 +88,6 @@ const REMINDER_DEFS = [
 
 function PlanillaCard({
   tipo, label, descripcion, accentClass, state, onUpload, onClear,
-  mode, onModeChange,
 }: {
   tipo:        PlanillaType;
   label:       string;
@@ -97,8 +96,6 @@ function PlanillaCard({
   state:       PlanillaState;
   onUpload:    (file: File) => void;
   onClear:     () => void;
-  mode?:        SicUploadMode;
-  onModeChange?: (m: SicUploadMode) => void;
 }) {
   const [drag, setDrag] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
@@ -144,33 +141,6 @@ function PlanillaCard({
       ) : (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <AlertTriangle className="w-3.5 h-3.5 text-warning" />Sin datos en Supabase
-        </div>
-      )}
-
-      {mode && onModeChange && (
-        <div className="flex items-center gap-1 rounded-lg bg-secondary/40 border border-border p-0.5">
-          <button
-            onClick={() => onModeChange("replace")}
-            disabled={busy}
-            title="Borra la planilla actual y carga el archivo de cero"
-            className={cn(
-              "flex-1 px-2 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-50",
-              mode === "replace" ? "bg-accent/15 text-accent" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            Sobreescribir
-          </button>
-          <button
-            onClick={() => onModeChange("update")}
-            disabled={busy}
-            title="Actualiza las SICs que coinciden y agrega las nuevas, conservando el resto"
-            className={cn(
-              "flex-1 px-2 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-50",
-              mode === "update" ? "bg-accent/15 text-accent" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            Actualizar
-          </button>
         </div>
       )}
 
@@ -222,8 +192,8 @@ export function ServiciosPlanillasSection() {
     MATRICULAS: { ...INIT },
   });
 
-  // Modo de subida de la planilla de SICs (reemplazar vs actualizar).
-  const [sicMode, setSicMode] = useState<SicUploadMode>("replace");
+  // Archivo de SICs pendiente de confirmar el modo de subida (abre el diálogo).
+  const [sicFile, setSicFile] = useState<File | null>(null);
 
   // Auth / role
   const [userId,    setUserId]    = useState<string | null>(null);
@@ -465,8 +435,15 @@ export function ServiciosPlanillasSection() {
 
   const handleUpload = (tipo: PlanillaType, file: File) => {
     if (tipo === "OP")       uploadOP(file);
-    else if (tipo === "SIC") uploadSIC(file, sicMode);
+    else if (tipo === "SIC") setSicFile(file);   // abre el diálogo Sobreescribir/Actualizar
     else                     uploadMatriculas(file);
+  };
+
+  // Confirma el modo elegido en el diálogo y sube la planilla de SICs.
+  const confirmSicUpload = (mode: SicUploadMode) => {
+    const file = sicFile;
+    setSicFile(null);
+    if (file) uploadSIC(file, mode);
   };
 
   const handleClear = async (tipo: PlanillaType) => {
@@ -518,9 +495,52 @@ export function ServiciosPlanillasSection() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         <PlanillaCard tipo="OP"         label="OP"         descripcion="Órdenes de compra"       accentClass="text-blue-400"    state={states.OP}         onUpload={f => handleUpload("OP",         f)} onClear={() => handleClear("OP")}         />
-        <PlanillaCard tipo="SIC"        label="SIC"        descripcion="SICs del Ing. Soler"     accentClass="text-purple-400"  state={states.SIC}        onUpload={f => handleUpload("SIC",        f)} onClear={() => handleClear("SIC")}        mode={sicMode} onModeChange={setSicMode} />
+        <PlanillaCard tipo="SIC"        label="SIC"        descripcion="SICs del Ing. Soler"     accentClass="text-purple-400"  state={states.SIC}        onUpload={f => handleUpload("SIC",        f)} onClear={() => handleClear("SIC")}        />
         <PlanillaCard tipo="MATRICULAS" label="MATRICULAS" descripcion="Catálogo de materiales"   accentClass="text-emerald-400" state={states.MATRICULAS} onUpload={f => handleUpload("MATRICULAS", f)} onClear={() => handleClear("MATRICULAS")} />
       </div>
+
+      {/* Diálogo Sobreescribir / Actualizar al subir la planilla de SICs */}
+      {sicFile && createPortal(
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          onClick={() => setSicFile(null)}
+        >
+          <div
+            className="bg-popover border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <span className="text-sm font-semibold text-foreground">¿Cómo cargar las SICs?</span>
+              <button
+                onClick={() => setSicFile(null)}
+                className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2.5">
+              <p className="text-xs text-muted-foreground px-0.5">
+                Archivo: <span className="text-foreground font-medium">{sicFile.name}</span>
+              </p>
+              <button
+                onClick={() => confirmSicUpload("replace")}
+                className="w-full text-left p-3.5 rounded-lg border border-accent/40 bg-accent/10 hover:bg-accent/15 transition-colors"
+              >
+                <p className="text-sm font-semibold text-foreground">Sobreescribir</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Borra la planilla de SICs actual y carga el archivo de cero.</p>
+              </button>
+              <button
+                onClick={() => confirmSicUpload("update")}
+                className="w-full text-left p-3.5 rounded-lg border border-border bg-secondary/30 hover:bg-secondary/50 transition-colors"
+              >
+                <p className="text-sm font-semibold text-foreground">Actualizar</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Actualiza las SICs que coinciden (por N° SIC + línea), agrega las nuevas y conserva el resto.</p>
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
 
       {/* Reminder config dialog — rendered via portal to escape stacking context */}
       {configOpen && createPortal(
