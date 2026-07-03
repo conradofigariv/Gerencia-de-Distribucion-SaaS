@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
@@ -17,6 +17,8 @@ import {
   LockOpen,
   Trash2,
   Pin,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
@@ -57,6 +59,7 @@ const TABLE_COLS: { db: string; label: string }[] = [
   { db: "nombre_corto",          label: "NOMBRE CORTO"    },
   { db: "observacion",           label: "OBSERVACIONES"   },
   { db: "op",                    label: "OP"              },
+  { db: "linea",                 label: "LÍNEA"           },
   { db: "matricula",             label: "MATRÍCULA"       },
   { db: "descripcion_matricula", label: "DESCRIPCIÓN"     },
   { db: "cantidad",              label: "CANTIDAD"        },
@@ -72,14 +75,16 @@ const EDITABLE_COLS  = new Set(["zona", "nombre_corto", "observacion"]);
 const PAGE_SIZE      = 50;
 
 const DEFAULT_WIDTHS_R: Record<string, number> = {
-  zona: 80, nombre_corto: 140, op: 90, matricula: 110, descripcion_matricula: 240,
+  zona: 80, nombre_corto: 140, op: 90, linea: 70, matricula: 110, descripcion_matricula: 240,
   cantidad: 90, saldo_linea: 100, fecha_pactada: 120, dias_vencer: 130,
   estado: 100, proveedor: 170, observacion: 200,
 };
 
 // Orden de columnas persistido (drag & drop) — por navegador.
-// v2: se reubicó Observaciones cerca del frente (reset del orden guardado viejo).
-const COLORDER_KEY = "servicios-resumen-colorder-v2";
+// v3: se agregó Línea y se reubicó Observaciones (reset del orden guardado viejo).
+const COLORDER_KEY = "servicios-resumen-colorder-v3";
+// Agrupar por OP (toggle), persistido por navegador.
+const GROUPBYOP_KEY = "servicios-resumen-groupbyop";
 // Filas fijadas — por navegador (igual patrón que Stock por Zona).
 const PINNED_KEY = "servicios-resumen-pinned";
 
@@ -179,6 +184,29 @@ export function ServiciosResumenSection() {
   const togglePin = (id: string) => setPinned(prev => {
     const n = new Set(prev);
     n.has(id) ? n.delete(id) : n.add(id);
+    return n;
+  });
+
+  // ── Agrupar por OP (toggle) + qué grupos están desplegados ──────────────────
+  const [groupByOp, setGroupByOp] = useState(true);
+  const [expandedOps, setExpandedOps] = useState<Set<string>>(new Set());
+  const groupLoaded = useRef(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(GROUPBYOP_KEY);
+      if (raw !== null) setGroupByOp(raw === "1");
+    } catch { /* ignorar */ }
+    groupLoaded.current = true;
+  }, []);
+  useEffect(() => {
+    if (!groupLoaded.current) return;
+    try { localStorage.setItem(GROUPBYOP_KEY, groupByOp ? "1" : "0"); } catch { /* ignorar */ }
+  }, [groupByOp]);
+
+  const toggleOp = (op: string) => setExpandedOps(prev => {
+    const n = new Set(prev);
+    n.has(op) ? n.delete(op) : n.add(op);
     return n;
   });
 
@@ -393,7 +421,7 @@ export function ServiciosResumenSection() {
   }, [baseRows, filtroVencer, filtroConsumo, filtroActivos, filtroVencidos, pinned]);
 
   // Reinicia la paginación cuando cambia el conjunto mostrado.
-  useEffect(() => { setTablePage(0); }, [tableRows.length, soloServicios, filtroAbierto]);
+  useEffect(() => { setTablePage(0); }, [tableRows.length, soloServicios, filtroAbierto, groupByOp]);
 
   // Alertas recientes (por vencer / alto consumo) sobre el universo base.
   const alertas = useMemo(() => {
@@ -435,18 +463,133 @@ export function ServiciosResumenSection() {
 
   const tableLoading = loadingData;
   const fmt = (n: number | null) => n === null ? "—" : n.toLocaleString("es-AR");
-  const totalPages = Math.ceil(tableRows.length / PAGE_SIZE);
-  const pagedRows  = tableRows.slice(tablePage * PAGE_SIZE, (tablePage + 1) * PAGE_SIZE);
   const todayRef   = useMemo(() => new Date(), []);
 
+  // ── Agrupación por OP: agrupa las filas ya filtradas/ordenadas ──────────────
+  const groups = useMemo(() => {
+    const map = new Map<string, SeguimientoRow[]>();
+    for (const r of tableRows) {
+      const k = String(r.op ?? "—");
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(r);
+    }
+    return [...map.entries()].map(([op, rows]) => ({
+      op, rows,
+      saldo: rows.reduce((s, r) => s + (Number(r.saldo_linea) || 0), 0),
+    }));
+  }, [tableRows]);
+
+  // Paginación: por grupo si está agrupado, por fila si no.
+  const totalPages = groupByOp
+    ? Math.max(1, Math.ceil(groups.length / PAGE_SIZE))
+    : Math.max(1, Math.ceil(tableRows.length / PAGE_SIZE));
+  const pagedRows   = tableRows.slice(tablePage * PAGE_SIZE, (tablePage + 1) * PAGE_SIZE);
+  const pagedGroups = groups.slice(tablePage * PAGE_SIZE, (tablePage + 1) * PAGE_SIZE);
+
+  // Filas visibles (para la selección "todos en la página").
+  const visibleRows = groupByOp
+    ? pagedGroups.flatMap(g => (expandedOps.has(g.op) ? g.rows : []))
+    : pagedRows;
+
   // ── Selección de filas (checkbox por página) ────────────────────────────────
-  const pagedIds    = pagedRows.map(r => String(r.id));
+  const pagedIds    = visibleRows.map(r => String(r.id));
   const allPageSel  = pagedIds.length > 0 && pagedIds.every(id => selected.has(id));
   const somePageSel = pagedIds.some(id => selected.has(id));
   const toggleRow = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAllPage = () => {
     if (allPageSel) setSelected(prev => { const n = new Set(prev); pagedIds.forEach(id => n.delete(id)); return n; });
     else            setSelected(prev => { const n = new Set(prev); pagedIds.forEach(id => n.add(id));    return n; });
+  };
+
+  // Render de una fila de datos (reutilizado por la vista plana y la agrupada).
+  const renderDataRow = (row: SeguimientoRow, num: number) => {
+    const rowId = String(row.id);
+    const isSelected = selected.has(rowId);
+    const isPinned   = pinned.has(rowId);
+    return (
+      <tr key={rowId}
+        style={{ boxShadow: "inset 0 -1px 0 hsl(var(--border))" }}
+        className={cn(
+          "transition-colors",
+          isSelected ? "bg-accent/8 hover:bg-accent/12" : isPinned ? "bg-accent/5 hover:bg-accent/10" : "even:bg-secondary/20 hover:bg-secondary/40"
+        )}>
+        <td className="py-2.5 px-3">
+          <input type="checkbox" checked={isSelected} onChange={() => toggleRow(rowId)} className="w-3.5 h-3.5 rounded accent-accent cursor-pointer" />
+        </td>
+        <td className="py-2.5 px-1">
+          <button
+            onClick={() => togglePin(rowId)}
+            title={isPinned ? "Quitar de fijadas" : "Fijar arriba"}
+            className={cn("w-5 h-5 flex items-center justify-center rounded transition-colors", isPinned ? "text-accent" : "text-muted-foreground/30 hover:text-muted-foreground")}
+          >
+            <Pin className="w-3.5 h-3.5" strokeWidth={2} fill={isPinned ? "currentColor" : "none"} />
+          </button>
+        </td>
+        <td className="py-2.5 px-3 text-muted-foreground">{num}</td>
+        {orderedCols.map(c => {
+          if (c.db === "dias_vencer") {
+            const dias  = diasParaVencer(row.fecha_pactada, todayRef);
+            const saldo = Number(row.saldo_linea);
+            let content = <span className="text-muted-foreground">—</span>;
+            if (dias !== null) {
+              if (dias < 0) {
+                content = saldo > 0
+                  ? <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-destructive/15 text-destructive">Vencido {Math.abs(dias)} d</span>
+                  : <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-secondary text-muted-foreground">Vencido</span>;
+              } else {
+                const tone = dias <= 90 ? "bg-destructive/15 text-destructive" : dias <= 120 ? "bg-warning/15 text-warning" : "bg-success/15 text-success";
+                content = <span className={cn("px-1.5 py-0.5 rounded text-[11px] font-medium", tone)}>{dias} d</span>;
+              }
+            }
+            return <td key={c.db} className="py-2.5 px-3 whitespace-nowrap overflow-hidden">{content}</td>;
+          }
+
+          const val     = row[c.db];
+          const display = typeof val === "number" && !RAW_COLS_T.has(c.db) ? val.toLocaleString("es-AR") : String(val ?? "");
+
+          if (c.db === "estado") {
+            return (
+              <td key={c.db} className="py-2.5 px-3 whitespace-nowrap overflow-hidden" title={display}>
+                <span className={cn("px-1.5 py-0.5 rounded text-[11px] font-medium", isAbierto(val) ? "bg-success/15 text-success" : "bg-secondary text-muted-foreground")}>{display || "—"}</span>
+              </td>
+            );
+          }
+
+          if (EDITABLE_COLS.has(c.db)) {
+            const isEditing = editingCell?.rowId === rowId && editingCell.col === c.db;
+            return (
+              <td key={c.db} className="py-1.5 px-3 whitespace-nowrap overflow-hidden group" title={isEditing ? undefined : display}>
+                {isEditing ? (
+                  <input
+                    autoFocus value={editingValue}
+                    onChange={e => setEditingValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); saveEdit(); } if (e.key === "Escape") { setEditingCell(null); } }}
+                    onBlur={saveEdit}
+                    className="w-full min-w-[80px] bg-secondary border border-accent rounded px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                ) : (
+                  <div className="flex items-center justify-between gap-1.5 cursor-pointer" onClick={() => startEdit(rowId, c.db, val)}>
+                    <span className="text-foreground truncate block">{display || "—"}</span>
+                    <Pencil className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 shrink-0 transition-opacity duration-150 ml-auto" />
+                  </div>
+                )}
+              </td>
+            );
+          }
+
+          return (
+            <td key={c.db} className="py-2.5 px-3 whitespace-nowrap overflow-hidden" title={display}>
+              <span className="text-foreground truncate block">{display || "—"}</span>
+            </td>
+          );
+        })}
+        <td className="py-2.5 px-3">
+          <button onClick={() => handleDeleteRow(rowId)} className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </td>
+      </tr>
+    );
   };
 
   return (
@@ -613,6 +756,7 @@ export function ServiciosResumenSection() {
             {!tableLoading && (
               <p className="text-xs text-muted-foreground mt-0.5">
                 {tableRows.length} resultado{tableRows.length !== 1 ? "s" : ""}
+                {groupByOp && <> · {groups.length} OP</>}
                 {pinned.size > 0 && (
                   <> · <Pin className="w-3 h-3 inline -mt-0.5" fill="currentColor" strokeWidth={2} /> {pinned.size} fijada{pinned.size !== 1 ? "s" : ""}</>
                 )}
@@ -621,6 +765,27 @@ export function ServiciosResumenSection() {
           </div>
           <div className="flex items-center gap-2">
             {tableLoading && <Loader2 className="w-4 h-4 text-accent animate-spin" />}
+            <button
+              onClick={() => setGroupByOp(v => !v)}
+              title={groupByOp ? "Ver lista plana (sin agrupar)" : "Agrupar filas por OP"}
+              className={cn(
+                "flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs border transition-colors",
+                groupByOp ? "bg-accent/15 text-accent border-accent/40" : "text-muted-foreground hover:text-foreground border-border hover:bg-secondary"
+              )}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              {groupByOp ? "Agrupado por OP" : "Agrupar por OP"}
+            </button>
+            {groupByOp && (
+              <button
+                onClick={() => setExpandedOps(prev => prev.size >= groups.length ? new Set() : new Set(groups.map(g => g.op)))}
+                title="Desplegar o colapsar todos los grupos"
+                className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground border border-border hover:bg-secondary transition-colors"
+              >
+                {expandedOps.size >= groups.length ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                {expandedOps.size >= groups.length ? "Colapsar" : "Desplegar"} todo
+              </button>
+            )}
             {selected.size > 0 && (
               <button
                 onClick={handleDeleteSelected}
@@ -692,19 +857,15 @@ export function ServiciosResumenSection() {
                     {orderedCols.map(c => (
                       <th
                         key={c.db}
-                        draggable={!editingHeaders}
                         style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 }}
                         className={cn(
                           "sticky top-0 z-10 bg-panel-header border-b border-border relative group/th py-2.5 pl-3 pr-4 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider transition-opacity",
-                          !editingHeaders && "cursor-grab active:cursor-grabbing",
                           dragCol === c.db && "opacity-40",
                           dragOverCol === c.db && dragCol !== c.db && "bg-accent/10 ring-1 ring-inset ring-accent/40"
                         )}
-                        onDragStart={() => setDragCol(c.db)}
                         onDragOver={e => { e.preventDefault(); if (dragCol && dragCol !== c.db) setDragOverCol(c.db); }}
                         onDragLeave={() => setDragOverCol(prev => (prev === c.db ? null : prev))}
                         onDrop={e => { e.preventDefault(); handleColDrop(c.db); }}
-                        onDragEnd={() => { setDragCol(null); setDragOverCol(null); }}
                         onPointerMove={e => {
                           if (!resizing.current) return;
                           const newW = Math.max(50, resizing.current.startW + (e.clientX - resizing.current.startX));
@@ -716,7 +877,12 @@ export function ServiciosResumenSection() {
                           setIsResizing(false);
                         }}
                       >
-                        <div className="flex items-center gap-1">
+                        <div
+                          className={cn("flex items-center gap-1 w-full", !editingHeaders && "cursor-grab active:cursor-grabbing")}
+                          draggable={!editingHeaders}
+                          onDragStart={() => setDragCol(c.db)}
+                          onDragEnd={() => { setDragCol(null); setDragOverCol(null); }}
+                        >
                           {editingHeaders ? (
                             <input
                               defaultValue={labelOf(c.db, c.label)}
@@ -764,118 +930,35 @@ export function ServiciosResumenSection() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pagedRows.map((row, idx) => {
-                    const rowId = String(row.id);
-                    const isSelected = selected.has(rowId);
-                    const isPinned   = pinned.has(rowId);
-                    return (
-                    <tr key={rowId}
-                      style={idx < pagedRows.length - 1 ? { boxShadow: "inset 0 -1px 0 hsl(var(--border))" } : undefined}
-                      className={cn(
-                      "transition-colors",
-                      isSelected ? "bg-accent/8 hover:bg-accent/12" : isPinned ? "bg-accent/5 hover:bg-accent/10" : "even:bg-secondary/20 hover:bg-secondary/40"
-                    )}>
-                      <td className="py-2.5 px-3">
-                        <input type="checkbox" checked={isSelected}
-                          onChange={() => toggleRow(rowId)}
-                          className="w-3.5 h-3.5 rounded accent-accent cursor-pointer"
-                        />
-                      </td>
-                      <td className="py-2.5 px-1">
-                        <button
-                          onClick={() => togglePin(rowId)}
-                          title={isPinned ? "Quitar de fijadas" : "Fijar arriba"}
-                          className={cn(
-                            "w-5 h-5 flex items-center justify-center rounded transition-colors",
-                            isPinned ? "text-accent" : "text-muted-foreground/30 hover:text-muted-foreground"
-                          )}
-                        >
-                          <Pin className="w-3.5 h-3.5" strokeWidth={2} fill={isPinned ? "currentColor" : "none"} />
-                        </button>
-                      </td>
-                      <td className="py-2.5 px-3 text-muted-foreground">{tablePage * PAGE_SIZE + idx + 1}</td>
-                      {orderedCols.map(c => {
-                        // Columna calculada: días para vencer + color por riesgo.
-                        if (c.db === "dias_vencer") {
-                          const dias  = diasParaVencer(row.fecha_pactada, todayRef);
-                          const saldo = Number(row.saldo_linea);
-                          let content = <span className="text-muted-foreground">—</span>;
-                          if (dias !== null) {
-                            if (dias < 0) {
-                              content = saldo > 0
-                                ? <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-destructive/15 text-destructive">Vencido {Math.abs(dias)} d</span>
-                                : <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-secondary text-muted-foreground">Vencido</span>;
-                            } else {
-                              const tone = dias <= 90 ? "bg-destructive/15 text-destructive"
-                                         : dias <= 120 ? "bg-warning/15 text-warning"
-                                         : "bg-success/15 text-success";
-                              content = <span className={cn("px-1.5 py-0.5 rounded text-[11px] font-medium", tone)}>{dias} d</span>;
-                            }
-                          }
-                          return <td key={c.db} className="py-2.5 px-3 whitespace-nowrap overflow-hidden">{content}</td>;
-                        }
-
-                        const val     = row[c.db];
-                        const display = typeof val === "number" && !RAW_COLS_T.has(c.db)
-                          ? val.toLocaleString("es-AR")
-                          : String(val ?? "");
-
-                        // Estado de cierre como pill (Abierto = verde).
-                        if (c.db === "estado") {
-                          return (
-                            <td key={c.db} className="py-2.5 px-3 whitespace-nowrap overflow-hidden" title={display}>
-                              <span className={cn(
-                                "px-1.5 py-0.5 rounded text-[11px] font-medium",
-                                isAbierto(val) ? "bg-success/15 text-success" : "bg-secondary text-muted-foreground"
-                              )}>{display || "—"}</span>
-                            </td>
-                          );
-                        }
-
-                        // Columnas editables inline (zona, nombre_corto, observacion).
-                        if (EDITABLE_COLS.has(c.db)) {
-                          const isEditing = editingCell?.rowId === rowId && editingCell.col === c.db;
-                          return (
-                            <td key={c.db} className="py-1.5 px-3 whitespace-nowrap overflow-hidden group" title={isEditing ? undefined : display}>
-                              {isEditing ? (
-                                <input
-                                  autoFocus
-                                  value={editingValue}
-                                  onChange={e => setEditingValue(e.target.value)}
-                                  onKeyDown={e => {
-                                    if (e.key === "Enter")  { e.preventDefault(); saveEdit(); }
-                                    if (e.key === "Escape") { setEditingCell(null); }
-                                  }}
-                                  onBlur={saveEdit}
-                                  className="w-full min-w-[80px] bg-secondary border border-accent rounded px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-                                />
-                              ) : (
-                                <div
-                                  className="flex items-center justify-between gap-1.5 cursor-pointer"
-                                  onClick={() => startEdit(rowId, c.db, val)}
-                                >
-                                  <span className="text-foreground truncate block">{display || "—"}</span>
-                                  <Pencil className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 shrink-0 transition-opacity duration-150 ml-auto" />
-                                </div>
-                              )}
-                            </td>
-                          );
-                        }
-
+                  {groupByOp
+                    ? pagedGroups.map(g => {
+                        const isExp = expandedOps.has(g.op);
                         return (
-                          <td key={c.db} className="py-2.5 px-3 whitespace-nowrap overflow-hidden" title={display}>
-                            <span className="text-foreground truncate block">{display || "—"}</span>
-                          </td>
+                          <Fragment key={g.op}>
+                            <tr
+                              onClick={() => toggleOp(g.op)}
+                              style={{ boxShadow: "inset 0 -1px 0 hsl(var(--border))" }}
+                              className="cursor-pointer bg-secondary/40 hover:bg-secondary/60 transition-colors"
+                            >
+                              <td colSpan={orderedCols.length + 4} className="py-2 px-3">
+                                <div className="flex items-center gap-2">
+                                  {isExp ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
+                                  <span className="font-semibold text-foreground tabular-nums">OP {g.op}</span>
+                                  <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-accent/15 text-accent">
+                                    {g.rows.length} línea{g.rows.length !== 1 ? "s" : ""}
+                                  </span>
+                                  <span className="ml-auto text-xs text-muted-foreground">
+                                    Saldo total: <span className="text-foreground font-medium tabular-nums">{fmt(g.saldo)}</span>
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                            {isExp && g.rows.map((r, i) => renderDataRow(r, i + 1))}
+                          </Fragment>
                         );
-                      })}
-                      <td className="py-2.5 px-3">
-                        <button onClick={() => handleDeleteRow(rowId)}
-                          className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  );})}
+                      })
+                    : pagedRows.map((row, idx) => renderDataRow(row, tablePage * PAGE_SIZE + idx + 1))
+                  }
                 </tbody>
               </table>
             </div>
