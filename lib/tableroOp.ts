@@ -56,6 +56,8 @@ export interface TableroRow {
   aceptado:      number;
   entregado:     number;
   control2:      string;       // OK | VER
+  fecha_pactada: string | null; // Fecha pactada de entrega (texto crudo del Excel)
+  entregas:      string[];      // Fechas reales de entrega (ISO YYYY-MM-DD), ordenadas
 }
 
 // ─── Helpers de normalización ────────────────────────────────────────────────

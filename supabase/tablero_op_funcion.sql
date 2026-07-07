@@ -9,6 +9,15 @@
 --     p_desde: '2026-01-01', p_hasta: '2026-03-26', p_zona: 'ZA'
 --   });
 --
+-- ── Fechas de entrega ───────────────────────────────────────────────────────
+-- Además de las cantidades, devuelve:
+--   • fecha_pactada : fecha comprometida de entrega, desde planillas_op
+--                     (columna Fecha Pactada), cruzada por OP + línea. Es texto
+--                     crudo (tal cual el Excel) — el frontend lo parsea/formatea.
+--   • entregas      : jsonb array con las fechas (YYYY-MM-DD) de los movimientos
+--                     'Entregar' de esa OP+artículo+línea en el rango. Una línea
+--                     puede tener varias (entregas parciales); van ordenadas.
+--
 -- ── Performance ─────────────────────────────────────────────────────────────
 -- La versión anterior usaba subqueries correlacionados por fila (uno de ellos
 -- con regexp_replace en el ORDER BY sobre toda planillas_op), lo que provocaba
@@ -18,12 +27,17 @@
 --   • prov_op : proveedor por OP desde planillas_op (una OP = un proveedor, así
 --               que se toma cualquier línea con proveedor cargado — sin el
 --               desempate por artículo, que era lo caro).
---   • agg     : movimientos agregados por (OP, artículo) en el rango de fechas.
--- Para que prov_op sea rápida conviene un índice en planillas_op(numero)
+--   • pact    : fecha pactada por (OP, línea) desde planillas_op.
+--   • agg     : movimientos agregados por (OP, artículo, línea) en el rango,
+--               incluyendo el array de fechas de 'Entregar'.
+-- Para que prov_op / pact sean rápidas conviene un índice en planillas_op(numero)
 -- (ver tablero_op_indices_planillas.sql).
 -- ============================================================================
 
-CREATE OR REPLACE FUNCTION gd_tablero(p_desde date, p_hasta date, p_zona text)
+-- El tipo de retorno cambia (columnas nuevas) → hay que DROP antes del CREATE.
+DROP FUNCTION IF EXISTS gd_tablero(date, date, text);
+
+CREATE FUNCTION gd_tablero(p_desde date, p_hasta date, p_zona text)
 RETURNS TABLE (
   numero_sic     bigint,
   linea          text,
@@ -40,7 +54,9 @@ RETURNS TABLE (
   devoluciones   numeric,
   aceptado       numeric,
   entregado      numeric,
-  control2       text
+  control2       text,
+  fecha_pactada  text,
+  entregas       jsonb
 )
 LANGUAGE sql
 STABLE
@@ -71,6 +87,19 @@ AS $$
      WHERE o.proveedor IS NOT NULL AND o.proveedor <> ''
      ORDER BY o.numero
   ),
+  pact AS (
+    -- Fecha pactada de entrega por (OP, línea) desde planillas_op. La clave del
+    -- seguimiento es (numero_op, linea); planillas_op guarda numero (text) +
+    -- linea (text) + fecha_pactada (text crudo del Excel).
+    SELECT DISTINCT ON (o.numero, o.linea)
+           o.numero AS numero_op_txt,
+           o.linea,
+           o.fecha_pactada
+      FROM planillas_op o
+      JOIN ops ON ops.numero_op::text = o.numero
+     WHERE o.fecha_pactada IS NOT NULL AND o.fecha_pactada <> ''
+     ORDER BY o.numero, o.linea
+  ),
   agg AS (
     -- Movimientos por (OP, artículo, línea) dentro del rango de fechas.
     -- El Excel matchea las transacciones por Número Pedido + Artículo + LÍNEA
@@ -84,7 +113,11 @@ AS $$
       SUM(CASE WHEN t.tipo = 'Entregar' THEN t.importe ELSE 0 END) AS entregado,
       SUM(CASE WHEN t.tipo IN (
             'Rechazar', 'Devolver a Proveedor', 'Devolver a Recepción', 'Corregir'
-          ) THEN t.importe ELSE 0 END) AS devoluciones
+          ) THEN t.importe ELSE 0 END) AS devoluciones,
+      -- Fechas de las entregas reales (movimientos 'Entregar'), distintas y
+      -- ordenadas. Se materializa como array de dates → jsonb en el SELECT.
+      array_agg(DISTINCT t.fecha::date ORDER BY t.fecha::date)
+        FILTER (WHERE t.tipo = 'Entregar') AS fechas_entrega
     FROM tablero_op_transaccion t
     JOIN ops ON ops.numero_op = t.numero_pedido
     WHERE t.fecha >= p_desde::timestamptz
@@ -127,7 +160,10 @@ AS $$
         - COALESCE(agg.entregado, 0)
       ) < 0.001 THEN 'OK'
       ELSE 'VER'
-    END AS control2
+    END AS control2,
+
+    pact.fecha_pactada,
+    to_jsonb(COALESCE(agg.fechas_entrega, ARRAY[]::date[])) AS entregas
 
   FROM tablero_op_seguimiento s
   LEFT JOIN LATERAL (
@@ -138,6 +174,9 @@ AS $$
   ) st ON true
   LEFT JOIN prov_tx ptx ON ptx.numero_op = s.numero_op
   LEFT JOIN prov_op pop ON pop.numero_op_txt = s.numero_op::text
+  LEFT JOIN pact
+    ON pact.numero_op_txt = s.numero_op::text
+   AND pact.linea IS NOT DISTINCT FROM s.linea
   LEFT JOIN agg
     ON agg.numero_op = s.numero_op
    AND agg.articulo  = s.articulo

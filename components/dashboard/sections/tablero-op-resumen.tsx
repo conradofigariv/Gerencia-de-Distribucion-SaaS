@@ -1,14 +1,15 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import {
   ClipboardList, Loader2, RefreshCw, Search, X, Download, AlertTriangle,
-  ChevronDown, ChevronUp, ChevronsUpDown, PackageCheck,
+  ChevronDown, ChevronUp, ChevronsUpDown, PackageCheck, CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { BeastSelect } from "@/components/dashboard/beast-select";
-import { runTablero, getZonas, type TableroRow } from "@/lib/tableroOp";
+import { runTablero, getZonas, parseFechaArg, type TableroRow } from "@/lib/tableroOp";
 
 // ─── Estilos beast pure (alineados con Stock por Zona) ──────────────────────
 
@@ -80,6 +81,151 @@ const controlTone = (c: string): PillTone => {
   }
 };
 
+// ─── Fechas ──────────────────────────────────────────────────────────────────
+
+// Fecha "YYYY-MM-DD" (entregas reales, ya vienen ISO date-only) → Date local sin
+// corrimiento por zona horaria (no usar new Date("YYYY-MM-DD"), interpreta UTC).
+function isoDateToLocal(iso: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+// Timestamp (ms) de la fecha pactada (texto crudo del Excel → parseFechaArg).
+function pactadaTime(raw: string | null): number | null {
+  const iso = parseFechaArg(raw);
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+const fmtFecha = (d: Date | null) =>
+  d ? d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "";
+
+// Timestamp (ms) de la última entrega real (para ordenar la columna Entregas).
+function lastEntregaTime(entregas: string[]): number | null {
+  if (!entregas?.length) return null;
+  const d = isoDateToLocal(entregas[entregas.length - 1]);
+  return d ? d.getTime() : null;
+}
+
+// ─── Celda "Fecha pactada" ───────────────────────────────────────────────────
+// Fecha comprometida. Roja si venció y la línea no está TOTAL ENTREGADO.
+
+function FechaPactadaCell({ row }: { row: TableroRow }) {
+  const t = pactadaTime(row.fecha_pactada);
+  if (t == null) return <span style={{ color: "oklch(0.45 0 0)" }}>—</span>;
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+  const vencida = t < startOfToday.getTime() && row.control !== "TOTAL ENTREGADO";
+  return (
+    <span style={{ color: vencida ? "#fca5a5" : "oklch(0.85 0 0)", fontWeight: vencida ? 600 : 400, fontFamily: "ui-monospace, monospace" }}>
+      {fmtFecha(new Date(t))}
+    </span>
+  );
+}
+
+// ─── Celda "Entregas" (expandible, lateral) ──────────────────────────────────
+// Colapsada: última fecha + contador (+N). Al hacer clic, popover con TODAS las
+// fechas en fila (lateral), vía portal para escapar el overflow de la tabla.
+
+function EntregasCell({ entregas }: { entregas: string[] }) {
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  const fechas = useMemo(
+    () => entregas.map(isoDateToLocal).filter((d): d is Date => d != null),
+    [entregas]
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (r) setCoords({ top: r.bottom + 6, left: r.left });
+    };
+    update();
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (btnRef.current?.contains(t) || popRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const close = () => setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", update);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open]);
+
+  if (!fechas.length) return <span style={{ color: "oklch(0.45 0 0)" }}>—</span>;
+
+  const last  = fechas[fechas.length - 1];
+  const extra = fechas.length - 1;
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1.5 transition-colors"
+        style={{
+          padding: "2px 8px", borderRadius: 999, cursor: "pointer",
+          background: open ? "oklch(0.30 0.10 155 / 0.45)" : "oklch(0.25 0.005 270)",
+          border: `1px solid ${open ? "oklch(0.55 0.15 155 / 0.5)" : "oklch(1 0 0 / 0.08)"}`,
+          color: open ? "#86efac" : "oklch(0.82 0 0)",
+          fontSize: 11.5, fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap",
+        }}
+      >
+        <CalendarClock className="w-3 h-3 shrink-0" strokeWidth={2} />
+        {fmtFecha(last)}
+        {extra > 0 && (
+          <span style={{ fontWeight: 700, color: open ? "#86efac" : "oklch(0.6 0 0)" }}>+{extra}</span>
+        )}
+      </button>
+
+      {open && coords && createPortal(
+        <div
+          ref={popRef}
+          className="animate-in fade-in slide-in-from-top-1 duration-150"
+          style={{
+            position: "fixed", zIndex: 300, top: coords.top, left: coords.left,
+            maxWidth: "min(560px, calc(100vw - 24px))",
+            background: PANEL_BG, border: PANEL_BORDER, borderRadius: 10,
+            boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6)", padding: 10,
+          }}
+        >
+          <div className="flex items-center gap-1.5 mb-2" style={{ color: "oklch(0.6 0 0)", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            <CalendarClock className="w-3 h-3" strokeWidth={2} />
+            {fechas.length} entrega{fechas.length === 1 ? "" : "s"}
+          </div>
+          {/* Lateral: fechas en fila (wrap si no entran), no apiladas verticalmente. */}
+          <div className="flex flex-wrap items-center gap-1.5" style={{ maxWidth: 540 }}>
+            {fechas.map((d, i) => (
+              <span
+                key={i}
+                style={{
+                  padding: "3px 9px", borderRadius: 999,
+                  background: "oklch(0.30 0.10 155 / 0.4)", color: "#86efac",
+                  border: "1px solid oklch(0.55 0.15 155 / 0.45)",
+                  fontSize: 11.5, fontWeight: 600, fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap",
+                }}
+              >
+                {fmtFecha(d)}
+              </span>
+            ))}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
 // ─── Columnas de la tabla ────────────────────────────────────────────────────
 
 interface ColDef {
@@ -87,6 +233,8 @@ interface ColDef {
   label:  string;
   num?:   boolean;       // alineación derecha + formato numérico
   render?: (r: TableroRow) => ReactNode;
+  // Valor por el cual ordenar (si difiere del valor crudo — ej. fechas).
+  sortValue?: (r: TableroRow) => number | string | null;
 }
 
 const COLS: ColDef[] = [
@@ -108,6 +256,16 @@ const COLS: ColDef[] = [
   { key: "devoluciones", label: "Devoluc.",    num: true },
   { key: "aceptado",     label: "Aceptado",    num: true },
   { key: "entregado",    label: "Entregado",   num: true },
+  {
+    key: "fecha_pactada", label: "Fecha pactada",
+    render: (r) => <FechaPactadaCell row={r} />,
+    sortValue: (r) => pactadaTime(r.fecha_pactada),
+  },
+  {
+    key: "entregas", label: "Entregas",
+    render: (r) => <EntregasCell entregas={r.entregas ?? []} />,
+    sortValue: (r) => lastEntregaTime(r.entregas ?? []),
+  },
   {
     key: "control2", label: "Control 2",
     render: (r) => <BeastPill tone={r.control2 === "OK" ? "green" : "amber"}>{r.control2}</BeastPill>,
@@ -134,6 +292,8 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   devoluciones:  95,
   aceptado:      95,
   entregado:     95,
+  fecha_pactada: 120,
+  entregas:      130,
   control2:      105,
 };
 
@@ -225,14 +385,17 @@ export function TableroOpResumenSection() {
     });
   }, [rows, query, soloConRecibido]);
 
-  // Orden por columna (clic en el encabezado, como Stock por Zona).
+  // Orden por columna (clic en el encabezado, como Stock por Zona). Las columnas
+  // de fecha ordenan por su timestamp (sortValue), no por el texto crudo.
   const sorted = useMemo(() => {
     const dir = sortDir === "asc" ? 1 : -1;
+    const col = COLS.find((c) => c.key === sortCol);
+    const valOf = (r: TableroRow) => (col?.sortValue ? col.sortValue(r) : r[sortCol]);
     return [...filtered].sort((a, b) => {
-      const va = a[sortCol];
-      const vb = b[sortCol];
+      const va = valOf(a) as number | string | null;
+      const vb = valOf(b) as number | string | null;
       if (va == null && vb == null) return 0;
-      if (va == null) return 1;
+      if (va == null) return 1;   // nulos siempre al final
       if (vb == null) return -1;
       if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
       return String(va).localeCompare(String(vb), "es", { numeric: true, sensitivity: "base" }) * dir;
@@ -249,8 +412,16 @@ export function TableroOpResumenSection() {
     const head = COLS.map((c) => c.label).join(";");
     const body = sorted.map((r) =>
       COLS.map((c) => {
-        const v = r[c.key];
-        const s = v == null ? "" : String(v);
+        let s: string;
+        if (c.key === "entregas") {
+          s = (r.entregas ?? []).map((iso) => fmtFecha(isoDateToLocal(iso))).join(" · ");
+        } else if (c.key === "fecha_pactada") {
+          const t = pactadaTime(r.fecha_pactada);
+          s = t == null ? "" : fmtFecha(new Date(t));
+        } else {
+          const v = r[c.key];
+          s = v == null ? "" : String(v);
+        }
         return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
       }).join(";")
     ).join("\n");
