@@ -11,12 +11,18 @@
 --
 -- ── Fechas de entrega ───────────────────────────────────────────────────────
 -- Además de las cantidades, devuelve:
---   • fecha_pactada : fecha comprometida de entrega, desde planillas_op
---                     (columna Fecha Pactada), cruzada por OP + línea. Es texto
---                     crudo (tal cual el Excel) — el frontend lo parsea/formatea.
---   • entregas      : jsonb array con las fechas (YYYY-MM-DD) de los movimientos
---                     'Entregar' de esa OP+artículo+línea en el rango. Una línea
---                     puede tener varias (entregas parciales); van ordenadas.
+--   • envios   : jsonb array con los ENVÍOS de la OP+línea desde planillas_op —
+--                cada envío es {envio, cantidad, fecha_pactada}. Una misma línea
+--                puede tener varios envíos con distinta fecha comprometida (ej.
+--                50 pza al 01-09 y 50 pza al 01-10). fecha_pactada va en texto
+--                crudo (tal cual el Excel) — el frontend lo parsea/formatea.
+--   • entregas : jsonb array con las fechas (YYYY-MM-DD) de los movimientos
+--                'Entregar' de esa OP+artículo+línea en el rango. Una línea
+--                puede tener varias (entregas parciales); van ordenadas.
+--
+-- La línea se normaliza en el cruce con planillas_op (coma→punto y sin sufijo
+-- «.0»): el seguimiento usa notación con coma (1,1) y la planilla OP puede
+-- traer 1.1 / 1.0 según cómo exporte Excel.
 --
 -- ── Performance ─────────────────────────────────────────────────────────────
 -- La versión anterior usaba subqueries correlacionados por fila (uno de ellos
@@ -27,10 +33,10 @@
 --   • prov_op : proveedor por OP desde planillas_op (una OP = un proveedor, así
 --               que se toma cualquier línea con proveedor cargado — sin el
 --               desempate por artículo, que era lo caro).
---   • pact    : fecha pactada por (OP, línea) desde planillas_op.
+--   • envios  : envíos por (OP, línea) desde planillas_op.
 --   • agg     : movimientos agregados por (OP, artículo, línea) en el rango,
 --               incluyendo el array de fechas de 'Entregar'.
--- Para que prov_op / pact sean rápidas conviene un índice en planillas_op(numero)
+-- Para que prov_op / envios sean rápidas conviene un índice en planillas_op(numero)
 -- (ver tablero_op_indices_planillas.sql).
 -- ============================================================================
 
@@ -55,7 +61,7 @@ RETURNS TABLE (
   aceptado       numeric,
   entregado      numeric,
   control2       text,
-  fecha_pactada  text,
+  envios         jsonb,
   entregas       jsonb
 )
 LANGUAGE sql
@@ -87,18 +93,29 @@ AS $$
      WHERE o.proveedor IS NOT NULL AND o.proveedor <> ''
      ORDER BY o.numero
   ),
-  pact AS (
-    -- Fecha pactada de entrega por (OP, línea) desde planillas_op. La clave del
-    -- seguimiento es (numero_op, linea); planillas_op guarda numero (text) +
-    -- linea (text) + fecha_pactada (text crudo del Excel).
-    SELECT DISTINCT ON (o.numero, o.linea)
-           o.numero AS numero_op_txt,
-           o.linea,
-           o.fecha_pactada
-      FROM planillas_op o
-      JOIN ops ON ops.numero_op::text = o.numero
-     WHERE o.fecha_pactada IS NOT NULL AND o.fecha_pactada <> ''
-     ORDER BY o.numero, o.linea
+  envios AS (
+    -- Envíos por (OP, línea) desde planillas_op: cada fila de la planilla es un
+    -- envío (OP, línea, envío) con su cantidad y su fecha pactada propias. La
+    -- línea se normaliza (coma→punto, sin «.0» final) para cruzar con el
+    -- seguimiento ("1,1" ≡ "1.1"; "1.0" ≡ "1"). El array queda ordenado por
+    -- número de envío (numérico si se puede).
+    SELECT
+      o.numero AS numero_op_txt,
+      regexp_replace(replace(COALESCE(o.linea, ''), ',', '.'), '\.0$', '') AS linea_norm,
+      jsonb_agg(
+        jsonb_build_object(
+          'envio',         regexp_replace(replace(COALESCE(o.envio, ''), ',', '.'), '\.0$', ''),
+          'cantidad',      o.cantidad,
+          'fecha_pactada', o.fecha_pactada
+        )
+        ORDER BY
+          (CASE WHEN replace(COALESCE(o.envio, ''), ',', '.') ~ '^[0-9]+(\.[0-9]+)?$'
+                THEN replace(o.envio, ',', '.')::numeric END) NULLS LAST,
+          o.envio
+      ) AS envios
+    FROM planillas_op o
+    JOIN ops ON ops.numero_op::text = o.numero
+    GROUP BY o.numero, regexp_replace(replace(COALESCE(o.linea, ''), ',', '.'), '\.0$', '')
   ),
   agg AS (
     -- Movimientos por (OP, artículo, línea) dentro del rango de fechas.
@@ -162,7 +179,7 @@ AS $$
       ELSE 'VER'
     END AS control2,
 
-    pact.fecha_pactada,
+    COALESCE(env.envios, '[]'::jsonb) AS envios,
     to_jsonb(COALESCE(agg.fechas_entrega, ARRAY[]::date[])) AS entregas
 
   FROM tablero_op_seguimiento s
@@ -174,9 +191,9 @@ AS $$
   ) st ON true
   LEFT JOIN prov_tx ptx ON ptx.numero_op = s.numero_op
   LEFT JOIN prov_op pop ON pop.numero_op_txt = s.numero_op::text
-  LEFT JOIN pact
-    ON pact.numero_op_txt = s.numero_op::text
-   AND pact.linea IS NOT DISTINCT FROM s.linea
+  LEFT JOIN envios env
+    ON env.numero_op_txt = s.numero_op::text
+   AND env.linea_norm = regexp_replace(replace(COALESCE(s.linea, ''), ',', '.'), '\.0$', '')
   LEFT JOIN agg
     ON agg.numero_op = s.numero_op
    AND agg.articulo  = s.articulo

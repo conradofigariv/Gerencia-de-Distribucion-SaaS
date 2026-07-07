@@ -56,8 +56,16 @@ export interface TableroRow {
   aceptado:      number;
   entregado:     number;
   control2:      string;       // OK | VER
-  fecha_pactada: string | null; // Fecha pactada de entrega (texto crudo del Excel)
-  entregas:      string[];      // Fechas reales de entrega (ISO YYYY-MM-DD), ordenadas
+  envios:        EnvioInfo[];  // Envíos pactados de la OP+línea (planillas_op)
+  entregas:      string[];     // Fechas reales de entrega (ISO YYYY-MM-DD), ordenadas
+}
+
+// Un envío de la planilla OP: una línea puede partirse en varios envíos, cada
+// uno con su cantidad y su fecha comprometida (ej. 50 pza al 01-09 y 50 al 01-10).
+export interface EnvioInfo {
+  envio:         string;        // número de envío ("1", "2", ...)
+  cantidad:      number | null;
+  fecha_pactada: string | null; // texto crudo del Excel — parsear en el frontend
 }
 
 // ─── Helpers de normalización ────────────────────────────────────────────────
