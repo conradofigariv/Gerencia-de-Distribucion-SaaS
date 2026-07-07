@@ -1236,17 +1236,17 @@ export function TransformadoresResumenSection() {
           />
           <FilterSelect
             fullWidth
-            value={filterPotencia}
-            onChange={setFilterPotencia}
-            placeholder="Potencia"
-            options={(filterRelacion === "33" ? POT_33 : POT_13).map(k => ({ value: String(k), label: `${k} kVA` }))}
-          />
-          <FilterSelect
-            fullWidth
             value={filterRelacion}
             onChange={v => { setFilterRelacion(v); setFilterPotencia(""); }}
             placeholder="Relación"
             options={[{ value: "13", label: "13,2/0,4 kV" }, { value: "33", label: "33/0,4 kV" }]}
+          />
+          <FilterSelect
+            fullWidth
+            value={filterPotencia}
+            onChange={setFilterPotencia}
+            placeholder="Potencia"
+            options={(filterRelacion === "33" ? POT_33 : POT_13).map(k => ({ value: String(k), label: `${k} kVA` }))}
           />
           <FilterSelect
             fullWidth
