@@ -10,7 +10,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { BeastSelect } from "@/components/dashboard/beast-select";
-import { runTablero, getZonas, parseFechaArg, type TableroRow } from "@/lib/tableroOp";
+import { runTablero, getZonas, parseFechaArg, type TableroRow, type EnvioInfo } from "@/lib/tableroOp";
 
 // ─── Estilos beast pure (alineados con Stock por Zona) ──────────────────────
 
@@ -93,8 +93,12 @@ function isoDateToLocal(iso: string): Date | null {
 }
 
 // Timestamp (ms) de la fecha pactada (texto crudo del Excel → parseFechaArg).
+// Acepta también dd-mm-yyyy (formato de la impresión de la OP).
 function pactadaTime(raw: string | null): number | null {
-  const iso = parseFechaArg(raw);
+  if (!raw) return null;
+  let s = String(raw).trim();
+  if (/^\d{1,2}-\d{1,2}-\d{4}/.test(s)) s = s.replace(/-/g, "/");
+  const iso = parseFechaArg(s);
   if (!iso) return null;
   const t = new Date(iso).getTime();
   return Number.isNaN(t) ? null : t;
@@ -110,18 +114,131 @@ function lastEntregaTime(entregas: string[]): number | null {
   return d ? d.getTime() : null;
 }
 
-// ─── Celda "Fecha pactada" ───────────────────────────────────────────────────
-// Fecha comprometida. Roja si venció y la línea no está TOTAL ENTREGADO.
+// ─── Celda "Envíos" (expandible, lateral) ────────────────────────────────────
+// Envíos pactados de la OP+línea (planillas_op): cada uno con número, cantidad
+// y fecha comprometida. Colapsada: próxima fecha pactada + contador (+N). Al
+// hacer clic, popover con TODOS los envíos en fila (lateral), vía portal.
+// Un envío se marca vencido (rojo) si su fecha ya pasó y la línea no está
+// TOTAL ENTREGADO.
 
-function FechaPactadaCell({ row }: { row: TableroRow }) {
-  const t = pactadaTime(row.fecha_pactada);
-  if (t == null) return <span style={{ color: "oklch(0.45 0 0)" }}>—</span>;
+// Fecha pactada más relevante para mostrar colapsado: la próxima futura; si
+// todas pasaron, la última.
+function nextEnvio(envios: EnvioInfo[], startOfToday: number): { envio: EnvioInfo; t: number | null } | null {
+  if (!envios.length) return null;
+  const withT = envios.map((e) => ({ envio: e, t: pactadaTime(e.fecha_pactada) }));
+  const future = withT.filter((x) => x.t != null && x.t >= startOfToday);
+  if (future.length) return future.reduce((a, b) => (a.t! <= b.t! ? a : b));
+  const past = withT.filter((x) => x.t != null);
+  if (past.length) return past.reduce((a, b) => (a.t! >= b.t! ? a : b));
+  return withT[0];
+}
+
+function EnviosCell({ envios, control }: { envios: EnvioInfo[]; control: string }) {
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (r) setCoords({ top: r.bottom + 6, left: r.left });
+    };
+    update();
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (btnRef.current?.contains(t) || popRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const close = () => setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", update);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open]);
+
+  if (!envios?.length) return <span style={{ color: "oklch(0.45 0 0)" }}>—</span>;
+
   const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
-  const vencida = t < startOfToday.getTime() && row.control !== "TOTAL ENTREGADO";
+  const t0 = startOfToday.getTime();
+  const entregadoTotal = control === "TOTAL ENTREGADO";
+  const next = nextEnvio(envios, t0);
+  const nextVencido = next?.t != null && next.t < t0 && !entregadoTotal;
+  const extra = envios.length - 1;
+
   return (
-    <span style={{ color: vencida ? "#fca5a5" : "oklch(0.85 0 0)", fontWeight: vencida ? 600 : 400, fontFamily: "ui-monospace, monospace" }}>
-      {fmtFecha(new Date(t))}
-    </span>
+    <>
+      <button
+        ref={btnRef}
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1.5 transition-colors"
+        style={{
+          padding: "2px 8px", borderRadius: 999, cursor: "pointer",
+          background: nextVencido
+            ? "oklch(0.28 0.10 25 / 0.45)"
+            : open ? "oklch(0.30 0.10 50 / 0.4)" : "oklch(0.25 0.005 270)",
+          border: `1px solid ${nextVencido
+            ? "oklch(0.55 0.15 25 / 0.5)"
+            : open ? "oklch(0.6 0.15 60 / 0.5)" : "oklch(1 0 0 / 0.08)"}`,
+          color: nextVencido ? "#fca5a5" : open ? "#fcd34d" : "oklch(0.82 0 0)",
+          fontSize: 11.5, fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap",
+        }}
+      >
+        <CalendarClock className="w-3 h-3 shrink-0" strokeWidth={2} />
+        {next?.t != null ? fmtFecha(new Date(next.t)) : `${envios.length} envío${envios.length === 1 ? "" : "s"}`}
+        {extra > 0 && (
+          <span style={{ fontWeight: 700, color: nextVencido ? "#fca5a5" : open ? "#fcd34d" : "oklch(0.6 0 0)" }}>+{extra}</span>
+        )}
+      </button>
+
+      {open && coords && createPortal(
+        <div
+          ref={popRef}
+          className="animate-in fade-in slide-in-from-top-1 duration-150"
+          style={{
+            position: "fixed", zIndex: 300, top: coords.top, left: coords.left,
+            maxWidth: "min(640px, calc(100vw - 24px))",
+            background: PANEL_BG, border: PANEL_BORDER, borderRadius: 10,
+            boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6)", padding: 10,
+          }}
+        >
+          <div className="flex items-center gap-1.5 mb-2" style={{ color: "oklch(0.6 0 0)", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            <CalendarClock className="w-3 h-3" strokeWidth={2} />
+            {envios.length} envío{envios.length === 1 ? "" : "s"} pactado{envios.length === 1 ? "" : "s"}
+          </div>
+          {/* Lateral: envíos en fila (wrap si no entran), no apilados verticalmente. */}
+          <div className="flex flex-wrap items-center gap-1.5" style={{ maxWidth: 620 }}>
+            {envios.map((e, i) => {
+              const t = pactadaTime(e.fecha_pactada);
+              const vencido = t != null && t < t0 && !entregadoTotal;
+              return (
+                <span
+                  key={i}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "3px 9px", borderRadius: 999,
+                    background: vencido ? "oklch(0.28 0.10 25 / 0.45)" : "oklch(0.30 0.10 50 / 0.4)",
+                    color: vencido ? "#fca5a5" : "#fcd34d",
+                    border: `1px solid ${vencido ? "oklch(0.55 0.15 25 / 0.5)" : "oklch(0.6 0.15 60 / 0.5)"}`,
+                    fontSize: 11.5, fontWeight: 600, fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap",
+                  }}
+                >
+                  <span style={{ opacity: 0.75 }}>E{e.envio || "?"}</span>
+                  {e.cantidad != null && <span>{fmtNum(e.cantidad)}</span>}
+                  <span>{t != null ? fmtFecha(new Date(t)) : (e.fecha_pactada ?? "s/fecha")}</span>
+                </span>
+              );
+            })}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 
@@ -258,9 +375,13 @@ const COLS: ColDef[] = [
   { key: "aceptado",     label: "Aceptado",    num: true },
   { key: "entregado",    label: "Entregado",   num: true },
   {
-    key: "fecha_pactada", label: "Fecha pactada",
-    render: (r) => <FechaPactadaCell row={r} />,
-    sortValue: (r) => pactadaTime(r.fecha_pactada),
+    key: "envios", label: "Envíos",
+    render: (r) => <EnviosCell envios={r.envios ?? []} control={r.control} />,
+    // Ordena por la primera fecha pactada de la línea (la más temprana).
+    sortValue: (r) => {
+      const ts = (r.envios ?? []).map((e) => pactadaTime(e.fecha_pactada)).filter((t): t is number => t != null);
+      return ts.length ? Math.min(...ts) : null;
+    },
   },
   {
     key: "entregas", label: "Entregas",
@@ -293,7 +414,7 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   devoluciones:  95,
   aceptado:      95,
   entregado:     95,
-  fecha_pactada: 120,
+  envios:        135,
   entregas:      130,
   control2:      105,
 };
@@ -380,6 +501,12 @@ export function TableroOpResumenSection() {
       if (soloConRecibido && (r.recibido ?? 0) === 0) return false;
       if (!q) return true;
       return COLS.some((c) => {
+        // Los envíos son objetos → buscar por su texto visible (E1, cantidad, fecha).
+        if (c.key === "envios") {
+          return (r.envios ?? []).some((e) =>
+            `e${e.envio} ${e.cantidad ?? ""} ${e.fecha_pactada ?? ""}`.toLowerCase().includes(q)
+          );
+        }
         const v = r[c.key];
         return v != null && String(v).toLowerCase().includes(q);
       });
@@ -416,9 +543,12 @@ export function TableroOpResumenSection() {
         let s: string;
         if (c.key === "entregas") {
           s = (r.entregas ?? []).map((iso) => fmtFecha(isoDateToLocal(iso))).join(" · ");
-        } else if (c.key === "fecha_pactada") {
-          const t = pactadaTime(r.fecha_pactada);
-          s = t == null ? "" : fmtFecha(new Date(t));
+        } else if (c.key === "envios") {
+          s = (r.envios ?? []).map((e) => {
+            const t = pactadaTime(e.fecha_pactada);
+            const f = t != null ? fmtFecha(new Date(t)) : (e.fecha_pactada ?? "");
+            return `E${e.envio}: ${e.cantidad ?? ""} (${f})`;
+          }).join(" · ");
         } else {
           const v = r[c.key];
           s = v == null ? "" : String(v);
