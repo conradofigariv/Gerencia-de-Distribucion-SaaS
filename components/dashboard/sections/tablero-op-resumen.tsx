@@ -1,11 +1,11 @@
 "use client";
 
 // Columnas "Fecha pactada" y "Entregas" activas (redeploy forzado).
-import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode, type CSSProperties } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment, type ReactNode, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import {
   ClipboardList, Loader2, RefreshCw, Search, X, Download, AlertTriangle,
-  ChevronDown, ChevronUp, ChevronsUpDown, PackageCheck, CalendarClock,
+  ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight, PackageCheck, CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -114,131 +114,95 @@ function lastEntregaTime(entregas: string[]): number | null {
   return d ? d.getTime() : null;
 }
 
-// ─── Celda "Envíos" (expandible, lateral) ────────────────────────────────────
+// ─── Columna "Envíos" (desplegable en fila inferior) ─────────────────────────
 // Envíos pactados de la OP+línea (planillas_op): cada uno con número, cantidad
-// y fecha comprometida. Colapsada: próxima fecha pactada + contador (+N). Al
-// hacer clic, popover con TODOS los envíos en fila (lateral), vía portal.
+// y fecha comprometida. Con UN envío se muestra el chip directo en la celda.
+// Con varios, la celda es un toggle (chevron + próxima fecha + contador) que
+// despliega una FILA DE DETALLE debajo con todos los envíos en fila (lateral).
 // Un envío se marca vencido (rojo) si su fecha ya pasó y la línea no está
 // TOTAL ENTREGADO.
 
 // Fecha pactada más relevante para mostrar colapsado: la próxima futura; si
 // todas pasaron, la última.
-function nextEnvio(envios: EnvioInfo[], startOfToday: number): { envio: EnvioInfo; t: number | null } | null {
-  if (!envios.length) return null;
-  const withT = envios.map((e) => ({ envio: e, t: pactadaTime(e.fecha_pactada) }));
-  const future = withT.filter((x) => x.t != null && x.t >= startOfToday);
-  if (future.length) return future.reduce((a, b) => (a.t! <= b.t! ? a : b));
-  const past = withT.filter((x) => x.t != null);
-  if (past.length) return past.reduce((a, b) => (a.t! >= b.t! ? a : b));
-  return withT[0];
+function nextEnvioTime(envios: EnvioInfo[], startOfToday: number): number | null {
+  const ts = envios.map((e) => pactadaTime(e.fecha_pactada)).filter((t): t is number => t != null);
+  if (!ts.length) return null;
+  const future = ts.filter((t) => t >= startOfToday);
+  return future.length ? Math.min(...future) : Math.max(...ts);
 }
 
-function EnviosCell({ envios, control }: { envios: EnvioInfo[]; control: string }) {
-  const [open, setOpen] = useState(false);
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const popRef = useRef<HTMLDivElement>(null);
+const startOfTodayMs = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
 
-  useEffect(() => {
-    if (!open) return;
-    const update = () => {
-      const r = btnRef.current?.getBoundingClientRect();
-      if (r) setCoords({ top: r.bottom + 6, left: r.left });
-    };
-    update();
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (btnRef.current?.contains(t) || popRef.current?.contains(t)) return;
-      setOpen(false);
-    };
-    const close = () => setOpen(false);
-    document.addEventListener("mousedown", onDown);
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("resize", update);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", update);
-    };
-  }, [open]);
+// Chip de un envío: E# · cantidad · fecha.
+function EnvioChip({ envio, vencido }: { envio: EnvioInfo; vencido: boolean }) {
+  const t = pactadaTime(envio.fecha_pactada);
+  return (
+    <span
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 6,
+        padding: "3px 9px", borderRadius: 999,
+        background: vencido ? "oklch(0.28 0.10 25 / 0.45)" : "oklch(0.30 0.10 50 / 0.4)",
+        color: vencido ? "#fca5a5" : "#fcd34d",
+        border: `1px solid ${vencido ? "oklch(0.55 0.15 25 / 0.5)" : "oklch(0.6 0.15 60 / 0.5)"}`,
+        fontSize: 11.5, fontWeight: 600, fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap",
+      }}
+    >
+      <span style={{ opacity: 0.75 }}>E{envio.envio || "?"}</span>
+      {envio.cantidad != null && <span>{fmtNum(envio.cantidad)}</span>}
+      <span>{t != null ? fmtFecha(new Date(t)) : (envio.fecha_pactada ?? "s/fecha")}</span>
+    </span>
+  );
+}
 
+const envioVencido = (e: EnvioInfo, t0: number, control: string) => {
+  const t = pactadaTime(e.fecha_pactada);
+  return t != null && t < t0 && control !== "TOTAL ENTREGADO";
+};
+
+function EnviosCell({ envios, control, expanded, onToggle }: {
+  envios: EnvioInfo[];
+  control: string;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
   if (!envios?.length) return <span style={{ color: "oklch(0.45 0 0)" }}>—</span>;
 
-  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
-  const t0 = startOfToday.getTime();
-  const entregadoTotal = control === "TOTAL ENTREGADO";
-  const next = nextEnvio(envios, t0);
-  const nextVencido = next?.t != null && next.t < t0 && !entregadoTotal;
-  const extra = envios.length - 1;
+  const t0 = startOfTodayMs();
+
+  // Un solo envío → chip directo, sin desplegable.
+  if (envios.length === 1) {
+    return <EnvioChip envio={envios[0]} vencido={envioVencido(envios[0], t0, control)} />;
+  }
+
+  const nextT = nextEnvioTime(envios, t0);
+  const nextVencido = nextT != null && nextT < t0 && control !== "TOTAL ENTREGADO";
 
   return (
-    <>
-      <button
-        ref={btnRef}
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 transition-colors"
-        style={{
-          padding: "2px 8px", borderRadius: 999, cursor: "pointer",
-          background: nextVencido
-            ? "oklch(0.28 0.10 25 / 0.45)"
-            : open ? "oklch(0.30 0.10 50 / 0.4)" : "oklch(0.25 0.005 270)",
-          border: `1px solid ${nextVencido
-            ? "oklch(0.55 0.15 25 / 0.5)"
-            : open ? "oklch(0.6 0.15 60 / 0.5)" : "oklch(1 0 0 / 0.08)"}`,
-          color: nextVencido ? "#fca5a5" : open ? "#fcd34d" : "oklch(0.82 0 0)",
-          fontSize: 11.5, fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap",
-        }}
-      >
-        <CalendarClock className="w-3 h-3 shrink-0" strokeWidth={2} />
-        {next?.t != null ? fmtFecha(new Date(next.t)) : `${envios.length} envío${envios.length === 1 ? "" : "s"}`}
-        {extra > 0 && (
-          <span style={{ fontWeight: 700, color: nextVencido ? "#fca5a5" : open ? "#fcd34d" : "oklch(0.6 0 0)" }}>+{extra}</span>
-        )}
-      </button>
-
-      {open && coords && createPortal(
-        <div
-          ref={popRef}
-          className="animate-in fade-in slide-in-from-top-1 duration-150"
-          style={{
-            position: "fixed", zIndex: 300, top: coords.top, left: coords.left,
-            maxWidth: "min(640px, calc(100vw - 24px))",
-            background: PANEL_BG, border: PANEL_BORDER, borderRadius: 10,
-            boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6)", padding: 10,
-          }}
-        >
-          <div className="flex items-center gap-1.5 mb-2" style={{ color: "oklch(0.6 0 0)", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
-            <CalendarClock className="w-3 h-3" strokeWidth={2} />
-            {envios.length} envío{envios.length === 1 ? "" : "s"} pactado{envios.length === 1 ? "" : "s"}
-          </div>
-          {/* Lateral: envíos en fila (wrap si no entran), no apilados verticalmente. */}
-          <div className="flex flex-wrap items-center gap-1.5" style={{ maxWidth: 620 }}>
-            {envios.map((e, i) => {
-              const t = pactadaTime(e.fecha_pactada);
-              const vencido = t != null && t < t0 && !entregadoTotal;
-              return (
-                <span
-                  key={i}
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 6,
-                    padding: "3px 9px", borderRadius: 999,
-                    background: vencido ? "oklch(0.28 0.10 25 / 0.45)" : "oklch(0.30 0.10 50 / 0.4)",
-                    color: vencido ? "#fca5a5" : "#fcd34d",
-                    border: `1px solid ${vencido ? "oklch(0.55 0.15 25 / 0.5)" : "oklch(0.6 0.15 60 / 0.5)"}`,
-                    fontSize: 11.5, fontWeight: 600, fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap",
-                  }}
-                >
-                  <span style={{ opacity: 0.75 }}>E{e.envio || "?"}</span>
-                  {e.cantidad != null && <span>{fmtNum(e.cantidad)}</span>}
-                  <span>{t != null ? fmtFecha(new Date(t)) : (e.fecha_pactada ?? "s/fecha")}</span>
-                </span>
-              );
-            })}
-          </div>
-        </div>,
-        document.body,
-      )}
-    </>
+    <button
+      onClick={onToggle}
+      title={expanded ? "Ocultar envíos" : "Ver envíos"}
+      className="inline-flex items-center gap-1.5 transition-colors"
+      style={{
+        padding: "2px 8px", borderRadius: 999, cursor: "pointer",
+        background: nextVencido
+          ? "oklch(0.28 0.10 25 / 0.45)"
+          : expanded ? "oklch(0.30 0.10 50 / 0.4)" : "oklch(0.25 0.005 270)",
+        border: `1px solid ${nextVencido
+          ? "oklch(0.55 0.15 25 / 0.5)"
+          : expanded ? "oklch(0.6 0.15 60 / 0.5)" : "oklch(1 0 0 / 0.08)"}`,
+        color: nextVencido ? "#fca5a5" : expanded ? "#fcd34d" : "oklch(0.82 0 0)",
+        fontSize: 11.5, fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap",
+      }}
+    >
+      <ChevronRight
+        className={`w-3 h-3 shrink-0 transition-transform duration-200 ${expanded ? "rotate-90" : ""}`}
+        strokeWidth={2.2}
+      />
+      {nextT != null ? fmtFecha(new Date(nextT)) : `${envios.length} envíos`}
+      <span style={{ fontWeight: 700, color: nextVencido ? "#fca5a5" : expanded ? "#fcd34d" : "oklch(0.6 0 0)" }}>
+        +{envios.length - 1}
+      </span>
+    </button>
   );
 }
 
@@ -358,6 +322,16 @@ interface ColDef {
 const COLS: ColDef[] = [
   { key: "numero_sic",    label: "SIC" },
   { key: "linea",         label: "Línea" },
+  {
+    // El render real se resuelve en el tbody (necesita el estado de expansión
+    // de la fila) — acá solo label, orden y búsqueda.
+    key: "envios", label: "Envíos",
+    // Ordena por la primera fecha pactada de la línea (la más temprana).
+    sortValue: (r) => {
+      const ts = (r.envios ?? []).map((e) => pactadaTime(e.fecha_pactada)).filter((t): t is number => t != null);
+      return ts.length ? Math.min(...ts) : null;
+    },
+  },
   { key: "articulo",      label: "Artículo" },
   { key: "descripcion",   label: "Descripción" },
   { key: "cantidad",      label: "Cantidad",  num: true },
@@ -374,15 +348,6 @@ const COLS: ColDef[] = [
   { key: "devoluciones", label: "Devoluc.",    num: true },
   { key: "aceptado",     label: "Aceptado",    num: true },
   { key: "entregado",    label: "Entregado",   num: true },
-  {
-    key: "envios", label: "Envíos",
-    render: (r) => <EnviosCell envios={r.envios ?? []} control={r.control} />,
-    // Ordena por la primera fecha pactada de la línea (la más temprana).
-    sortValue: (r) => {
-      const ts = (r.envios ?? []).map((e) => pactadaTime(e.fecha_pactada)).filter((t): t is number => t != null);
-      return ts.length ? Math.min(...ts) : null;
-    },
-  },
   {
     key: "entregas", label: "Entregas",
     render: (r) => <EntregasCell entregas={r.entregas ?? []} />,
@@ -436,6 +401,8 @@ export function TableroOpResumenSection() {
   const [soloConRecibido, setSoloConRecibido] = useState(false);
   const [sortCol, setSortCol]     = useState<keyof TableroRow>("numero_sic");
   const [sortDir, setSortDir]     = useState<SortDir>("asc");
+  // Filas con el detalle de envíos desplegado (clave: SIC|línea|OP).
+  const [enviosAbiertos, setEnviosAbiertos] = useState<Set<string>>(new Set());
 
   const [colWidths, setColWidths] = useState<Record<string, number>>(DEFAULT_COL_WIDTHS);
   const colWidthsLoaded = useRef(false);
@@ -758,34 +725,80 @@ export function TableroOpResumenSection() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map((r, i) => (
-                    <tr
-                      key={`${r.numero_sic}|${r.linea ?? ""}|${i}`}
-                      className="transition-colors"
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = "oklch(0.25 0.005 270 / 0.5)"; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = ""; }}
-                    >
-                      {COLS.map((c) => (
-                        <td
-                          key={c.key}
-                          className={cn(
-                            "truncate",
-                            c.num ? "text-right tabular-nums" : "text-left",
-                            c.key === "numero_sic" && "font-medium text-foreground"
-                          )}
-                          style={{
-                            padding: "10px 14px",
-                            borderBottom: i === sorted.length - 1 ? "none" : "1px solid oklch(1 0 0 / 0.05)",
-                            fontFamily: (c.num || c.key === "numero_sic" || c.key === "articulo" || c.key === "numero_op")
-                              ? "ui-monospace, monospace" : undefined,
-                          }}
-                          title={c.key === "descripcion" ? (r.descripcion ?? "") : undefined}
+                  {sorted.map((r, i) => {
+                    // Clave estable por fila: (SIC, línea, OP) es la clave única del seguimiento.
+                    const rk = `${r.numero_sic}|${r.linea ?? ""}|${r.numero_op ?? ""}`;
+                    const abierto = enviosAbiertos.has(rk) && (r.envios?.length ?? 0) > 1;
+                    const borde = i === sorted.length - 1 && !abierto ? "none" : "1px solid oklch(1 0 0 / 0.05)";
+                    return (
+                      <Fragment key={`${rk}|${i}`}>
+                        <tr
+                          className="transition-colors"
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = "oklch(0.25 0.005 270 / 0.5)"; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = ""; }}
                         >
-                          {c.render ? c.render(r) : c.num ? fmtNum(r[c.key] as number) : (r[c.key] ?? "") as ReactNode}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
+                          {COLS.map((c) => (
+                            <td
+                              key={c.key}
+                              className={cn(
+                                "truncate",
+                                c.num ? "text-right tabular-nums" : "text-left",
+                                c.key === "numero_sic" && "font-medium text-foreground"
+                              )}
+                              style={{
+                                padding: "10px 14px",
+                                borderBottom: abierto ? "none" : borde,
+                                fontFamily: (c.num || c.key === "numero_sic" || c.key === "articulo" || c.key === "numero_op")
+                                  ? "ui-monospace, monospace" : undefined,
+                              }}
+                              title={c.key === "descripcion" ? (r.descripcion ?? "") : undefined}
+                            >
+                              {c.key === "envios" ? (
+                                <EnviosCell
+                                  envios={r.envios ?? []}
+                                  control={r.control}
+                                  expanded={abierto}
+                                  onToggle={() => setEnviosAbiertos((prev) => {
+                                    const s = new Set(prev);
+                                    if (s.has(rk)) s.delete(rk); else s.add(rk);
+                                    return s;
+                                  })}
+                                />
+                              ) : (
+                                c.render ? c.render(r) : c.num ? fmtNum(r[c.key] as number) : (r[c.key] ?? "") as ReactNode
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                        {/* Fila inferior con el detalle de envíos (desplegable) */}
+                        {abierto && (
+                          <tr>
+                            <td
+                              colSpan={COLS.length}
+                              style={{
+                                padding: "0 14px 12px",
+                                background: "oklch(0.185 0.005 270)",
+                                borderBottom: borde,
+                              }}
+                            >
+                              <div className="flex flex-wrap items-center gap-1.5 pt-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                                <span
+                                  className="inline-flex items-center gap-1.5 mr-1.5"
+                                  style={{ color: "oklch(0.6 0 0)", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}
+                                >
+                                  <CalendarClock className="w-3 h-3" strokeWidth={2} />
+                                  Envíos OP {r.numero_op ?? "—"} · Línea {r.linea ?? "—"}:
+                                </span>
+                                {(r.envios ?? []).map((e, j) => (
+                                  <EnvioChip key={j} envio={e} vencido={envioVencido(e, startOfTodayMs(), r.control)} />
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
