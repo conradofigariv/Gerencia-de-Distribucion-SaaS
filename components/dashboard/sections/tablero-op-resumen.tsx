@@ -1,5 +1,6 @@
 "use client";
 
+// Columnas "Fecha pactada" y "Entregas" activas (redeploy forzado).
 import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import {
