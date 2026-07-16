@@ -4,14 +4,19 @@ import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
-import { UploadCloud, FileText, X, Loader2, CheckCircle2, Sparkles, BellRing } from "lucide-react";
+import { FileText, X, Loader2, CheckCircle2, Sparkles, BellRing, Upload, Eraser } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import { markUpdated, fetchReminders, upsertConfig } from "@/lib/reminders";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const POT_13 = [5, 10, 16, 25, 50, 63, 80, 100, 125, 160, 200, 250, 315, 500, 630, 800, 1000];
 const POT_33 = [25, 63, 160, 250, 315, 500, 630];
-const RURAL_KVA = new Set([5, 10, 16, 25]);
+const ZONAS  = ["Villa Revol", "Alta Gracia Norte"];
+
+// Grilla unificada: KVA | Terceros (T/M/CT/Total) | sep | Taller (T/M/CT/Total) | sep | Totales
+const GRID_COLS = "70px repeat(4,minmax(0,1fr)) 12px repeat(4,minmax(0,1fr)) 12px repeat(3,minmax(0,1fr))";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,13 +55,13 @@ function mergeTaller(
 
 function init13Trafo()  { return Object.fromEntries(POT_13.map(p => [p, { t: 0, m: 0, ct: 0  }])) as Record<number, TrafoRow>; }
 function init13Taller() { return Object.fromEntries(POT_13.map(p => [p, { t: 0, m: 0, ct: 0 }])) as Record<number, TallerRow>; }
-function init13Total() { return Object.fromEntries(POT_13.map(p => [p, 0])) as Record<number, number>; }
 function init13Auto()   { return Object.fromEntries(POT_13.map(p => [p, 0])) as Record<number, number>; }
 function init33()       { return Object.fromEntries(POT_33.map(p => [p, { tN: 0, mN: 0, tR: 0, mR: 0 }])) as Record<number, Rel33Row>; }
 
 // ─── Micro-components ─────────────────────────────────────────────────────────
 
-function NI({ val, onChange }: { val: number; onChange: (v: number) => void }) {
+// Celda editable tipo Excel: commit al salir o con Enter, selecciona todo al focar.
+function EInput({ val, onChange, valueClass }: { val: number; onChange: (v: number) => void; valueClass?: string }) {
   const [text, setText] = useState(String(val || 0));
 
   useEffect(() => { setText(String(val || 0)); }, [val]);
@@ -69,30 +74,20 @@ function NI({ val, onChange }: { val: number; onChange: (v: number) => void }) {
   };
 
   return (
-    <div className="flex items-center justify-center gap-1 mx-auto bg-panel-input border border-border rounded w-fit">
-      <button
-        onClick={() => onChange(Math.max(0, val - 1))}
-        className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-      >
-        −
-      </button>
-      <input
-        type="text"
-        inputMode="numeric"
-        value={text}
-        onChange={e => setText(e.target.value.replace(/[^\d]/g, ""))}
-        onFocus={e => e.target.select()}
-        onBlur={commit}
-        onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-        className="w-7 text-center text-xs text-foreground select-none bg-transparent focus:outline-none"
-      />
-      <button
-        onClick={() => onChange(val + 1)}
-        className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-      >
-        +
-      </button>
-    </div>
+    <input
+      type="text"
+      inputMode="numeric"
+      value={text}
+      onChange={e => setText(e.target.value.replace(/[^\d]/g, ""))}
+      onFocus={e => e.target.select()}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+      className={cn(
+        "w-full text-center text-xs font-semibold rounded-md bg-panel-input border border-border py-1.5 text-foreground",
+        "focus:outline-none focus:border-accent focus:bg-accent/10 transition-colors",
+        valueClass
+      )}
+    />
   );
 }
 
@@ -110,17 +105,6 @@ function TD({ c, children }: { c?: string; children: React.ReactNode }) {
     <td className={`px-0.5 py-1 text-[10px] border border-border text-center text-muted-foreground ${c ?? ""}`}>
       {children}
     </td>
-  );
-}
-
-function TotalRow({ label, span, values }: { label: string; span?: number; values: (string | number | React.ReactNode)[] }) {
-  return (
-    <tr className="bg-panel-header font-bold">
-      <td colSpan={span ?? 1} className="px-1 py-1 border border-border text-[10px] font-bold text-muted-foreground text-center">{label}</td>
-      {values.map((v, i) => (
-        <td key={i} className="px-1 py-1 border border-border text-xs text-center text-accent-green font-bold">{v || "—"}</td>
-      ))}
-    </tr>
   );
 }
 
@@ -154,16 +138,17 @@ const REMINDER_NAME = "Carga de datos — Transformadores";
 
 export function TransformadoresCargaSection() {
   const [fecha, setFecha]           = useState<string>(new Date().toISOString().split("T")[0]);
-  const [deposito, setDeposito]     = useState<string>("");
+  const [deposito, setDeposito]     = useState<string>("Villa Revol");
   const [archivo, setArchivo]       = useState<File | null>(null);
   const [dragging, setDragging]     = useState(false);
   const [terceros, setTerceros]     = useState<Record<number, TrafoRow>>(init13Trafo);
   const [taller, setTaller]         = useState<Record<number, TallerRow>>(init13Taller);
   const [autorizados, setAutorizados] = useState<Record<number, number>>(init13Auto);
-  const [totales, setTotales]       = useState<Record<number, number>>(init13Total);
   const [rel33, setRel33]           = useState<Record<number, Rel33Row>>(init33);
   const [obs, setObs]               = useState("");
   const [pend, setPend]             = useState("");
+  const [hideZeros, setHideZeros]   = useState(true);
+  const [dirty, setDirty]           = useState(false);
   const [saving, setSaving]         = useState(false);
   const [analyzing, setAnalyzing]   = useState(false);
   const [fechaDuplicada, setFechaDuplicada] = useState(false);
@@ -173,7 +158,7 @@ export function TransformadoresCargaSection() {
 
   // Auth / role
   const [userId,    setUserId]    = useState<string | null>(null);
-  const [canConfig, setCanConfig] = useState(true);
+  const [, setCanConfig] = useState(true);
 
   // Reminder config
   const [configOpen,      setConfigOpen]      = useState(false);
@@ -256,24 +241,11 @@ export function TransformadoresCargaSection() {
         }
         return next;
       });
-      // Totales: compute from extracted terceros + taller
-      if (d.terceros || d.taller) {
-        setTotales(prev => {
-          const next = { ...prev };
-          for (const p of POT_13) {
-            const t3 = d.terceros?.[p] ?? d.terceros?.[String(p)];
-            const ta = d.taller?.[p]   ?? d.taller?.[String(p)];
-            const t3sum = t3 ? (Number(t3.t ?? 0) + Number(t3.m ?? 0)) : 0;
-            const tasum = ta ? (Number(ta.t ?? 0) + Number(ta.m ?? 0)) : 0;
-            if (t3sum + tasum > 0) next[p] = t3sum + tasum;
-          }
-          return next;
-        });
-      }
       if (d.rel33)       setRel33(prev => mergeMap(prev, d.rel33, POT_33));
       if (d.obs)        setObs(d.obs);
       if (d.pend)       setPend(d.pend);
 
+      setDirty(true);
       toast.success("Planilla cargada y datos procesados", { duration: 1000 });
     } catch (err: unknown) {
       toast.error((err as Error).message ?? "No se pudo analizar el archivo");
@@ -282,32 +254,72 @@ export function TransformadoresCargaSection() {
     }
   };
 
-  // ── Updaters ────────────────────────────────────────────────────────────────
+  // ── Updaters (marcan dirty para habilitar "Guardar cambios") ────────────────
 
-  const setT = (p: number, f: keyof TrafoRow, v: number) =>
+  const setT = (p: number, f: keyof TrafoRow, v: number) => {
     setTerceros(prev => ({ ...prev, [p]: { ...prev[p], [f]: v } }));
+    setDirty(true);
+  };
 
-  const setTANum = (p: number, f: keyof TallerRow, v: number) =>
+  const setTANum = (p: number, f: keyof TallerRow, v: number) => {
     setTaller(prev => ({ ...prev, [p]: { ...prev[p], [f]: v } }));
+    setDirty(true);
+  };
 
-  const setTot = (p: number, v: number) =>
-    setTotales(prev => ({ ...prev, [p]: v }));
-
-  const setAuto = (p: number, v: number) =>
+  const setAuto = (p: number, v: number) => {
     setAutorizados(prev => ({ ...prev, [p]: v }));
+    setDirty(true);
+  };
 
-  const setR = (p: number, f: keyof Rel33Row, v: number) =>
+  const setR = (p: number, f: keyof Rel33Row, v: number) => {
     setRel33(prev => ({ ...prev, [p]: { ...prev[p], [f]: v } }));
+    setDirty(true);
+  };
 
-  // ── Computed totals ─────────────────────────────────────────────────────────
+  // ── Computed (todos los totales son derivados en vivo) ─────────────────────
 
-  const totGeneral  = POT_13.reduce((s, p) => s + totales[p], 0);
+  const trafosOf = (p: number) => sum(terceros[p]) + sum(taller[p]);
+  const dispOf   = (p: number) => Math.max(0, trafosOf(p) - autorizados[p]);
+
+  const totGeneral  = POT_13.reduce((s, p) => s + trafosOf(p), 0);
   const totAuto     = POT_13.reduce((s, p) => s + autorizados[p], 0);
   const totDisp     = totGeneral - totAuto;
   const tot33N      = POT_33.reduce((s, p) => s + rel33[p].tN + rel33[p].mN, 0);
   const tot33R      = POT_33.reduce((s, p) => s + rel33[p].tR + rel33[p].mR, 0);
 
+  // Toggle "Ocultar filas en 0": oculta filas sin trafos ni autorizados
+  const visibleRows = hideZeros ? POT_13.filter(p => trafosOf(p) > 0 || autorizados[p] > 0) : POT_13;
+  const hiddenCount = POT_13.length - visibleRows.length;
+
+  // ── Clear form ──────────────────────────────────────────────────────────────
+
+  const handleClear = () => {
+    if (!confirm("¿Limpiar todos los valores de la planilla?")) return;
+    setTerceros(init13Trafo());
+    setTaller(init13Taller());
+    setAutorizados(init13Auto());
+    setRel33(init33());
+    setObs("");
+    setPend("");
+    setArchivo(null);
+    if (fileRef.current) fileRef.current.value = "";
+    setDirty(false);
+  };
+
   // ── Save ────────────────────────────────────────────────────────────────────
+
+  // El campo `totales` se persiste derivado (terceros + taller) para mantener
+  // compatibilidad con el Resumen, que lo lee de datos.totales.
+  const buildDatos = (): Record<string, unknown> => ({
+    terceros,
+    taller,
+    totales: Object.fromEntries(POT_13.map(p => [p, trafosOf(p)])),
+    autorizados,
+    rel33,
+    obs,
+    pend,
+    deposito,
+  });
 
   // Inserta (opcionalmente borrando filas previas para sobreescribir) y resetea flags.
   const persistInsert = async (datos: Record<string, unknown>, deleteIds?: number[]) => {
@@ -320,6 +332,7 @@ export function TransformadoresCargaSection() {
       if (error) throw error;
       toast.success(deleteIds?.length ? "Informe sobreescrito correctamente" : "Planilla guardada correctamente", { duration: 1500 });
       setFechaDuplicada(false);
+      setDirty(false);
       if (userId) await markUpdated(REMINDER_KEY, REMINDER_NAME, userId).catch(() => {});
     } catch (err: unknown) {
       toast.error((err as Error).message ?? "Error al guardar");
@@ -336,7 +349,7 @@ export function TransformadoresCargaSection() {
     savingRef.current = true;
     setSaving(true);
 
-    const datos = { terceros, taller, totales, autorizados, rel33, obs, pend, deposito };
+    const datos = buildDatos();
     try {
       // ¿Ya existe un informe para esta fecha + zona?
       const { data: existentes, error: qErr } = await supabase
@@ -375,6 +388,9 @@ export function TransformadoresCargaSection() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
+  const groupHeaderCls = "text-center text-[9.5px] font-bold tracking-[.08em] uppercase pb-1.5 border-b-2";
+  const colHeaderCls   = "text-center text-[9px] font-bold tracking-[.06em] uppercase text-muted-foreground";
+
   return (
     <div className="space-y-4">
 
@@ -388,294 +404,290 @@ export function TransformadoresCargaSection() {
         </button>
       </div>
 
-      {/* ── Drop zone ── */}
-      {archivo ? (
-        <div className="bg-secondary/30 border border-border rounded-xl px-5 py-3 shadow-sm flex items-center gap-3">
-          {analyzing
-            ? <Loader2 className="w-5 h-5 text-accent shrink-0 animate-spin" />
-            : <FileText className="w-5 h-5 text-accent shrink-0" />
-          }
-          <span className="flex-1 text-sm text-foreground truncate">{archivo.name}</span>
-          {analyzing
-            ? <span className="text-xs text-accent whitespace-nowrap">Procesando…</span>
-            : <>
-                <button
-                  onClick={() => analyzeFile(archivo)}
-                  className="flex items-center gap-1.5 text-xs text-accent hover:underline whitespace-nowrap"
-                >
-                  <Sparkles className="w-3.5 h-3.5" /> Procesar de nuevo
-                </button>
-                <button onClick={() => { setArchivo(null); if (fileRef.current) fileRef.current.value = ""; }}
-                  className="ml-1 text-muted-foreground hover:text-foreground transition-colors">
-                  <X className="w-4 h-4" />
-                </button>
-              </>
-          }
-        </div>
-      ) : (
-        <div
-          onClick={() => fileRef.current?.click()}
-          onDragOver={e => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={e => {
-            e.preventDefault();
-            setDragging(false);
-            const f = e.dataTransfer.files?.[0];
-            if (f) handleFileChange(f);
-          }}
-          className={`cursor-pointer rounded-xl border-2 border-dashed px-6 py-10 flex flex-col items-center gap-3 transition-colors ${
-            dragging ? "border-accent bg-accent/10" : "border-border hover:border-accent hover:bg-accent/5"
-          }`}
-        >
-          <UploadCloud className={`w-10 h-10 transition-colors ${dragging ? "text-accent" : "text-muted-foreground"}`} />
-          <div className="text-center">
-            <p className="text-sm font-medium text-foreground">
-              {dragging ? "Soltá el archivo aquí" : "Arrastrá el archivo o hacé clic para seleccionarlo"}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">Excel (.xlsx) o PDF (.pdf)</p>
-          </div>
-        </div>
-      )}
-      <input ref={fileRef} type="file" accept=".xlsx,.xls,.pdf" className="hidden"
-        onChange={e => { const f = e.target.files?.[0]; if (f) handleFileChange(f); }} />
-
       {fechaDuplicada && (
         <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/40 rounded-xl px-4 py-2.5 text-sm text-amber-300">
           <span>⚠</span>
-          <span>Ya existe un informe guardado para esta fecha. Si guardás, se va a crear un duplicado.</span>
+          <span>Ya existe un informe guardado para esta fecha y zona. Al guardar vas a poder sobreescribirlo.</span>
         </div>
       )}
 
-      {/* ── Planilla ── */}
-      <div className="bg-secondary/30 border border-border rounded-xl shadow-sm overflow-hidden">
+      {/* ── Card: grilla unificada editable (el card entero acepta drop de archivos) ── */}
+      <div
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={e => {
+          e.preventDefault();
+          setDragging(false);
+          const f = e.dataTransfer.files?.[0];
+          if (f) handleFileChange(f);
+        }}
+        className={cn(
+          "bg-secondary/30 border rounded-[10px] shadow-sm overflow-hidden transition-colors",
+          dragging ? "border-accent" : "border-border"
+        )}
+      >
 
-        {/* Title */}
-        <div className="border-b border-border bg-secondary/40 px-4 py-3 text-center">
-          <p className="text-xs font-bold text-muted-foreground tracking-wide">
-            RESERVA DE TRANSFORMADORES DE DISTRIBUCIÓN (RELAC: 13,2/0,4 — 33/0,4 KV)
-          </p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            ÁREA TÉCNICA — DPTO. TRANSFORMADORES — GCIA. TRANSMISIÓN
-          </p>
-        </div>
-
-        <div className="p-4 space-y-5">
-
-          {/* ── Row 1: Terceros + Taller + Resumen ── */}
-          <div className="overflow-x-auto">
-          <div className="grid grid-cols-[5fr_6fr_4fr] gap-3 min-w-[1200px]">
-
-            {/* Table A: Nuevos y Reparados por Terceros */}
-            <div className="min-w-0">
-              <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
-                Nuevos y Reparados por Terceros
-              </p>
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    <TH>Pot. KVA</TH>
-                    <TH>T</TH><TH>M</TH><TH c="leading-[1.1]">C/<br/>Tanque</TH>
-                    <TH>Total</TH>
-                  </tr>
-                </thead>
-                <tbody>
-                  {POT_13.map(p => {
-                    const r = terceros[p]; const tot = sum(r);
-                    return (
-                      <tr key={p} className={`hover:bg-secondary/40 transition-colors ${tot > 0 ? "bg-accent/5" : ""}`}>
-                        <TD c="font-semibold text-foreground">{p}</TD>
-                        <TD><NI val={r.t}  onChange={v => setT(p, "t",  v)} /></TD>
-                        <TD><NI val={r.m}  onChange={v => setT(p, "m",  v)} /></TD>
-                        <TD><NI val={r.ct} onChange={v => setT(p, "ct", v)} /></TD>
-                        <TD c={tot > 0 ? "font-bold text-accent" : "text-muted-foreground"}>
-                          {tot || "—"}
-                        </TD>
-                      </tr>
-                    );
-                  })}
-                  <TotalRow label="TOTAL" span={4} values={[POT_13.reduce((s,p)=>s+sum(terceros[p]),0)]} />
-                </tbody>
-              </table>
-            </div>
-
-            {/* Table B: Reparados por Taller */}
-            <div className="min-w-0">
-              <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
-                Reparados por Taller de Transformadores
-              </p>
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    <TH>Tipo</TH><TH>Pot. KVA</TH>
-                    <TH>T</TH><TH>M</TH><TH c="leading-[1.1]">C/<br/>Tanque</TH>
-                    <TH>Total</TH>
-                  </tr>
-                </thead>
-                <tbody>
-                  {POT_13.map(p => {
-                    const r = taller[p]; const tot = sum(r);
-                    return (
-                      <tr key={p} className={`hover:bg-secondary/40 transition-colors ${tot > 0 ? "bg-accent/5" : ""}`}>
-                        {RURAL_KVA.has(p)
-                          ? <TD c="text-[9px] text-muted-foreground">RURAL</TD>
-                          : <td className="px-0.5 py-1 text-[10px] text-center text-muted-foreground" />}
-                        <TD c="font-semibold text-foreground">{p}</TD>
-                        <TD><NI val={r.t}  onChange={v => setTANum(p, "t",  v)} /></TD>
-                        <TD><NI val={r.m}  onChange={v => setTANum(p, "m",  v)} /></TD>
-                        <TD><NI val={r.ct} onChange={v => setTANum(p, "ct", v)} /></TD>
-                        <TD c={tot > 0 ? "font-bold text-accent" : "text-muted-foreground"}>
-                          {tot || "—"}
-                        </TD>
-                      </tr>
-                    );
-                  })}
-                  <TotalRow label="TOTAL" span={5} values={[POT_13.reduce((s,p)=>s+sum(taller[p]),0)]} />
-                </tbody>
-              </table>
-            </div>
-
-            {/* Table C: Resumen */}
-            <div>
-              <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
-                Total de Transformadores
-              </p>
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    <TH>Tipo</TH>
-                    <TH c="leading-[1.1]">Total<br/>Trafos</TH>
-                    <TH c="leading-[1.1]">Autorizados<br/>p/Retiro</TH>
-                    <TH c="leading-[1.1]">Disponibles<br/>p/Retiro</TH>
-                  </tr>
-                </thead>
-                <tbody>
-                  {POT_13.map(p => {
-                    const tot  = totales[p];
-                    const auto = autorizados[p];
-                    const disp = Math.max(0, tot - auto);
-                    return (
-                      <tr key={p} className="hover:bg-secondary/40 transition-colors">
-                        {RURAL_KVA.has(p)
-                          ? <TD c="text-[9px] text-muted-foreground">RURAL</TD>
-                          : <td className="px-0.5 py-1 text-[10px] text-center text-muted-foreground" />}
-                        <TD><NI val={tot} onChange={v => setTot(p, v)} /></TD>
-                        <TD><NI val={auto} onChange={v => setAuto(p, v)} /></TD>
-                        <TD c={disp > 0 ? "text-accent-green font-bold" : "text-muted-foreground"}>
-                          {disp || "—"}
-                        </TD>
-                      </tr>
-                    );
-                  })}
-                  <tr className="bg-panel-header font-bold">
-                    <td className="px-1 py-1 border border-border text-[9px] font-bold text-foreground text-center">TOTAL</td>
-                    <td className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{totGeneral || "—"}</td>
-                    <td className="px-1 py-1 border border-border text-xs text-center text-accent-amber font-bold">{totAuto || "—"}</td>
-                    <td className="px-1 py-1 border border-border text-xs text-center text-accent-green font-bold">{totDisp || "—"}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          </div>
-
-          {/* ── Row 2: Relación 33 + Observaciones + Pendientes ── */}
-          <div className="overflow-x-auto">
-          <div className="grid grid-cols-1 md:grid-cols-[440px_1fr] gap-5 min-w-[900px]">
-
-            {/* Table D: Relación 33/0,4 kV */}
-            <div>
-              <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
-                Relación 33/0,4 KV
-              </p>
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    <TH rs={2}>Pot. KVA</TH>
-                    <TH cs={2}>Trafos Nuevos</TH>
-                    <TH cs={2}>Trafos Reparados</TH>
-                  </tr>
-                  <tr>
-                    <TH>T</TH><TH>M</TH>
-                    <TH>T</TH><TH>M</TH>
-                  </tr>
-                </thead>
-                <tbody>
-                  {POT_33.map(p => {
-                    const r = rel33[p];
-                    return (
-                      <tr key={p} className="hover:bg-secondary/40 transition-colors">
-                        <TD c="font-semibold text-foreground">{p}</TD>
-                        <TD><NI val={r.tN} onChange={v => setR(p, "tN", v)} /></TD>
-                        <TD><NI val={r.mN} onChange={v => setR(p, "mN", v)} /></TD>
-                        <TD><NI val={r.tR} onChange={v => setR(p, "tR", v)} /></TD>
-                        <TD><NI val={r.mR} onChange={v => setR(p, "mR", v)} /></TD>
-                      </tr>
-                    );
-                  })}
-                  <tr className="bg-panel-header font-bold">
-                    <td className="px-1 py-1 border border-border text-[9px] font-bold text-foreground text-center">TOTAL</td>
-                    <td colSpan={2} className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{tot33N || "—"}</td>
-                    <td colSpan={2} className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{tot33R || "—"}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* Observaciones + Pendientes */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
-                  Observaciones (13,2/0,4 KV)
-                </p>
-                <textarea
-                  value={obs}
-                  onChange={e => setObs(e.target.value)}
-                  placeholder="Ingrese observaciones…"
-                  className="flex-1 min-h-[120px] rounded-lg bg-panel-input border border-border px-2.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent resize-none transition-colors"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
-                  Pendientes de Entregas
-                </p>
-                <textarea
-                  value={pend}
-                  onChange={e => setPend(e.target.value)}
-                  placeholder="Ingrese pendientes…"
-                  className="flex-1 min-h-[120px] rounded-lg bg-panel-input border border-border px-2.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent resize-none transition-colors"
-                />
-              </div>
-            </div>
-          </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="border-t border-border px-5 py-3 flex items-center justify-between bg-secondary/40">
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <span>Total: <strong className="text-accent-green">{totGeneral}</strong></span>
-            <span>Autorizados: <strong className="text-accent-amber">{totAuto}</strong></span>
-            <span>Disponibles: <strong className="text-accent-green">{totDisp}</strong></span>
-            <span className="flex items-center gap-1.5">
-              Fecha:
+        {/* Header */}
+        <div className="flex items-center justify-between gap-4 flex-wrap px-5 py-4 border-b border-border">
+          <div className="min-w-0">
+            <p className="text-[13px] font-bold tracking-wide text-foreground">
+              RESERVA DE TRANSFORMADORES DE DISTRIBUCIÓN{" "}
+              <span className="text-muted-foreground font-medium">(13,2/0,4 — 33/0,4 KV)</span>
+            </p>
+            <div className="text-[10.5px] text-muted-foreground mt-1 flex items-center gap-1.5 flex-wrap">
+              <span>ÁREA TÉCNICA — DPTO. TRANSFORMADORES —</span>
               <input
                 type="date"
                 value={fecha}
-                onChange={e => setFecha(e.target.value)}
-                className="bg-panel-input border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:outline-none focus:border-accent"
+                onChange={e => { setFecha(e.target.value); setDirty(true); }}
+                className="bg-panel-input border border-border rounded px-1.5 py-0.5 text-[10.5px] text-foreground focus:outline-none focus:border-accent"
               />
-            </span>
+              <span>—</span>
+              <select
+                value={deposito}
+                onChange={e => { setDeposito(e.target.value); setDirty(true); }}
+                className="bg-panel-input border border-border rounded px-1.5 py-0.5 text-[10.5px] text-foreground focus:outline-none focus:border-accent"
+              >
+                {ZONAS.map(z => <option key={z} value={z}>{z}</option>)}
+              </select>
+              <span>· TIPO: RURAL</span>
+            </div>
           </div>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-colors"
-          >
-            {saving
-              ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</>
-              : <><CheckCircle2 className="w-4 h-4" /> Guardar planilla</>
+
+          <div className="flex items-center gap-4 shrink-0">
+            <label className="flex items-center gap-2 text-[11.5px] text-muted-foreground cursor-pointer select-none">
+              <Switch
+                checked={hideZeros}
+                onCheckedChange={setHideZeros}
+                className="data-[state=checked]:bg-accent"
+              />
+              Ocultar filas en 0
+              {hideZeros && <span className="text-[10px] text-muted-foreground/60">({hiddenCount} ocultas)</span>}
+            </label>
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={analyzing}
+              className="flex items-center gap-1.5 px-3.5 py-[7px] rounded-[7px] bg-accent/10 border border-accent/40 text-accent-green text-[11.5px] font-semibold hover:bg-accent/20 disabled:opacity-50 transition-colors"
+            >
+              <Upload className="w-3.5 h-3.5" /> Importar Excel
+            </button>
+          </div>
+        </div>
+        <input ref={fileRef} type="file" accept=".xlsx,.xls,.pdf" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleFileChange(f); }} />
+
+        {/* Archivo cargado (flujo de importación existente) */}
+        {archivo && (
+          <div className="flex items-center gap-3 px-5 py-2.5 border-b border-border bg-secondary/40">
+            {analyzing
+              ? <Loader2 className="w-4 h-4 text-accent shrink-0 animate-spin" />
+              : <FileText className="w-4 h-4 text-accent shrink-0" />
             }
-          </button>
+            <span className="flex-1 text-xs text-foreground truncate">{archivo.name}</span>
+            {analyzing
+              ? <span className="text-xs text-accent whitespace-nowrap">Procesando…</span>
+              : <>
+                  <button
+                    onClick={() => analyzeFile(archivo)}
+                    className="flex items-center gap-1.5 text-xs text-accent hover:underline whitespace-nowrap"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" /> Procesar de nuevo
+                  </button>
+                  <button onClick={() => { setArchivo(null); if (fileRef.current) fileRef.current.value = ""; }}
+                    className="ml-1 text-muted-foreground hover:text-foreground transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </>
+            }
+          </div>
+        )}
+
+        {/* Contenido con scroll horizontal en pantallas chicas */}
+        <div className="overflow-x-auto">
+        <div className="min-w-[1080px]">
+
+        {/* Encabezado de grupos */}
+        <div className="grid px-5 mt-4" style={{ gridTemplateColumns: GRID_COLS }}>
+          <div />
+          <div className={cn(groupHeaderCls, "text-muted-foreground border-foreground/15")} style={{ gridColumn: "2/6" }}>
+            Nuevos y Rep. por Terceros
+          </div>
+          <div />
+          <div className={cn(groupHeaderCls, "text-muted-foreground border-foreground/15")} style={{ gridColumn: "7/11" }}>
+            Reparados por Taller
+          </div>
+          <div />
+          <div className={cn(groupHeaderCls, "text-accent-green border-accent/40")} style={{ gridColumn: "12/15" }}>
+            Totales
+          </div>
+        </div>
+
+        {/* Encabezado de columnas */}
+        <div className="grid px-5 pt-2 pb-1" style={{ gridTemplateColumns: GRID_COLS }}>
+          <div className={cn(colHeaderCls, "text-left")}>Pot. KVA</div>
+          <div className={colHeaderCls}>T</div>
+          <div className={colHeaderCls}>M</div>
+          <div className={colHeaderCls}>C/Tanque</div>
+          <div className={colHeaderCls}>Total</div>
+          <div />
+          <div className={colHeaderCls}>T</div>
+          <div className={colHeaderCls}>M</div>
+          <div className={colHeaderCls}>C/Tanque</div>
+          <div className={colHeaderCls}>Total</div>
+          <div />
+          <div className={colHeaderCls}>Trafos</div>
+          <div className={colHeaderCls}>Aut. p/Retiro</div>
+          <div className={colHeaderCls}>Disponibles</div>
+        </div>
+
+        {/* Filas de datos */}
+        {visibleRows.length === 0 && (
+          <div className="px-5 py-8 text-center text-xs text-muted-foreground border-t border-hairline">
+            Todas las filas están en 0 — desactivá &quot;Ocultar filas en 0&quot; para editarlas o importá un Excel.
+          </div>
+        )}
+        {visibleRows.map(p => {
+          const r3     = terceros[p];
+          const ta     = taller[p];
+          const terc   = sum(r3);
+          const tall   = sum(ta);
+          const trafos = terc + tall;
+          const aut    = autorizados[p];
+          const disp   = Math.max(0, trafos - aut);
+
+          return (
+            <div
+              key={p}
+              className={cn("grid items-center px-5 py-[3px] border-t border-hairline", disp > 0 && "bg-accent/5")}
+              style={{ gridTemplateColumns: GRID_COLS }}
+            >
+              <div className="text-xs font-bold text-foreground">{p}</div>
+
+              <div className="px-1.5 py-[3px]"><EInput val={r3.t}  onChange={v => setT(p, "t",  v)} /></div>
+              <div className="px-1.5 py-[3px]"><EInput val={r3.m}  onChange={v => setT(p, "m",  v)} /></div>
+              <div className="px-1.5 py-[3px]"><EInput val={r3.ct} onChange={v => setT(p, "ct", v)} /></div>
+              <div className="text-center text-xs text-muted-foreground">{terc || "–"}</div>
+              <div />
+
+              <div className="px-1.5 py-[3px]"><EInput val={ta.t}  onChange={v => setTANum(p, "t",  v)} /></div>
+              <div className="px-1.5 py-[3px]"><EInput val={ta.m}  onChange={v => setTANum(p, "m",  v)} /></div>
+              <div className="px-1.5 py-[3px]"><EInput val={ta.ct} onChange={v => setTANum(p, "ct", v)} /></div>
+              <div className="text-center text-xs text-muted-foreground">{tall || "–"}</div>
+              <div />
+
+              <div className="text-center text-[12.5px] font-extrabold text-foreground">{trafos || "–"}</div>
+              <div className="px-1.5 py-[3px]">
+                <EInput val={aut} onChange={v => setAuto(p, v)} valueClass={aut > 0 ? "text-accent-amber" : "text-muted-foreground/60"} />
+              </div>
+              <div className="flex justify-center">
+                <span className={cn(
+                  "min-w-[34px] text-center text-xs font-extrabold px-2 py-1 rounded-md",
+                  disp > 0 ? "bg-accent/15 text-accent-green" : "bg-secondary/40 text-muted-foreground/50"
+                )}>
+                  {disp || "–"}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* ── Relación 33 + Observaciones + Pendientes ── */}
+        <div className="grid grid-cols-[440px_1fr] gap-5 px-5 pt-6 pb-4 border-t border-hairline mt-3">
+
+          {/* Relación 33/0,4 kV */}
+          <div>
+            <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
+              Relación 33/0,4 KV
+            </p>
+            <table className="w-full border-collapse">
+              <thead>
+                <tr>
+                  <TH rs={2}>Pot. KVA</TH>
+                  <TH cs={2}>Trafos Nuevos</TH>
+                  <TH cs={2}>Trafos Reparados</TH>
+                </tr>
+                <tr>
+                  <TH>T</TH><TH>M</TH>
+                  <TH>T</TH><TH>M</TH>
+                </tr>
+              </thead>
+              <tbody>
+                {POT_33.map(p => {
+                  const r = rel33[p];
+                  return (
+                    <tr key={p} className="hover:bg-secondary/40 transition-colors">
+                      <TD c="font-semibold text-foreground">{p}</TD>
+                      <TD><EInput val={r.tN} onChange={v => setR(p, "tN", v)} /></TD>
+                      <TD><EInput val={r.mN} onChange={v => setR(p, "mN", v)} /></TD>
+                      <TD><EInput val={r.tR} onChange={v => setR(p, "tR", v)} /></TD>
+                      <TD><EInput val={r.mR} onChange={v => setR(p, "mR", v)} /></TD>
+                    </tr>
+                  );
+                })}
+                <tr className="bg-panel-header font-bold">
+                  <td className="px-1 py-1 border border-border text-[9px] font-bold text-foreground text-center">TOTAL</td>
+                  <td colSpan={2} className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{tot33N || "—"}</td>
+                  <td colSpan={2} className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{tot33R || "—"}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Observaciones + Pendientes */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                Observaciones (13,2/0,4 KV)
+              </p>
+              <textarea
+                value={obs}
+                onChange={e => { setObs(e.target.value); setDirty(true); }}
+                placeholder="Ingrese observaciones…"
+                className="flex-1 min-h-[120px] rounded-lg bg-panel-input border border-border px-2.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent resize-none transition-colors"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                Pendientes de Entregas
+              </p>
+              <textarea
+                value={pend}
+                onChange={e => { setPend(e.target.value); setDirty(true); }}
+                placeholder="Ingrese pendientes…"
+                className="flex-1 min-h-[120px] rounded-lg bg-panel-input border border-border px-2.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent resize-none transition-colors"
+              />
+            </div>
+          </div>
+        </div>
+
+        </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-t border-border">
+          <div className="flex items-center gap-[22px] text-xs text-muted-foreground">
+            <span>Total: <strong className="text-foreground">{totGeneral}</strong></span>
+            <span>Autorizados: <strong className="text-accent-amber">{totAuto}</strong></span>
+            <span>Disponibles: <strong className="text-accent-green">{totDisp}</strong></span>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={handleClear}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-[7px] border border-destructive/40 text-accent-red text-[11.5px] font-semibold hover:bg-destructive/10 transition-colors"
+            >
+              <Eraser className="w-3.5 h-3.5" /> Limpiar
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !dirty}
+              className="flex items-center gap-2 px-[18px] py-2 rounded-[7px] bg-accent text-accent-foreground text-[11.5px] font-bold hover:bg-accent/90 disabled:opacity-50 transition-colors"
+            >
+              {saving
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando…</>
+                : <><CheckCircle2 className="w-3.5 h-3.5" /> Guardar cambios</>
+              }
+            </button>
+          </div>
         </div>
       </div>
 

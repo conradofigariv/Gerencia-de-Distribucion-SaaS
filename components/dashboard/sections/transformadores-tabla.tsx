@@ -4,8 +4,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, ChevronDown, Trash2, Search, X, CheckCircle2 } from "lucide-react";
+import { Loader2, RefreshCw, ChevronRight, Trash2, Search, X, CheckCircle2 } from "lucide-react";
 import { SearchInput } from "@/components/ui/floating-input";
+import { cn } from "@/lib/utils";
 
 const POT_13 = [5, 10, 16, 25, 50, 63, 80, 100, 125, 160, 200, 250, 315, 500, 630, 800, 1000];
 const REL33_ROWS = [25, 63, 160, 315, 500, 630];
@@ -65,6 +66,8 @@ function TotalRow({ label, span, values }: { label: string; span?: number; value
   );
 }
 
+type SortKey = "fecha" | "total" | "disp";
+
 export function TransformadoresTablaSection() {
   const [rows, setRows] = useState<PlanillaRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,6 +75,8 @@ export function TransformadoresTablaSection() {
   const [filterYear, setFilterYear] = useState("");
   const [filterMonth, setFilterMonth] = useState("");
   const [openId, setOpenId] = useState<number | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("fecha");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -141,9 +146,31 @@ export function TransformadoresTablaSection() {
     const [year, month] = r.fecha.split("-");
     if (filterYear  && year  !== filterYear)  return false;
     if (filterMonth && month !== filterMonth) return false;
-    if (search      && !r.fecha.includes(search)) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const zona = (r.datos.deposito ?? "").toLowerCase();
+      if (!r.fecha.includes(search) && !zona.includes(q)) return false;
+    }
     return true;
   });
+
+  // Filas enriquecidas con totales derivados + ordenamiento por columna
+  const enriched = filtered.map(r => ({ r, totals: computeTotals(r) }));
+  enriched.sort((a, b) => {
+    let cmp = 0;
+    if (sortKey === "fecha") cmp = a.r.fecha.localeCompare(b.r.fecha);
+    if (sortKey === "total") cmp = a.totals.totGeneral - b.totals.totGeneral;
+    if (sortKey === "disp")  cmp = a.totals.totDisp - b.totals.totDisp;
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  // La fecha más reciente (entre las visibles) se resalta en la tabla
+  const latestFecha = filtered.reduce((m, r) => (r.fecha > m ? r.fecha : m), "");
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir(d => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("desc"); }
+  };
 
   const openPlanilla = rows.find(r => r.id === openId) ?? null;
 
@@ -183,7 +210,7 @@ export function TransformadoresTablaSection() {
         <SearchInput
           value={search}
           onChange={setSearch}
-          placeholder="Buscar fecha exacta (ej: 2026-04-20)..."
+          placeholder="Buscar fecha o zona…"
           style={{ flex: 1, minWidth: 200 }}
         />
         {(filterYear || filterMonth || search) && (
@@ -203,50 +230,82 @@ export function TransformadoresTablaSection() {
         </button>
       </div>
 
-      {filtered.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground bg-card/30 rounded-lg">
-          {rows.length === 0 ? "No hay planillas guardadas" : "No hay resultados para este filtro"}
+      {/* ── Historial: tabla densa (una fila por informe) ── */}
+      <div className="bg-secondary/30 border border-border rounded-[10px] shadow-sm overflow-hidden">
+        <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-border">
+          <p className="text-[13px] font-bold text-foreground">
+            Informes de Reservas{" "}
+            <span className="text-[11px] font-medium text-muted-foreground">· {filtered.length} informe{filtered.length !== 1 ? "s" : ""}</span>
+          </p>
         </div>
-      )}
 
-      {filtered.map((planilla) => {
-        const totals = computeTotals(planilla);
-
-        return (
-          <div key={planilla.id} className="bg-secondary/40 rounded-xl shadow-sm border border-border p-6 hover:bg-secondary transition-colors">
-            <div className="flex items-center justify-between">
-              <button
-                onClick={() => setOpenId(planilla.id)}
-                className="flex-1 text-left hover:opacity-80 transition-opacity"
-              >
-                <h2 className="text-xl font-bold text-foreground">
-                  Informe de Reservas — {planilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
-                  {planilla.datos.deposito && <span className="text-muted-foreground font-normal"> — {planilla.datos.deposito}</span>}
-                </h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  <span className="font-semibold text-accent-green">{totals.totGeneral}</span> total
-                  {" | "}
-                  <span className="font-semibold text-green-400">{totals.totDisp}</span> disponibles
-                  {" | "}
-                  <span className="font-semibold text-cyan-400">{totals.totTerceros}</span> terceros
-                  {" | "}
-                  <span className="font-semibold text-amber-400">{totals.totTaller}</span> taller
-                </p>
-              </button>
-              <div className="flex items-center gap-2 ml-4">
-                <button
-                  onClick={() => deleteRecord(planilla.id)}
-                  className="p-2 rounded-lg text-red-400 hover:bg-red-500/20 transition-colors"
-                  title="Eliminar informe"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
-                <ChevronDown className="w-6 h-6 text-muted-foreground -rotate-90 cursor-pointer" onClick={() => setOpenId(planilla.id)} />
-              </div>
-            </div>
+        {filtered.length === 0 ? (
+          <div className="text-center py-12 text-sm text-muted-foreground">
+            {rows.length === 0 ? "No hay planillas guardadas" : "No hay resultados para este filtro"}
           </div>
-        );
-      })}
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr>
+                  <th className="px-5 py-2.5 text-left">
+                    <button onClick={() => toggleSort("fecha")} className="text-[9px] font-bold tracking-[.06em] uppercase text-muted-foreground hover:text-foreground transition-colors">
+                      Fecha {sortKey === "fecha" && (sortDir === "desc" ? "↓" : "↑")}
+                    </button>
+                  </th>
+                  <th className="px-3 py-2.5 text-left text-[9px] font-bold tracking-[.06em] uppercase text-muted-foreground">Zona</th>
+                  <th className="px-3 py-2.5 text-right">
+                    <button onClick={() => toggleSort("total")} className="text-[9px] font-bold tracking-[.06em] uppercase text-muted-foreground hover:text-foreground transition-colors">
+                      Total {sortKey === "total" && (sortDir === "desc" ? "↓" : "↑")}
+                    </button>
+                  </th>
+                  <th className="px-3 py-2.5 text-right">
+                    <button onClick={() => toggleSort("disp")} className="text-[9px] font-bold tracking-[.06em] uppercase text-muted-foreground hover:text-foreground transition-colors">
+                      Disponibles {sortKey === "disp" && (sortDir === "desc" ? "↓" : "↑")}
+                    </button>
+                  </th>
+                  <th className="px-3 py-2.5 text-right text-[9px] font-bold tracking-[.06em] uppercase text-muted-foreground">Terceros</th>
+                  <th className="px-3 py-2.5 text-right text-[9px] font-bold tracking-[.06em] uppercase text-muted-foreground">Taller</th>
+                  <th className="w-[70px] px-5 py-2.5" />
+                </tr>
+              </thead>
+              <tbody>
+                {enriched.map(({ r, totals }) => (
+                  <tr
+                    key={r.id}
+                    onClick={() => setOpenId(r.id)}
+                    className={cn(
+                      "group border-t border-hairline cursor-pointer hover:bg-secondary/40 transition-colors",
+                      r.fecha === latestFecha && "bg-accent/5"
+                    )}
+                  >
+                    <td className="px-5 py-[11px] font-bold text-foreground whitespace-nowrap">
+                      {r.fecha.split("-").map((v, i) => i === 0 ? v.slice(2) : v).reverse().join("/")}
+                    </td>
+                    <td className="px-3 py-[11px] text-foreground/70">{r.datos.deposito ?? "—"}</td>
+                    <td className="px-3 py-[11px] text-right font-extrabold text-foreground">{totals.totGeneral}</td>
+                    <td className="px-3 py-[11px] text-right font-extrabold text-accent-green">{totals.totDisp}</td>
+                    <td className="px-3 py-[11px] text-right text-muted-foreground">{totals.totTerceros}</td>
+                    <td className="px-3 py-[11px] text-right text-muted-foreground">{totals.totTaller}</td>
+                    <td className="px-5 py-[11px]">
+                      <div className="flex items-center justify-end gap-2.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={e => { e.stopPropagation(); deleteRecord(r.id); }}
+                          className="text-accent-red hover:scale-110 transition-transform"
+                          title="Eliminar informe"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* ── Modal de informe (pantalla completa, fondo difuminado, mismo formato que Carga de datos) ── */}
       {openPlanilla && typeof document !== "undefined" && createPortal(
