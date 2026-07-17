@@ -21,7 +21,6 @@ import { getFamilyRowsCompat } from "@/lib/familias";
 import { toast } from "sonner";
 
 type Tab            = "resumen" | "cargar";
-type ArticuloFiltro = "nro" | "nombre";
 type SortDir        = "asc" | "desc";
 
 // Caché de sesión del catálogo maestro (para que la 2da carga sea instantánea)
@@ -429,7 +428,6 @@ export function StockZonaSection() {
   const [filterFamilia, setFilterFamilia]   = useState("");
   const [filterTipo, setFilterTipo]         = useState<ArticuloTipo>("");
   const [filterSearch, setFilterSearch]     = useState("");
-  const [articuloFiltro, setArticuloFiltro] = useState<ArticuloFiltro>("nro");
   const [sortCol, setSortCol]               = useState("articulo");
   const [sortDir, setSortDir]               = useState<SortDir>("asc");
   const [selectedRow, setSelectedRow]       = useState<string | null>(null);
@@ -680,15 +678,13 @@ export function StockZonaSection() {
     const extra: PivotRow[] = [];
     for (const [articulo, info] of matriculasInfo) {
       if (pivotMap.has(articulo)) continue;
-      const match = articuloFiltro === "nro"
-        ? articulo.toLowerCase().includes(lo)
-        : (info.descripcion ?? "").toLowerCase().includes(lo);
+      const match = articulo.toLowerCase().includes(lo) || (info.descripcion ?? "").toLowerCase().includes(lo);
       if (match) {
         extra.push({ articulo, descArticulo: info.descripcion ?? "", udmPrimaria: info.udm ?? "", total: 0, byZona: {} });
       }
     }
     return extra;
-  }, [filterSearch, articuloFiltro, matriculasInfo, pivotMap]);
+  }, [filterSearch, matriculasInfo, pivotMap]);
 
   // Filas que cumplen los filtros (búsqueda / familia / tipo). NO se filtra por
   // zona: elegir zonas solo limita las COLUMNAS, no las filas.
@@ -697,11 +693,9 @@ export function StockZonaSection() {
       const familiaOk    = !filterFamilia            || familiasOf(r.articulo).includes(filterFamilia);
       const tipoOk       = !filterTipo               || tipoOf(r.articulo) === filterTipo;
       const lo           = filterSearch.toLowerCase();
-      const searchOk     = !filterSearch || (
-        articuloFiltro === "nro"
-          ? r.articulo.toLowerCase().includes(lo)
-          : r.descArticulo.toLowerCase().includes(lo)
-      );
+      const searchOk     = !filterSearch
+        || r.articulo.toLowerCase().includes(lo)
+        || r.descArticulo.toLowerCase().includes(lo);
       return familiaOk && tipoOk && searchOk;
     })
     .sort((a, b) => {
@@ -723,7 +717,7 @@ export function StockZonaSection() {
       const va = a.byZona[sortCol] ?? 0;
       const vb = b.byZona[sortCol] ?? 0;
       return sortDir === "asc" ? va - vb : vb - va;
-    }), [pivotMap, searchExtraRows, familiasOf, tipoOf, filterFamilia, filterTipo, filterSearch, articuloFiltro, sortCol, sortDir]);
+    }), [pivotMap, searchExtraRows, familiasOf, tipoOf, filterFamilia, filterTipo, filterSearch, sortCol, sortDir]);
 
   // Conjunto de matrículas fijadas (para estilo y para no duplicarlas).
   const pinnedSet = useMemo(() => new Set(pinnedArticulos), [pinnedArticulos]);
@@ -1013,33 +1007,11 @@ export function StockZonaSection() {
                   clearable
                 />
 
-                {/* Search mode toggle */}
-                <div className="inline-flex p-[3px] rounded-[9px] bg-secondary border border-border/60">
-                  {([
-                    { id: "nro"    as ArticuloFiltro, label: "Artículo Nro"    },
-                    { id: "nombre" as ArticuloFiltro, label: "Artículo Nombre" },
-                  ]).map(m => (
-                    <button
-                      key={m.id}
-                      onClick={() => { setArticuloFiltro(m.id); setFilterSearch(""); }}
-                      className="px-3 py-1 rounded-[7px] text-[12.5px] font-medium transition-colors"
-                      style={{
-                        background: articuloFiltro === m.id ? "#8B5CF6" : "transparent",
-                        color: articuloFiltro === m.id ? "#fff" : "hsl(var(--muted-foreground))",
-                        border: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Search input */}
+                {/* Search input — busca por número o por nombre a la vez */}
                 <SearchInput
                   value={filterSearch}
                   onChange={setFilterSearch}
-                  placeholder={articuloFiltro === "nro" ? "Buscar por número…" : "Buscar por nombre…"}
+                  placeholder="Buscar por número o nombre…"
                   style={{ flex: 1, minWidth: 180 }}
                 />
 
