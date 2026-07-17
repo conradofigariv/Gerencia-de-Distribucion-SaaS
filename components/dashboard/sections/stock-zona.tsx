@@ -669,9 +669,30 @@ export function StockZonaSection() {
     return m;
   }, [uploads, families, matriculasInfo]);
 
+  // Cuando hay una búsqueda activa, incluir también las matrículas del catálogo
+  // maestro que coincidan pero NO estén en el pivot (materiales sin stock y sin
+  // familia). Aparecen con Total 0 en todas las zonas: así una matrícula cargada
+  // en el sistema pero sin stock se ve como "0", en vez de parecer inexistente.
+  // Sin búsqueda no se agregan (evita volcar todo el catálogo en 0).
+  const searchExtraRows = useMemo(() => {
+    if (!filterSearch) return [] as PivotRow[];
+    const lo = filterSearch.toLowerCase();
+    const extra: PivotRow[] = [];
+    for (const [articulo, info] of matriculasInfo) {
+      if (pivotMap.has(articulo)) continue;
+      const match = articuloFiltro === "nro"
+        ? articulo.toLowerCase().includes(lo)
+        : (info.descripcion ?? "").toLowerCase().includes(lo);
+      if (match) {
+        extra.push({ articulo, descArticulo: info.descripcion ?? "", udmPrimaria: info.udm ?? "", total: 0, byZona: {} });
+      }
+    }
+    return extra;
+  }, [filterSearch, articuloFiltro, matriculasInfo, pivotMap]);
+
   // Filas que cumplen los filtros (búsqueda / familia / tipo). NO se filtra por
   // zona: elegir zonas solo limita las COLUMNAS, no las filas.
-  const matchedRows = useMemo(() => Array.from(pivotMap.values())
+  const matchedRows = useMemo(() => [...pivotMap.values(), ...searchExtraRows]
     .filter(r => {
       const familiaOk    = !filterFamilia            || familiasOf(r.articulo).includes(filterFamilia);
       const tipoOk       = !filterTipo               || tipoOf(r.articulo) === filterTipo;
@@ -702,7 +723,7 @@ export function StockZonaSection() {
       const va = a.byZona[sortCol] ?? 0;
       const vb = b.byZona[sortCol] ?? 0;
       return sortDir === "asc" ? va - vb : vb - va;
-    }), [pivotMap, familiasOf, tipoOf, filterFamilia, filterTipo, filterSearch, articuloFiltro, sortCol, sortDir]);
+    }), [pivotMap, searchExtraRows, familiasOf, tipoOf, filterFamilia, filterTipo, filterSearch, articuloFiltro, sortCol, sortDir]);
 
   // Conjunto de matrículas fijadas (para estilo y para no duplicarlas).
   const pinnedSet = useMemo(() => new Set(pinnedArticulos), [pinnedArticulos]);
@@ -711,13 +732,20 @@ export function StockZonaSection() {
   // en orden de fijado, y debajo el resto que cumple los filtros.
   const pivotRows = useMemo(() => {
     const pinned = pinnedArticulos
-      .map(a => pivotMap.get(a))
+      .map(a => {
+        const inPivot = pivotMap.get(a);
+        if (inPivot) return inPivot;
+        // Fijada una matrícula sin stock (solo en el catálogo): fila sintética en 0.
+        const info = matriculasInfo.get(a);
+        if (info) return { articulo: a, descArticulo: info.descripcion ?? "", udmPrimaria: info.udm ?? "", total: 0, byZona: {} } as PivotRow;
+        return undefined;
+      })
       .filter((r): r is PivotRow => !!r);
     const rest = matchedRows.filter(r => !pinnedSet.has(r.articulo));
     return [...pinned, ...rest];
-  }, [pinnedArticulos, pivotMap, matchedRows, pinnedSet]);
+  }, [pinnedArticulos, pivotMap, matriculasInfo, matchedRows, pinnedSet]);
 
-  const pinnedCount = pinnedArticulos.filter(a => pivotMap.has(a)).length;
+  const pinnedCount = pinnedArticulos.filter(a => pivotMap.has(a) || matriculasInfo.has(a)).length;
 
   // Columnas de zona visibles: las elegidas (o todas) y, si "solo con stock"
   // está activo, solo las que tienen stock en alguna fila visible.
