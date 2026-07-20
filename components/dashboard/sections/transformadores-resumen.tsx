@@ -11,7 +11,7 @@ import {
 import {
   CheckCircle2, Check, RefreshCw, Loader2, ChevronDown,
   Bell, BellRing, Plus, Trash2, X, Package, TrendingUp, TrendingDown, Clock,
-  LayoutGrid, GripVertical, GripHorizontal,
+  GripVertical, GripHorizontal,
 } from "lucide-react";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -1214,11 +1214,7 @@ export function TransformadoresResumenSection() {
             )}
           </div>
         </div>
-        <p className="ml-[42px] mb-7 text-[14.5px]" style={{ color: "oklch(0.58 0 0)" }}>
-          Filtrá por año, mes, potencia, relación, fases o zona para ver los indicadores actuales.
-        </p>
-
-        <div className="space-y-2">
+        <div className="mt-5 space-y-2">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           <MultiSelect
             placeholder="Año"
@@ -1300,11 +1296,8 @@ export function TransformadoresResumenSection() {
             Stock de Reserva
           </h2>
         </div>
-        <p className="ml-[42px] mb-7 text-[14.5px]" style={{ color: "oklch(0.58 0 0)" }}>
-          Indicadores actuales de stock de transformadores en reserva.
-        </p>
 
-        <div className="space-y-4">
+        <div className="mt-5 space-y-4">
 
         {/* 4 KPI cards — drag & drop reordering */}
         <DndContext sensors={kpiSensors} collisionDetection={closestCenter} onDragEnd={handleKpiDragEnd}>
@@ -1729,38 +1722,15 @@ export function TransformadoresResumenSection() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-start gap-3">
-          <div
-            className="grid place-items-center mt-0.5"
-            style={{
-              width: 36, height: 36, borderRadius: 9,
-              background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
-              border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
-              color: "#86efac",
-            }}
-          >
-            <LayoutGrid className="w-[18px] h-[18px]" strokeWidth={2} />
-          </div>
-          <div>
-            <h2 className="text-[22px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.4, margin: 0 }}>
-              Resumen de Transformadores
-            </h2>
-            <p className="mt-1 text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
-              Resumen del inventario de transformadores
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 mt-0.5">
-          <button
-            onClick={fetchData}
-            disabled={loading}
-            className="flex items-center justify-center w-8 h-8 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors disabled:opacity-40"
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-          </button>
-        </div>
+      {/* Header — solo el control de refresco (el título ya está en la barra superior) */}
+      <div className="flex items-center justify-end">
+        <button
+          onClick={fetchData}
+          disabled={loading}
+          className="flex items-center justify-center w-8 h-8 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors disabled:opacity-40"
+        >
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+        </button>
       </div>
 
       {/* ── Bloques reordenables (filtros, KPIs y gráficos) ── */}
