@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { FileText, X, Loader2, CheckCircle2, Sparkles, BellRing, Upload, Eraser } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { markUpdated, fetchReminders, upsertConfig } from "@/lib/reminders";
 
@@ -147,7 +146,6 @@ export function TransformadoresCargaSection() {
   const [rel33, setRel33]           = useState<Record<number, Rel33Row>>(init33);
   const [obs, setObs]               = useState("");
   const [pend, setPend]             = useState("");
-  const [hideZeros, setHideZeros]   = useState(true);
   const [dirty, setDirty]           = useState(false);
   const [saving, setSaving]         = useState(false);
   const [analyzing, setAnalyzing]   = useState(false);
@@ -287,9 +285,7 @@ export function TransformadoresCargaSection() {
   const tot33N      = POT_33.reduce((s, p) => s + rel33[p].tN + rel33[p].mN, 0);
   const tot33R      = POT_33.reduce((s, p) => s + rel33[p].tR + rel33[p].mR, 0);
 
-  // Toggle "Ocultar filas en 0": oculta filas sin trafos ni autorizados
-  const visibleRows = hideZeros ? POT_13.filter(p => trafosOf(p) > 0 || autorizados[p] > 0) : POT_13;
-  const hiddenCount = POT_13.length - visibleRows.length;
+  const visibleRows = POT_13;
 
   // ── Clear form ──────────────────────────────────────────────────────────────
 
@@ -455,15 +451,6 @@ export function TransformadoresCargaSection() {
           </div>
 
           <div className="flex items-center gap-4 shrink-0">
-            <label className="flex items-center gap-2 text-[11.5px] text-muted-foreground cursor-pointer select-none">
-              <Switch
-                checked={hideZeros}
-                onCheckedChange={setHideZeros}
-                className="data-[state=checked]:bg-accent"
-              />
-              Ocultar filas en 0
-              {hideZeros && <span className="text-[10px] text-muted-foreground/60">({hiddenCount} ocultas)</span>}
-            </label>
             <button
               onClick={() => fileRef.current?.click()}
               disabled={analyzing}
@@ -541,11 +528,6 @@ export function TransformadoresCargaSection() {
         </div>
 
         {/* Filas de datos */}
-        {visibleRows.length === 0 && (
-          <div className="px-5 py-8 text-center text-xs text-muted-foreground border-t border-hairline">
-            Todas las filas están en 0 — desactivá &quot;Ocultar filas en 0&quot; para editarlas o importá un Excel.
-          </div>
-        )}
         {visibleRows.map(p => {
           const r3     = terceros[p];
           const ta     = taller[p];
