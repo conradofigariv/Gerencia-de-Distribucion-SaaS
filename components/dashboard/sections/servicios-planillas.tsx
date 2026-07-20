@@ -168,7 +168,7 @@ function PlanillaCard({
           <div className="flex flex-col items-center gap-1">
             <UploadCloud className="w-5 h-5 text-muted-foreground" />
             <p className="text-xs text-muted-foreground">
-              {hasData ? "Reemplazar" : "Subir archivo"} <span className="font-medium text-foreground">.xlsx</span>
+              {hasData ? "Cargar" : "Subir archivo"} <span className="font-medium text-foreground">.xlsx</span>
             </p>
           </div>
         )}
