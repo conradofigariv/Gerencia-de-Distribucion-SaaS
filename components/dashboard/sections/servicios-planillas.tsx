@@ -14,6 +14,9 @@ import { replaceSicSoler, upsertSicSoler, clearSicSoler, getSicSolerStatus, type
 
 // Modo de subida de la planilla de SICs: reemplazar todo o actualizar lo existente.
 type SicUploadMode = "replace" | "update";
+// MATRICULAS: "overwrite" borra todo el catálogo; "append" conserva el resto,
+// agrega las nuevas y refresca las que vengan repetidas en el archivo.
+type MatUploadMode = "append" | "overwrite";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -194,6 +197,8 @@ export function ServiciosPlanillasSection() {
 
   // Archivo de SICs pendiente de confirmar el modo de subida (abre el diálogo).
   const [sicFile, setSicFile] = useState<File | null>(null);
+  // Archivo de MATRICULAS pendiente de confirmar el modo (abre el diálogo).
+  const [matFile, setMatFile] = useState<File | null>(null);
 
   // Auth / role
   const [userId,    setUserId]    = useState<string | null>(null);
@@ -394,7 +399,7 @@ export function ServiciosPlanillasSection() {
     }
   };
 
-  const uploadMatriculas = async (file: File) => {
+  const uploadMatriculas = async (file: File, mode: MatUploadMode) => {
     setS("MATRICULAS", { uploading: true });
     try {
       const rows = await parseFile(file);
@@ -410,13 +415,33 @@ export function ServiciosPlanillasSection() {
       const dedupMap = new Map<string, typeof rawMapped[0]>();
       for (const r of rawMapped) dedupMap.set(r.articulo, r);
       const mapped = [...dedupMap.values()];
-      const { error: del } = await supabase.from("matriculas").delete().not("id", "is", null);
-      if (del) { toast.error(`Error limpiando MATRICULAS: ${del.message}`); return; }
+
+      if (mode === "overwrite") {
+        // Reemplazo total: borra todo el catálogo y reinserta.
+        const { error: del } = await supabase.from("matriculas").delete().not("id", "is", null);
+        if (del) { toast.error(`Error limpiando MATRICULAS: ${del.message}`); return; }
+      } else {
+        // Merge: borra solo las matrículas que vienen en el archivo (para
+        // refrescarlas sin duplicar) y conserva el resto del catálogo.
+        const articulos = mapped.map(r => r.articulo);
+        for (let i = 0; i < articulos.length; i += 200) {
+          const { error } = await supabase
+            .from("matriculas")
+            .delete()
+            .in("articulo", articulos.slice(i, i + 200));
+          if (error) { toast.error(`Error actualizando MATRICULAS: ${error.message}`); return; }
+        }
+      }
+
       for (let i = 0; i < mapped.length; i += BATCH) {
         const { error } = await supabase.from("matriculas").insert(mapped.slice(i, i + BATCH));
         if (error) { toast.error(`Error insertando MATRICULAS: ${error.message}`); return; }
       }
-      toast.success(`MATRICULAS: ${mapped.length.toLocaleString("es-AR")} filas guardadas`);
+      toast.success(
+        mode === "overwrite"
+          ? `MATRICULAS: ${mapped.length.toLocaleString("es-AR")} filas guardadas (catálogo reemplazado)`
+          : `MATRICULAS: ${mapped.length.toLocaleString("es-AR")} filas agregadas/actualizadas`,
+      );
       if (userId) await markUpdated("planillas-MATRICULAS", "MATRICULAS — Catálogo de materiales", userId).catch(() => {});
     } catch (e) {
       toast.error(`Error MATRICULAS: ${e instanceof Error ? e.message : "Error"}`);
@@ -438,7 +463,7 @@ export function ServiciosPlanillasSection() {
   const handleUpload = (tipo: PlanillaType, file: File) => {
     if (tipo === "OP")       uploadOP(file);
     else if (tipo === "SIC") setSicFile(file);   // abre el diálogo Sobreescribir/Actualizar
-    else                     uploadMatriculas(file);
+    else                     setMatFile(file);   // abre el diálogo Agregar/Sobrescribir
   };
 
   // Confirma el modo elegido en el diálogo y sube la planilla de SICs.
@@ -446,6 +471,13 @@ export function ServiciosPlanillasSection() {
     const file = sicFile;
     setSicFile(null);
     if (file) uploadSIC(file, mode);
+  };
+
+  // Confirma el modo elegido en el diálogo y sube la planilla de MATRICULAS.
+  const confirmMatUpload = (mode: MatUploadMode) => {
+    const file = matFile;
+    setMatFile(null);
+    if (file) uploadMatriculas(file, mode);
   };
 
   const handleClear = async (tipo: PlanillaType) => {
@@ -537,6 +569,49 @@ export function ServiciosPlanillasSection() {
               >
                 <p className="text-sm font-semibold text-foreground">Actualizar</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Actualiza las SICs que coinciden (por N° SIC + línea), agrega las nuevas y conserva el resto.</p>
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      {/* Diálogo Agregar a la base / Sobrescribir al subir la planilla de MATRICULAS */}
+      {matFile && createPortal(
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          onClick={() => setMatFile(null)}
+        >
+          <div
+            className="bg-popover border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <span className="text-sm font-semibold text-foreground">¿Cómo cargar las matrículas?</span>
+              <button
+                onClick={() => setMatFile(null)}
+                className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2.5">
+              <p className="text-xs text-muted-foreground px-0.5">
+                Archivo: <span className="text-foreground font-medium">{matFile.name}</span>
+              </p>
+              <button
+                onClick={() => confirmMatUpload("append")}
+                className="w-full text-left p-3.5 rounded-lg border border-accent/40 bg-accent/10 hover:bg-accent/15 transition-colors"
+              >
+                <p className="text-sm font-semibold text-foreground">Agregar a la base</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Conserva el catálogo actual, agrega las nuevas y actualiza las que vengan repetidas en el archivo.</p>
+              </button>
+              <button
+                onClick={() => confirmMatUpload("overwrite")}
+                className="w-full text-left p-3.5 rounded-lg border border-destructive/40 bg-destructive/10 hover:bg-destructive/15 transition-colors"
+              >
+                <p className="text-sm font-semibold text-foreground">Sobrescribir completo</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Borra todo el catálogo actual y carga solo este archivo.</p>
               </button>
             </div>
           </div>
