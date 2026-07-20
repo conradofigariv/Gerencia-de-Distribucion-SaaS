@@ -89,63 +89,45 @@ export function InformeTecnicoSection() {
     );
   }
 
-  const activeTab = TABS.find((t) => t.id === tab);
-  const ActiveIcon = activeTab?.icon ?? FileText;
+  const headerControls = (
+    <>
+      {licitaciones.length > 0 && (
+        <LicitacionSelector
+          licitaciones={licitaciones}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+        />
+      )}
+      <button
+        onClick={() => setShowHelp(true)}
+        style={{
+          height: 38, padding: "0 13px", borderRadius: 9,
+          background: "oklch(0.22 0.005 270)",
+          border: "1px solid oklch(1 0 0 / 0.08)",
+          color: "oklch(0.65 0 0)", fontSize: 13, fontWeight: 500,
+          cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7,
+          transition: "color .15s, border-color .15s",
+        }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.18)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.65 0 0)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.08)"; }}
+      >
+        <HelpCircle className="w-4 h-4" />
+        Ayuda
+      </button>
+      <BeastPrimaryButton onClick={() => setShowCreate(true)} icon={<Plus className="w-3.5 h-3.5" strokeWidth={2.4} />}>
+        Nueva licitación
+      </BeastPrimaryButton>
+    </>
+  );
 
   return (
-    <div className="space-y-6">
-      {/* Header bar: title + selector + actions */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-start gap-3">
-          <div
-            className="grid place-items-center mt-0.5"
-            style={{
-              width: 36, height: 36, borderRadius: 9,
-              background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
-              border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
-              color: "var(--accent-green)",
-            }}
-          >
-            <FileText className="w-[18px] h-[18px]" strokeWidth={2} />
-          </div>
-          <div>
-            <h2 className="text-[22px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.4, margin: 0 }}>
-              Informe Técnico
-            </h2>
-            <p className="mt-1 text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
-              Análisis de ofertas y adjudicación por renglón.
-            </p>
-          </div>
+    <div className="space-y-4">
+      {/* Sin licitación seleccionada: no hay tabs, los controles van en una fila propia */}
+      {!selected && (
+        <div className="flex items-center justify-end gap-2.5 flex-wrap">
+          {headerControls}
         </div>
-        <div className="flex items-center gap-2.5">
-          {licitaciones.length > 0 && (
-            <LicitacionSelector
-              licitaciones={licitaciones}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-            />
-          )}
-          <button
-            onClick={() => setShowHelp(true)}
-            style={{
-              height: 38, padding: "0 13px", borderRadius: 9,
-              background: "oklch(0.22 0.005 270)",
-              border: "1px solid oklch(1 0 0 / 0.08)",
-              color: "oklch(0.65 0 0)", fontSize: 13, fontWeight: 500,
-              cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7,
-              transition: "color .15s, border-color .15s",
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.18)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.65 0 0)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.08)"; }}
-          >
-            <HelpCircle className="w-4 h-4" />
-            Ayuda
-          </button>
-          <BeastPrimaryButton onClick={() => setShowCreate(true)} icon={<Plus className="w-3.5 h-3.5" strokeWidth={2.4} />}>
-            Nueva licitación
-          </BeastPrimaryButton>
-        </div>
-      </div>
+      )}
 
       {/* Empty state */}
       {licitaciones.length === 0 && (
@@ -181,7 +163,8 @@ export function InformeTecnicoSection() {
         <DirectionAwareTabs
           value={tab}
           onChange={(id) => setTab(id as WizardTab)}
-          className="mb-5"
+          contentClassName="mt-4"
+          end={headerControls}
           tabs={TABS.map((t) => {
             const Icon = t.icon;
             return {
@@ -197,33 +180,13 @@ export function InformeTecnicoSection() {
         >
           {/* Content card */}
           <div
-            className="px-4 py-6 sm:px-6 overflow-hidden"
+            className="px-4 py-5 sm:px-6 overflow-hidden"
             style={{
               background: "var(--panel)",
               border: "1px solid var(--hairline)",
               borderRadius: 14,
             }}
           >
-            <div className="flex items-center gap-3 mb-2">
-              <div
-                className="grid place-items-center"
-                style={{
-                  width: 30, height: 30, borderRadius: 8,
-                  background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
-                  border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
-                  color: "var(--accent-green)",
-                }}
-              >
-                <ActiveIcon className="w-4 h-4" strokeWidth={2} />
-              </div>
-              <h2 className="text-[20px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.3, margin: 0 }}>
-                {activeTab?.label}
-              </h2>
-            </div>
-            <p className="ml-[42px] mb-7 text-[14.5px]" style={{ color: "oklch(0.58 0 0)" }}>
-              Licitación SIC <span className="font-mono" style={{ color: "var(--accent-green)" }}>{selected.numero_sic}</span> — {selected.titulo}
-            </p>
-
             {tab === "datos" ? (
               <DatosGeneralesTab
                 licitacion={selected}

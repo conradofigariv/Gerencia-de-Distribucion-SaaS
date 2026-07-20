@@ -21,6 +21,8 @@ interface DirectionAwareTabsProps {
   rounded?: string;
   /** Clases extra para el contenedor de contenido. */
   contentClassName?: string;
+  /** Contenido extra a la derecha de la barra de pills (misma fila). */
+  end?: React.ReactNode;
 }
 
 /**
@@ -37,13 +39,13 @@ export function DirectionAwareTabs({
   className,
   rounded,
   contentClassName,
+  end,
 }: DirectionAwareTabsProps) {
   const handleClick = (id: string) => {
     if (id !== value) onChange(id);
   };
 
-  return (
-    <div className="flex flex-col w-full">
+  const bar = (
       <div
         className={cn(
           // Mobile: ocupa todo el ancho en una sola fila (sin que ningún botón baje).
@@ -84,6 +86,18 @@ export function DirectionAwareTabs({
           );
         })}
       </div>
+  );
+
+  return (
+    <div className="flex flex-col w-full">
+      {end ? (
+        <div className="flex items-center justify-between gap-x-3 gap-y-2 flex-wrap">
+          {bar}
+          <div className="flex items-center gap-2.5">{end}</div>
+        </div>
+      ) : (
+        bar
+      )}
 
       <div className={cn("w-full", contentClassName)}>
         {children}
