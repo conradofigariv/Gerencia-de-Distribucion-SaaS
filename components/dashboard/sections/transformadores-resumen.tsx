@@ -1108,6 +1108,17 @@ export function TransformadoresResumenSection() {
             </h2>
           </div>
 
+          <div className="flex items-center gap-2">
+          {/* Refresh button */}
+          <button
+            onClick={fetchData}
+            disabled={loading}
+            className="flex items-center gap-2 pl-3 pr-3.5 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200 bg-card border-border text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-40"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            <span>Actualizar</span>
+          </button>
+
           {/* Alarm button */}
           <div ref={alarmsRef} className="relative">
             <button
@@ -1212,6 +1223,7 @@ export function TransformadoresResumenSection() {
               </div>,
               document.body
             )}
+          </div>
           </div>
         </div>
         <div className="mt-5 space-y-2">
@@ -1722,17 +1734,6 @@ export function TransformadoresResumenSection() {
 
   return (
     <div className="space-y-6">
-      {/* Header — solo el control de refresco (el título ya está en la barra superior) */}
-      <div className="flex items-center justify-end">
-        <button
-          onClick={fetchData}
-          disabled={loading}
-          className="flex items-center justify-center w-8 h-8 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors disabled:opacity-40"
-        >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-        </button>
-      </div>
-
       {/* ── Bloques reordenables (filtros, KPIs y gráficos) ── */}
       <DndContext sensors={blockSensors} collisionDetection={closestCenter} onDragEnd={handleBlockDragEnd}>
         <SortableContext items={blockOrder} strategy={verticalListSortingStrategy}>
