@@ -784,16 +784,42 @@ function DatosGeneralesTab({
   );
 }
 
+function HelpHint({ text }: { text: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span
+      style={{ position: "relative", display: "inline-flex", alignItems: "center" }}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      <HelpCircle className="w-[15px] h-[15px]" style={{ color: show ? "var(--accent-green)" : "oklch(0.48 0 0)", cursor: "help", transition: "color .15s" }} />
+      {show && (
+        <span
+          role="tooltip"
+          style={{
+            position: "absolute", top: "calc(100% + 7px)", left: 0, zIndex: 60,
+            width: "max-content", maxWidth: 300,
+            padding: "9px 12px", borderRadius: 9,
+            background: "oklch(0.14 0.005 270)", border: "1px solid oklch(1 0 0 / 0.10)",
+            boxShadow: "0 10px 28px -8px oklch(0 0 0 / 0.7)",
+            fontSize: 12.5, fontWeight: 400, lineHeight: 1.5, color: "oklch(0.74 0 0)",
+            pointerEvents: "none", whiteSpace: "normal",
+          }}
+        >
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function FormSection({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
-    <section style={{ marginBottom: 28 }}>
-      <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: -0.1, color: "oklch(0.97 0 0)" }}>{title}</h3>
-      {description && (
-        <p style={{ margin: "5px 0 16px", fontSize: 13.5, color: "oklch(0.52 0 0)", lineHeight: 1.55, maxWidth: 760 }}>
-          {description}
-        </p>
-      )}
-      {!description && <div style={{ height: 14 }} />}
+    <section style={{ marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 13 }}>
+        <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: -0.1, color: "oklch(0.97 0 0)" }}>{title}</h3>
+        {description && <HelpHint text={description} />}
+      </div>
       {children}
     </section>
   );
