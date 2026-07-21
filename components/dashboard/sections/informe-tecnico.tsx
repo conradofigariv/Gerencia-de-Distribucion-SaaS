@@ -1632,10 +1632,26 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
 
   const ahorroDanger = ahorroArs !== null && ahorroArs < 0;
 
+  // Presupuesto de las adjudicaciones: suma del total (×cantidad) de cada ganador seleccionado
+  const adjQtyTotals = renglones.reduce(
+    (acc, r) => {
+      const adjId = adjMap.get(r.id);
+      if (!adjId) return acc;
+      const t = calcOfertaTotals(r, adjId);
+      return {
+        ars: acc.ars + (t.arsQty ?? 0), arsOk: acc.arsOk && t.arsQty !== null,
+        usd: acc.usd + (t.usdQty ?? 0), usdOk: acc.usdOk && t.usdQty !== null,
+        count: acc.count + 1,
+      };
+    },
+    { ars: 0, arsOk: true, usd: 0, usdOk: true, count: 0 },
+  );
+
   const kpiCards: { label: string; value: string; cur?: boolean; highlight?: boolean; danger?: boolean; wide?: boolean; color?: string }[] = [
     { label: "Presupuesto de SIC oficial", value: fmtNum(sicQtyTotals.arsOk ? sicQtyTotals.ars : null, sicQtyTotals.usdOk ? sicQtyTotals.usd : null) ?? "—", cur: true, color: "oklch(0.82 0 0)" },
     { label: "Mejor combinación de los oferentes", value: fmtNum(bestQtyTotals.arsOk ? bestQtyTotals.ars : null, bestQtyTotals.usdOk ? bestQtyTotals.usd : null) ?? "—", cur: true, color: "oklch(0.94 0 0)" },
     { label: ahorroDanger ? "Sobrecosto potencial total" : "Ahorro potencial total", value: ahorroDisplay, cur: ahorroArs !== null, highlight: !ahorroDanger, danger: ahorroDanger, color: ahorroDanger ? "var(--accent-red)" : "var(--accent-green)" },
+    { label: "Presupuesto de las adjudicaciones", value: adjQtyTotals.count > 0 ? fmtNum(adjQtyTotals.arsOk ? adjQtyTotals.ars : null, adjQtyTotals.usdOk ? adjQtyTotals.usd : null) ?? "—" : "—", cur: adjQtyTotals.count > 0, color: adjQtyTotals.count > 0 ? "var(--accent-green)" : "oklch(0.50 0 0)" },
     { label: "Oferentes", value: String(oferentes.length), wide: true, color: "oklch(0.82 0 0)" },
   ];
 
@@ -1647,36 +1663,16 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
         </div>
       )}
 
-      {/* Currency toggle */}
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-          {!canShowUSD ? (
-            <span style={{ fontSize: 10.5, color: "oklch(0.42 0 0)", fontFamily: "ui-monospace, monospace" }}>Cargá el Dólar OP para ver en USD</span>
-          ) : showUSD ? (
-            <span style={{ fontSize: 10.5, color: "oklch(0.42 0 0)", fontFamily: "ui-monospace, monospace" }}>1 USD = {fdOp!.toLocaleString("es-AR")} ARS ref.</span>
-          ) : null}
-          <div style={{ display: "flex", background: "var(--panel-input)", border: "1px solid var(--hairline)", borderRadius: 9, padding: 3, gap: 2 }}>
-            {(["ARS", "USD"] as const).map((cur) => {
-              const isActive = cur === curLabel;
-              const disabled = cur === "USD" && !canShowUSD;
-              return (
-                <div key={cur}
-                  onClick={() => !disabled && setShowUSD(cur === "USD")}
-                  style={{
-                    padding: "8px 17px", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", borderRadius: 6,
-                    cursor: disabled ? "not-allowed" : "pointer",
-                    background: isActive ? "color-mix(in oklab, var(--accent-green) 15%, transparent)" : "transparent",
-                    border: isActive ? "1px solid color-mix(in oklab, var(--accent-green) 40%, transparent)" : "1px solid transparent",
-                    color: isActive ? "var(--accent-green)" : disabled ? "oklch(0.30 0 0)" : "oklch(0.55 0 0)",
-                  }}
-                >
-                  {cur}
-                </div>
-              );
-            })}
-          </div>
+      {/* Currency hint (el cambio ARS/USD se hace clickeando los precios) */}
+      {(!canShowUSD || showUSD) && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: -12 }}>
+          <span style={{ fontSize: 10.5, color: "oklch(0.42 0 0)", fontFamily: "ui-monospace, monospace" }}>
+            {!canShowUSD
+              ? "Cargá el Dólar OP para ver en USD · clic en un precio cambia la divisa"
+              : `1 USD = ${fdOp!.toLocaleString("es-AR")} ARS ref. · clic en un precio cambia la divisa`}
+          </span>
         </div>
-      </div>
+      )}
 
       {/* KPI banner */}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
