@@ -30,9 +30,9 @@ const COLWIDTHS_KEY = "stock-zona-colwidths";
 // Zonas elegidas + matrículas fijadas + "solo zonas con stock" (persistido)
 const RESUMEN_STATE_KEY = "stock-zona-resumen-state";
 
-const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] = [
-  { id: "resumen",  label: "Resumen de stock", icon: PackageOpen, desc: "Stock consolidado por artículo y zona de depósito." },
-  { id: "cargar",   label: "Cargar datos",     icon: Download,    desc: "Importá stock pegando los datos directamente desde el sistema." },
+const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
+  { id: "resumen",  label: "Resumen de stock", icon: PackageOpen },
+  { id: "cargar",   label: "Cargar datos",     icon: Download },
 ];
 
 interface PivotRow {
@@ -837,71 +837,16 @@ export function StockZonaSection() {
 
   const cellBorder = "1px solid hsl(var(--border) / 0.35)";
 
-  const activeTab  = TABS.find(t => t.id === tab) ?? TABS[0];
-  const ActiveIcon = activeTab.icon;
-
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
-      {/* Header bar: icon + title + actions */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-start gap-3">
-          <div
-            className="grid place-items-center mt-0.5"
-            style={{
-              width: 36, height: 36, borderRadius: 9,
-              background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
-              border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
-              color: "var(--accent-green)",
-            }}
-          >
-            <PackageOpen className="w-[18px] h-[18px]" strokeWidth={2} />
-          </div>
-          <div>
-            <h2 className="text-[22px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.4, margin: 0 }}>
-              Stock por Zona
-            </h2>
-            <p className="mt-1 text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
-              {lastUpdate
-                ? <>Última actualización: <span style={{ color: "oklch(0.80 0 0)" }}>{new Date(lastUpdate).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}</span></>
-                : "Consulta y carga de stock por organización."}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 mt-0.5">
-          <button
-            onClick={() => setHelpOpen(true)}
-            title="Ayuda de Stock por Zona"
-            style={{
-              height: 32, padding: "0 12px", borderRadius: 9,
-              background: "oklch(0.22 0.005 270)",
-              border: "1px solid oklch(1 0 0 / 0.08)",
-              color: "var(--muted-foreground)", fontSize: 12.5, fontWeight: 500,
-              cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7,
-              transition: "color .15s, border-color .15s",
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.18)"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "var(--muted-foreground)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.08)"; }}
-          >
-            <HelpCircle className="w-4 h-4" />
-            Ayuda
-          </button>
-          <button
-            onClick={() => { refresh(); refreshFamilies(); refreshMatriculas(); }}
-            disabled={loading}
-            className="flex items-center justify-center w-8 h-8 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors disabled:opacity-40"
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-          </button>
-        </div>
-      </div>
-
-      {/* Tabs — Direction Aware Tabs (burbuja deslizante + contenido direccional) */}
+    <div className="space-y-4">
+      {/* Tabs — Direction Aware Tabs (burbuja deslizante + contenido direccional),
+          con Ayuda/refresh/última-actualización al costado (el título "Stock por
+          Zona" ya lo muestra el header global del dashboard, no se repite acá). */}
       <DirectionAwareTabs
         value={tab}
         onChange={(id) => setTab(id as Tab)}
-        className="mb-5"
         tabs={TABS.map((t) => {
           const Icon = t.icon;
           return {
@@ -914,36 +859,49 @@ export function StockZonaSection() {
             ),
           };
         })}
+        end={
+          <>
+            {lastUpdate && (
+              <span className="text-[12px] whitespace-nowrap hidden sm:inline" style={{ color: "oklch(0.55 0 0)" }}>
+                Actualizado <span style={{ color: "oklch(0.80 0 0)" }}>{new Date(lastUpdate).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}</span>
+              </span>
+            )}
+            <button
+              onClick={() => setHelpOpen(true)}
+              title="Ayuda de Stock por Zona"
+              style={{
+                height: 32, padding: "0 12px", borderRadius: 9,
+                background: "oklch(0.22 0.005 270)",
+                border: "1px solid oklch(1 0 0 / 0.08)",
+                color: "var(--muted-foreground)", fontSize: 12.5, fontWeight: 500,
+                cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7,
+                transition: "color .15s, border-color .15s",
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.18)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "var(--muted-foreground)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.08)"; }}
+            >
+              <HelpCircle className="w-4 h-4" />
+              Ayuda
+            </button>
+            <button
+              onClick={() => { refresh(); refreshFamilies(); refreshMatriculas(); }}
+              disabled={loading}
+              className="flex items-center justify-center w-8 h-8 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors disabled:opacity-40"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            </button>
+          </>
+        }
       >
       {/* Content card */}
       <div
-        className="px-4 py-6 sm:px-6 overflow-hidden"
+        className="px-4 py-5 sm:px-6 overflow-hidden"
         style={{
           background: "var(--panel)",
           border: "1px solid var(--hairline)",
           borderRadius: 14,
         }}
       >
-        <div className="flex items-center gap-3 mb-2">
-          <div
-            className="grid place-items-center"
-            style={{
-              width: 30, height: 30, borderRadius: 8,
-              background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
-              border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
-              color: "var(--accent-green)",
-            }}
-          >
-            <ActiveIcon className="w-4 h-4" strokeWidth={2} />
-          </div>
-          <h2 className="text-[20px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.3, margin: 0 }}>
-            {activeTab.label}
-          </h2>
-        </div>
-        <p className="ml-[42px] mb-7 text-[14.5px]" style={{ color: "oklch(0.58 0 0)" }}>
-          {activeTab.desc}
-        </p>
-
       {/* ── RESUMEN ────────────────────────────────────────────────────────── */}
       {tab === "resumen" && (
         <div className="space-y-4">
