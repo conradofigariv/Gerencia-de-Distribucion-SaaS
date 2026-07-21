@@ -1130,7 +1130,7 @@ export function StockZonaSection() {
                                   onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "hsl(var(--secondary) / 0.35)"; }}
                                   onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = baseBg; }}
                                 >
-                                  <td style={{ ...bottomBorder, padding: "10px 12px 10px 10px", fontFamily: "ui-monospace, monospace", fontSize: 12.5, color: "#7ee2a8", overflow: "hidden", whiteSpace: "nowrap" }}>
+                                  <td style={{ ...bottomBorder, padding: "10px 12px 10px 10px", fontFamily: "var(--font-mono)", fontSize: 12.5, color: "#7ee2a8", overflow: "hidden", whiteSpace: "nowrap" }}>
                                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: "100%" }}>
                                       <button
                                         onClick={e => { e.stopPropagation(); togglePin(row.articulo); }}
@@ -1270,7 +1270,7 @@ export function StockZonaSection() {
                 rows={12}
                 className="w-full px-4 py-3.5 bg-transparent border-none outline-none resize-y text-foreground leading-[1.7] placeholder:text-muted-foreground/35"
                 style={{
-                  fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+                  fontFamily: "var(--font-mono)",
                   fontSize: 12.5,
                 }}
               />

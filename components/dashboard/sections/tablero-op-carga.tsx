@@ -107,7 +107,7 @@ function TerminalBox({
         placeholder={placeholder}
         rows={rows}
         className="w-full px-4 py-3.5 bg-transparent border-none outline-none resize-y text-foreground leading-[1.7] placeholder:text-muted-foreground/35"
-        style={{ fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, monospace", fontSize: 12.5 }}
+        style={{ fontFamily: "var(--font-mono)", fontSize: 12.5 }}
       />
     </div>
   );

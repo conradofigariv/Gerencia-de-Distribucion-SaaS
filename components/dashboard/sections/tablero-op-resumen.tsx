@@ -144,7 +144,7 @@ function EnvioChip({ envio, vencido }: { envio: EnvioInfo; vencido: boolean }) {
         background: vencido ? "oklch(0.28 0.10 25 / 0.45)" : "oklch(0.30 0.10 50 / 0.4)",
         color: vencido ? "#fca5a5" : "#fcd34d",
         border: `1px solid ${vencido ? "oklch(0.55 0.15 25 / 0.5)" : "oklch(0.6 0.15 60 / 0.5)"}`,
-        fontSize: 11.5, fontWeight: 600, fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap",
+        fontSize: 11.5, fontWeight: 600, fontFamily: "var(--font-mono)", whiteSpace: "nowrap",
       }}
     >
       <span style={{ opacity: 0.75 }}>E{envio.envio || "?"}</span>
@@ -191,7 +191,7 @@ function EnviosCell({ envios, control, expanded, onToggle }: {
           ? "oklch(0.55 0.15 25 / 0.5)"
           : expanded ? "oklch(0.6 0.15 60 / 0.5)" : "oklch(1 0 0 / 0.08)"}`,
         color: nextVencido ? "#fca5a5" : expanded ? "#fcd34d" : "oklch(0.82 0 0)",
-        fontSize: 11.5, fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap",
+        fontSize: 11.5, fontFamily: "var(--font-mono)", whiteSpace: "nowrap",
       }}
     >
       <ChevronRight
@@ -260,7 +260,7 @@ function EntregasCell({ entregas }: { entregas: string[] }) {
           background: open ? "oklch(0.30 0.10 155 / 0.45)" : "oklch(0.25 0.005 270)",
           border: `1px solid ${open ? "oklch(0.55 0.15 155 / 0.5)" : "oklch(1 0 0 / 0.08)"}`,
           color: open ? "#86efac" : "oklch(0.82 0 0)",
-          fontSize: 11.5, fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap",
+          fontSize: 11.5, fontFamily: "var(--font-mono)", whiteSpace: "nowrap",
         }}
       >
         <CalendarClock className="w-3 h-3 shrink-0" strokeWidth={2} />
@@ -294,7 +294,7 @@ function EntregasCell({ entregas }: { entregas: string[] }) {
                   padding: "3px 9px", borderRadius: 999,
                   background: "oklch(0.30 0.10 155 / 0.4)", color: "#86efac",
                   border: "1px solid oklch(0.55 0.15 155 / 0.45)",
-                  fontSize: 11.5, fontWeight: 600, fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap",
+                  fontSize: 11.5, fontWeight: 600, fontFamily: "var(--font-mono)", whiteSpace: "nowrap",
                 }}
               >
                 {fmtFecha(d)}
@@ -749,7 +749,7 @@ export function TableroOpResumenSection() {
                                 padding: "10px 14px",
                                 borderBottom: abierto ? "none" : borde,
                                 fontFamily: (c.num || c.key === "numero_sic" || c.key === "articulo" || c.key === "numero_op")
-                                  ? "ui-monospace, monospace" : undefined,
+                                  ? "var(--font-mono)" : undefined,
                               }}
                               title={c.key === "descripcion" ? (r.descripcion ?? "") : undefined}
                             >
