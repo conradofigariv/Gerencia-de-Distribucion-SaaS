@@ -1686,8 +1686,8 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
             <div style={{ fontSize: 11.5, letterSpacing: "0.07em", textTransform: "uppercase", fontWeight: 700, color: k.danger ? "var(--accent-red)" : k.highlight ? "var(--accent-green)" : "oklch(0.80 0 0)" }}>
               {k.label}
             </div>
-            <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 23, fontWeight: 700, color: k.color, marginTop: 5, letterSpacing: "-0.01em" }}>
-              {k.value}{k.cur ? <span style={{ fontSize: 13, color: k.danger ? "color-mix(in oklab, var(--accent-red) 80%, white)" : k.highlight ? "color-mix(in oklab, var(--accent-green) 80%, white)" : "oklch(0.72 0 0)", marginLeft: 5 }}>{curLabel}</span> : null}
+            <div style={{ fontSize: 23, fontWeight: 700, color: k.color, marginTop: 5, letterSpacing: "-0.01em" }}>
+              <span style={{ fontFamily: "ui-monospace, monospace" }}>{k.value}</span>{k.cur ? <span style={{ fontSize: 13, fontWeight: 600, color: k.danger ? "color-mix(in oklab, var(--accent-red) 80%, white)" : k.highlight ? "color-mix(in oklab, var(--accent-green) 80%, white)" : "oklch(0.72 0 0)", marginLeft: 5 }}>{curLabel}</span> : null}
             </div>
           </div>
         ))}
@@ -1753,15 +1753,15 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                 >
                   <div style={{ textAlign: "left" }}>
                     <div style={{ fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "color-mix(in oklab, var(--accent-green) 50%, oklch(0.92 0 0))", fontWeight: 700 }}>Precio SIC unitario</div>
-                    <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 15, color: "oklch(0.97 0 0)", fontWeight: 600, marginTop: 2 }}>
-                      {fmtNum(sic.arsUnit, sic.usdUnit) ?? "—"} <span style={{ fontSize: 12, color: "color-mix(in oklab, var(--accent-green) 55%, oklch(0.90 0 0))" }}>{curLabel}</span>
+                    <div style={{ fontSize: 15, color: "oklch(0.97 0 0)", fontWeight: 600, marginTop: 2 }}>
+                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{fmtNum(sic.arsUnit, sic.usdUnit) ?? "—"}</span> <span style={{ fontSize: 12, color: "color-mix(in oklab, var(--accent-green) 55%, oklch(0.90 0 0))" }}>{curLabel}</span>
                     </div>
                   </div>
                   <div style={{ width: 1, height: 30, background: "color-mix(in oklab, var(--accent-green) 22%, transparent)" }} />
                   <div style={{ textAlign: "left" }}>
                     <div style={{ fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "color-mix(in oklab, var(--accent-green) 50%, oklch(0.92 0 0))", fontWeight: 700 }}>Precio SIC total</div>
-                    <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 15, color: "oklch(0.97 0 0)", fontWeight: 600, marginTop: 2 }}>
-                      {fmtNum(sic.arsQty, sic.usdQty) ?? "—"} <span style={{ fontSize: 12, color: "color-mix(in oklab, var(--accent-green) 55%, oklch(0.90 0 0))" }}>{curLabel}</span>
+                    <div style={{ fontSize: 15, color: "oklch(0.97 0 0)", fontWeight: 600, marginTop: 2 }}>
+                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{fmtNum(sic.arsQty, sic.usdQty) ?? "—"}</span> <span style={{ fontSize: 12, color: "color-mix(in oklab, var(--accent-green) 55%, oklch(0.90 0 0))" }}>{curLabel}</span>
                     </div>
                   </div>
                 </button>
@@ -1875,8 +1875,9 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                       <div style={{ marginBottom: 18 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: "1px solid oklch(1 0 0 / 0.06)" }}>
                           <span style={{ fontSize: 13.5, color: "oklch(0.86 0 0)" }}>Precio unitario del renglón</span>
-                          <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 15, color: "oklch(0.97 0 0)", fontWeight: 600 }}>
-                            {fmtNum(tot.arsUnit, tot.usdUnit) ?? "—"} {curLabel}
+                          <span style={{ fontSize: 15, color: "oklch(0.97 0 0)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                            <span style={{ fontFamily: "ui-monospace, monospace" }}>{fmtNum(tot.arsUnit, tot.usdUnit) ?? "—"}</span>
+                            <span style={{ fontSize: 12, fontWeight: 500, color: "oklch(0.62 0 0)", marginLeft: 4 }}>{curLabel}</span>
                           </span>
                         </div>
 
@@ -1894,16 +1895,17 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                         </div>
 
                         <div style={{ padding: "10px 0", borderTop: "1px solid oklch(1 0 0 / 0.06)" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                            <span style={{ fontSize: 13.5, color: "oklch(0.86 0 0)" }}>Ahorro vs. SIC</span>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                            <span style={{ fontSize: 13.5, color: "oklch(0.86 0 0)", whiteSpace: "nowrap" }}>Ahorro vs. SIC</span>
                             {ahorroOfArs == null ? (
                               <span style={{ fontSize: 13.5, color: "oklch(0.78 0 0)" }}>—</span>
-                            ) : cheaper ? (
-                              <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 15.5, fontWeight: 700, color: "var(--accent-green)" }}>+{fmtNum(ahorroOfArs, ahorroOfArs / (fdOp ?? 1)) ?? ""} <span style={{ fontSize: 12, fontWeight: 400, color: "color-mix(in oklab, var(--accent-green) 78%, white)" }}>{curLabel}</span></span>
                             ) : equal ? (
                               <span style={{ fontSize: 13.5, color: "oklch(0.86 0 0)" }}>Sin ahorro</span>
                             ) : (
-                              <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 15.5, fontWeight: 700, color: "var(--accent-red)", background: "color-mix(in oklab, var(--accent-red) 14%, transparent)", padding: "2px 8px", borderRadius: 6 }}>−{fmtNum(Math.abs(ahorroOfArs), Math.abs(ahorroOfArs) / (fdOp ?? 1)) ?? ""} <span style={{ fontSize: 12, fontWeight: 400 }}>{curLabel}</span> sobre SIC</span>
+                              <span style={{ fontSize: 15.5, fontWeight: 700, color: cheaper ? "var(--accent-green)" : "var(--accent-red)", whiteSpace: "nowrap", display: "inline-flex", alignItems: "baseline", gap: 4 }}>
+                                <span style={{ fontFamily: "ui-monospace, monospace" }}>{cheaper ? "+" : "−"}{fmtNum(Math.abs(ahorroOfArs), Math.abs(ahorroOfArs) / (fdOp ?? 1)) ?? ""}</span>
+                                <span style={{ fontSize: 12, fontWeight: 500, opacity: 0.85 }}>{curLabel}</span>
+                              </span>
                             )}
                           </div>
                           <div style={{ height: 6, borderRadius: 4, background: "oklch(1 0 0 / 0.06)", overflow: "hidden" }}>
