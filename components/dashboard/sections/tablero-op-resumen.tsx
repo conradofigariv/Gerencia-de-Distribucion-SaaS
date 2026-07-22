@@ -4,7 +4,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment, type ReactNode, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import {
-  ClipboardList, Loader2, RefreshCw, Search, X, Download, AlertTriangle,
+  Loader2, RefreshCw, Search, X, Download, AlertTriangle,
   ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight, PackageCheck, CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -534,39 +534,6 @@ export function TableroOpResumenSection() {
 
   return (
     <div className="space-y-6">
-      {/* Header bar: ícono + título + acciones */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-start gap-3">
-          <div
-            className="grid place-items-center mt-0.5"
-            style={{
-              width: 36, height: 36, borderRadius: 9,
-              background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
-              border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
-              color: "var(--accent-green)",
-            }}
-          >
-            <ClipboardList className="w-[18px] h-[18px]" strokeWidth={2} />
-          </div>
-          <div>
-            <h2 className="text-[22px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.4, margin: 0 }}>
-              Tablero OP — Resumen
-            </h2>
-            <p className="mt-1 text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
-              Cruce de SIC a seguir con transacciones y stock en el rango de fechas elegido.
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={calcular}
-          disabled={loading}
-          title="Recalcular"
-          className="flex items-center justify-center w-8 h-8 mt-0.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors disabled:opacity-40"
-        >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-        </button>
-      </div>
-
       {/* Content card */}
       <div
         className="px-4 py-6 sm:px-6 overflow-hidden space-y-5"
@@ -659,16 +626,25 @@ export function TableroOpResumenSection() {
             >
               <Download className="w-3.5 h-3.5" />CSV
             </button>
+            <button
+              onClick={calcular}
+              disabled={loading}
+              title="Actualizar"
+              className="inline-flex items-center justify-center rounded-[9px] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                height: 38, width: 38,
+                background: "var(--panel-input)",
+                border: "1px solid var(--hairline)",
+                color: "oklch(0.65 0 0)",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => { if (!loading) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.65 0 0)"; }}
+            >
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            </button>
           </div>
         </div>
-
-        {/* Contador */}
-        {loaded && (
-          <p className="text-[12.5px]" style={{ color: "oklch(0.55 0 0)", margin: 0 }}>
-            <span className="text-foreground font-medium">{sorted.length.toLocaleString("es-AR")}</span>
-            {(query || soloConRecibido) && <> de {rows.length.toLocaleString("es-AR")}</>} fila(s)
-          </p>
-        )}
 
         {/* Tabla */}
         <div className="rounded-[14px] overflow-hidden" style={{ background: PANEL_BG, border: PANEL_BORDER }}>
@@ -683,7 +659,7 @@ export function TableroOpResumenSection() {
             </div>
           ) : (
             <div className="overflow-auto" style={{ maxHeight: "70vh" }}>
-              <table style={{ tableLayout: "fixed", width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 13 }}>
+              <table style={{ tableLayout: "fixed", width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 14 }}>
                 <colgroup>
                   {COLS.map((c) => (
                     <col key={c.key} style={{ width: colWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] }} />
@@ -699,9 +675,9 @@ export function TableroOpResumenSection() {
                           key={c.key}
                           onClick={() => handleSort(c.key)}
                           style={{
-                            padding: "12px 14px",
+                            padding: "10px 14px",
                             textAlign: c.num ? "right" : "left",
-                            fontSize: 12, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase",
+                            fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
                             color: active ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
                             cursor: "pointer", userSelect: "none",
                             position: "sticky", top: 0, zIndex: 2,
@@ -712,7 +688,7 @@ export function TableroOpResumenSection() {
                         >
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%", justifyContent: c.num ? "flex-end" : "flex-start" }}>
                             <span className="truncate">{c.label}</span>
-                            <SortIcon className={`w-3.5 h-3.5 shrink-0 transition-opacity ${active ? "opacity-100" : "opacity-30"}`} />
+                            <SortIcon className={`w-3 h-3 shrink-0 transition-opacity ${active ? "opacity-100" : "opacity-30"}`} />
                           </span>
                           <ResizeHandle
                             onStart={(e) => {
@@ -746,7 +722,7 @@ export function TableroOpResumenSection() {
                                 c.key === "numero_sic" && "font-medium text-foreground"
                               )}
                               style={{
-                                padding: "10px 14px",
+                                padding: "8px 14px",
                                 borderBottom: abierto ? "none" : borde,
                                 fontFamily: (c.num || c.key === "numero_sic" || c.key === "articulo" || c.key === "numero_op")
                                   ? "var(--font-mono)" : undefined,
