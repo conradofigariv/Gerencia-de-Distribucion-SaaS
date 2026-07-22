@@ -381,7 +381,7 @@ export function Sidebar({
                   </button>
                 </HoverCardTrigger>
                 <HoverCardContent side="right" align="start" sideOffset={12} className="w-56 p-2">
-                  <p className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{item.label}</p>
+                  <p className="px-2 py-1.5 text-xs font-semibold text-foreground">{item.label}</p>
                   <div className="space-y-1">
                     {item.children.map((child) => {
                       const ChildIcon = child.icon;

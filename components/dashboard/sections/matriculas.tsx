@@ -468,9 +468,9 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
   const padBot = vItems.length ? totalH - vItems[vItems.length - 1].end : 0;
 
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col space-y-5 h-[calc(100vh-96px)] sm:h-[calc(100vh-112px)] min-h-[360px]">
       {/* Buscador + filtros + acciones, todo en una fila (título/ícono/conteo viven en el header global) */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-wrap">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-wrap shrink-0">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
@@ -521,16 +521,16 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
 
       {/* Banner de duplicados */}
       {duplicates.length > 0 && (
-        <div className="flex items-center gap-2 text-sm text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded-lg px-4 py-3">
+        <div className="flex items-center gap-2 text-sm text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded-lg px-4 py-3 shrink-0">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           {duplicates.length} número{duplicates.length > 1 ? "s" : ""} de matrícula duplicado{duplicates.length > 1 ? "s" : ""}:{" "}
           <span className="font-mono">{duplicates.slice(0, 4).join(", ")}{duplicates.length > 4 ? "…" : ""}</span>
         </div>
       )}
 
-      {/* Tabla */}
-      <div className="rounded-xl border border-border overflow-hidden bg-card">
-        <div ref={scrollRef} className="overflow-auto" style={{ maxHeight: "calc(100vh - 240px)", minHeight: 240 }}>
+      {/* Tabla — ocupa todo el alto restante (sin números mágicos internos) */}
+      <div className="rounded-xl border border-border overflow-hidden bg-card flex-1 min-h-0 flex flex-col">
+        <div ref={scrollRef} className="overflow-auto flex-1 min-h-0">
           <table className="text-sm" style={{ tableLayout: "fixed", width: totalWidth, borderCollapse: "separate", borderSpacing: 0 }}>
             <colgroup>
               {COLS.map(c => <col key={c.key} style={{ width: colWidths[c.key] }} />)}
