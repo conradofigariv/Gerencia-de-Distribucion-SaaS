@@ -540,7 +540,7 @@ export function MatriculasSection() {
 
       {/* Tabla */}
       <div className="rounded-xl border border-border overflow-hidden bg-card">
-        <div ref={scrollRef} className="overflow-auto" style={{ maxHeight: "calc(100vh - 320px)", minHeight: 240 }}>
+        <div ref={scrollRef} className="overflow-auto" style={{ maxHeight: "calc(100vh - 240px)", minHeight: 240 }}>
           <table className="text-sm" style={{ tableLayout: "fixed", width: totalWidth, borderCollapse: "separate", borderSpacing: 0 }}>
             <colgroup>
               {COLS.map(c => <col key={c.key} style={{ width: colWidths[c.key] }} />)}
