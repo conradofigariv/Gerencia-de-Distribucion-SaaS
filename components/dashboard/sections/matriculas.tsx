@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   Plus, Pencil, Trash2, Search, RefreshCw, Loader2, X,
-  Database, AlertTriangle, Tag, Download, ChevronUp, ChevronDown,
+  AlertTriangle, Tag, Download, ChevronUp, ChevronDown,
 } from "lucide-react";
 import {
   listMatriculas, createMatricula, updateMatricula, deleteMatricula,
@@ -465,38 +465,28 @@ export function MatriculasSection() {
           <div className="w-9 h-9 rounded-xl bg-accent/15 flex items-center justify-center">
             <Tag className="w-5 h-5 text-accent" />
           </div>
-          <div>
+          <div className="flex items-baseline gap-2">
             <h2 className="text-base font-semibold text-foreground leading-tight">Matrículas</h2>
-            <p className="text-xs text-muted-foreground">
-              Base de matrículas actualizable — agregá, editá o eliminá de a una.
-            </p>
+            <span className="text-xs text-muted-foreground">
+              {loading ? "Cargando…" : (
+                <>
+                  {filtered.length.toLocaleString("es-AR")}
+                  {filtered.length !== rows.length && <> de {rows.length.toLocaleString("es-AR")}</>} matrículas
+                </>
+              )}
+            </span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={exportCsv}
-            disabled={loading || filtered.length === 0}
-            className="flex items-center gap-1.5 h-9 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all disabled:opacity-40"
-          >
-            <Download className="w-3.5 h-3.5" />Exportar CSV
-          </button>
-          <button
-            onClick={load}
-            className="flex items-center gap-1.5 h-9 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all"
-          >
-            <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />Actualizar
-          </button>
-          <button
-            onClick={() => setModal({ mode: "create", row: null })}
-            className="flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/90 transition-all"
-          >
-            <Plus className="w-4 h-4" />Agregar matrícula
-          </button>
-        </div>
+        <button
+          onClick={() => setModal({ mode: "create", row: null })}
+          className="flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/90 transition-all shrink-0"
+        >
+          <Plus className="w-4 h-4" />Agregar matrícula
+        </button>
       </div>
 
-      {/* Filtros */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+      {/* Buscador + filtros + acciones, todo en una fila */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-wrap">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
@@ -524,6 +514,19 @@ export function MatriculasSection() {
             </button>
           ))}
         </div>
+        <button
+          onClick={exportCsv}
+          disabled={loading || filtered.length === 0}
+          className="flex items-center gap-1.5 h-9 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all disabled:opacity-40"
+        >
+          <Download className="w-3.5 h-3.5" />Exportar CSV
+        </button>
+        <button
+          onClick={load}
+          className="flex items-center gap-1.5 h-9 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all"
+        >
+          <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />Actualizar
+        </button>
       </div>
 
       {/* Banner de duplicados */}
@@ -534,19 +537,6 @@ export function MatriculasSection() {
           <span className="font-mono">{duplicates.slice(0, 4).join(", ")}{duplicates.length > 4 ? "…" : ""}</span>
         </div>
       )}
-
-      {/* Conteo */}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Database className="w-3.5 h-3.5" />
-        {loading ? (
-          "Cargando…"
-        ) : (
-          <span>
-            {filtered.length.toLocaleString("es-AR")}
-            {filtered.length !== rows.length && <> de {rows.length.toLocaleString("es-AR")}</>} matrículas
-          </span>
-        )}
-      </div>
 
       {/* Tabla */}
       <div className="rounded-xl border border-border overflow-hidden bg-card">
