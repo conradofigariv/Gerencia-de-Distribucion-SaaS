@@ -861,9 +861,15 @@ export function StockZonaSection() {
         })}
         end={
           <>
-            {lastUpdate && (
-              <span className="text-xs whitespace-nowrap hidden sm:inline" style={{ color: "oklch(0.55 0 0)" }}>
-                Actualizado <span style={{ color: "oklch(0.80 0 0)" }}>{new Date(lastUpdate).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}</span>
+            {(lastUpdate || (tab === "resumen" && pivotMap.size > 0)) && (
+              <span className="text-xs whitespace-nowrap hidden sm:inline-flex items-center gap-1.5" style={{ color: "oklch(0.55 0 0)" }}>
+                {lastUpdate && (
+                  <span>Actualizado <span style={{ color: "oklch(0.80 0 0)" }}>{new Date(lastUpdate).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}</span></span>
+                )}
+                {lastUpdate && tab === "resumen" && pivotMap.size > 0 && <span style={{ opacity: 0.4 }}>·</span>}
+                {tab === "resumen" && pivotMap.size > 0 && (
+                  <span><span className="font-medium" style={{ color: "oklch(0.80 0 0)" }}>{matchedRows.length}</span> de {pivotMap.size} artículos</span>
+                )}
               </span>
             )}
             <button
@@ -973,22 +979,23 @@ export function StockZonaSection() {
                   style={{ flex: 1, minWidth: 180 }}
                 />
 
-                <p className="text-xs text-muted-foreground whitespace-nowrap flex items-center gap-1.5">
-                  <span><span className="text-foreground font-medium">{matchedRows.length}</span> de {pivotMap.size} artículos</span>
-                  {pinnedCount > 0 && (
-                    <span className="inline-flex items-center gap-1" style={{ color: "#c4b5fd" }}>
-                      · <Pin className="w-3 h-3" fill="#c4b5fd" strokeWidth={2} /> {pinnedCount} fijada{pinnedCount !== 1 ? "s" : ""}
-                      <button onClick={() => setPinnedArticulos([])} className="ml-0.5 underline decoration-dotted hover:text-foreground" style={{ fontSize: 11.5 }}>
-                        limpiar
-                      </button>
-                    </span>
-                  )}
-                  {matriculasLoading && (
-                    <span className="inline-flex items-center gap-1 text-muted-foreground/70">
-                      · <Loader2 className="w-3 h-3 animate-spin" /> catálogo…
-                    </span>
-                  )}
-                </p>
+                {(pinnedCount > 0 || matriculasLoading) && (
+                  <p className="text-xs text-muted-foreground whitespace-nowrap flex items-center gap-1.5">
+                    {pinnedCount > 0 && (
+                      <span className="inline-flex items-center gap-1" style={{ color: "#c4b5fd" }}>
+                        <Pin className="w-3 h-3" fill="#c4b5fd" strokeWidth={2} /> {pinnedCount} fijada{pinnedCount !== 1 ? "s" : ""}
+                        <button onClick={() => setPinnedArticulos([])} className="ml-0.5 underline decoration-dotted hover:text-foreground" style={{ fontSize: 11.5 }}>
+                          limpiar
+                        </button>
+                      </span>
+                    )}
+                    {matriculasLoading && (
+                      <span className="inline-flex items-center gap-1 text-muted-foreground/70">
+                        {pinnedCount > 0 && "· "}<Loader2 className="w-3 h-3 animate-spin" /> catálogo…
+                      </span>
+                    )}
+                  </p>
+                )}
               </div>
 
               {/* Pivot table */}
