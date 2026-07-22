@@ -760,7 +760,7 @@ export function StockZonaSection() {
   const resumenVirtualizer = useVirtualizer({
     count: pivotRows.length,
     getScrollElement: () => resumenScrollRef.current,
-    estimateSize: () => 41,
+    estimateSize: () => 38, // 8px padding vertical (era 10px) + texto 14px
     overscan: 14,
   });
 
@@ -996,8 +996,8 @@ export function StockZonaSection() {
                 <div ref={resumenScrollRef} className="overflow-auto" style={{ maxHeight: "70vh" }}>
                   <table
                     style={zonesExpanded
-                      ? { tableLayout: "fixed", width: "100%", minWidth: tableWidth, borderCollapse: "separate", borderSpacing: 0, fontSize: 13.5 }
-                      : { tableLayout: "fixed", width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 13.5 }}
+                      ? { tableLayout: "fixed", width: "100%", minWidth: tableWidth, borderCollapse: "separate", borderSpacing: 0, fontSize: 14 }
+                      : { tableLayout: "fixed", width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 14 }}
                   >
                     <colgroup>
                       {fixedCols.map(c => <col key={c.col} style={{ width: c.w }} />)}
@@ -1016,11 +1016,11 @@ export function StockZonaSection() {
                               style={{
                                 width: w,
                                 borderBottom: "1px solid hsl(var(--border))",
-                                padding: "14px 14px",
+                                padding: "10px 14px",
                                 textAlign: align,
-                                fontSize: 13,
+                                fontSize: 10,
                                 fontWeight: 600,
-                                letterSpacing: "0.5px",
+                                letterSpacing: "0.06em",
                                 textTransform: "uppercase",
                                 color: active ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
                                 cursor: "pointer",
@@ -1033,7 +1033,7 @@ export function StockZonaSection() {
                             >
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 5, justifyContent: align === "right" ? "flex-end" : "flex-start" }}>
                                 {label}
-                                <SortIcon className={`w-3.5 h-3.5 shrink-0 transition-opacity ${active ? "opacity-100" : "opacity-30"}`} />
+                                <SortIcon className={`w-3 h-3 shrink-0 transition-opacity ${active ? "opacity-100" : "opacity-30"}`} />
                               </span>
                               <ResizeHandle onStart={e => { resizingRef.current = { col, startX: e.clientX, startWidth: w }; }} />
                             </th>
@@ -1045,7 +1045,7 @@ export function StockZonaSection() {
                           style={{
                             width: TOGGLE_W,
                             borderBottom: "1px solid hsl(var(--border))",
-                            padding: "14px 8px",
+                            padding: "10px 8px",
                             cursor: "pointer",
                             userSelect: "none",
                             color: "hsl(var(--muted-foreground))",
@@ -1072,7 +1072,7 @@ export function StockZonaSection() {
                               style={{
                                 width: zoneWidth,
                                 borderBottom: "1px solid hsl(var(--border))",
-                                padding: "12px 8px",
+                                padding: "10px 8px",
                                 cursor: "pointer",
                                 userSelect: "none",
                                 textAlign: "center",
@@ -1130,7 +1130,7 @@ export function StockZonaSection() {
                                   onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "hsl(var(--secondary) / 0.35)"; }}
                                   onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = baseBg; }}
                                 >
-                                  <td style={{ ...bottomBorder, padding: "10px 12px 10px 10px", fontFamily: "var(--font-mono)", fontSize: 12.5, color: "#7ee2a8", overflow: "hidden", whiteSpace: "nowrap" }}>
+                                  <td style={{ ...bottomBorder, padding: "8px 12px 8px 10px", fontFamily: "var(--font-mono)", fontSize: 12, color: "#7ee2a8", overflow: "hidden", whiteSpace: "nowrap" }}>
                                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: "100%" }}>
                                       <button
                                         onClick={e => { e.stopPropagation(); togglePin(row.articulo); }}
@@ -1149,13 +1149,13 @@ export function StockZonaSection() {
                                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.articulo}</span>
                                     </span>
                                   </td>
-                                  <td style={{ ...bottomBorder, padding: "10px 12px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  <td style={{ ...bottomBorder, padding: "8px 12px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                     {row.descArticulo}
                                   </td>
-                                  <td style={{ ...bottomBorder, padding: "10px 12px", color: "hsl(var(--muted-foreground) / 0.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  <td style={{ ...bottomBorder, padding: "8px 12px", color: "hsl(var(--muted-foreground) / 0.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                     {row.udmPrimaria}
                                   </td>
-                                  <td style={{ ...bottomBorder, padding: "10px 12px", whiteSpace: "nowrap" }}>
+                                  <td style={{ ...bottomBorder, padding: "8px 12px", whiteSpace: "nowrap" }}>
                                     {(() => {
                                       const tipo = tipoOf(row.articulo);
                                       return tipo
@@ -1163,14 +1163,14 @@ export function StockZonaSection() {
                                         : <span style={{ opacity: 0.25, color: "hsl(var(--muted-foreground))" }}>—</span>;
                                     })()}
                                   </td>
-                                  <td style={{ ...bottomBorder, padding: "10px 12px", textAlign: "right", fontWeight: 600, color: "hsl(var(--foreground))", fontVariantNumeric: "tabular-nums" }}>
+                                  <td style={{ ...bottomBorder, padding: "8px 12px", textAlign: "right", fontWeight: 600, color: "hsl(var(--foreground))", fontVariantNumeric: "tabular-nums" }}>
                                     {row.total.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
                                   </td>
                                   <td style={{ ...bottomBorder }} />
                                   {zonesExpanded && visibleZonas.map(zona => {
                                     const qty = row.byZona[zona];
                                     return (
-                                      <td key={zona} style={{ ...bottomBorder, padding: "10px 6px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
+                                      <td key={zona} style={{ ...bottomBorder, padding: "8px 6px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
                                         <span className={zoneAnimClass ? `${zoneAnimClass} inline-block` : undefined}>
                                           {qty != null && qty > 0
                                             ? qty.toLocaleString("es-AR", { maximumFractionDigits: 2 })
