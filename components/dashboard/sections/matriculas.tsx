@@ -299,7 +299,7 @@ function DeleteConfirm({
 }
 
 // ─── Sección principal ──────────────────────────────────────────────────────
-export function MatriculasSection() {
+export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (label: string | null) => void } = {}) {
   const [rows, setRows]       = useState<Matricula[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState("");
@@ -385,6 +385,16 @@ export function MatriculasSection() {
     return result;
   }, [rows, search, tipoFilter, sortKey, sortDir]);
 
+  // Reporta el conteo al header global (icono + título viven ahí).
+  useEffect(() => {
+    if (!onSummaryChange) return;
+    if (loading) { onSummaryChange("Cargando…"); return; }
+    const label = filtered.length !== rows.length
+      ? `${filtered.length.toLocaleString("es-AR")} de ${rows.length.toLocaleString("es-AR")} matrículas`
+      : `${filtered.length.toLocaleString("es-AR")} matrículas`;
+    onSummaryChange(label);
+  }, [onSummaryChange, loading, filtered.length, rows.length]);
+
   const duplicates = useMemo(() => {
     const counts = new Map<string, number>();
     for (const r of rows) counts.set(r.articulo, (counts.get(r.articulo) ?? 0) + 1);
@@ -459,33 +469,7 @@ export function MatriculasSection() {
 
   return (
     <div className="space-y-5">
-      {/* Encabezado */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-accent/15 flex items-center justify-center">
-            <Tag className="w-5 h-5 text-accent" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <h2 className="text-base font-semibold text-foreground leading-tight">Matrículas</h2>
-            <span className="text-xs text-muted-foreground">
-              {loading ? "Cargando…" : (
-                <>
-                  {filtered.length.toLocaleString("es-AR")}
-                  {filtered.length !== rows.length && <> de {rows.length.toLocaleString("es-AR")}</>} matrículas
-                </>
-              )}
-            </span>
-          </div>
-        </div>
-        <button
-          onClick={() => setModal({ mode: "create", row: null })}
-          className="flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/90 transition-all shrink-0"
-        >
-          <Plus className="w-4 h-4" />Agregar matrícula
-        </button>
-      </div>
-
-      {/* Buscador + filtros + acciones, todo en una fila */}
+      {/* Buscador + filtros + acciones, todo en una fila (título/ícono/conteo viven en el header global) */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-wrap">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -526,6 +510,12 @@ export function MatriculasSection() {
           className="flex items-center gap-1.5 h-9 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all"
         >
           <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />Actualizar
+        </button>
+        <button
+          onClick={() => setModal({ mode: "create", row: null })}
+          className="flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/90 transition-all sm:ml-auto"
+        >
+          <Plus className="w-4 h-4" />Agregar matrícula
         </button>
       </div>
 

@@ -66,6 +66,8 @@ export default function Dashboard() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [bgEffect, setBgEffect]             = useState<BgEffect>("swirl");
   const [headerProfile, setHeaderProfile]   = useState<HeaderProfile | null>(null);
+  // Texto chico junto al título del header global (ej. "24.632 matrículas").
+  const [matriculasSummary, setMatriculasSummary] = useState<string | null>(null);
 
   // Auth state
   useEffect(() => {
@@ -147,7 +149,7 @@ export default function Dashboard() {
       case "transformadores-tabla":  return <TransformadoresTablaSection />;
       case "transformadores-resumen": return <TransformadoresResumenSection />;
       case "stock-zona":              return <StockZonaSection />;
-      case "matriculas":              return <MatriculasSection />;
+      case "matriculas":              return <MatriculasSection onSummaryChange={setMatriculasSummary} />;
       case "matriculas-familias":     return <MatriculasFamiliasSection />;
       case "informe-tecnico":         return <InformeTecnicoSection />;
       case "indice-ido-resumen":      return <IndiceIdoResumenSection />;
@@ -190,6 +192,7 @@ export default function Dashboard() {
             onMenuClick={() => setMobileSidebarOpen(true)}
             userEmail={user.email}
             userProfile={headerProfile}
+            headerExtra={activeSection === "matriculas" ? matriculasSummary : null}
           />
           <main className="flex-1 p-4 sm:p-6 overflow-auto">
             <div key={activeSection} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
