@@ -119,6 +119,10 @@ input[type="number"] { -moz-appearance: textfield; }
 @theme inline {
   --font-sans: var(--font-dm-sans), system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+  /* Escala tipográfica — piso de tablas densas. Un solo paso por debajo de
+     text-xs (12px); para todo lo demás usar la escala estándar de Tailwind. */
+  --text-2xs: 0.625rem;       /* 10px — headers de tabla / micro-labels uppercase */
+  --text-2xs--line-height: 1rem;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

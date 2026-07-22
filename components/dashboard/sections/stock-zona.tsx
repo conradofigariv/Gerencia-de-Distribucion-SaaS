@@ -201,7 +201,7 @@ function BeastSelect({
       onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "oklch(0.25 0.005 270)"; }}
       onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
     >
-      <span className="flex-1 truncate text-[13px]" style={{ color: isActive ? "oklch(0.97 0 0)" : "oklch(0.82 0 0)", fontWeight: isActive ? 500 : 400 }}>
+      <span className="flex-1 truncate text-sm" style={{ color: isActive ? "oklch(0.97 0 0)" : "oklch(0.82 0 0)", fontWeight: isActive ? 500 : 400 }}>
         {node ?? label}
       </span>
       {isActive && <CheckIcon className="w-3.5 h-3.5 shrink-0" style={{ color: "#8B5CF6" }} strokeWidth={2.6} />}
@@ -344,7 +344,7 @@ function BeastMultiSelect({
         onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "oklch(0.25 0.005 270)"; }}
         onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
       >
-        <span className="flex-1 truncate text-[13px]" style={{ color: count === 0 ? "oklch(0.97 0 0)" : "oklch(0.82 0 0)", fontWeight: count === 0 ? 500 : 400 }}>
+        <span className="flex-1 truncate text-sm" style={{ color: count === 0 ? "oklch(0.97 0 0)" : "oklch(0.82 0 0)", fontWeight: count === 0 ? 500 : 400 }}>
           Todas las zonas
         </span>
         {count === 0 && <CheckIcon className="w-3.5 h-3.5 shrink-0" style={{ color: "#8B5CF6" }} strokeWidth={2.6} />}
@@ -371,7 +371,7 @@ function BeastMultiSelect({
             >
               {isActive && <CheckIcon className="w-2.5 h-2.5" style={{ color: "#fff" }} strokeWidth={3.5} />}
             </span>
-            <span className="flex-1 truncate text-[13px]" style={{ color: isActive ? "oklch(0.97 0 0)" : "oklch(0.82 0 0)" }}>
+            <span className="flex-1 truncate text-sm" style={{ color: isActive ? "oklch(0.97 0 0)" : "oklch(0.82 0 0)" }}>
               {o.node ?? o.label}
             </span>
           </button>
@@ -862,7 +862,7 @@ export function StockZonaSection() {
         end={
           <>
             {lastUpdate && (
-              <span className="text-[12px] whitespace-nowrap hidden sm:inline" style={{ color: "oklch(0.55 0 0)" }}>
+              <span className="text-xs whitespace-nowrap hidden sm:inline" style={{ color: "oklch(0.55 0 0)" }}>
                 Actualizado <span style={{ color: "oklch(0.80 0 0)" }}>{new Date(lastUpdate).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}</span>
               </span>
             )}
@@ -973,7 +973,7 @@ export function StockZonaSection() {
                   style={{ flex: 1, minWidth: 180 }}
                 />
 
-                <p className="text-[12.5px] text-muted-foreground whitespace-nowrap flex items-center gap-1.5">
+                <p className="text-xs text-muted-foreground whitespace-nowrap flex items-center gap-1.5">
                   <span><span className="text-foreground font-medium">{matchedRows.length}</span> de {pivotMap.size} artículos</span>
                   {pinnedCount > 0 && (
                     <span className="inline-flex items-center gap-1" style={{ color: "#c4b5fd" }}>
@@ -1058,7 +1058,7 @@ export function StockZonaSection() {
                           <span className="inline-flex items-center gap-1 whitespace-nowrap">
                             <ChevronRight className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${zonesExpanded ? "rotate-180" : ""}`} />
                             {!zonesExpanded && zonas.length > 0 && (
-                              <span className="text-[11px] font-normal normal-case tracking-normal">{zonas.length} zona{zonas.length !== 1 ? "s" : ""}</span>
+                              <span className="text-xs font-normal normal-case tracking-normal">{zonas.length} zona{zonas.length !== 1 ? "s" : ""}</span>
                             )}
                           </span>
                         </th>
@@ -1195,11 +1195,11 @@ export function StockZonaSection() {
               {/* Loaded zones — compact inline list */}
               {uploads.length > 0 && (
                 <div className="flex items-center gap-3 flex-wrap pt-1">
-                  <span className="text-[12px] text-muted-foreground">Zonas cargadas:</span>
+                  <span className="text-xs text-muted-foreground">Zonas cargadas:</span>
                   {uploads.map(u => (
                     <div key={u.zona} className="flex items-center gap-1.5">
                       <ZonePill zona={u.zona} small />
-                      <span className="text-[11px] text-muted-foreground/70">{u.rows.length} reg.</span>
+                      <span className="text-xs text-muted-foreground/70">{u.rows.length} reg.</span>
                       <button
                         onClick={() => handleDelete(u.zona)}
                         disabled={deletingZona === u.zona}
@@ -1224,15 +1224,15 @@ export function StockZonaSection() {
             {/* Card header */}
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
-                <h3 className="text-[16px] font-semibold tracking-tight text-foreground">Pegar datos</h3>
-                <p className="mt-1 text-[13px] text-muted-foreground leading-relaxed max-w-[520px]">
+                <h3 className="text-base font-semibold tracking-tight text-foreground">Pegar datos</h3>
+                <p className="mt-1 text-sm text-muted-foreground leading-relaxed max-w-[520px]">
                   Copiá el contenido desde el sistema y pegalo acá. Las zonas se detectan automáticamente desde la columna{" "}
                   <span className="text-foreground/80 font-medium">Organización</span>.
                 </p>
               </div>
               {text.trim() && (
                 <span
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold shrink-0 mt-0.5"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 mt-0.5"
                   style={{
                     background: looksOk ? "color-mix(in oklab, var(--accent-emerald-deep) 40%, transparent)" : "oklch(0.30 0.10 50 / 0.4)",
                     color: looksOk ? "var(--accent-green)" : "var(--accent-amber)",
@@ -1257,9 +1257,9 @@ export function StockZonaSection() {
                   <span className="w-2.5 h-2.5 rounded-full" style={{ background: "oklch(0.70 0.13 75 / 0.65)" }} />
                   <span className="w-2.5 h-2.5 rounded-full" style={{ background: "oklch(0.70 0.13 145 / 0.65)" }} />
                 </div>
-                <span className="ml-1.5 text-[11.5px] text-muted-foreground/60">datos_pegados.tsv</span>
+                <span className="ml-1.5 text-xs text-muted-foreground/60">datos_pegados.tsv</span>
                 <div className="flex-1" />
-                <span className="text-[11px] text-muted-foreground/45 tabular-nums">
+                <span className="text-xs text-muted-foreground/45 tabular-nums">
                   {text.length.toLocaleString("es-AR")} car. · {textRowCount} línea{textRowCount === 1 ? "" : "s"}
                 </span>
               </div>
@@ -1291,7 +1291,7 @@ export function StockZonaSection() {
               <button
                 onClick={() => setText("")}
                 disabled={!text}
-                className="px-3.5 py-2 rounded-[9px] border border-border text-[13px] font-medium transition-colors bg-transparent text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                className="px-3.5 py-2 rounded-[9px] border border-border text-sm font-medium transition-colors bg-transparent text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 Limpiar
               </button>
@@ -1299,7 +1299,7 @@ export function StockZonaSection() {
               <div className="flex-1" />
 
               {importedAt && (
-                <div className="flex items-center gap-1.5 text-[12.5px]" style={{ color: "var(--accent-green)" }}>
+                <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--accent-green)" }}>
                   <CheckIcon className="w-3.5 h-3.5" strokeWidth={2.4} />
                   Importado {importedAt.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · {importedCount} artículos
                 </div>
@@ -1309,7 +1309,7 @@ export function StockZonaSection() {
             {/* Detected zones */}
             {previewZonas.length > 0 && (
               <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t border-border/40">
-                <span className="text-[12px] text-muted-foreground">Zonas detectadas:</span>
+                <span className="text-xs text-muted-foreground">Zonas detectadas:</span>
                 {previewZonas.map(z => <ZonePill key={z} zona={z} small />)}
               </div>
             )}
@@ -1319,7 +1319,7 @@ export function StockZonaSection() {
           <div className="flex flex-col gap-3">
             {/* Required columns */}
             <div className="rounded-[14px] p-4" style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)" }}>
-              <p className="text-[11px] text-muted-foreground uppercase tracking-[0.6px] mb-3">Columnas requeridas</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-[0.6px] mb-3">Columnas requeridas</p>
               <div className="flex flex-col gap-1.5">
                 {REQUIRED_COLS.map((c, i) => {
                   const found = detectedCols?.[i]?.found;
@@ -1327,7 +1327,7 @@ export function StockZonaSection() {
                   return (
                     <div
                       key={c}
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg text-[12.5px]"
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
                       style={{ background: "hsl(var(--background) / 0.5)", border: "1px solid hsl(var(--border) / 0.4)" }}
                     >
                       <span
@@ -1350,7 +1350,7 @@ export function StockZonaSection() {
                         )}
                       </span>
                       <span className="text-foreground font-medium flex-1">{c}</span>
-                      {found && <span className="text-[11px]" style={{ color: "var(--accent-green)" }}>detectada</span>}
+                      {found && <span className="text-xs" style={{ color: "var(--accent-green)" }}>detectada</span>}
                     </div>
                   );
                 })}
@@ -1358,8 +1358,8 @@ export function StockZonaSection() {
             </div>
 
             {/* Tip card */}
-            <div className="rounded-[14px] p-4 text-[12.5px] text-muted-foreground leading-relaxed" style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)" }}>
-              <div className="flex items-center gap-1.5 text-foreground font-semibold mb-1.5 text-[13px]">
+            <div className="rounded-[14px] p-4 text-xs text-muted-foreground leading-relaxed" style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)" }}>
+              <div className="flex items-center gap-1.5 text-foreground font-semibold mb-1.5 text-sm">
                 <Sparkles className="w-3.5 h-3.5" strokeWidth={2} />
                 Tip
               </div>

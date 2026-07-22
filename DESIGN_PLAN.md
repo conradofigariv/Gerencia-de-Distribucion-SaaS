@@ -76,6 +76,28 @@ Hoy conviven **dos sistemas de color**:
 Falta (incremental, no urgente): reemplazar los literales en las 10 secciones por
 estas utilidades, sección por sección.
 
+### Escala tipográfica (Fase 0.2)
+Mismo problema que los colores: **197 usos de `text-[Npx]` arbitrarios en 17 valores
+distintos** (8–22px), concentrados en las mismas secciones "beast pure". Se unifica a
+la escala estándar de Tailwind + **un solo tamaño nuevo** para el piso de tablas densas
+(elegido "más cómodo": piso en 10px, celdas de tabla en 12px — no 9/11px).
+
+| Token | Tamaño | Uso |
+|---|---|---|
+| `text-3xl` | 30px | Título hero (muy raro, KPI destacado) |
+| `text-2xl` | 24px | Título de sección (`<h2>` de cada pantalla) |
+| `text-lg` | 18px | Título de card |
+| `text-base` | 16px | Números/KPI en foco (monospace) |
+| `text-sm` | 14px | **Cuerpo estándar** — texto, botones, inputs, labels |
+| `text-xs` | 12px | Texto secundario, metadatos, badges, **celdas de tabla densa** |
+| `text-2xs` *(nuevo, `globals.css`)* | 10px | Headers de tabla / micro-labels uppercase |
+
+**Pesos:** `font-medium` (labels) → `font-semibold` (énfasis) → `font-bold` (techo).
+`font-extrabold` no se usa (bajarlo a `bold` donde aparezca).
+
+**Regla a futuro:** nunca `text-[Npx]` arbitrario; usar estos 7 tokens.
+**✅ Piloto hecho en Stock por Zona.** Falta propagar al resto de las 14 secciones.
+
 ---
 
 ## 2. Diagnóstico del stack

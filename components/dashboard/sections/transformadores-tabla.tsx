@@ -283,8 +283,8 @@ export function TransformadoresTablaSection() {
                       {r.fecha.split("-").map((v, i) => i === 0 ? v.slice(2) : v).reverse().join("/")}
                     </td>
                     <td className="px-3 py-[11px] text-foreground/70">{r.datos.deposito ?? "—"}</td>
-                    <td className="px-3 py-[11px] text-right font-extrabold text-foreground">{totals.totGeneral}</td>
-                    <td className="px-3 py-[11px] text-right font-extrabold text-accent-green">{totals.totDisp}</td>
+                    <td className="px-3 py-[11px] text-right font-bold text-foreground">{totals.totGeneral}</td>
+                    <td className="px-3 py-[11px] text-right font-bold text-accent-green">{totals.totDisp}</td>
                     <td className="px-3 py-[11px] text-right text-muted-foreground">{totals.totTerceros}</td>
                     <td className="px-3 py-[11px] text-right text-muted-foreground">{totals.totTaller}</td>
                     <td className="px-5 py-[11px]">

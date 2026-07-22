@@ -169,6 +169,29 @@ export default function StyleguidePage() {
           </div>
         </Section>
 
+        {/* ── Escala tipográfica ───────────────────────────────────── */}
+        <Section title="Escala tipográfica" description="Fase 0.2: 7 tokens — nunca text-[Npx] arbitrario. text-2xs es el único tamaño nuevo (piso de tablas densas).">
+          <div className="divide-y divide-border/50">
+            {[
+              { cls: "text-3xl", px: "30px", w: "font-semibold", use: "Título hero (KPI destacado, muy raro)" },
+              { cls: "text-2xl", px: "24px", w: "font-semibold", use: "Título de sección (<h2> de cada pantalla)" },
+              { cls: "text-lg",  px: "18px", w: "font-semibold", use: "Título de card" },
+              { cls: "text-base", px: "16px", w: "font-medium", use: "Números/KPI en foco" },
+              { cls: "text-sm",  px: "14px", w: "font-medium", use: "Cuerpo estándar — texto, botones, inputs" },
+              { cls: "text-xs",  px: "12px", w: "font-medium", use: "Texto secundario, badges, celdas de tabla" },
+              { cls: "text-2xs", px: "10px", w: "font-semibold", use: "Headers de tabla / micro-labels uppercase", upper: true },
+            ].map(t => (
+              <div key={t.cls} className="flex items-center gap-4 py-2.5">
+                <span className={`w-16 shrink-0 font-mono text-[11px] text-muted-foreground`}>{t.cls}</span>
+                <span className="w-12 shrink-0 font-mono text-[11px] text-muted-foreground">{t.px}</span>
+                <span className={`flex-1 truncate text-foreground ${t.cls} ${t.w} ${t.upper ? "uppercase tracking-wide" : ""}`}>
+                  {t.use}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Section>
+
         {/* ── Botones ──────────────────────────────────────────────── */}
         <Section title="Botones" description="Fase 1: variantes accent/success/warning, prop loading con spinner integrado y micro-interacción al click (active:scale).">
           <div className="space-y-1">

@@ -557,13 +557,13 @@ export function TransformadoresCargaSection() {
               <div className="text-center text-xs text-muted-foreground">{tall || "–"}</div>
               <div />
 
-              <div className="text-center text-[12.5px] font-extrabold text-foreground">{trafos || "–"}</div>
+              <div className="text-center text-[12.5px] font-bold text-foreground">{trafos || "–"}</div>
               <div className="px-1.5 py-[3px]">
                 <EInput val={aut} onChange={v => setAuto(p, v)} valueClass={aut > 0 ? "text-accent-amber" : "text-muted-foreground/60"} />
               </div>
               <div className="flex justify-center">
                 <span className={cn(
-                  "min-w-[34px] text-center text-xs font-extrabold px-2 py-1 rounded-md",
+                  "min-w-[34px] text-center text-xs font-bold px-2 py-1 rounded-md",
                   disp > 0 ? "bg-accent/15 text-accent-green" : "bg-secondary/40 text-muted-foreground/50"
                 )}>
                   {disp || "–"}
