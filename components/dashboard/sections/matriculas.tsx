@@ -460,7 +460,7 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
     toast.success(`${filtered.length.toLocaleString("es-AR")} matrículas exportadas`);
   };
 
-  const thBase = "px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground sticky top-0 z-[2] bg-secondary border-b border-border";
+  const thBase = "px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground sticky top-0 z-[2] bg-panel-header border-b border-border";
   const totalWidth = COLS.reduce((s, c) => s + colWidths[c.key], 0) + ACCIONES_W;
   const vItems = virtualizer.getVirtualItems();
   const totalH = virtualizer.getTotalSize();
