@@ -594,29 +594,78 @@ export function ServiciosResumenSection() {
 
   return (
     <div className="space-y-6">
+      {/* Universo: tipo (servicios/todas) + estado (abierto), filtros independientes */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="inline-flex items-center rounded-xl border border-border bg-card p-1 gap-1">
+            <button
+              onClick={() => setSoloServicios(true)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all",
+                soloServicios
+                  ? "bg-accent text-accent-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+              )}
+              title="Solo matrículas de tipo Servicio"
+            >
+              <Wrench className="w-4 h-4" />Solo servicios
+            </button>
+            <button
+              onClick={() => setSoloServicios(false)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all",
+                !soloServicios
+                  ? "bg-accent text-accent-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+              )}
+              title="Todas las líneas (materiales y servicios)"
+            >
+              <Layers className="w-4 h-4" />Todas
+            </button>
+          </div>
+
+          <button
+            onClick={() => setFiltroAbierto(v => !v)}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all",
+              filtroAbierto
+                ? "border-success/40 bg-success/15 text-success shadow-sm"
+                : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-success/30"
+            )}
+            title="Solo líneas con OP abierta"
+          >
+            <LockOpen className="w-4 h-4" />Abierto
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {soloServicios ? "Servicios (Mat/Serv = Servicio)" : "Todas las líneas"}
+          {filtroAbierto && " · OP abierta"}
+          {!loadingData && <> · <span className="text-foreground font-medium">{baseRows.length.toLocaleString("es-AR")}</span> líneas</>}
+        </p>
+      </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
         {/* Activos — toggle */}
         <button
           onClick={() => setFiltroActivos(v => !v)}
           className={cn(
-            "bg-card rounded-xl p-4 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
+            "bg-card rounded-xl p-5 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
             filtroActivos
               ? "border-2 border-success shadow-[0_0_0_1px_oklch(0.55_0.18_145/0.3)]"
               : "border border-border hover:border-success/40"
           )}
           style={{ animationFillMode: "both" }}
         >
-          <div className="flex items-center justify-between mb-2.5">
-            <span className="text-xs text-muted-foreground">Activos</span>
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-success/10">
-              <CheckCircle2 className="w-4 h-4 text-success" />
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-muted-foreground">Activos</span>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-success/10">
+              <CheckCircle2 className="w-5 h-5 text-success" />
             </div>
           </div>
-          <p className="text-xl font-bold text-foreground">{fmt(activos)}</p>
-          <p className={cn("text-2xs mt-1 font-medium", filtroActivos ? "text-success" : "text-muted-foreground/50")}>
+          <p className="text-2xl font-bold text-foreground">{fmt(activos)}</p>
+          <p className={cn("text-xs mt-1.5 font-medium", filtroActivos ? "text-success" : "text-muted-foreground/50")}>
             {filtroActivos ? "Filtro activo" : "Sin selección"}
           </p>
         </button>
@@ -625,21 +674,21 @@ export function ServiciosResumenSection() {
         <button
           onClick={cycleVencer}
           className={cn(
-            "bg-card rounded-xl p-4 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
+            "bg-card rounded-xl p-5 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
             filtroVencer !== null
               ? "border-2 border-warning shadow-[0_0_0_1px_oklch(0.75_0.18_80/0.3)]"
               : "border border-border hover:border-warning/40"
           )}
           style={{ animationDelay: "75ms", animationFillMode: "both" }}
         >
-          <div className="flex items-center justify-between mb-2.5">
-            <span className="text-xs text-muted-foreground">Por vencer</span>
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-warning/10">
-              <CalendarClock className="w-4 h-4 text-warning" />
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-muted-foreground">Por vencer</span>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-warning/10">
+              <CalendarClock className="w-5 h-5 text-warning" />
             </div>
           </div>
-          <p className="text-xl font-bold text-foreground">{fmt(porVencer)}</p>
-          <p className={cn("text-2xs mt-1 font-medium", filtroVencer !== null ? "text-warning" : "text-muted-foreground/50")}>
+          <p className="text-2xl font-bold text-foreground">{fmt(porVencer)}</p>
+          <p className={cn("text-xs mt-1.5 font-medium", filtroVencer !== null ? "text-warning" : "text-muted-foreground/50")}>
             {filtroVencer !== null ? `Próximos ${filtroVencer} meses · clic para cambiar` : "Sin selección · clic para activar"}
           </p>
         </button>
@@ -648,21 +697,21 @@ export function ServiciosResumenSection() {
         <button
           onClick={cycleConsumo}
           className={cn(
-            "bg-card rounded-xl p-4 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
+            "bg-card rounded-xl p-5 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
             filtroConsumo !== null
               ? "border-2 border-orange-400 shadow-[0_0_0_1px_oklch(0.75_0.18_50/0.3)]"
               : "border border-border hover:border-orange-400/40"
           )}
           style={{ animationDelay: "150ms", animationFillMode: "both" }}
         >
-          <div className="flex items-center justify-between mb-2.5">
-            <span className="text-xs text-muted-foreground">Por Consumirse</span>
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-orange-400/10">
-              <TrendingDown className="w-4 h-4 text-orange-400" />
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-muted-foreground">Por Consumirse</span>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-orange-400/10">
+              <TrendingDown className="w-5 h-5 text-orange-400" />
             </div>
           </div>
-          <p className="text-xl font-bold text-foreground">{fmt(porConsumirse)}</p>
-          <p className={cn("text-2xs mt-1 font-medium", filtroConsumo !== null ? "text-orange-400" : "text-muted-foreground/50")}>
+          <p className="text-2xl font-bold text-foreground">{fmt(porConsumirse)}</p>
+          <p className={cn("text-xs mt-1.5 font-medium", filtroConsumo !== null ? "text-orange-400" : "text-muted-foreground/50")}>
             {filtroConsumo !== null ? `≤${filtroConsumo}% restante · clic para cambiar` : "Sin selección · clic para activar"}
           </p>
         </button>
@@ -671,21 +720,21 @@ export function ServiciosResumenSection() {
         <button
           onClick={() => setFiltroVencidos(v => !v)}
           className={cn(
-            "bg-card rounded-xl p-4 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
+            "bg-card rounded-xl p-5 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
             filtroVencidos
               ? "border-2 border-destructive shadow-[0_0_0_1px_oklch(0.55_0.22_25/0.3)]"
               : "border border-border hover:border-destructive/40"
           )}
           style={{ animationDelay: "225ms", animationFillMode: "both" }}
         >
-          <div className="flex items-center justify-between mb-2.5">
-            <span className="text-xs text-muted-foreground">Vencidos</span>
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-destructive/10">
-              <XCircle className="w-4 h-4 text-destructive" />
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-muted-foreground">Vencidos</span>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-destructive/10">
+              <XCircle className="w-5 h-5 text-destructive" />
             </div>
           </div>
-          <p className="text-xl font-bold text-foreground">{fmt(vencidos)}</p>
-          <p className={cn("text-2xs mt-1 font-medium", filtroVencidos ? "text-destructive" : "text-muted-foreground/50")}>
+          <p className="text-2xl font-bold text-foreground">{fmt(vencidos)}</p>
+          <p className={cn("text-xs mt-1.5 font-medium", filtroVencidos ? "text-destructive" : "text-muted-foreground/50")}>
             {filtroVencidos ? "Filtro activo" : "Sin selección"}
           </p>
         </button>
@@ -716,37 +765,6 @@ export function ServiciosResumenSection() {
           </div>
           <div className="flex items-center gap-2">
             {tableLoading && <Loader2 className="w-4 h-4 text-accent animate-spin" />}
-            <button
-              onClick={() => setSoloServicios(true)}
-              title="Solo matrículas de tipo Servicio"
-              className={cn(
-                "flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs border transition-colors",
-                soloServicios ? "bg-accent/15 text-accent border-accent/40" : "text-muted-foreground hover:text-foreground border-border hover:bg-secondary"
-              )}
-            >
-              <Wrench className="w-3.5 h-3.5" />Solo servicios
-            </button>
-            <button
-              onClick={() => setSoloServicios(false)}
-              title="Todas las líneas (materiales y servicios)"
-              className={cn(
-                "flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs border transition-colors",
-                !soloServicios ? "bg-accent/15 text-accent border-accent/40" : "text-muted-foreground hover:text-foreground border-border hover:bg-secondary"
-              )}
-            >
-              <Layers className="w-3.5 h-3.5" />Todas
-            </button>
-            <button
-              onClick={() => setFiltroAbierto(v => !v)}
-              title="Solo líneas con OP abierta"
-              className={cn(
-                "flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs border transition-colors",
-                filtroAbierto ? "bg-accent/15 text-accent border-accent/40" : "text-muted-foreground hover:text-foreground border-border hover:bg-secondary"
-              )}
-            >
-              <LockOpen className="w-3.5 h-3.5" />Abierto
-            </button>
-            <div className="w-px h-5 bg-border mx-0.5" />
             <button
               onClick={() => setGroupByOp(v => !v)}
               title={groupByOp ? "Ver lista plana (sin agrupar)" : "Agrupar filas por OP"}
@@ -841,7 +859,7 @@ export function ServiciosResumenSection() {
                         key={c.db}
                         style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 }}
                         className={cn(
-                          "sticky top-0 z-10 bg-panel-header border-b border-border relative group/th py-2.5 pl-3 pr-4 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider transition-opacity",
+                          "sticky top-0 z-10 bg-panel-header border-b border-border group/th py-2.5 pl-3 pr-4 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider transition-opacity",
                           dragCol === c.db && "opacity-40",
                           dragOverCol === c.db && dragCol !== c.db && "bg-accent/10 ring-1 ring-inset ring-accent/40"
                         )}
