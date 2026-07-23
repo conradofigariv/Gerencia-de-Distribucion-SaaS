@@ -1656,9 +1656,9 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {missingRates && (
-        <div style={{ background: "oklch(0.25 0.06 55 / 0.35)", border: "1px solid oklch(0.55 0.12 55 / 0.45)", borderRadius: 10, padding: "11px 16px", fontSize: 14, color: "oklch(0.82 0.08 60)" }}>
+        <div style={{ background: "oklch(0.25 0.06 55 / 0.35)", border: "1px solid oklch(0.55 0.12 55 / 0.45)", borderRadius: 10, padding: "9px 14px", fontSize: 12.5, color: "oklch(0.82 0.08 60)" }}>
           ⚠ Cargá los valores del dólar SIC y OP en <strong>Datos generales</strong> para calcular el % vs. SIC.
         </div>
       )}
@@ -1675,19 +1675,19 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
       )}
 
       {/* KPI banner */}
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         {kpiCards.map((k) => (
           <div key={k.label} style={{
-            flex: k.wide ? "1 1 160px" : "1 1 220px",
+            flex: k.wide ? "1 1 140px" : "1 1 200px",
             background: k.danger ? "color-mix(in oklab, var(--accent-red) 8%, transparent)" : k.highlight ? "color-mix(in oklab, var(--accent-green) 7%, transparent)" : "var(--panel-2)",
             border: k.danger ? "1px solid color-mix(in oklab, var(--accent-red) 38%, transparent)" : k.highlight ? "1px solid color-mix(in oklab, var(--accent-green) 34%, transparent)" : "1px solid var(--hairline)",
-            borderRadius: 12, padding: "16px 18px",
+            borderRadius: 10, padding: "11px 14px",
           }}>
-            <div style={{ fontSize: 11.5, letterSpacing: "0.07em", textTransform: "uppercase", fontWeight: 700, color: k.danger ? "var(--accent-red)" : k.highlight ? "var(--accent-green)" : "oklch(0.80 0 0)" }}>
+            <div style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 700, color: k.danger ? "var(--accent-red)" : k.highlight ? "var(--accent-green)" : "oklch(0.80 0 0)" }}>
               {k.label}
             </div>
-            <div style={{ fontSize: 23, fontWeight: 700, color: k.color, marginTop: 5, letterSpacing: "-0.01em" }}>
-              <span style={{ fontFamily: "var(--font-mono)" }}>{k.value}</span>{k.cur ? <span style={{ fontSize: 13, fontWeight: 600, color: k.danger ? "color-mix(in oklab, var(--accent-red) 80%, white)" : k.highlight ? "color-mix(in oklab, var(--accent-green) 80%, white)" : "oklch(0.72 0 0)", marginLeft: 5 }}>{curLabel}</span> : null}
+            <div style={{ fontSize: 18, fontWeight: 700, color: k.color, marginTop: 4, letterSpacing: "-0.01em" }}>
+              <span style={{ fontFamily: "var(--font-mono)" }}>{k.value}</span>{k.cur ? <span style={{ fontSize: 11, fontWeight: 600, color: k.danger ? "color-mix(in oklab, var(--accent-red) 80%, white)" : k.highlight ? "color-mix(in oklab, var(--accent-green) 80%, white)" : "oklch(0.72 0 0)", marginLeft: 4 }}>{curLabel}</span> : null}
             </div>
           </div>
         ))}
@@ -1724,17 +1724,17 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
         }
 
         return (
-          <div key={r.id} style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)", borderRadius: 16, padding: "22px 24px 24px" }}>
+          <div key={r.id} style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)", borderRadius: 14, padding: "16px 18px 18px" }}>
             {/* Renglón header */}
-            <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", marginBottom: 20 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: "oklch(0.16 0.05 155)", background: "var(--accent-green)", padding: "5px 9px", borderRadius: 5 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "oklch(0.16 0.05 155)", background: "var(--accent-green)", padding: "4px 8px", borderRadius: 5 }}>
                   RENGLÓN {r.numero}
                 </div>
                 <div>
-                  <div style={{ fontSize: 17, fontWeight: 700, color: "oklch(0.97 0 0)" }}>{nombreRenglon}</div>
+                  <div style={{ fontSize: 14.5, fontWeight: 700, color: "oklch(0.97 0 0)" }}>{nombreRenglon}</div>
                   {descRenglon && (
-                    <div style={{ fontSize: 13.5, lineHeight: 1.45, color: "oklch(0.82 0 0)", maxWidth: 720, marginTop: 4 }}>{descRenglon}</div>
+                    <div style={{ fontSize: 12, lineHeight: 1.4, color: "oklch(0.82 0 0)", maxWidth: 720, marginTop: 3 }}>{descRenglon}</div>
                   )}
                 </div>
               </div>
@@ -1743,38 +1743,38 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                   onClick={() => canShowUSD && setShowUSD((v) => !v)}
                   title={canShowUSD ? `Clic para ver en ${showUSD ? "ARS" : "USD"}` : undefined}
                   style={{
-                    display: "flex", alignItems: "center", gap: 18, flex: "none",
+                    display: "flex", alignItems: "center", gap: 12, flex: "none",
                     background: "color-mix(in oklab, var(--accent-green) 7%, transparent)",
                     border: "1px solid color-mix(in oklab, var(--accent-green) 30%, transparent)",
-                    borderRadius: 10, padding: "10px 16px",
+                    borderRadius: 8, padding: "7px 12px",
                     cursor: canShowUSD ? "pointer" : "default",
                     boxShadow: "0 0 0 3px color-mix(in oklab, var(--accent-green) 5%, transparent)",
                   }}
                 >
                   <div style={{ textAlign: "left" }}>
-                    <div style={{ fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "color-mix(in oklab, var(--accent-green) 50%, oklch(0.92 0 0))", fontWeight: 700 }}>Precio SIC unitario</div>
-                    <div style={{ fontSize: 15, color: "oklch(0.97 0 0)", fontWeight: 600, marginTop: 2 }}>
-                      <span style={{ fontFamily: "var(--font-mono)" }}>{fmtNum(sic.arsUnit, sic.usdUnit) ?? "—"}</span> <span style={{ fontSize: 12, color: "color-mix(in oklab, var(--accent-green) 55%, oklch(0.90 0 0))" }}>{curLabel}</span>
+                    <div style={{ fontSize: 9.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "color-mix(in oklab, var(--accent-green) 50%, oklch(0.92 0 0))", fontWeight: 700 }}>Precio SIC unitario</div>
+                    <div style={{ fontSize: 13, color: "oklch(0.97 0 0)", fontWeight: 600, marginTop: 1 }}>
+                      <span style={{ fontFamily: "var(--font-mono)" }}>{fmtNum(sic.arsUnit, sic.usdUnit) ?? "—"}</span> <span style={{ fontSize: 10.5, color: "color-mix(in oklab, var(--accent-green) 55%, oklch(0.90 0 0))" }}>{curLabel}</span>
                     </div>
                   </div>
-                  <div style={{ width: 1, height: 30, background: "color-mix(in oklab, var(--accent-green) 22%, transparent)" }} />
+                  <div style={{ width: 1, height: 24, background: "color-mix(in oklab, var(--accent-green) 22%, transparent)" }} />
                   <div style={{ textAlign: "left" }}>
-                    <div style={{ fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "color-mix(in oklab, var(--accent-green) 50%, oklch(0.92 0 0))", fontWeight: 700 }}>Precio SIC total</div>
-                    <div style={{ fontSize: 15, color: "oklch(0.97 0 0)", fontWeight: 600, marginTop: 2 }}>
-                      <span style={{ fontFamily: "var(--font-mono)" }}>{fmtNum(sic.arsQty, sic.usdQty) ?? "—"}</span> <span style={{ fontSize: 12, color: "color-mix(in oklab, var(--accent-green) 55%, oklch(0.90 0 0))" }}>{curLabel}</span>
+                    <div style={{ fontSize: 9.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "color-mix(in oklab, var(--accent-green) 50%, oklch(0.92 0 0))", fontWeight: 700 }}>Precio SIC total</div>
+                    <div style={{ fontSize: 13, color: "oklch(0.97 0 0)", fontWeight: 600, marginTop: 1 }}>
+                      <span style={{ fontFamily: "var(--font-mono)" }}>{fmtNum(sic.arsQty, sic.usdQty) ?? "—"}</span> <span style={{ fontSize: 10.5, color: "color-mix(in oklab, var(--accent-green) 55%, oklch(0.90 0 0))" }}>{curLabel}</span>
                     </div>
                   </div>
                 </button>
               )}
               {adjOfId && (
-                <span style={{ marginLeft: "auto", fontSize: 12.5, fontWeight: 700, padding: "5px 11px", borderRadius: 7, background: "color-mix(in oklab, var(--accent-green) 16%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-green) 45%, transparent)", color: "var(--accent-green)" }}>
+                <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 6, background: "color-mix(in oklab, var(--accent-green) 16%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-green) 45%, transparent)", color: "var(--accent-green)" }}>
                   ✓ Adjudicado — {oferentes.find((o) => o.id === adjOfId)?.nombre}
                 </span>
               )}
             </div>
 
             {/* Offer cards */}
-            <div style={{ display: "flex", gap: 16, alignItems: "stretch", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "stretch", flexWrap: "wrap" }}>
               {orderedOferentes.map((of, idx) => {
                 const tot = totByOf.get(of.id)!;
                 const complete = tot.cobertura === r.items.length && tot.arsUnit !== null;
@@ -1806,105 +1806,105 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                     }}
                     onDragEnd={() => setDragInfo(null)}
                     style={{
-                      flex: manyCards ? "1 1 270px" : "0 1 352px",
-                      minWidth: manyCards ? 250 : 300, maxWidth: manyCards ? "none" : 400,
+                      flex: manyCards ? "1 1 230px" : "0 1 300px",
+                      minWidth: manyCards ? 210 : 260, maxWidth: manyCards ? "none" : 340,
                       position: "relative",
                       background: "var(--panel)", border: "1px solid var(--hairline)",
-                      borderRadius: 14, padding: 20, overflow: "hidden",
+                      borderRadius: 12, padding: 14, overflow: "hidden",
                       cursor: "grab", opacity: isDragging ? 0.45 : 1,
                     }}
                   >
                     {/* Best / awarded overlays */}
                     {isBest && !isAdj && (
-                      <div style={{ position: "absolute", inset: 0, borderRadius: 14, border: "1.5px solid color-mix(in oklab, var(--accent-green) 50%, transparent)", background: "linear-gradient(180deg, color-mix(in oklab, var(--accent-green) 9%, transparent), transparent 42%)", boxShadow: "0 10px 40px color-mix(in oklab, var(--accent-green) 10%, transparent)", pointerEvents: "none" }} />
+                      <div style={{ position: "absolute", inset: 0, borderRadius: 12, border: "1.5px solid color-mix(in oklab, var(--accent-green) 50%, transparent)", background: "linear-gradient(180deg, color-mix(in oklab, var(--accent-green) 9%, transparent), transparent 42%)", boxShadow: "0 10px 40px color-mix(in oklab, var(--accent-green) 10%, transparent)", pointerEvents: "none" }} />
                     )}
                     {isAdj && (
-                      <div style={{ position: "absolute", inset: 0, borderRadius: 14, border: "2px solid color-mix(in oklab, var(--accent-green) 85%, transparent)", boxShadow: "0 0 0 4px color-mix(in oklab, var(--accent-green) 12%, transparent)", pointerEvents: "none" }} />
+                      <div style={{ position: "absolute", inset: 0, borderRadius: 12, border: "2px solid color-mix(in oklab, var(--accent-green) 85%, transparent)", boxShadow: "0 0 0 4px color-mix(in oklab, var(--accent-green) 12%, transparent)", pointerEvents: "none" }} />
                     )}
 
                     <div style={{ position: "relative" }}>
                       {/* rank + best tag / awarded */}
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                           <div style={{
-                            width: 28, height: 28, borderRadius: 8, flex: "none",
+                            width: 23, height: 23, borderRadius: 6, flex: "none",
                             display: "flex", alignItems: "center", justifyContent: "center",
-                            fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 14,
+                            fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 11.5,
                             background: isBest ? "var(--accent-green)" : "oklch(1 0 0 / 0.08)",
                             color: isBest ? "oklch(0.16 0.05 155)" : "oklch(0.86 0 0)",
                           }}>
                             {rankNum}
                           </div>
                           {isBest && (
-                            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "var(--accent-green)", background: "color-mix(in oklab, var(--accent-green) 12%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-green) 30%, transparent)", padding: "3px 9px", borderRadius: 6 }}>
+                            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.03em", color: "var(--accent-green)", background: "color-mix(in oklab, var(--accent-green) 12%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-green) 30%, transparent)", padding: "2px 7px", borderRadius: 5 }}>
                               ★ Mejor oferta
                             </span>
                           )}
                         </div>
                         {isAdj && (
-                          <span style={{ fontSize: 11, fontWeight: 800, color: "oklch(0.16 0.05 155)", background: "var(--accent-green)", padding: "3px 9px", borderRadius: 6 }}>✓ Adjudicado</span>
+                          <span style={{ fontSize: 10, fontWeight: 800, color: "oklch(0.16 0.05 155)", background: "var(--accent-green)", padding: "2px 7px", borderRadius: 5 }}>✓ Adjudicado</span>
                         )}
                       </div>
 
                       {/* avatar + name */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 18 }}>
-                        <div style={{ width: 38, height: 38, borderRadius: 10, flex: "none", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, background: av.bg, color: av.fg }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                        <div style={{ width: 30, height: 30, borderRadius: 8, flex: "none", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, background: av.bg, color: av.fg }}>
                           {initialsOf(of.nombre)}
                         </div>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 15.5, fontWeight: 700, color: "oklch(0.98 0 0)", lineHeight: 1.25 }}>{of.nombre}</div>
+                          <div style={{ fontSize: 13.5, fontWeight: 700, color: "oklch(0.98 0 0)", lineHeight: 1.25 }}>{of.nombre}</div>
                         </div>
                       </div>
 
                       {/* big total */}
-                      <div style={{ marginBottom: 14 }}>
-                        <div style={{ fontSize: 11.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "oklch(0.82 0 0)", fontWeight: 700, marginBottom: 5 }}>
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "oklch(0.82 0 0)", fontWeight: 700, marginBottom: 4 }}>
                           Precio total del renglón · {r.items.length} {r.items.length === 1 ? "ítem" : "ítems"}
                         </div>
-                        <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
-                          <div style={{ fontFamily: "var(--font-mono)", fontSize: 31, fontWeight: 700, color: "oklch(0.98 0 0)", letterSpacing: "-0.025em", lineHeight: 1 }}>
+                        <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
+                          <div style={{ fontFamily: "var(--font-mono)", fontSize: 23, fontWeight: 700, color: "oklch(0.98 0 0)", letterSpacing: "-0.02em", lineHeight: 1 }}>
                             {fmtNum(tot.arsQty, tot.usdQty) ?? "—"}
                           </div>
                           {(tot.arsQty != null || tot.usdQty != null) && (
-                            <div style={{ fontSize: 14, color: "oklch(0.82 0 0)", fontWeight: 600, paddingBottom: 3 }}>{curLabel}</div>
+                            <div style={{ fontSize: 12, color: "oklch(0.82 0 0)", fontWeight: 600, paddingBottom: 2 }}>{curLabel}</div>
                           )}
                         </div>
                       </div>
 
                       {/* metric rows */}
-                      <div style={{ marginBottom: 18 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: "1px solid oklch(1 0 0 / 0.06)" }}>
-                          <span style={{ fontSize: 13.5, color: "oklch(0.86 0 0)" }}>Precio unitario del renglón</span>
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderTop: "1px solid oklch(1 0 0 / 0.06)" }}>
+                          <span style={{ fontSize: 12, color: "oklch(0.86 0 0)" }}>Precio unitario del renglón</span>
                           <span style={{ fontSize: 15, color: "oklch(0.97 0 0)", fontWeight: 600, whiteSpace: "nowrap" }}>
                             <span style={{ fontFamily: "var(--font-mono)" }}>{fmtNum(tot.arsUnit, tot.usdUnit) ?? "—"}</span>
                             <span style={{ fontSize: 12, fontWeight: 500, color: "oklch(0.62 0 0)", marginLeft: 4 }}>{curLabel}</span>
                           </span>
                         </div>
 
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: "1px solid oklch(1 0 0 / 0.06)" }}>
-                          <span style={{ fontSize: 13.5, color: "oklch(0.86 0 0)" }}>% vs. SIC</span>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderTop: "1px solid oklch(1 0 0 / 0.06)" }}>
+                          <span style={{ fontSize: 12, color: "oklch(0.86 0 0)" }}>% vs. SIC</span>
                           {pct === null ? (
-                            <span style={{ fontSize: 13.5, color: "oklch(0.78 0 0)" }}>—</span>
+                            <span style={{ fontSize: 12, color: "oklch(0.78 0 0)" }}>—</span>
                           ) : cheaper ? (
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 700, color: "var(--accent-green)", background: "color-mix(in oklab, var(--accent-green) 13%, transparent)", padding: "3px 9px", borderRadius: 6 }}>▼ {pct.toFixed(2)}%</span>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 700, color: "var(--accent-green)", background: "color-mix(in oklab, var(--accent-green) 13%, transparent)", padding: "2px 8px", borderRadius: 5 }}>▼ {pct.toFixed(2)}%</span>
                           ) : equal ? (
-                            <span style={{ display: "inline-flex", alignItems: "center", fontSize: 13, fontWeight: 700, color: "oklch(0.90 0 0)", background: "oklch(1 0 0 / 0.07)", padding: "3px 9px", borderRadius: 6 }}>+{pct.toFixed(2)}%</span>
+                            <span style={{ display: "inline-flex", alignItems: "center", fontSize: 11.5, fontWeight: 700, color: "oklch(0.90 0 0)", background: "oklch(1 0 0 / 0.07)", padding: "2px 8px", borderRadius: 5 }}>+{pct.toFixed(2)}%</span>
                           ) : (
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 700, color: "var(--accent-red)", background: "color-mix(in oklab, var(--accent-red) 13%, transparent)", padding: "3px 9px", borderRadius: 6 }}>{over ? "⚠ " : ""}▲ +{pct.toFixed(2)}%</span>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 700, color: "var(--accent-red)", background: "color-mix(in oklab, var(--accent-red) 13%, transparent)", padding: "2px 8px", borderRadius: 5 }}>{over ? "⚠ " : ""}▲ +{pct.toFixed(2)}%</span>
                           )}
                         </div>
 
-                        <div style={{ padding: "10px 0", borderTop: "1px solid oklch(1 0 0 / 0.06)" }}>
+                        <div style={{ padding: "7px 0", borderTop: "1px solid oklch(1 0 0 / 0.06)" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                            <span style={{ fontSize: 13.5, color: "oklch(0.86 0 0)", whiteSpace: "nowrap" }}>Ahorro vs. SIC</span>
+                            <span style={{ fontSize: 12, color: "oklch(0.86 0 0)", whiteSpace: "nowrap" }}>Ahorro vs. SIC</span>
                             {ahorroOfArs == null ? (
-                              <span style={{ fontSize: 13.5, color: "oklch(0.78 0 0)" }}>—</span>
+                              <span style={{ fontSize: 12, color: "oklch(0.78 0 0)" }}>—</span>
                             ) : equal ? (
-                              <span style={{ fontSize: 13.5, color: "oklch(0.86 0 0)" }}>Sin ahorro</span>
+                              <span style={{ fontSize: 12, color: "oklch(0.86 0 0)" }}>Sin ahorro</span>
                             ) : (
-                              <span style={{ fontSize: 15.5, fontWeight: 700, color: cheaper ? "var(--accent-green)" : "var(--accent-red)", whiteSpace: "nowrap", display: "inline-flex", alignItems: "baseline", gap: 4 }}>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: cheaper ? "var(--accent-green)" : "var(--accent-red)", whiteSpace: "nowrap", display: "inline-flex", alignItems: "baseline", gap: 3 }}>
                                 <span style={{ fontFamily: "var(--font-mono)" }}>{cheaper ? "+" : "−"}{fmtNum(Math.abs(ahorroOfArs), Math.abs(ahorroOfArs) / (fdOp ?? 1)) ?? ""}</span>
-                                <span style={{ fontSize: 12, fontWeight: 500, opacity: 0.85 }}>{curLabel}</span>
+                                <span style={{ fontSize: 10.5, fontWeight: 500, opacity: 0.85 }}>{curLabel}</span>
                               </span>
                             )}
                           </div>
@@ -1917,41 +1917,41 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                           </div>
                         </div>
 
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: "1px solid oklch(1 0 0 / 0.06)" }}>
-                          <span style={{ fontSize: 13.5, color: "oklch(0.86 0 0)" }}>Informe técnico</span>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderTop: "1px solid oklch(1 0 0 / 0.06)" }}>
+                          <span style={{ fontSize: 12, color: "oklch(0.86 0 0)" }}>Informe técnico</span>
                           {cumple === true ? (
-                            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--accent-green)", background: "color-mix(in oklab, var(--accent-green) 12%, transparent)", padding: "4px 10px", borderRadius: 7 }}>✓ Cumple</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-green)", background: "color-mix(in oklab, var(--accent-green) 12%, transparent)", padding: "3px 8px", borderRadius: 6 }}>✓ Cumple</span>
                           ) : cumple === false ? (
-                            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--accent-red)", background: "color-mix(in oklab, var(--accent-red) 12%, transparent)", padding: "4px 10px", borderRadius: 7 }}>✗ No cumple</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-red)", background: "color-mix(in oklab, var(--accent-red) 12%, transparent)", padding: "3px 8px", borderRadius: 6 }}>✗ No cumple</span>
                           ) : evaluated ? (
-                            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--accent-amber)", background: "color-mix(in oklab, var(--accent-amber) 12%, transparent)", padding: "4px 10px", borderRadius: 7 }}>⏳ Pendiente</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-amber)", background: "color-mix(in oklab, var(--accent-amber) 12%, transparent)", padding: "3px 8px", borderRadius: 6 }}>⏳ Pendiente</span>
                           ) : (
-                            <span style={{ fontSize: 13.5, color: "oklch(0.80 0 0)" }}>Sin evaluar</span>
+                            <span style={{ fontSize: 12, color: "oklch(0.80 0 0)" }}>Sin evaluar</span>
                           )}
                         </div>
 
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: "1px solid oklch(1 0 0 / 0.06)" }}>
-                          <span style={{ fontSize: 13.5, color: "oklch(0.86 0 0)" }}>Cobertura del renglón</span>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderTop: "1px solid oklch(1 0 0 / 0.06)" }}>
+                          <span style={{ fontSize: 12, color: "oklch(0.86 0 0)" }}>Cobertura del renglón</span>
                           {r.items.length === 0 ? (
-                            <span style={{ fontSize: 13.5, color: "oklch(0.80 0 0)" }}>—</span>
+                            <span style={{ fontSize: 12, color: "oklch(0.80 0 0)" }}>—</span>
                           ) : tot.cobertura === r.items.length ? (
-                            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--accent-green)", background: "color-mix(in oklab, var(--accent-green) 12%, transparent)", padding: "4px 10px", borderRadius: 7 }}>✓ Completo · {tot.cobertura}/{r.items.length}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-green)", background: "color-mix(in oklab, var(--accent-green) 12%, transparent)", padding: "3px 8px", borderRadius: 6 }}>✓ Completo · {tot.cobertura}/{r.items.length}</span>
                           ) : tot.cobertura > 0 ? (
-                            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--accent-red)", background: "color-mix(in oklab, var(--accent-red) 12%, transparent)", padding: "4px 10px", borderRadius: 7 }}>Incompleto · {tot.cobertura}/{r.items.length}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-red)", background: "color-mix(in oklab, var(--accent-red) 12%, transparent)", padding: "3px 8px", borderRadius: 6 }}>Incompleto · {tot.cobertura}/{r.items.length}</span>
                           ) : (
-                            <span style={{ fontSize: 13.5, color: "oklch(0.80 0 0)" }}>Sin ofertar</span>
+                            <span style={{ fontSize: 12, color: "oklch(0.80 0 0)" }}>Sin ofertar</span>
                           )}
                         </div>
                       </div>
 
                       {/* action */}
                       {isAdj ? (
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, background: "color-mix(in oklab, var(--accent-green) 16%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-green) 55%, transparent)", color: "var(--accent-green)", fontWeight: 800, fontSize: 14, borderRadius: 10, height: 46 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "color-mix(in oklab, var(--accent-green) 16%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-green) 55%, transparent)", color: "var(--accent-green)", fontWeight: 800, fontSize: 12.5, borderRadius: 8, height: 36 }}>
                           ✓ Adjudicado
                           <button
                             onClick={() => handleAdjudicar(r.id, of.id)}
                             disabled={isSaving}
-                            style={{ background: "none", border: "none", cursor: isSaving ? "wait" : "pointer", color: "oklch(0.88 0 0)", fontWeight: 600, fontSize: 14, textDecoration: "underline" }}
+                            style={{ background: "none", border: "none", cursor: isSaving ? "wait" : "pointer", color: "oklch(0.88 0 0)", fontWeight: 600, fontSize: 12.5, textDecoration: "underline" }}
                           >
                             {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin inline" /> : "Deshacer"}
                           </button>
@@ -1960,21 +1960,21 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                         <button
                           onClick={() => handleAdjudicar(r.id, of.id)}
                           disabled={isSaving}
-                          style={{ width: "100%", height: 46, border: "none", borderRadius: 10, background: "var(--accent-green)", color: "oklch(0.16 0.05 155)", fontWeight: 800, fontSize: 14, cursor: isSaving ? "wait" : "pointer" }}
+                          style={{ width: "100%", height: 36, border: "none", borderRadius: 8, background: "var(--accent-green)", color: "oklch(0.16 0.05 155)", fontWeight: 800, fontSize: 12.5, cursor: isSaving ? "wait" : "pointer" }}
                           onMouseEnter={(e) => { if (!isSaving) e.currentTarget.style.background = "color-mix(in oklab, var(--accent-green) 85%, white)"; }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = "var(--accent-green)"; }}
                         >
-                          {isSaving ? <Loader2 className="w-4 h-4 animate-spin inline" /> : "Adjudicar a este oferente"}
+                          {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin inline" /> : "Adjudicar a este oferente"}
                         </button>
                       ) : (
                         <button
                           onClick={() => handleAdjudicar(r.id, of.id)}
                           disabled={isSaving}
-                          style={{ width: "100%", height: 46, border: "1px solid oklch(1 0 0 / 0.14)", borderRadius: 10, background: "transparent", color: "oklch(0.82 0 0)", fontWeight: 700, fontSize: 14, cursor: isSaving ? "wait" : "pointer" }}
+                          style={{ width: "100%", height: 36, border: "1px solid oklch(1 0 0 / 0.14)", borderRadius: 8, background: "transparent", color: "oklch(0.82 0 0)", fontWeight: 700, fontSize: 12.5, cursor: isSaving ? "wait" : "pointer" }}
                           onMouseEnter={(e) => { if (!isSaving) { e.currentTarget.style.borderColor = "oklch(1 0 0 / 0.3)"; e.currentTarget.style.background = "oklch(1 0 0 / 0.03)"; } }}
                           onMouseLeave={(e) => { e.currentTarget.style.borderColor = "oklch(1 0 0 / 0.14)"; e.currentTarget.style.background = "transparent"; }}
                         >
-                          {isSaving ? <Loader2 className="w-4 h-4 animate-spin inline" /> : "Adjudicar"}
+                          {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin inline" /> : "Adjudicar"}
                         </button>
                       )}
                     </div>
@@ -1988,24 +1988,24 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
 
       {/* Summary */}
       {adjMap.size > 0 && (
-        <div style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)", borderRadius: 12, padding: "14px 16px" }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: "oklch(0.80 0 0)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+        <div style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)", borderRadius: 10, padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "oklch(0.80 0 0)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
             Resumen de adjudicación
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {renglones.map((r) => {
               const adjOfId = adjMap.get(r.id);
               const adjOf = adjOfId ? oferentes.find((o) => o.id === adjOfId) : null;
               const tot = adjOfId ? calcOfertaTotals(r, adjOfId) : null;
               const complete = tot && tot.cobertura === r.items.length;
               return (
-                <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 15 }}>
-                  <span style={{ fontFamily: "var(--font-mono)", color: "var(--accent-green)", fontWeight: 600, width: 96, flexShrink: 0 }}>Renglón {r.numero}</span>
+                <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                  <span style={{ fontFamily: "var(--font-mono)", color: "var(--accent-green)", fontWeight: 600, width: 84, flexShrink: 0 }}>Renglón {r.numero}</span>
                   {adjOf ? (
                     <>
                       <span style={{ color: "oklch(0.96 0 0)", fontWeight: 500 }}>{adjOf.nombre}</span>
                       {complete && tot && (
-                        <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 15, color: "oklch(0.85 0 0)" }}>
+                        <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 13, color: "oklch(0.85 0 0)" }}>
                           {fmt(tot.arsQty, tot.usdQty) ?? ""}
                         </span>
                       )}
@@ -2456,7 +2456,7 @@ function RenglonesTab({
               </div>
               <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                 <div style={{ fontSize: 13.5, fontWeight: 500, color: "oklch(0.92 0 0)" }}>Exclusividad entre renglones</div>
-                <div style={{ fontSize: 13.5, color: "oklch(0.86 0 0)", marginTop: 3, lineHeight: 1.5 }}>
+                <div style={{ fontSize: 12, color: "oklch(0.86 0 0)", marginTop: 3, lineHeight: 1.5 }}>
                   Un mismo oferente no puede ganar todos los renglones, salvo que los demás no cumplan técnicamente. {hint}
                 </div>
               </div>
