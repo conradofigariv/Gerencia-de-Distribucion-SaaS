@@ -541,7 +541,7 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
                 {COLS.map(c => (
                   <th
                     key={c.key}
-                    className={cn(thBase, "relative cursor-pointer select-none hover:text-foreground transition-colors")}
+                    className={cn(thBase, "cursor-pointer select-none hover:text-foreground transition-colors")}
                     onClick={() => toggleSort(c.key)}
                   >
                     <span className="flex items-center gap-1">
