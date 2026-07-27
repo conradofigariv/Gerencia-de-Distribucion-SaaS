@@ -537,7 +537,7 @@ const DEFAULT_KPI_ORDER = KPI_DEFS.map(k => k.id);
 
 const BLOCK_ORDER_KEY = "transformadores_block_order";
 
-const DEFAULT_BLOCK_ORDER = ["filtros", "stockReserva", "variacion", "evolucion", "distribucion", "stockKva", "ultimaPlanilla"];
+const DEFAULT_BLOCK_ORDER = ["filtros", "stockReserva", "variacion", "evolucion", "distribucion", "stockKva"];
 
 function SortableBlock({ id, children }: { id: string; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -1004,12 +1004,6 @@ export function TransformadoresResumenSection() {
     ].filter(d => d.value > 0);
   })();
 
-  // Label for the planilla info footer
-  const zonasFecha = [...new Set(planillasActuales.map(p => p.datos.deposito).filter((z): z is string => !!z))];
-  const currentLabel = currentFecha
-    ? `${(currentFecha as string).split("-").map((v: string, i: number) => i === 0 ? v.slice(2) : v).reverse().join("/")}${zonasFecha.length > 0 ? ` — ${zonasFecha.join(" + ")}` : ""}`
-    : null;
-
   // ── Stock disponible por KVA (chart data) ────────────────────────────────
   const stockPorKva = (() => {
     type Row = { kva: number; relacion: "13" | "33"; disponible: number; comprometido: number; label: string };
@@ -1338,11 +1332,6 @@ export function TransformadoresResumenSection() {
           </SortableContext>
         </DndContext>
 
-        {currentLabel && (
-          <p className="text-[11px] text-muted-foreground text-right">
-            Planilla: {currentLabel}
-          </p>
-        )}
         </div>
       </div>
     ),
@@ -1557,178 +1546,6 @@ export function TransformadoresResumenSection() {
           </ResponsiveContainer>
         )}
       </ChartPanel>
-    ),
-
-    ultimaPlanilla: planillasActuales.length === 0 ? null : (
-      <div className="space-y-6">
-        {planillasActuales.map(planilla => {
-          const KVA_ROWS = POT_13;
-          const REL33_ROWS = POT_33;
-          const totTerceros = KVA_ROWS.reduce((s, k) => {
-            const c = planilla.datos.terceros?.[String(k)];
-            return s + (c ? c.t + c.m + c.ct : 0);
-          }, 0);
-          const totTaller = KVA_ROWS.reduce((s, k) => {
-            const c = planilla.datos.taller?.[String(k)];
-            return s + (c ? c.t + c.m + c.ct : 0);
-          }, 0);
-          const totAuto = KVA_ROWS.reduce((s, k) => s + (planilla.datos.autorizados?.[String(k)] ?? 0), 0);
-          const totGeneral = s13(planilla) + s33(planilla);
-          const totDisp = totGeneral - totAuto;
-          return (
-            <div key={planilla.id} className="overflow-hidden shadow-sm" style={PANEL_STYLE}>
-              <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-bold text-foreground">
-                    Última Planilla — {planilla.fecha.split("-").map((v,i)=>i===0?v.slice(2):v).reverse().join("/")}
-                    {planilla.datos.deposito && <span className="text-muted-foreground font-normal"> — {planilla.datos.deposito}</span>}
-                  </h3>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    <span className="font-semibold text-accent-green">{totGeneral}</span> total ·{" "}
-                    <span className="font-semibold text-green-400">{totDisp}</span> disponibles ·{" "}
-                    <span className="font-semibold text-cyan-400">{totTerceros}</span> terceros ·{" "}
-                    <span className="font-semibold text-amber-400">{totTaller}</span> taller
-                  </p>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-x divide-border">
-                {/* Terceros */}
-                <div className="overflow-x-auto">
-                  <div className="px-4 py-2 bg-accent/10 text-xs font-semibold text-accent-green uppercase tracking-wide border-b border-border">
-                    Nuevos y Reparados por Terceros
-                  </div>
-                  <table className="w-full text-xs">
-                    <thead className="bg-secondary/40 border-b border-border">
-                      <tr>
-                        <th className="px-3 py-2 text-center text-muted-foreground">KVA</th>
-                        <th className="px-3 py-2 text-center text-muted-foreground">T</th>
-                        <th className="px-3 py-2 text-center text-muted-foreground">M</th>
-                        <th className="px-3 py-2 text-center text-muted-foreground">C/T</th>
-                        <th className="px-3 py-2 text-center text-muted-foreground">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {KVA_ROWS.map(k => {
-                        const c = planilla.datos.terceros?.[String(k)] ?? { t: 0, m: 0, ct: 0 };
-                        const tot = c.t + c.m + c.ct;
-                        return (
-                          <tr key={k} className="border-b border-border/50 last:border-0">
-                            <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
-                            <td className="px-3 py-1.5 text-center text-muted-foreground">{c.t || "—"}</td>
-                            <td className="px-3 py-1.5 text-center text-muted-foreground">{c.m || "—"}</td>
-                            <td className="px-3 py-1.5 text-center text-muted-foreground">{c.ct || "—"}</td>
-                            <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                {/* Taller */}
-                <div className="overflow-x-auto">
-                  <div className="px-4 py-2 bg-amber-600/10 text-xs font-semibold text-amber-300 uppercase tracking-wide border-b border-border">
-                    Reparados por Taller
-                  </div>
-                  <table className="w-full text-xs">
-                    <thead className="bg-secondary/40 border-b border-border">
-                      <tr>
-                        <th className="px-3 py-2 text-center text-muted-foreground">KVA</th>
-                        <th className="px-3 py-2 text-center text-muted-foreground">T</th>
-                        <th className="px-3 py-2 text-center text-muted-foreground">M</th>
-                        <th className="px-3 py-2 text-center text-muted-foreground">C/T</th>
-                        <th className="px-3 py-2 text-center text-muted-foreground">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {KVA_ROWS.map(k => {
-                        const c = planilla.datos.taller?.[String(k)] ?? { t: 0, m: 0, ct: 0 };
-                        const tot = c.t + c.m + c.ct;
-                        return (
-                          <tr key={k} className="border-b border-border/50 last:border-0">
-                            <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
-                            <td className="px-3 py-1.5 text-center text-muted-foreground">{c.t || "—"}</td>
-                            <td className="px-3 py-1.5 text-center text-muted-foreground">{c.m || "—"}</td>
-                            <td className="px-3 py-1.5 text-center text-muted-foreground">{c.ct || "—"}</td>
-                            <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              {/* Totales + Relación 33 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-x divide-border border-t border-border">
-                {/* Totales 13.2 */}
-                <div className="overflow-x-auto">
-                  <div className="px-4 py-2 bg-green-600/10 text-xs font-semibold text-green-300 uppercase tracking-wide border-b border-border">
-                    Total de Transformadores 13,2 kV
-                  </div>
-                  <table className="w-full text-xs">
-                    <thead className="bg-secondary/40 border-b border-border">
-                      <tr>
-                        <th className="px-3 py-2 text-center text-muted-foreground">KVA</th>
-                        <th className="px-3 py-2 text-center text-muted-foreground">Total</th>
-                        <th className="px-3 py-2 text-center text-muted-foreground">Autorizados</th>
-                        <th className="px-3 py-2 text-center text-muted-foreground">Disponibles</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {KVA_ROWS.map(k => {
-                        const tot  = planilla.datos.totales?.[String(k)] ?? 0;
-                        const auto = planilla.datos.autorizados?.[String(k)] ?? 0;
-                        const disp = tot - auto;
-                        return (
-                          <tr key={k} className="border-b border-border/50 last:border-0">
-                            <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
-                            <td className="px-3 py-1.5 text-center text-foreground">{tot || "—"}</td>
-                            <td className="px-3 py-1.5 text-center text-amber-400">{auto || "—"}</td>
-                            <td className={`px-3 py-1.5 text-center font-semibold ${disp < 0 ? "text-red-400" : "text-green-400"}`}>{disp}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                {/* Relación 33 */}
-                <div className="overflow-x-auto">
-                  <div className="px-4 py-2 bg-purple-600/10 text-xs font-semibold text-purple-300 uppercase tracking-wide border-b border-border">
-                    Relación 33 / 0,4 kV
-                  </div>
-                  <table className="w-full text-xs">
-                    <thead className="bg-secondary/40 border-b border-border">
-                      <tr>
-                        <th className="px-3 py-2 text-center text-muted-foreground">KVA</th>
-                        <th className="px-3 py-2 text-center text-muted-foreground">T Nuevo</th>
-                        <th className="px-3 py-2 text-center text-muted-foreground">M Nuevo</th>
-                        <th className="px-3 py-2 text-center text-muted-foreground">T Rep.</th>
-                        <th className="px-3 py-2 text-center text-muted-foreground">M Rep.</th>
-                        <th className="px-3 py-2 text-center text-muted-foreground">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {REL33_ROWS.map(k => {
-                        const r = planilla.datos.rel33?.[String(k)] ?? { tN: 0, mN: 0, tR: 0, mR: 0 };
-                        const tot = r.tN + r.mN + r.tR + r.mR;
-                        return (
-                          <tr key={k} className="border-b border-border/50 last:border-0">
-                            <td className="px-3 py-1.5 text-center text-foreground font-medium">{k}</td>
-                            <td className="px-3 py-1.5 text-center text-muted-foreground">{r.tN || "—"}</td>
-                            <td className="px-3 py-1.5 text-center text-muted-foreground">{r.mN || "—"}</td>
-                            <td className="px-3 py-1.5 text-center text-muted-foreground">{r.tR || "—"}</td>
-                            <td className="px-3 py-1.5 text-center text-muted-foreground">{r.mR || "—"}</td>
-                            <td className="px-3 py-1.5 text-center font-semibold text-foreground">{tot || "—"}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
     ),
   };
 
