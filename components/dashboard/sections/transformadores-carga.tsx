@@ -82,7 +82,7 @@ function EInput({ val, onChange, valueClass }: { val: number; onChange: (v: numb
       onBlur={commit}
       onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
       className={cn(
-        "w-full text-center text-[14px] font-semibold tabular-nums rounded-md bg-panel-input border border-border py-1 text-foreground",
+        "w-full text-center text-[14px] leading-[1.15] font-semibold tabular-nums rounded-md bg-panel-input border border-border py-1 text-foreground",
         "focus:outline-none focus:border-accent focus:bg-accent/10 focus:ring-1 focus:ring-accent/30 transition-colors",
         val === 0 && "text-muted-foreground/50",
         valueClass
@@ -416,31 +416,25 @@ export function TransformadoresCargaSection() {
       >
 
         {/* Header */}
-        <div className="flex items-center justify-between gap-4 flex-wrap px-5 py-4 border-b border-border">
-          <div className="min-w-0">
-            <p className="text-[15px] font-bold tracking-tight text-foreground leading-snug">
-              Reserva de Transformadores de Distribución{" "}
-              <span className="text-muted-foreground font-medium text-[13px]">(13,2/0,4 — 33/0,4 kV)</span>
-            </p>
-            <div className="text-[12px] text-muted-foreground mt-1.5 flex items-center gap-1.5 flex-wrap">
-              <span>Área Técnica · Dpto. Transformadores</span>
-              <span className="text-muted-foreground/40">·</span>
-              <input
-                type="date"
-                value={fecha}
-                onChange={e => { setFecha(e.target.value); setDirty(true); }}
-                className="bg-panel-input border border-border rounded-md px-2 py-1 text-[12px] text-foreground focus:outline-none focus:border-accent"
-              />
-              <select
-                value={deposito}
-                onChange={e => { setDeposito(e.target.value); setDirty(true); }}
-                className="bg-panel-input border border-border rounded-md px-2 py-1 text-[12px] text-foreground focus:outline-none focus:border-accent"
-              >
-                {ZONAS.map(z => <option key={z} value={z}>{z}</option>)}
-              </select>
-              <span className="text-muted-foreground/40">·</span>
-              <span>Tipo: Rural</span>
-            </div>
+        <div className="flex items-center justify-between gap-4 flex-wrap px-5 py-2 border-b border-border">
+          <div className="text-[12px] text-muted-foreground flex items-center gap-1.5 flex-wrap min-w-0">
+            <span>Área Técnica · Dpto. Transformadores</span>
+            <span className="text-muted-foreground/40">·</span>
+            <input
+              type="date"
+              value={fecha}
+              onChange={e => { setFecha(e.target.value); setDirty(true); }}
+              className="bg-panel-input border border-border rounded-md px-2 py-1 text-[12px] text-foreground focus:outline-none focus:border-accent"
+            />
+            <select
+              value={deposito}
+              onChange={e => { setDeposito(e.target.value); setDirty(true); }}
+              className="bg-panel-input border border-border rounded-md px-2 py-1 text-[12px] text-foreground focus:outline-none focus:border-accent"
+            >
+              {ZONAS.map(z => <option key={z} value={z}>{z}</option>)}
+            </select>
+            <span className="text-muted-foreground/40">·</span>
+            <span>Rural · 13,2/0,4 — 33/0,4 kV</span>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -493,7 +487,7 @@ export function TransformadoresCargaSection() {
         <div className="min-w-[1050px]">
 
         {/* Encabezado sticky: bandas de grupo + columnas */}
-        <div className="sticky top-0 z-10 bg-panel-header/95 backdrop-blur border-b border-border pt-3">
+        <div className="sticky top-0 z-10 bg-panel-header/95 backdrop-blur border-b border-border pt-2">
 
           {/* Encabezado de grupos */}
           <div className="grid px-5" style={{ gridTemplateColumns: GRID_COLS }}>
@@ -512,7 +506,7 @@ export function TransformadoresCargaSection() {
           </div>
 
           {/* Encabezado de columnas */}
-          <div className="grid px-5 pt-2 pb-2" style={{ gridTemplateColumns: GRID_COLS }}>
+          <div className="grid px-5 pt-1.5 pb-1.5" style={{ gridTemplateColumns: GRID_COLS }}>
             <div className={cn(colHeaderCls, "text-left font-bold text-foreground/70")}>Pot. kVA</div>
             <div className={colHeaderCls}>T</div>
             <div className={colHeaderCls}>M</div>
@@ -544,7 +538,7 @@ export function TransformadoresCargaSection() {
             <div
               key={p}
               className={cn(
-                "grid items-center px-5 py-[3px] border-t border-hairline transition-colors hover:bg-secondary/40",
+                "grid items-center px-5 py-px border-t border-hairline transition-colors hover:bg-secondary/40",
                 i % 2 === 1 && "bg-secondary/15",
                 trafos > 0 && "bg-accent/[0.06]"
               )}
@@ -579,7 +573,7 @@ export function TransformadoresCargaSection() {
               </div>
               <div className="flex justify-center">
                 <span className={cn(
-                  "min-w-[40px] text-center text-[14px] font-bold tabular-nums px-2.5 py-1 rounded-md",
+                  "min-w-[40px] text-center text-[14px] leading-[1.15] font-bold tabular-nums px-2.5 py-1 rounded-md",
                   disp > 0 ? "bg-accent/20 text-accent-green" : "bg-secondary/40 text-muted-foreground/40"
                 )}>
                   {disp || "–"}
