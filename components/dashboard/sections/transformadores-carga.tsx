@@ -15,7 +15,7 @@ const POT_33 = [25, 63, 160, 250, 315, 500, 630];
 const ZONAS  = ["Villa Revol", "Alta Gracia Norte"];
 
 // Grilla unificada: KVA | Terceros (T/M/CT/Total) | sep | Taller (T/M/CT/Total) | sep | Totales
-const GRID_COLS = "70px repeat(4,minmax(0,1fr)) 12px repeat(4,minmax(0,1fr)) 12px repeat(3,minmax(0,1fr))";
+const GRID_COLS = "72px repeat(4,minmax(0,1fr)) 16px repeat(4,minmax(0,1fr)) 16px repeat(3,minmax(0,1fr))";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -82,8 +82,9 @@ function EInput({ val, onChange, valueClass }: { val: number; onChange: (v: numb
       onBlur={commit}
       onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
       className={cn(
-        "w-full text-center text-xs font-semibold rounded-md bg-panel-input border border-border py-1.5 text-foreground",
-        "focus:outline-none focus:border-accent focus:bg-accent/10 transition-colors",
+        "w-full text-center text-[14px] font-semibold tabular-nums rounded-md bg-panel-input border border-border py-1 text-foreground",
+        "focus:outline-none focus:border-accent focus:bg-accent/10 focus:ring-1 focus:ring-accent/30 transition-colors",
+        val === 0 && "text-muted-foreground/50",
         valueClass
       )}
     />
@@ -93,7 +94,7 @@ function EInput({ val, onChange, valueClass }: { val: number; onChange: (v: numb
 function TH({ c, rs, cs, children }: { c?: string; rs?: number; cs?: number; children: React.ReactNode }) {
   return (
     <th rowSpan={rs} colSpan={cs}
-      className={`px-0.5 py-1 text-[8px] font-bold text-muted-foreground border border-border bg-panel-header uppercase tracking-wide leading-tight ${c ?? ""}`}>
+      className={`px-1 py-1.5 text-[10.5px] font-semibold text-muted-foreground border border-border bg-panel-header tracking-[.03em] leading-tight ${c ?? ""}`}>
       {children}
     </th>
   );
@@ -101,7 +102,7 @@ function TH({ c, rs, cs, children }: { c?: string; rs?: number; cs?: number; chi
 
 function TD({ c, children }: { c?: string; children: React.ReactNode }) {
   return (
-    <td className={`px-0.5 py-1 text-[10px] border border-border text-center text-muted-foreground ${c ?? ""}`}>
+    <td className={`px-1 py-1 text-[13px] border border-border text-center text-muted-foreground tabular-nums ${c ?? ""}`}>
       {children}
     </td>
   );
@@ -384,21 +385,12 @@ export function TransformadoresCargaSection() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  const groupHeaderCls = "text-center text-[9.5px] font-bold tracking-[.08em] uppercase pb-1.5 border-b-2";
-  const colHeaderCls   = "text-center text-[9px] font-bold tracking-[.06em] uppercase text-muted-foreground";
+  // Jerarquía: 1) banda de grupo  2) encabezado de columna  3) etiqueta de fila  4) valores
+  const groupHeaderCls = "text-center text-[11.5px] font-bold tracking-[.1em] uppercase py-1.5 rounded-t-md";
+  const colHeaderCls   = "text-center text-[11px] font-semibold tracking-[.04em] text-muted-foreground";
 
   return (
     <div className="space-y-4">
-
-      {/* ── Top bar ── */}
-      <div className="flex items-center justify-end">
-        <button
-          onClick={() => setConfigOpen(true)}
-          className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-secondary border border-border text-xs text-muted-foreground hover:text-foreground transition-all"
-        >
-          <BellRing className="w-3.5 h-3.5" /> Recordatorio
-        </button>
-      </div>
 
       {fechaDuplicada && (
         <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/40 rounded-xl px-4 py-2.5 text-sm text-amber-300">
@@ -426,35 +418,42 @@ export function TransformadoresCargaSection() {
         {/* Header */}
         <div className="flex items-center justify-between gap-4 flex-wrap px-5 py-4 border-b border-border">
           <div className="min-w-0">
-            <p className="text-[13px] font-bold tracking-wide text-foreground">
-              RESERVA DE TRANSFORMADORES DE DISTRIBUCIÓN{" "}
-              <span className="text-muted-foreground font-medium">(13,2/0,4 — 33/0,4 KV)</span>
+            <p className="text-[15px] font-bold tracking-tight text-foreground leading-snug">
+              Reserva de Transformadores de Distribución{" "}
+              <span className="text-muted-foreground font-medium text-[13px]">(13,2/0,4 — 33/0,4 kV)</span>
             </p>
-            <div className="text-[10.5px] text-muted-foreground mt-1 flex items-center gap-1.5 flex-wrap">
-              <span>ÁREA TÉCNICA — DPTO. TRANSFORMADORES —</span>
+            <div className="text-[12px] text-muted-foreground mt-1.5 flex items-center gap-1.5 flex-wrap">
+              <span>Área Técnica · Dpto. Transformadores</span>
+              <span className="text-muted-foreground/40">·</span>
               <input
                 type="date"
                 value={fecha}
                 onChange={e => { setFecha(e.target.value); setDirty(true); }}
-                className="bg-panel-input border border-border rounded px-1.5 py-0.5 text-[10.5px] text-foreground focus:outline-none focus:border-accent"
+                className="bg-panel-input border border-border rounded-md px-2 py-1 text-[12px] text-foreground focus:outline-none focus:border-accent"
               />
-              <span>—</span>
               <select
                 value={deposito}
                 onChange={e => { setDeposito(e.target.value); setDirty(true); }}
-                className="bg-panel-input border border-border rounded px-1.5 py-0.5 text-[10.5px] text-foreground focus:outline-none focus:border-accent"
+                className="bg-panel-input border border-border rounded-md px-2 py-1 text-[12px] text-foreground focus:outline-none focus:border-accent"
               >
                 {ZONAS.map(z => <option key={z} value={z}>{z}</option>)}
               </select>
-              <span>· TIPO: RURAL</span>
+              <span className="text-muted-foreground/40">·</span>
+              <span>Tipo: Rural</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-4 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setConfigOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-[7px] bg-secondary border border-border text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <BellRing className="w-3.5 h-3.5" /> Recordatorio
+            </button>
             <button
               onClick={() => fileRef.current?.click()}
               disabled={analyzing}
-              className="flex items-center gap-1.5 px-3.5 py-[7px] rounded-[7px] bg-accent/10 border border-accent/40 text-accent-green text-[11.5px] font-semibold hover:bg-accent/20 disabled:opacity-50 transition-colors"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-[7px] bg-accent/10 border border-accent/40 text-accent-green text-[12px] font-semibold hover:bg-accent/20 disabled:opacity-50 transition-colors"
             >
               <Upload className="w-3.5 h-3.5" /> Importar Excel
             </button>
@@ -491,44 +490,48 @@ export function TransformadoresCargaSection() {
 
         {/* Contenido con scroll horizontal en pantallas chicas */}
         <div className="overflow-x-auto">
-        <div className="min-w-[1080px]">
+        <div className="min-w-[1050px]">
 
-        {/* Encabezado de grupos */}
-        <div className="grid px-5 mt-4" style={{ gridTemplateColumns: GRID_COLS }}>
-          <div />
-          <div className={cn(groupHeaderCls, "text-muted-foreground border-foreground/15")} style={{ gridColumn: "2/6" }}>
-            Nuevos y Rep. por Terceros
-          </div>
-          <div />
-          <div className={cn(groupHeaderCls, "text-muted-foreground border-foreground/15")} style={{ gridColumn: "7/11" }}>
-            Reparados por Taller
-          </div>
-          <div />
-          <div className={cn(groupHeaderCls, "text-accent-green border-accent/40")} style={{ gridColumn: "12/15" }}>
-            Totales
-          </div>
-        </div>
+        {/* Encabezado sticky: bandas de grupo + columnas */}
+        <div className="sticky top-0 z-10 bg-panel-header/95 backdrop-blur border-b border-border pt-3">
 
-        {/* Encabezado de columnas */}
-        <div className="grid px-5 pt-2 pb-1" style={{ gridTemplateColumns: GRID_COLS }}>
-          <div className={cn(colHeaderCls, "text-left")}>Pot. KVA</div>
-          <div className={colHeaderCls}>T</div>
-          <div className={colHeaderCls}>M</div>
-          <div className={colHeaderCls}>C/Tanque</div>
-          <div className={colHeaderCls}>Total</div>
-          <div />
-          <div className={colHeaderCls}>T</div>
-          <div className={colHeaderCls}>M</div>
-          <div className={colHeaderCls}>C/Tanque</div>
-          <div className={colHeaderCls}>Total</div>
-          <div />
-          <div className={colHeaderCls}>Trafos</div>
-          <div className={colHeaderCls}>Aut. p/Retiro</div>
-          <div className={colHeaderCls}>Disponibles</div>
+          {/* Encabezado de grupos */}
+          <div className="grid px-5" style={{ gridTemplateColumns: GRID_COLS }}>
+            <div />
+            <div className={cn(groupHeaderCls, "bg-secondary/60 text-foreground/80")} style={{ gridColumn: "2/6" }}>
+              Nuevos y Rep. por Terceros
+            </div>
+            <div />
+            <div className={cn(groupHeaderCls, "bg-secondary/60 text-foreground/80")} style={{ gridColumn: "7/11" }}>
+              Reparados por Taller
+            </div>
+            <div />
+            <div className={cn(groupHeaderCls, "bg-accent/15 text-accent-green")} style={{ gridColumn: "12/15" }}>
+              Totales
+            </div>
+          </div>
+
+          {/* Encabezado de columnas */}
+          <div className="grid px-5 pt-2 pb-2" style={{ gridTemplateColumns: GRID_COLS }}>
+            <div className={cn(colHeaderCls, "text-left font-bold text-foreground/70")}>Pot. kVA</div>
+            <div className={colHeaderCls}>T</div>
+            <div className={colHeaderCls}>M</div>
+            <div className={colHeaderCls}>C/Tanque</div>
+            <div className={cn(colHeaderCls, "font-bold text-foreground/70")}>Total</div>
+            <div />
+            <div className={colHeaderCls}>T</div>
+            <div className={colHeaderCls}>M</div>
+            <div className={colHeaderCls}>C/Tanque</div>
+            <div className={cn(colHeaderCls, "font-bold text-foreground/70")}>Total</div>
+            <div />
+            <div className={cn(colHeaderCls, "font-bold text-foreground/70")}>Trafos</div>
+            <div className={colHeaderCls}>Aut. p/Retiro</div>
+            <div className={cn(colHeaderCls, "font-bold text-accent-green/80")}>Disponibles</div>
+          </div>
         </div>
 
         {/* Filas de datos */}
-        {visibleRows.map(p => {
+        {visibleRows.map((p, i) => {
           const r3     = terceros[p];
           const ta     = taller[p];
           const terc   = sum(r3);
@@ -540,31 +543,44 @@ export function TransformadoresCargaSection() {
           return (
             <div
               key={p}
-              className={cn("grid items-center px-5 py-[3px] border-t border-hairline", disp > 0 && "bg-accent/5")}
+              className={cn(
+                "grid items-center px-5 py-[3px] border-t border-hairline transition-colors hover:bg-secondary/40",
+                i % 2 === 1 && "bg-secondary/15",
+                trafos > 0 && "bg-accent/[0.06]"
+              )}
               style={{ gridTemplateColumns: GRID_COLS }}
             >
-              <div className="text-xs font-bold text-foreground">{p}</div>
+              <div className="text-[15px] font-bold text-foreground tabular-nums">{p}</div>
 
-              <div className="px-1.5 py-[3px]"><EInput val={r3.t}  onChange={v => setT(p, "t",  v)} /></div>
-              <div className="px-1.5 py-[3px]"><EInput val={r3.m}  onChange={v => setT(p, "m",  v)} /></div>
-              <div className="px-1.5 py-[3px]"><EInput val={r3.ct} onChange={v => setT(p, "ct", v)} /></div>
-              <div className="text-center text-xs text-muted-foreground">{terc || "–"}</div>
+              <div className="px-1"><EInput val={r3.t}  onChange={v => setT(p, "t",  v)} /></div>
+              <div className="px-1"><EInput val={r3.m}  onChange={v => setT(p, "m",  v)} /></div>
+              <div className="px-1"><EInput val={r3.ct} onChange={v => setT(p, "ct", v)} /></div>
+              <div className={cn(
+                "text-center text-[13px] font-semibold tabular-nums",
+                terc > 0 ? "text-foreground/80" : "text-muted-foreground/40"
+              )}>{terc || "–"}</div>
               <div />
 
-              <div className="px-1.5 py-[3px]"><EInput val={ta.t}  onChange={v => setTANum(p, "t",  v)} /></div>
-              <div className="px-1.5 py-[3px]"><EInput val={ta.m}  onChange={v => setTANum(p, "m",  v)} /></div>
-              <div className="px-1.5 py-[3px]"><EInput val={ta.ct} onChange={v => setTANum(p, "ct", v)} /></div>
-              <div className="text-center text-xs text-muted-foreground">{tall || "–"}</div>
+              <div className="px-1"><EInput val={ta.t}  onChange={v => setTANum(p, "t",  v)} /></div>
+              <div className="px-1"><EInput val={ta.m}  onChange={v => setTANum(p, "m",  v)} /></div>
+              <div className="px-1"><EInput val={ta.ct} onChange={v => setTANum(p, "ct", v)} /></div>
+              <div className={cn(
+                "text-center text-[13px] font-semibold tabular-nums",
+                tall > 0 ? "text-foreground/80" : "text-muted-foreground/40"
+              )}>{tall || "–"}</div>
               <div />
 
-              <div className="text-center text-[12.5px] font-bold text-foreground">{trafos || "–"}</div>
-              <div className="px-1.5 py-[3px]">
-                <EInput val={aut} onChange={v => setAuto(p, v)} valueClass={aut > 0 ? "text-accent-amber" : "text-muted-foreground/60"} />
+              <div className={cn(
+                "text-center text-[15px] font-bold tabular-nums",
+                trafos > 0 ? "text-foreground" : "text-muted-foreground/40"
+              )}>{trafos || "–"}</div>
+              <div className="px-1">
+                <EInput val={aut} onChange={v => setAuto(p, v)} valueClass={aut > 0 ? "text-accent-amber" : "text-muted-foreground/50"} />
               </div>
               <div className="flex justify-center">
                 <span className={cn(
-                  "min-w-[34px] text-center text-xs font-bold px-2 py-1 rounded-md",
-                  disp > 0 ? "bg-accent/15 text-accent-green" : "bg-secondary/40 text-muted-foreground/50"
+                  "min-w-[40px] text-center text-[14px] font-bold tabular-nums px-2.5 py-1 rounded-md",
+                  disp > 0 ? "bg-accent/20 text-accent-green" : "bg-secondary/40 text-muted-foreground/40"
                 )}>
                   {disp || "–"}
                 </span>
@@ -578,8 +594,8 @@ export function TransformadoresCargaSection() {
 
           {/* Relación 33/0,4 kV */}
           <div>
-            <p className="text-[9px] font-bold text-center text-muted-foreground mb-1 uppercase tracking-wider">
-              Relación 33/0,4 KV
+            <p className="text-[11.5px] font-bold text-center text-foreground/80 mb-2 uppercase tracking-[.1em]">
+              Relación 33/0,4 kV
             </p>
             <table className="w-full border-collapse">
               <thead>
@@ -607,9 +623,9 @@ export function TransformadoresCargaSection() {
                   );
                 })}
                 <tr className="bg-panel-header font-bold">
-                  <td className="px-1 py-1 border border-border text-[9px] font-bold text-foreground text-center">TOTAL</td>
-                  <td colSpan={2} className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{tot33N || "—"}</td>
-                  <td colSpan={2} className="px-1 py-1 border border-border text-xs text-center text-accent font-bold">{tot33R || "—"}</td>
+                  <td className="px-1 py-1.5 border border-border text-[11px] font-bold text-foreground/80 text-center tracking-wide">TOTAL</td>
+                  <td colSpan={2} className="px-1 py-1.5 border border-border text-[15px] text-center text-accent font-bold tabular-nums">{tot33N || "—"}</td>
+                  <td colSpan={2} className="px-1 py-1.5 border border-border text-[15px] text-center text-accent font-bold tabular-nums">{tot33R || "—"}</td>
                 </tr>
               </tbody>
             </table>
@@ -618,25 +634,25 @@ export function TransformadoresCargaSection() {
           {/* Observaciones + Pendientes */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
-              <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
-                Observaciones (13,2/0,4 KV)
+              <p className="text-[11.5px] font-bold text-foreground/80 uppercase tracking-[.1em]">
+                Observaciones (13,2/0,4 kV)
               </p>
               <textarea
                 value={obs}
                 onChange={e => { setObs(e.target.value); setDirty(true); }}
                 placeholder="Ingrese observaciones…"
-                className="flex-1 min-h-[120px] rounded-lg bg-panel-input border border-border px-2.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent resize-none transition-colors"
+                className="flex-1 min-h-[120px] rounded-lg bg-panel-input border border-border px-3 py-2.5 text-[13px] leading-relaxed text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-accent resize-none transition-colors"
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+              <p className="text-[11.5px] font-bold text-foreground/80 uppercase tracking-[.1em]">
                 Pendientes de Entregas
               </p>
               <textarea
                 value={pend}
                 onChange={e => { setPend(e.target.value); setDirty(true); }}
                 placeholder="Ingrese pendientes…"
-                className="flex-1 min-h-[120px] rounded-lg bg-panel-input border border-border px-2.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent resize-none transition-colors"
+                className="flex-1 min-h-[120px] rounded-lg bg-panel-input border border-border px-3 py-2.5 text-[13px] leading-relaxed text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-accent resize-none transition-colors"
               />
             </div>
           </div>
@@ -647,22 +663,22 @@ export function TransformadoresCargaSection() {
 
         {/* Footer */}
         <div className="flex items-center justify-between px-5 py-3.5 border-t border-border">
-          <div className="flex items-center gap-[22px] text-xs text-muted-foreground">
-            <span>Total: <strong className="text-foreground">{totGeneral}</strong></span>
-            <span>Autorizados: <strong className="text-accent-amber">{totAuto}</strong></span>
-            <span>Disponibles: <strong className="text-accent-green">{totDisp}</strong></span>
+          <div className="flex items-center gap-6 text-[12px] text-muted-foreground">
+            <span>Total: <strong className="text-foreground text-[15px] tabular-nums ml-0.5">{totGeneral}</strong></span>
+            <span>Autorizados: <strong className="text-accent-amber text-[15px] tabular-nums ml-0.5">{totAuto}</strong></span>
+            <span>Disponibles: <strong className="text-accent-green text-[15px] tabular-nums ml-0.5">{totDisp}</strong></span>
           </div>
           <div className="flex items-center gap-2.5">
             <button
               onClick={handleClear}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-[7px] border border-destructive/40 text-accent-red text-[11.5px] font-semibold hover:bg-destructive/10 transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-[7px] border border-destructive/40 text-accent-red text-[12px] font-semibold hover:bg-destructive/10 transition-colors"
             >
               <Eraser className="w-3.5 h-3.5" /> Limpiar
             </button>
             <button
               onClick={handleSave}
               disabled={saving || !dirty}
-              className="flex items-center gap-2 px-[18px] py-2 rounded-[7px] bg-accent text-accent-foreground text-[11.5px] font-bold hover:bg-accent/90 disabled:opacity-50 transition-colors"
+              className="flex items-center gap-2 px-[18px] py-2 rounded-[7px] bg-accent text-accent-foreground text-[12px] font-bold hover:bg-accent/90 disabled:opacity-50 transition-colors"
             >
               {saving
                 ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando…</>
