@@ -59,20 +59,20 @@ export function Header({ activeSection, bgEffect = "swirl", onBgChange, onMenuCl
   const SectionIcon = sectionIcons[activeSection];
 
   return (
-    <header className="h-14 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6">
+    <header className="h-12 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6">
       <div className="flex items-center gap-3 sm:gap-6 min-w-0">
         {/* Hamburguesa (solo mobile) */}
         <button
           onClick={onMenuClick}
-          className="md:hidden flex items-center justify-center w-9 h-9 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors shrink-0"
+          className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-accent/40 transition-colors shrink-0"
           aria-label="Abrir menú"
         >
-          <Menu className="w-5 h-5" />
+          <Menu className="w-4 h-4" />
         </button>
         <div className="flex items-center gap-2.5 min-w-0">
           {SectionIcon && (
-            <div className="w-8 h-8 rounded-lg bg-accent/15 flex items-center justify-center shrink-0">
-              <SectionIcon className="w-4 h-4 text-accent" />
+            <div className="w-7 h-7 rounded-lg bg-accent/15 flex items-center justify-center shrink-0">
+              <SectionIcon className="w-3.5 h-3.5 text-accent" />
             </div>
           )}
           <div className="flex items-baseline gap-2 min-w-0">
@@ -98,7 +98,7 @@ export function Header({ activeSection, bgEffect = "swirl", onBgChange, onMenuCl
         <ReminderBell />
 
         {/* User avatar */}
-        <button className="w-9 h-9 rounded-lg overflow-hidden bg-secondary ring-2 ring-transparent hover:ring-accent/50 transition-all duration-200">
+        <button className="w-8 h-8 rounded-lg overflow-hidden bg-secondary ring-2 ring-transparent hover:ring-accent/50 transition-all duration-200">
           <Avatar className="w-full h-full rounded-lg">
             {userProfile?.avatar_url && (
               <AvatarImage src={userProfile.avatar_url} alt={initials} className="rounded-lg" />

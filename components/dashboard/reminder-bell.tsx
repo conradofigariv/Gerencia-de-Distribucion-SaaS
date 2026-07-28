@@ -65,10 +65,10 @@ export function ReminderBell() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(v => !v)}
-        className="relative w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all duration-200"
+        className="relative w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all duration-200"
         title="Recordatorios"
       >
-        <Bell className="w-5 h-5" />
+        <Bell className="w-4 h-4" />
         {!loading && count > 0 && (
           <span className="absolute top-1 right-1 min-w-[16px] h-4 px-0.5 bg-destructive rounded-full text-[10px] font-bold text-destructive-foreground flex items-center justify-center leading-none">
             {count > 9 ? "9+" : count}

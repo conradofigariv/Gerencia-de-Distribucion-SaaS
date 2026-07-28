@@ -277,9 +277,9 @@ export function Sidebar({
       )}
     >
       {/* Logo */}
-      <div className="h-14 flex items-center justify-between px-4 border-b border-sidebar-border">
+      <div className="h-12 flex items-center justify-between px-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <Logo className="w-9 h-9 shrink-0" />
+          <Logo className="w-8 h-8 shrink-0" />
           <span
             className={cn(
               "font-semibold text-lg text-sidebar-foreground whitespace-nowrap overflow-hidden transition-all duration-300 ease-out",
