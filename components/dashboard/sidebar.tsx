@@ -277,7 +277,7 @@ export function Sidebar({
       )}
     >
       {/* Logo */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-sidebar-border">
+      <div className="h-14 flex items-center justify-between px-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <Logo className="w-9 h-9 shrink-0" />
           <span
@@ -302,7 +302,7 @@ export function Sidebar({
       {/* Botón flotante colapsar/expandir (solo desktop) */}
       <button
         onClick={() => onCollapsedChange(!collapsed)}
-        className="hidden md:flex absolute -right-3 top-[72px] z-50 w-6 h-6 items-center justify-center rounded-full bg-sidebar border border-sidebar-border text-muted-foreground shadow-md hover:text-sidebar-foreground hover:border-accent/50 transition-colors"
+        className="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-50 w-6 h-6 items-center justify-center rounded-full bg-sidebar border border-sidebar-border text-muted-foreground shadow-md hover:text-sidebar-foreground hover:border-accent/50 transition-colors"
         aria-label={collapsed ? "Expandir menú" : "Colapsar menú"}
       >
         <ChevronLeft className={cn("w-3.5 h-3.5 transition-transform duration-300 ease-out", collapsed && "rotate-180")} />

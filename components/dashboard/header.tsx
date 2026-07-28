@@ -1,9 +1,7 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import type { Section, HeaderProfile } from "@/app/page";
-import { Search, Calendar, Menu, Tag, type LucideIcon } from "lucide-react";
-import { useState } from "react";
+import { Calendar, Menu, Tag, type LucideIcon } from "lucide-react";
 import { BgSelector } from "@/components/bg-selector";
 import type { BgEffect } from "@/components/canvas-background";
 import { ReminderBell } from "@/components/dashboard/reminder-bell";
@@ -53,8 +51,6 @@ const sectionTitles: Record<Section, string> = {
 };
 
 export function Header({ activeSection, bgEffect = "swirl", onBgChange, onMenuClick, userEmail, userProfile, headerExtra }: HeaderProps) {
-  const [searchFocused, setSearchFocused] = useState(false);
-
   const initials = [userProfile?.nombre, userProfile?.apellido]
     .map(s => (s ?? "").trim()[0] ?? "")
     .join("")
@@ -63,7 +59,7 @@ export function Header({ activeSection, bgEffect = "swirl", onBgChange, onMenuCl
   const SectionIcon = sectionIcons[activeSection];
 
   return (
-    <header className="h-16 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6">
+    <header className="h-14 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6">
       <div className="flex items-center gap-3 sm:gap-6 min-w-0">
         {/* Hamburguesa (solo mobile) */}
         <button
@@ -95,23 +91,6 @@ export function Header({ activeSection, bgEffect = "swirl", onBgChange, onMenuCl
       </div>
 
       <div className="flex items-center gap-3 sm:gap-4">
-        {/* Search */}
-        <div
-          className={cn(
-            "relative hidden md:flex items-center transition-all duration-300",
-            searchFocused ? "w-64" : "w-48"
-          )}
-        >
-          <Search className="absolute left-3 w-4 h-4 text-muted-foreground pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Search..."
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            className="w-full h-9 pl-9 pr-4 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all duration-200"
-          />
-        </div>
-
         {/* Background selector */}
         {onBgChange && <BgSelector value={bgEffect} onChange={onBgChange} />}
 
