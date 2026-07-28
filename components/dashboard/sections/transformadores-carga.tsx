@@ -82,7 +82,7 @@ function EInput({ val, onChange, valueClass }: { val: number; onChange: (v: numb
       onBlur={commit}
       onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
       className={cn(
-        "w-full text-center text-[13px] leading-[1.15] font-semibold tabular-nums rounded-md bg-panel-input border border-border py-1 text-foreground",
+        "w-full text-center text-[12px] leading-[1.1] font-semibold tabular-nums rounded-md bg-panel-input border border-border py-0.5 text-foreground",
         "focus:outline-none focus:border-accent focus:bg-accent/10 focus:ring-1 focus:ring-accent/30 transition-colors",
         val === 0 && "text-muted-foreground/50",
         valueClass
@@ -386,8 +386,8 @@ export function TransformadoresCargaSection() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   // Jerarquía: 1) banda de grupo  2) encabezado de columna  3) etiqueta de fila  4) valores
-  const groupHeaderCls = "text-center text-[11px] font-bold tracking-[.1em] uppercase py-1.5 rounded-t-md";
-  const colHeaderCls   = "text-center text-[10px] font-semibold tracking-[.04em] text-muted-foreground";
+  const groupHeaderCls = "text-center text-[10px] font-bold tracking-[.08em] uppercase py-1 rounded-t-md";
+  const colHeaderCls   = "text-center text-[9px] font-semibold tracking-[.03em] text-muted-foreground";
 
   return (
     <div className="space-y-4">
@@ -487,7 +487,7 @@ export function TransformadoresCargaSection() {
         <div className="min-w-[1050px]">
 
         {/* Encabezado sticky: bandas de grupo + columnas */}
-        <div className="sticky top-0 z-10 bg-panel-header/95 backdrop-blur border-b border-border pt-2">
+        <div className="sticky top-0 z-10 bg-panel-header/95 backdrop-blur border-b border-border pt-1.5">
 
           {/* Encabezado de grupos */}
           <div className="grid px-5" style={{ gridTemplateColumns: GRID_COLS }}>
@@ -506,7 +506,7 @@ export function TransformadoresCargaSection() {
           </div>
 
           {/* Encabezado de columnas */}
-          <div className="grid px-5 pt-1.5 pb-1.5" style={{ gridTemplateColumns: GRID_COLS }}>
+          <div className="grid px-5 pt-1 pb-1" style={{ gridTemplateColumns: GRID_COLS }}>
             <div className={cn(colHeaderCls, "font-bold text-foreground/70")}>Pot. kVA</div>
             <div className={colHeaderCls}>T</div>
             <div className={colHeaderCls}>M</div>
@@ -544,13 +544,13 @@ export function TransformadoresCargaSection() {
               )}
               style={{ gridTemplateColumns: GRID_COLS }}
             >
-              <div className="text-center text-[14px] font-bold text-foreground tabular-nums">{p}</div>
+              <div className="text-center text-[13px] font-bold text-foreground tabular-nums">{p}</div>
 
               <div className="px-1"><EInput val={r3.t}  onChange={v => setT(p, "t",  v)} /></div>
               <div className="px-1"><EInput val={r3.m}  onChange={v => setT(p, "m",  v)} /></div>
               <div className="px-1"><EInput val={r3.ct} onChange={v => setT(p, "ct", v)} /></div>
               <div className={cn(
-                "text-center text-[12px] font-semibold tabular-nums",
+                "text-center text-[11px] font-semibold tabular-nums",
                 terc > 0 ? "text-foreground/80" : "text-muted-foreground/40"
               )}>{terc || "–"}</div>
               <div />
@@ -559,13 +559,13 @@ export function TransformadoresCargaSection() {
               <div className="px-1"><EInput val={ta.m}  onChange={v => setTANum(p, "m",  v)} /></div>
               <div className="px-1"><EInput val={ta.ct} onChange={v => setTANum(p, "ct", v)} /></div>
               <div className={cn(
-                "text-center text-[12px] font-semibold tabular-nums",
+                "text-center text-[11px] font-semibold tabular-nums",
                 tall > 0 ? "text-foreground/80" : "text-muted-foreground/40"
               )}>{tall || "–"}</div>
               <div />
 
               <div className={cn(
-                "text-center text-[14px] font-bold tabular-nums",
+                "text-center text-[13px] font-bold tabular-nums",
                 trafos > 0 ? "text-foreground" : "text-muted-foreground/40"
               )}>{trafos || "–"}</div>
               <div className="px-1">
@@ -573,7 +573,7 @@ export function TransformadoresCargaSection() {
               </div>
               <div className="flex justify-center">
                 <span className={cn(
-                  "min-w-[36px] text-center text-[13px] leading-[1.15] font-bold tabular-nums px-2 py-1 rounded-md",
+                  "min-w-[32px] text-center text-[12px] leading-[1.1] font-bold tabular-nums px-1.5 py-0.5 rounded-md",
                   disp > 0 ? "bg-accent/20 text-accent-green" : "bg-secondary/40 text-muted-foreground/40"
                 )}>
                   {disp || "–"}
