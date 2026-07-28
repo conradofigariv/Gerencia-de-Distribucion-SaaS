@@ -282,8 +282,8 @@ export function Sidebar({
           <Logo className="w-9 h-9 shrink-0" />
           <span
             className={cn(
-              "font-semibold text-lg text-sidebar-foreground whitespace-nowrap transition-all duration-300",
-              collapsed ? "md:opacity-0 md:w-0" : "opacity-100 w-auto"
+              "font-semibold text-lg text-sidebar-foreground whitespace-nowrap overflow-hidden transition-all duration-300 ease-out",
+              collapsed ? "md:max-w-0 md:opacity-0" : "max-w-[160px] opacity-100"
             )}
           >
             SaaS Soft
@@ -299,13 +299,13 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Botón flotante colapsar/expandir (solo desktop) */}
+      {/* Botón flotante colapsar/expandir (solo desktop) — pestaña centrada */}
       <button
         onClick={() => onCollapsedChange(!collapsed)}
-        className="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-50 w-6 h-6 items-center justify-center rounded-full bg-sidebar border border-sidebar-border text-muted-foreground shadow-md hover:text-sidebar-foreground hover:border-accent/50 transition-colors"
+        className="hidden md:flex absolute -right-2.5 top-1/2 -translate-y-1/2 z-50 w-5 h-11 items-center justify-center rounded-lg bg-sidebar border border-sidebar-border text-muted-foreground shadow-md hover:text-sidebar-foreground hover:border-accent/50 hover:bg-sidebar-accent/40 transition-colors"
         aria-label={collapsed ? "Expandir menú" : "Colapsar menú"}
       >
-        <ChevronLeft className={cn("w-3.5 h-3.5 transition-transform duration-300 ease-out", collapsed && "rotate-180")} />
+        <ChevronLeft className={cn("w-4 h-4 transition-transform duration-300 ease-out", collapsed && "rotate-180")} />
       </button>
 
       {/* Navigation */}
@@ -340,8 +340,8 @@ export function Sidebar({
                   />
                   <span
                     className={cn(
-                      "whitespace-nowrap transition-all duration-300",
-                      c ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+                      "whitespace-nowrap overflow-hidden transition-all duration-300 ease-out",
+                      c ? "max-w-0 opacity-0" : "max-w-[180px] opacity-100"
                     )}
                   >
                     {item.label}
