@@ -387,7 +387,7 @@ export function TransformadoresCargaSection() {
 
   // Jerarquía: 1) banda de grupo  2) encabezado de columna  3) etiqueta de fila  4) valores
   const groupHeaderCls = "text-center text-[9px] font-bold tracking-[.08em] uppercase py-1 rounded-t-md";
-  const colHeaderCls   = "text-center text-[8px] font-semibold tracking-[.03em] text-foreground";
+  const colHeaderCls   = "text-center text-[9px] font-semibold tracking-[.03em] text-foreground";
 
   return (
     <div className="space-y-4">
@@ -433,8 +433,6 @@ export function TransformadoresCargaSection() {
             >
               {ZONAS.map(z => <option key={z} value={z}>{z}</option>)}
             </select>
-            <span className="text-muted-foreground/40">·</span>
-            <span>Rural · 13,2/0,4 — 33/0,4 kV</span>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
