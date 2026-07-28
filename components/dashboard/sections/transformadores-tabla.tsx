@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, ChevronRight, Trash2, Search, X, CheckCircle2 } from "lucide-react";
+import { Loader2, RefreshCw, ChevronRight, Trash2, Search, X, CheckCircle2, Pencil } from "lucide-react";
 import { SearchInput } from "@/components/ui/floating-input";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +35,33 @@ function NV({ val }: { val: number }) {
     <div className="flex items-center justify-center mx-auto bg-panel-input border border-border rounded w-7 px-1 py-1">
       <span className="text-xs text-foreground select-none">{val || "0"}</span>
     </div>
+  );
+}
+
+// Celda editable (modo edición del informe): commit al salir o con Enter, mismo patrón que Carga de datos.
+function EI({ val, onChange }: { val: number; onChange: (v: number) => void }) {
+  const [text, setText] = useState(String(val || 0));
+
+  useEffect(() => { setText(String(val || 0)); }, [val]);
+
+  const commit = () => {
+    const n = parseInt(text, 10);
+    if (Number.isNaN(n) || n < 0) { setText(String(val || 0)); return; }
+    onChange(n);
+    setText(String(n));
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={text}
+      onChange={e => setText(e.target.value.replace(/[^\d]/g, ""))}
+      onFocus={e => e.target.select()}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+      className="w-7 mx-auto block text-center text-xs text-foreground bg-panel-input border border-border rounded px-1 py-1 focus:outline-none focus:border-accent focus:bg-accent/10 transition-colors"
+    />
   );
 }
 
@@ -77,6 +104,9 @@ export function TransformadoresTablaSection() {
   const [openId, setOpenId] = useState<number | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("fecha");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [editMode, setEditMode] = useState(false);
+  const [draft, setDraft] = useState<PlanillaRow["datos"] | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -94,13 +124,23 @@ export function TransformadoresTablaSection() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Resetea el modo edición cada vez que se abre/cierra un informe distinto
+  useEffect(() => { setEditMode(false); setDraft(null); }, [openId]);
+
+  const requestClose = () => {
+    if (editMode && !confirm("¿Descartar los cambios sin guardar?")) return;
+    setEditMode(false);
+    setDraft(null);
+    setOpenId(null);
+  };
+
   useEffect(() => {
     if (openId === null) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpenId(null); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") requestClose(); };
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
-  }, [openId]);
+  }, [openId, editMode]);
 
   const computeTotals = (p: PlanillaRow) => {
     const totTerceros = Object.values(p.datos.terceros).reduce((s, r) => s + r.t + r.m, 0);
@@ -129,6 +169,58 @@ export function TransformadoresTablaSection() {
     } catch (err) {
       toast.error((err as Error).message || "Error al eliminar");
     }
+  };
+
+  const handleEdit = (p: PlanillaRow) => {
+    setDraft(JSON.parse(JSON.stringify(p.datos)) as PlanillaRow["datos"]);
+    setEditMode(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditMode(false);
+    setDraft(null);
+  };
+
+  const handleSave = async (p: PlanillaRow) => {
+    if (!draft) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("planillas_reserva")
+        .update({ datos: draft })
+        .eq("id", p.id);
+      if (error) throw error;
+      setRows(prev => prev.map(r => (r.id === p.id ? { ...r, datos: draft } : r)));
+      toast.success("Informe actualizado correctamente");
+      setEditMode(false);
+      setDraft(null);
+    } catch (err) {
+      toast.error((err as Error).message || "Error al guardar los cambios");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateCelda = (group: "terceros" | "taller", kva: number, field: "t" | "m" | "ct", value: number) => {
+    setDraft(prev => {
+      if (!prev) return prev;
+      const key = String(kva);
+      const current = prev[group][key] ?? { t: 0, m: 0, ct: 0 };
+      return { ...prev, [group]: { ...prev[group], [key]: { ...current, [field]: value } } };
+    });
+  };
+
+  const updateAuto = (kva: number, value: number) => {
+    setDraft(prev => (prev ? { ...prev, autorizados: { ...prev.autorizados, [String(kva)]: value } } : prev));
+  };
+
+  const updateRel33 = (kva: number, field: "tN" | "mN" | "tR" | "mR", value: number) => {
+    setDraft(prev => {
+      if (!prev) return prev;
+      const key = String(kva);
+      const current = prev.rel33[key] ?? { tN: 0, mN: 0, tR: 0, mR: 0 };
+      return { ...prev, rel33: { ...prev.rel33, [key]: { ...current, [field]: value } } };
+    });
   };
 
   const availableYears = [...new Set(rows.map(r => r.fecha.slice(0, 4)))].sort((a, b) => b.localeCompare(a));
@@ -311,10 +403,11 @@ export function TransformadoresTablaSection() {
       {openPlanilla && typeof document !== "undefined" && createPortal(
         (() => {
           const p = openPlanilla;
-          const terceros = p.datos.terceros;
-          const taller   = p.datos.taller;
-          const auto     = p.datos.autorizados;
-          const rel33    = p.datos.rel33;
+          const datosActivos = editMode && draft ? draft : p.datos;
+          const terceros = datosActivos.terceros;
+          const taller   = datosActivos.taller;
+          const auto     = datosActivos.autorizados;
+          const rel33    = datosActivos.rel33;
           const sum2 = (r?: Celda) => (r ? r.t + r.m : 0);
           const totGeneral = POT_13.reduce((s, kva) => s + sum2(terceros[kva]) + sum2(taller[kva]), 0);
           const totAuto    = POT_13.reduce((s, kva) => s + (auto[kva] ?? 0), 0);
@@ -324,7 +417,7 @@ export function TransformadoresTablaSection() {
 
           return (
             <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-5">
-              <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setOpenId(null)} />
+              <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={requestClose} />
               <div className="relative w-full h-full bg-secondary/30 border border-border rounded-2xl shadow-2xl overflow-y-auto">
 
                 {/* Title */}
@@ -338,9 +431,14 @@ export function TransformadoresTablaSection() {
                       {" — "}
                       {p.fecha.split("-").reverse().join("/")}
                       {p.datos.deposito && ` — ${p.datos.deposito}`}
+                      {editMode && (
+                        <span className="ml-2 px-2 py-0.5 rounded-full bg-accent/15 text-accent-green text-[10px] font-bold uppercase tracking-wide align-middle">
+                          Editando
+                        </span>
+                      )}
                     </p>
                   </div>
-                  <button onClick={() => setOpenId(null)} className="absolute right-4 text-muted-foreground hover:text-foreground transition-colors">
+                  <button onClick={requestClose} className="absolute right-4 text-muted-foreground hover:text-foreground transition-colors">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -371,9 +469,9 @@ export function TransformadoresTablaSection() {
                             return (
                               <tr key={kva} className={tot > 0 ? "bg-accent/5" : ""}>
                                 <TD c="font-semibold text-foreground">{kva}</TD>
-                                <TD><NV val={r.t} /></TD>
-                                <TD><NV val={r.m} /></TD>
-                                <TD><NV val={r.ct} /></TD>
+                                <TD>{editMode ? <EI val={r.t} onChange={v => updateCelda("terceros", kva, "t", v)} /> : <NV val={r.t} />}</TD>
+                                <TD>{editMode ? <EI val={r.m} onChange={v => updateCelda("terceros", kva, "m", v)} /> : <NV val={r.m} />}</TD>
+                                <TD>{editMode ? <EI val={r.ct} onChange={v => updateCelda("terceros", kva, "ct", v)} /> : <NV val={r.ct} />}</TD>
                                 <TD c={tot > 0 ? "font-bold text-accent" : "text-muted-foreground"}>{tot || "—"}</TD>
                               </tr>
                             );
@@ -406,9 +504,9 @@ export function TransformadoresTablaSection() {
                                   ? <TD c="text-[9px] text-muted-foreground">RURAL</TD>
                                   : <td className="px-0.5 py-1 text-[10px] text-center text-muted-foreground" />}
                                 <TD c="font-semibold text-foreground">{kva}</TD>
-                                <TD><NV val={r.t} /></TD>
-                                <TD><NV val={r.m} /></TD>
-                                <TD><NV val={r.ct} /></TD>
+                                <TD>{editMode ? <EI val={r.t} onChange={v => updateCelda("taller", kva, "t", v)} /> : <NV val={r.t} />}</TD>
+                                <TD>{editMode ? <EI val={r.m} onChange={v => updateCelda("taller", kva, "m", v)} /> : <NV val={r.m} />}</TD>
+                                <TD>{editMode ? <EI val={r.ct} onChange={v => updateCelda("taller", kva, "ct", v)} /> : <NV val={r.ct} />}</TD>
                                 <TD c={tot > 0 ? "font-bold text-accent" : "text-muted-foreground"}>{tot || "—"}</TD>
                               </tr>
                             );
@@ -443,7 +541,7 @@ export function TransformadoresTablaSection() {
                                   ? <TD c="text-[9px] text-muted-foreground">RURAL</TD>
                                   : <td className="px-0.5 py-1 text-[10px] text-center text-muted-foreground" />}
                                 <TD><NV val={tot} /></TD>
-                                <TD><NV val={a} /></TD>
+                                <TD>{editMode ? <EI val={a} onChange={v => updateAuto(kva, v)} /> : <NV val={a} />}</TD>
                                 <TD c={disp > 0 ? "text-accent-green font-bold" : "text-muted-foreground"}>{disp || "—"}</TD>
                               </tr>
                             );
@@ -487,10 +585,10 @@ export function TransformadoresTablaSection() {
                             return (
                               <tr key={kva}>
                                 <TD c="font-semibold text-foreground">{kva}</TD>
-                                <TD><NV val={r.tN} /></TD>
-                                <TD><NV val={r.mN} /></TD>
-                                <TD><NV val={r.tR} /></TD>
-                                <TD><NV val={r.mR} /></TD>
+                                <TD>{editMode ? <EI val={r.tN} onChange={v => updateRel33(kva, "tN", v)} /> : <NV val={r.tN} />}</TD>
+                                <TD>{editMode ? <EI val={r.mN} onChange={v => updateRel33(kva, "mN", v)} /> : <NV val={r.mN} />}</TD>
+                                <TD>{editMode ? <EI val={r.tR} onChange={v => updateRel33(kva, "tR", v)} /> : <NV val={r.tR} />}</TD>
+                                <TD>{editMode ? <EI val={r.mR} onChange={v => updateRel33(kva, "mR", v)} /> : <NV val={r.mR} />}</TD>
                               </tr>
                             );
                           })}
@@ -509,17 +607,35 @@ export function TransformadoresTablaSection() {
                         <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
                           Observaciones (13,2/0,4 KV)
                         </p>
-                        <div className="flex-1 min-h-[120px] rounded-lg bg-panel-input border border-border px-2.5 py-2 text-xs text-foreground whitespace-pre-wrap">
-                          {p.datos.obs || <span className="text-muted-foreground">Sin observaciones</span>}
-                        </div>
+                        {editMode ? (
+                          <textarea
+                            value={datosActivos.obs}
+                            onChange={e => setDraft(prev => (prev ? { ...prev, obs: e.target.value } : prev))}
+                            placeholder="Sin observaciones"
+                            className="flex-1 min-h-[120px] rounded-lg bg-panel-input border border-border px-2.5 py-2 text-xs text-foreground focus:outline-none focus:border-accent resize-none"
+                          />
+                        ) : (
+                          <div className="flex-1 min-h-[120px] rounded-lg bg-panel-input border border-border px-2.5 py-2 text-xs text-foreground whitespace-pre-wrap">
+                            {datosActivos.obs || <span className="text-muted-foreground">Sin observaciones</span>}
+                          </div>
+                        )}
                       </div>
                       <div className="flex flex-col gap-1.5">
                         <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
                           Pendientes de Entregas
                         </p>
-                        <div className="flex-1 min-h-[120px] rounded-lg bg-panel-input border border-border px-2.5 py-2 text-xs text-foreground whitespace-pre-wrap">
-                          {p.datos.pend || <span className="text-muted-foreground">Sin pendientes</span>}
-                        </div>
+                        {editMode ? (
+                          <textarea
+                            value={datosActivos.pend}
+                            onChange={e => setDraft(prev => (prev ? { ...prev, pend: e.target.value } : prev))}
+                            placeholder="Sin pendientes"
+                            className="flex-1 min-h-[120px] rounded-lg bg-panel-input border border-border px-2.5 py-2 text-xs text-foreground focus:outline-none focus:border-accent resize-none"
+                          />
+                        ) : (
+                          <div className="flex-1 min-h-[120px] rounded-lg bg-panel-input border border-border px-2.5 py-2 text-xs text-foreground whitespace-pre-wrap">
+                            {datosActivos.pend || <span className="text-muted-foreground">Sin pendientes</span>}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -534,18 +650,45 @@ export function TransformadoresTablaSection() {
                     <span>Disponibles: <strong className="text-accent-green">{totDisp}</strong></span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => deleteRecord(p.id)}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-red-400 hover:bg-red-500/20 text-sm font-medium transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" /> Eliminar
-                    </button>
-                    <button
-                      onClick={() => setOpenId(null)}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors"
-                    >
-                      <CheckCircle2 className="w-4 h-4" /> Cerrar
-                    </button>
+                    {editMode ? (
+                      <>
+                        <button
+                          onClick={handleCancelEdit}
+                          disabled={saving}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg text-muted-foreground hover:bg-secondary text-sm font-medium transition-colors disabled:opacity-50"
+                        >
+                          <X className="w-4 h-4" /> Cancelar
+                        </button>
+                        <button
+                          onClick={() => handleSave(p)}
+                          disabled={saving}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-50"
+                        >
+                          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Guardar cambios
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => deleteRecord(p.id)}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg text-red-400 hover:bg-red-500/20 text-sm font-medium transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" /> Eliminar
+                        </button>
+                        <button
+                          onClick={() => handleEdit(p)}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent/10 border border-accent/40 text-accent-green text-sm font-medium hover:bg-accent/20 transition-colors"
+                        >
+                          <Pencil className="w-4 h-4" /> Editar
+                        </button>
+                        <button
+                          onClick={requestClose}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors"
+                        >
+                          <CheckCircle2 className="w-4 h-4" /> Cerrar
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
