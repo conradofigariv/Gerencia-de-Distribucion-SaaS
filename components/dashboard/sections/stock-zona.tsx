@@ -7,7 +7,7 @@ import { DirectionAwareTabs } from "@/components/ui/direction-aware-tabs";
 import {
   Loader2, X, PackageOpen, RefreshCw,
   ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight,
-  Download, Sparkles, Wrench, Package, Check, HelpCircle,
+  Download, Wrench, Package, Check, HelpCircle,
   ChevronLeft, ArrowRight, Lightbulb, ListChecks, Pin, Filter,
 } from "lucide-react";
 import { CheckIcon } from "lucide-react";
@@ -1434,15 +1434,6 @@ export function StockZonaSection() {
                   );
                 })}
               </div>
-            </div>
-
-            {/* Tip card */}
-            <div className="rounded-[14px] p-4 text-xs text-muted-foreground leading-relaxed" style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)" }}>
-              <div className="flex items-center gap-1.5 text-foreground font-semibold mb-1.5 text-sm">
-                <Sparkles className="w-3.5 h-3.5" strokeWidth={2} />
-                Tip
-              </div>
-              Pegá directamente desde Excel o el sistema SIGA. El parser detecta tabulaciones y separadores comunes automáticamente.
             </div>
           </div>
         </div>
