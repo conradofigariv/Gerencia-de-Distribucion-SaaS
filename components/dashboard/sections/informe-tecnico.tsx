@@ -360,7 +360,7 @@ function LicitacionSelector({
       </button>
       {open && (
         <div
-          className="absolute z-50 top-[calc(100%+6px)] right-0 min-w-[340px] overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
+          className="absolute z-50 top-[calc(100%+6px)] left-0 min-w-[340px] max-w-[min(440px,90vw)] overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
           style={{
             background: "var(--panel-2)",
             border: "1px solid var(--hairline)",
