@@ -180,7 +180,7 @@ export function InformeTecnicoSection() {
         >
           {/* Content card */}
           <div
-            className="px-4 py-5 sm:px-6 overflow-hidden"
+            className="px-4 py-4 sm:px-6 overflow-hidden"
             style={{
               background: "var(--panel)",
               border: "1px solid var(--hairline)",
@@ -599,9 +599,9 @@ function DatosGeneralesTab({
   };
 
   return (
-    <div className="space-y-6">
+    <div>
       <FormSection title="Identificación">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
           <FormField label="Número SIC">
             <input type="text" value={numeroSic} onChange={(e) => setNumeroSic(e.target.value)} className="ti-input" />
           </FormField>
@@ -615,7 +615,7 @@ function DatosGeneralesTab({
         title="Fechas y valor del dólar"
         description="Dólar de la SIC: tipo de cambio usado para normalizar los precios del pliego. Dólar de la OP: tipo de cambio del día del Acta de Apertura. Valores en pesos argentinos por USD."
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-2.5">
           <FormField label="Fecha de la SIC">
             <input type="date" value={fdSicFecha} onChange={(e) => setFdSicFecha(e.target.value)} className="ti-input" />
           </FormField>
@@ -630,7 +630,7 @@ function DatosGeneralesTab({
             <div style={{ display: "flex", gap: 8 }}>
               <input type="number" step="0.01" inputMode="decimal" value={fdOpValor} onChange={(e) => setFdOpValor(e.target.value)} placeholder="Ej: 1398" className="ti-input" style={{ flex: 1, appearance: "textfield", MozAppearance: "textfield" } as React.CSSProperties} />
               <button onClick={handleFetchOp} disabled={fetchingOp || !fdOpFecha} title="Buscar cotización BCRA para la fecha de la OP"
-                style={{ height: 44, padding: "0 14px", borderRadius: 9, border: "1px solid oklch(1 0 0 / 0.10)", background: "oklch(0.20 0.005 270)", color: fetchingOp ? "oklch(0.50 0 0)" : "var(--accent-green)", cursor: fetchingOp || !fdOpFecha ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5, opacity: !fdOpFecha ? 0.45 : 1 }}>
+                style={{ height: 38, padding: "0 13px", borderRadius: 9, border: "1px solid oklch(1 0 0 / 0.10)", background: "oklch(0.20 0.005 270)", color: fetchingOp ? "oklch(0.50 0 0)" : "var(--accent-green)", cursor: fetchingOp || !fdOpFecha ? "not-allowed" : "pointer", fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5, opacity: !fdOpFecha ? 0.45 : 1 }}>
                 {fetchingOp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                 BCRA
               </button>
@@ -642,8 +642,9 @@ function DatosGeneralesTab({
       <FormSection
         title="Configuración"
         description="Umbral máximo de sobreprecio aceptable respecto al precio SIC en USD. Default: 50%."
+        last
       >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
           <FormField label="Umbral económico (%)">
             <input type="number" step="0.1" inputMode="decimal" value={umbral} onChange={(e) => setUmbral(e.target.value)} className="ti-input" style={{ appearance: "textfield", MozAppearance: "textfield" } as React.CSSProperties} />
           </FormField>
@@ -651,7 +652,7 @@ function DatosGeneralesTab({
       </FormSection>
 
       <div
-        className="flex items-center gap-2.5 pt-4 mt-2"
+        className="flex items-center gap-2.5 pt-3.5"
         style={{ borderTop: "1px solid oklch(1 0 0 / 0.04)" }}
       >
         <button
@@ -752,12 +753,12 @@ function DatosGeneralesTab({
       <style jsx global>{`
         .ti-input {
           width: 100%;
-          height: 44px;
-          padding: 0 13px;
+          height: 38px;
+          padding: 0 12px;
           border-radius: 9px;
           background-color: var(--panel-input);
           border: 1px solid var(--hairline);
-          font-size: 15px;
+          font-size: 14px;
           color: oklch(0.97 0 0);
           transition: border-color .15s, box-shadow .15s;
         }
@@ -770,7 +771,7 @@ function DatosGeneralesTab({
         .ti-input[type="number"],
         .ti-input[type="date"] {
           font-family: var(--font-mono);
-          font-size: 15.5px;
+          font-size: 14.5px;
           font-weight: 500;
           letter-spacing: 0.3px;
         }
@@ -813,11 +814,11 @@ function HelpHint({ text }: { text: string }) {
   );
 }
 
-function FormSection({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+function FormSection({ title, description, children, last }: { title: string; description?: string; children: React.ReactNode; last?: boolean }) {
   return (
-    <section style={{ marginBottom: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 13 }}>
-        <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: -0.1, color: "oklch(0.97 0 0)" }}>{title}</h3>
+    <section style={{ marginBottom: last ? 0 : 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, letterSpacing: -0.1, color: "oklch(0.97 0 0)" }}>{title}</h3>
         {description && <HelpHint text={description} />}
       </div>
       {children}
@@ -827,8 +828,8 @@ function FormSection({ title, description, children }: { title: string; descript
 
 function FormField({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <label className={`flex flex-col gap-1.5 ${className}`}>
-      <span className="text-[13px] font-medium" style={{ color: "oklch(0.62 0 0)" }}>{label}</span>
+    <label className={`flex flex-col gap-1 ${className}`}>
+      <span className="text-[12px] font-medium" style={{ color: "oklch(0.62 0 0)" }}>{label}</span>
       {children}
     </label>
   );
