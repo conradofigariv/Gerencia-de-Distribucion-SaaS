@@ -849,6 +849,7 @@ export function StockZonaSection() {
       <DirectionAwareTabs
         value={tab}
         onChange={(id) => setTab(id as Tab)}
+        contentClassName="mt-4"
         tabs={TABS.map((t) => {
           const Icon = t.icon;
           return {
@@ -906,7 +907,7 @@ export function StockZonaSection() {
       >
       {/* Content card */}
       <div
-        className="px-4 py-5 sm:px-6 overflow-hidden"
+        className="px-4 py-4 sm:px-6 overflow-hidden"
         style={{
           background: "var(--panel)",
           border: "1px solid var(--hairline)",
@@ -1230,11 +1231,11 @@ export function StockZonaSection() {
 
       {/* ── CARGAR ─────────────────────────────────────────────────────────── */}
       {tab === "cargar" && (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-3 items-start">
           {/* Main card */}
-          <div className="rounded-[14px] p-5" style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)" }}>
+          <div className="rounded-[14px] p-4" style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)" }}>
             {/* Card header */}
-            <div className="flex items-start justify-between gap-4 mb-4">
+            <div className="flex items-start justify-between gap-4 mb-3">
               <div>
                 <h3 className="text-base font-semibold tracking-tight text-foreground">Pegar datos</h3>
                 <p className="mt-1 text-sm text-muted-foreground leading-relaxed max-w-[520px]">
@@ -1279,7 +1280,7 @@ export function StockZonaSection() {
                 value={text}
                 onChange={e => setText(e.target.value)}
                 placeholder={"Pegá aquí el texto copiado del sistema (Ctrl+V)…\n\nDebe contener las columnas: Artículo, Desc Artículo, UDM Primaria, En Mano, Organización"}
-                rows={12}
+                rows={7}
                 className="w-full px-4 py-3.5 bg-transparent border-none outline-none resize-y text-foreground leading-[1.7] placeholder:text-muted-foreground/35"
                 style={{
                   fontFamily: "var(--font-mono)",
@@ -1289,7 +1290,7 @@ export function StockZonaSection() {
             </div>
 
             {/* Action buttons */}
-            <div className="flex items-center gap-2.5 mt-3.5">
+            <div className="flex items-center gap-2.5 mt-3">
               <Button
                 variant="accent"
                 onClick={handleImport}
