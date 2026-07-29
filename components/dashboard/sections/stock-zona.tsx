@@ -1135,35 +1135,6 @@ export function StockZonaSection() {
                   style={{ flex: 1, minWidth: 180 }}
                 />
 
-                {checkedArticulos.size > 0 && (
-                  <span className="inline-flex items-center gap-2 whitespace-nowrap">
-                    <span className="text-xs" style={{ color: "oklch(0.70 0 0)" }}>
-                      {checkedArticulos.size} seleccionada{checkedArticulos.size !== 1 ? "s" : ""}
-                    </span>
-                    <button
-                      onClick={handleExportSelected}
-                      disabled={exporting}
-                      className="inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                      style={{
-                        height: 32, padding: "0 12px", borderRadius: 9,
-                        background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
-                        border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
-                        color: "var(--accent-green)", fontSize: 12.5, fontWeight: 500, cursor: "pointer",
-                      }}
-                    >
-                      {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
-                      Exportar Excel
-                    </button>
-                    <button
-                      onClick={() => setCheckedArticulos(new Set())}
-                      className="underline decoration-dotted hover:text-foreground"
-                      style={{ fontSize: 11.5, color: "oklch(0.55 0 0)" }}
-                    >
-                      limpiar
-                    </button>
-                  </span>
-                )}
-
                 {(pinnedCount > 0 || matriculasLoading) && (
                   <p className="text-xs text-muted-foreground whitespace-nowrap flex items-center gap-1.5">
                     {pinnedCount > 0 && (
@@ -1551,6 +1522,51 @@ export function StockZonaSection() {
       )}
       </div>
       </DirectionAwareTabs>
+
+      {/* Barra flotante de selección — position:fixed vía portal para que no
+          empuje/reacomode nada del layout al tildar o destildar filas. */}
+      {tab === "resumen" && checkedArticulos.size > 0 && createPortal(
+        <div
+          className="animate-in fade-in slide-in-from-bottom-2 duration-150"
+          style={{
+            position: "fixed", left: "50%", bottom: 20, transform: "translateX(-50%)", zIndex: 200,
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "8px 10px 8px 16px", borderRadius: 999,
+            background: "oklch(0.16 0.006 270)",
+            border: "1px solid oklch(1 0 0 / 0.10)",
+            boxShadow: "0 16px 40px -12px rgba(0,0,0,0.55)",
+          }}
+        >
+          <span className="text-xs whitespace-nowrap" style={{ color: "oklch(0.85 0 0)" }}>
+            <span className="font-semibold" style={{ color: "#fff" }}>{checkedArticulos.size}</span> seleccionada{checkedArticulos.size !== 1 ? "s" : ""}
+          </span>
+          <button
+            onClick={handleExportSelected}
+            disabled={exporting}
+            className="inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 whitespace-nowrap"
+            style={{
+              height: 32, padding: "0 14px", borderRadius: 999,
+              background: "color-mix(in oklab, var(--accent-emerald-deep) 55%, transparent)",
+              border: "1px solid color-mix(in oklab, var(--accent-emerald) 55%, transparent)",
+              color: "var(--accent-green)", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+            }}
+          >
+            {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+            Exportar Excel
+          </button>
+          <button
+            onClick={() => setCheckedArticulos(new Set())}
+            title="Limpiar selección"
+            className="grid place-items-center rounded-full transition-colors"
+            style={{ width: 28, height: 28, color: "oklch(0.60 0 0)" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.60 0 0)"; }}
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>,
+        document.body,
+      )}
 
       {/* Centro de ayuda (mismo diseño y concepto que Informe Técnico) */}
       {helpOpen && (
