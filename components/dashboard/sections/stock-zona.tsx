@@ -591,8 +591,10 @@ export function StockZonaSection() {
     [zonas, selectedZonas],
   );
 
-  const lastUpdate = useMemo(() => uploads.reduce<string | null>((latest, u) => {
-    if (!latest || u.uploadedAt > latest) return u.uploadedAt;
+  // Última zona cargada (la de mayor uploadedAt) — útil para saber a qué zona
+  // corresponde el dato más fresco cuando se va cargando de a una por vez.
+  const lastUpload = useMemo(() => uploads.reduce<ZonaUpload | null>((latest, u) => {
+    if (!latest || u.uploadedAt > latest.uploadedAt) return u;
     return latest;
   }, null), [uploads]);
 
@@ -861,12 +863,15 @@ export function StockZonaSection() {
         })}
         end={
           <>
-            {(lastUpdate || (tab === "resumen" && pivotMap.size > 0)) && (
-              <span className="text-xs whitespace-nowrap hidden sm:inline-flex items-center gap-1.5" style={{ color: "oklch(0.55 0 0)" }}>
-                {lastUpdate && (
-                  <span>Actualizado <span style={{ color: "oklch(0.80 0 0)" }}>{new Date(lastUpdate).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}</span></span>
+            {(lastUpload || (tab === "resumen" && pivotMap.size > 0)) && (
+              <span className="text-xs whitespace-nowrap inline-flex items-center gap-1.5" style={{ color: "oklch(0.55 0 0)" }}>
+                {lastUpload && (
+                  <span className="inline-flex items-center gap-1.5">
+                    Última carga: <ZonePill zona={lastUpload.zona} small />
+                    <span style={{ color: "oklch(0.80 0 0)" }}>{new Date(lastUpload.uploadedAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}</span>
+                  </span>
                 )}
-                {lastUpdate && tab === "resumen" && pivotMap.size > 0 && <span style={{ opacity: 0.4 }}>·</span>}
+                {lastUpload && tab === "resumen" && pivotMap.size > 0 && <span style={{ opacity: 0.4 }}>·</span>}
                 {tab === "resumen" && pivotMap.size > 0 && (
                   <span><span className="font-medium" style={{ color: "oklch(0.80 0 0)" }}>{matchedRows.length}</span> de {pivotMap.size} artículos</span>
                 )}
