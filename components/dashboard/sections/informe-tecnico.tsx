@@ -114,10 +114,15 @@ export function InformeTecnicoSection() {
         <HelpCircle className="w-4 h-4" />
         Ayuda
       </button>
-      <BeastPrimaryButton onClick={() => setShowCreate(true)} icon={<Plus className="w-3.5 h-3.5" strokeWidth={2.4} />}>
-        Nueva licitación
-      </BeastPrimaryButton>
     </>
+  );
+
+  // "Nueva licitación" solo tiene sentido en Datos generales — el resto de las
+  // pestañas operan sobre la licitación ya seleccionada.
+  const nuevaLicitacionBtn = (
+    <BeastPrimaryButton onClick={() => setShowCreate(true)} icon={<Plus className="w-3.5 h-3.5" strokeWidth={2.4} />}>
+      Nueva licitación
+    </BeastPrimaryButton>
   );
 
   return (
@@ -126,6 +131,7 @@ export function InformeTecnicoSection() {
       {!selected && (
         <div className="flex items-center justify-end gap-2.5 flex-wrap">
           {headerControls}
+          {nuevaLicitacionBtn}
         </div>
       )}
 
@@ -164,7 +170,7 @@ export function InformeTecnicoSection() {
           value={tab}
           onChange={(id) => setTab(id as WizardTab)}
           contentClassName="mt-4"
-          end={headerControls}
+          end={tab === "datos" ? <>{headerControls}{nuevaLicitacionBtn}</> : headerControls}
           tabs={TABS.map((t) => {
             const Icon = t.icon;
             return {
@@ -601,7 +607,7 @@ function DatosGeneralesTab({
   return (
     <div>
       <FormSection title="Identificación">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           <FormField label="Número SIC">
             <input type="text" value={numeroSic} onChange={(e) => setNumeroSic(e.target.value)} className="ti-input" />
           </FormField>
@@ -615,7 +621,7 @@ function DatosGeneralesTab({
         title="Fechas y valor del dólar"
         description="Dólar de la SIC: tipo de cambio usado para normalizar los precios del pliego. Dólar de la OP: tipo de cambio del día del Acta de Apertura. Valores en pesos argentinos por USD."
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
           <FormField label="Fecha de la SIC">
             <input type="date" value={fdSicFecha} onChange={(e) => setFdSicFecha(e.target.value)} className="ti-input" />
           </FormField>
@@ -630,7 +636,7 @@ function DatosGeneralesTab({
             <div style={{ display: "flex", gap: 8 }}>
               <input type="number" step="0.01" inputMode="decimal" value={fdOpValor} onChange={(e) => setFdOpValor(e.target.value)} placeholder="Ej: 1398" className="ti-input" style={{ flex: 1, appearance: "textfield", MozAppearance: "textfield" } as React.CSSProperties} />
               <button onClick={handleFetchOp} disabled={fetchingOp || !fdOpFecha} title="Buscar cotización BCRA para la fecha de la OP"
-                style={{ height: 38, padding: "0 13px", borderRadius: 9, border: "1px solid oklch(1 0 0 / 0.10)", background: "oklch(0.20 0.005 270)", color: fetchingOp ? "oklch(0.50 0 0)" : "var(--accent-green)", cursor: fetchingOp || !fdOpFecha ? "not-allowed" : "pointer", fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5, opacity: !fdOpFecha ? 0.45 : 1 }}>
+                style={{ height: 36, padding: "0 12px", borderRadius: 8, border: "1px solid oklch(1 0 0 / 0.10)", background: "oklch(0.20 0.005 270)", color: fetchingOp ? "oklch(0.50 0 0)" : "var(--accent-green)", cursor: fetchingOp || !fdOpFecha ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5, opacity: !fdOpFecha ? 0.45 : 1 }}>
                 {fetchingOp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                 BCRA
               </button>
@@ -644,7 +650,7 @@ function DatosGeneralesTab({
         description="Umbral máximo de sobreprecio aceptable respecto al precio SIC en USD. Default: 50%."
         last
       >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           <FormField label="Umbral económico (%)">
             <input type="number" step="0.1" inputMode="decimal" value={umbral} onChange={(e) => setUmbral(e.target.value)} className="ti-input" style={{ appearance: "textfield", MozAppearance: "textfield" } as React.CSSProperties} />
           </FormField>
@@ -652,7 +658,7 @@ function DatosGeneralesTab({
       </FormSection>
 
       <div
-        className="flex items-center gap-2.5 pt-3.5"
+        className="flex items-center gap-2.5 pt-3"
         style={{ borderTop: "1px solid oklch(1 0 0 / 0.04)" }}
       >
         <button
@@ -753,12 +759,12 @@ function DatosGeneralesTab({
       <style jsx global>{`
         .ti-input {
           width: 100%;
-          height: 38px;
-          padding: 0 12px;
-          border-radius: 9px;
+          height: 36px;
+          padding: 0 11px;
+          border-radius: 8px;
           background-color: var(--panel-input);
           border: 1px solid var(--hairline);
-          font-size: 14px;
+          font-size: 13px;
           color: oklch(0.97 0 0);
           transition: border-color .15s, box-shadow .15s;
         }
@@ -771,7 +777,7 @@ function DatosGeneralesTab({
         .ti-input[type="number"],
         .ti-input[type="date"] {
           font-family: var(--font-mono);
-          font-size: 14.5px;
+          font-size: 13.5px;
           font-weight: 500;
           letter-spacing: 0.3px;
         }
@@ -816,9 +822,9 @@ function HelpHint({ text }: { text: string }) {
 
 function FormSection({ title, description, children, last }: { title: string; description?: string; children: React.ReactNode; last?: boolean }) {
   return (
-    <section style={{ marginBottom: last ? 0 : 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, letterSpacing: -0.1, color: "oklch(0.97 0 0)" }}>{title}</h3>
+    <section style={{ marginBottom: last ? 0 : 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+        <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600, letterSpacing: -0.1, color: "oklch(0.97 0 0)" }}>{title}</h3>
         {description && <HelpHint text={description} />}
       </div>
       {children}
@@ -829,7 +835,7 @@ function FormSection({ title, description, children, last }: { title: string; de
 function FormField({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
   return (
     <label className={`flex flex-col gap-1 ${className}`}>
-      <span className="text-[12px] font-medium" style={{ color: "oklch(0.62 0 0)" }}>{label}</span>
+      <span className="text-[11px] font-medium" style={{ color: "oklch(0.62 0 0)" }}>{label}</span>
       {children}
     </label>
   );
@@ -1033,35 +1039,26 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
   const modalRenglon = specsModal ? renglones.find((r) => r.id === specsModal.renglonId) ?? null : null;
   const modalOferente = specsModal ? oferentes.find((o) => o.id === specsModal.oferenteId) ?? null : null;
 
+  const manyCards = oferentes.length > 3;
+
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto rounded-lg border border-border -mx-4 sm:-mx-6">
-        <table className="w-full text-[15px] border-collapse">
-          <thead>
-            <tr className="bg-secondary/60 border-b border-border">
-              <th className="text-left px-4 py-3 text-[13px] font-semibold text-muted-foreground w-36 border-r border-border">
-                Renglón
-              </th>
-              {oferentes.map((of) => (
-                <th
-                  key={of.id}
-                  className="px-4 py-3 text-[15px] font-semibold text-center text-foreground min-w-[240px] border-r border-border last:border-r-0"
-                >
-                  {of.nombre}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {renglones.map((r, ri) => (
-              <tr
-                key={r.id}
-                className={`border-b border-border last:border-b-0 ${ri % 2 === 0 ? "" : "bg-secondary/20"}`}
-              >
-                <td className="px-4 py-3 font-medium text-foreground align-top border-r border-border">
-                  <span className="text-[13px] text-muted-foreground block">Renglón</span>
-                  <span className="text-lg font-semibold">{r.numero}</span>
-                </td>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {renglones.map((r) => {
+          const nombreRenglon = r.items[0]?.descripcion?.trim() || r.items[0]?.matricula || `Renglón ${r.numero}`;
+
+          return (
+            <div key={r.id} style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)", borderRadius: 14, padding: "16px 18px 18px" }}>
+              {/* Renglón header */}
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "oklch(0.16 0.05 155)", background: "var(--accent-green)", padding: "4px 8px", borderRadius: 5, whiteSpace: "nowrap", flexShrink: 0, marginTop: 2 }}>
+                  RENGLÓN {r.numero}
+                </div>
+                <div style={{ fontSize: 14.5, fontWeight: 700, color: "oklch(0.97 0 0)" }}>{nombreRenglon}</div>
+              </div>
+
+              {/* Tarjetas de oferente */}
+              <div style={{ display: "flex", gap: 10, alignItems: "stretch", flexWrap: "wrap" }}>
                 {oferentes.map((of) => {
                   const key = cellKey(r.id, of.id);
                   const ev = evals.get(key);
@@ -1070,90 +1067,113 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                   const specs = parseSpecs(ev?.observaciones ?? null);
                   const specsCount = specs.length;
 
-                  // Celda bloqueada: el oferente no ofertó (todos los ítems del renglón)
-                  if (status === "noOferta") {
-                    const cob = coberturaDe(r, of.id);
-                    return (
-                      <td key={of.id} className="px-3 py-3 align-top border-r border-border last:border-r-0">
-                        <div
-                          className="flex flex-col items-center justify-center gap-1 rounded-md py-4 px-3"
-                          style={{ background: "oklch(0.22 0.01 250 / 0.5)", border: "1px dashed oklch(0.45 0.02 250 / 0.5)" }}
-                        >
-                          <span style={{ fontSize: 14, fontWeight: 600, color: "#94a3b8" }}>⊘ No oferta</span>
-                          <span style={{ fontSize: 12, color: "oklch(0.50 0 0)" }}>
-                            {cob === 0 ? "Sin ofertas en este renglón" : `Cobertura parcial ${cob}/${r.items.length}`}
-                          </span>
-                        </div>
-                      </td>
-                    );
-                  }
-
                   return (
-                    <td key={of.id} className="px-3 py-3 align-top border-r border-border last:border-r-0">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <button
-                            onClick={() => handleToggle(r.id, of.id, true)}
-                            disabled={isSaving}
-                            className={`flex items-center gap-1 px-3 py-1.5 rounded text-[13.5px] font-medium border transition-colors disabled:opacity-60 ${
-                              status === "cumple"
-                                ? "bg-emerald-500/15 border-emerald-500/60 text-emerald-400"
-                                : "border-border text-muted-foreground hover:bg-secondary/60"
-                            }`}
-                          >
-                            ✓ Cumple
-                          </button>
-                          <button
-                            onClick={() => handlePendiente(r.id, of.id)}
-                            disabled={isSaving}
-                            className={`flex items-center gap-1 px-3 py-1.5 rounded text-[13.5px] font-medium border transition-colors disabled:opacity-60 ${
-                              status === "pendiente"
-                                ? "bg-amber-500/15 border-amber-500/60 text-amber-400"
-                                : "border-border text-muted-foreground hover:bg-secondary/60"
-                            }`}
-                          >
-                            ⏳ Pendiente
-                          </button>
-                          <button
-                            onClick={() => handleToggle(r.id, of.id, false)}
-                            disabled={isSaving}
-                            className={`flex items-center gap-1 px-3 py-1.5 rounded text-[13.5px] font-medium border transition-colors disabled:opacity-60 ${
-                              status === "noCumple"
-                                ? "bg-red-500/15 border-red-500/60 text-red-400"
-                                : "border-border text-muted-foreground hover:bg-secondary/60"
-                            }`}
-                          >
-                            ✗ No cumple
-                          </button>
-                          {isSaving && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+                    <div
+                      key={of.id}
+                      style={{
+                        flex: manyCards ? "1 1 230px" : "0 1 260px",
+                        minWidth: manyCards ? 210 : 230, maxWidth: manyCards ? "none" : 300,
+                        background: "var(--panel)", border: "1px solid var(--hairline)", borderRadius: 12, padding: 14,
+                        display: "flex", flexDirection: "column", gap: 10,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: "oklch(0.96 0 0)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                          {of.nombre}
                         </div>
-                        <button
-                          onClick={() => setSpecsModal({ renglonId: r.id, oferenteId: of.id })}
-                          className="w-full flex items-center justify-center gap-2 px-2.5 py-2 rounded-md text-[13.5px] font-medium transition-colors"
-                          style={{
-                            background: "oklch(0.18 0.005 270)",
-                            border: "1px solid oklch(1 0 0 / 0.08)",
-                            color: specsCount > 0 ? "var(--accent-green)" : "oklch(0.60 0 0)",
-                          }}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.18)"; }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.08)"; }}
-                        >
-                          <ListChecks className="w-3.5 h-3.5" />
-                          Especificaciones
-                          {specsCount > 0 && (
-                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, fontWeight: 700, background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)", borderRadius: 20, padding: "1px 7px", color: "var(--accent-green)" }}>
-                              {specsCount}
-                            </span>
-                          )}
-                        </button>
+                        {isSaving && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: "oklch(0.55 0 0)" }} />}
                       </div>
-                    </td>
+
+                      {status === "noOferta" ? (
+                        (() => {
+                          const cob = coberturaDe(r, of.id);
+                          return (
+                            <div
+                              style={{
+                                flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
+                                borderRadius: 9, padding: "18px 10px", textAlign: "center",
+                                background: "oklch(0.22 0.01 250 / 0.5)", border: "1px dashed oklch(0.45 0.02 250 / 0.5)",
+                              }}
+                            >
+                              <span style={{ fontSize: 12.5, fontWeight: 600, color: "#94a3b8" }}>⊘ No oferta</span>
+                              <span style={{ fontSize: 11, color: "oklch(0.55 0 0)" }}>
+                                {cob === 0 ? "Sin ofertas en este renglón" : `Cobertura parcial ${cob}/${r.items.length}`}
+                              </span>
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        <>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            <button
+                              onClick={() => handleToggle(r.id, of.id, true)}
+                              disabled={isSaving}
+                              style={{
+                                width: "100%", height: 32, borderRadius: 7, fontSize: 12, fontWeight: 600,
+                                cursor: isSaving ? "wait" : "pointer",
+                                background: status === "cumple" ? "color-mix(in oklab, var(--accent-green) 16%, transparent)" : "transparent",
+                                border: status === "cumple" ? "1px solid color-mix(in oklab, var(--accent-green) 55%, transparent)" : "1px solid var(--hairline)",
+                                color: status === "cumple" ? "var(--accent-green)" : "oklch(0.72 0 0)",
+                              }}
+                            >
+                              ✓ Cumple
+                            </button>
+                            <button
+                              onClick={() => handlePendiente(r.id, of.id)}
+                              disabled={isSaving}
+                              style={{
+                                width: "100%", height: 32, borderRadius: 7, fontSize: 12, fontWeight: 600,
+                                cursor: isSaving ? "wait" : "pointer",
+                                background: status === "pendiente" ? "color-mix(in oklab, var(--accent-amber) 16%, transparent)" : "transparent",
+                                border: status === "pendiente" ? "1px solid color-mix(in oklab, var(--accent-amber) 55%, transparent)" : "1px solid var(--hairline)",
+                                color: status === "pendiente" ? "var(--accent-amber)" : "oklch(0.72 0 0)",
+                              }}
+                            >
+                              ⏳ Pendiente
+                            </button>
+                            <button
+                              onClick={() => handleToggle(r.id, of.id, false)}
+                              disabled={isSaving}
+                              style={{
+                                width: "100%", height: 32, borderRadius: 7, fontSize: 12, fontWeight: 600,
+                                cursor: isSaving ? "wait" : "pointer",
+                                background: status === "noCumple" ? "color-mix(in oklab, var(--accent-red) 16%, transparent)" : "transparent",
+                                border: status === "noCumple" ? "1px solid color-mix(in oklab, var(--accent-red) 55%, transparent)" : "1px solid var(--hairline)",
+                                color: status === "noCumple" ? "var(--accent-red)" : "oklch(0.72 0 0)",
+                              }}
+                            >
+                              ✗ No cumple
+                            </button>
+                          </div>
+
+                          <button
+                            onClick={() => setSpecsModal({ renglonId: r.id, oferenteId: of.id })}
+                            style={{
+                              width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                              padding: "7px 8px", borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: "pointer",
+                              background: "oklch(0.18 0.005 270)", border: "1px solid oklch(1 0 0 / 0.08)",
+                              color: specsCount > 0 ? "var(--accent-green)" : "oklch(0.62 0 0)",
+                            }}
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.18)"; }}
+                            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.08)"; }}
+                          >
+                            <ListChecks className="w-3.5 h-3.5" />
+                            Especificaciones
+                            {specsCount > 0 && (
+                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700, background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)", borderRadius: 20, padding: "1px 6px", color: "var(--accent-green)" }}>
+                                {specsCount}
+                              </span>
+                            )}
+                          </button>
+                        </>
+                      )}
+                    </div>
                   );
                 })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Resumen */}
@@ -1728,8 +1748,8 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
           <div key={r.id} style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)", borderRadius: 14, padding: "16px 18px 18px" }}>
             {/* Renglón header */}
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "oklch(0.16 0.05 155)", background: "var(--accent-green)", padding: "4px 8px", borderRadius: 5 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "oklch(0.16 0.05 155)", background: "var(--accent-green)", padding: "4px 8px", borderRadius: 5, whiteSpace: "nowrap", flexShrink: 0, marginTop: 2 }}>
                   RENGLÓN {r.numero}
                 </div>
                 <div>
