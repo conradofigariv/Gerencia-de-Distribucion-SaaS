@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import {
   UploadCloud, Loader2, Trash2, CheckCircle2,
-  AlertTriangle, RefreshCw, Database, BellRing, X,
+  AlertTriangle, RefreshCw, Database, BellRing, X, HelpCircle, Check,
 } from "lucide-react";
 import { markUpdated, fetchReminders, upsertConfig } from "@/lib/reminders";
 import { replaceSicSoler, upsertSicSoler, clearSicSoler, getSicSolerStatus, type SicSolerRow } from "@/lib/sicSoler";
@@ -87,10 +87,86 @@ const REMINDER_DEFS = [
   { key: "planillas-MATRICULAS", planilla: "MATRICULAS" as PlanillaType, label: "MATRICULAS", name: "MATRICULAS — Catálogo de materiales",  descripcion: "Catálogo de materiales",  accentClass: "text-emerald-400" },
 ] as const;
 
+// ─── Ayuda: cómo exportar las SICs de Soler desde SIEPEC ───────────────────────
+
+const SIC_HELP_STEPS: { n: number; text: ReactNode }[] = [
+  { n: 1, text: <>Entrá a <strong>SIEPEC</strong> y andá a <strong>Siga → Compras → Solicitante</strong>.</> },
+  { n: 2, text: <>Abrí <strong>Resumen de Solicitudes Internas</strong>.</> },
+  { n: 3, text: <>En <strong>Preparador</strong>, elegí <strong>Soler</strong>.</> },
+  { n: 4, text: <>Seleccioná la pestaña <strong>«Líneas»</strong>.</> },
+  { n: 5, text: <>En la primera opción, cargá el <strong>N° de Empleado 11497</strong>.</> },
+  { n: 6, text: <>Abrí la carpetita <strong>SIC (ALL)</strong>.</> },
+  { n: 7, text: <>Andá a <strong>Archivo → Exportar</strong> para descargar el Excel.</> },
+];
+
+function SicHelpModal({ onClose }: { onClose: () => void }) {
+  return createPortal(
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 9000, background: "oklch(0 0 0 / 0.65)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        style={{ width: "100%", maxWidth: 520, maxHeight: "min(90vh, 640px)", display: "flex", flexDirection: "column", borderRadius: 16, overflow: "hidden", background: "oklch(0.15 0.005 270)", border: "1px solid oklch(1 0 0 / 0.09)", boxShadow: "0 24px 64px -20px oklch(0 0 0 / 0.8)" }}
+        onMouseDown={e => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid var(--hairline)", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 8, background: "color-mix(in oklab, var(--accent-emerald-deep) 35%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 45%, transparent)", color: "var(--accent-green)" }}>
+              <HelpCircle className="w-4 h-4" />
+            </div>
+            <span style={{ fontSize: 16, fontWeight: 600, color: "var(--foreground)", letterSpacing: -0.3 }}>Cómo exportar las SICs de Soler</span>
+          </div>
+          <button onClick={onClose} style={{ display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 7, background: "transparent", border: "1px solid oklch(1 0 0 / 0.08)", color: "oklch(0.60 0 0)", cursor: "pointer", transition: "color .15s, background .15s" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; (e.currentTarget as HTMLButtonElement).style.background = "oklch(0.22 0.005 270)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.60 0 0)"; (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "22px 24px" }}>
+          <p style={{ fontSize: 13.5, color: "oklch(0.72 0 0)", lineHeight: 1.6, marginBottom: 16 }}>
+            Seguí estos pasos en <strong>SIEPEC</strong> para descargar el Excel de SICs con las columnas correctas (Artículo, Línea, Cantidad y Número Pedido incluidos).
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {SIC_HELP_STEPS.map(s => (
+              <div key={s.n} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 999, background: "#a78bfa", color: "oklch(0.12 0 0)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{s.n}</span>
+                <span style={{ fontSize: 13.5, color: "oklch(0.85 0 0)", lineHeight: 1.55, paddingTop: 1 }}>{s.text}</span>
+              </div>
+            ))}
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 999, background: "var(--accent-green)", color: "oklch(0.12 0 0)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>8</span>
+              <span style={{ fontSize: 13.5, color: "oklch(0.85 0 0)", lineHeight: 1.55, paddingTop: 1 }}>
+                Volvé acá y subí ese archivo <strong>.xlsx</strong> en esta tarjeta.
+              </span>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10, padding: "10px 14px", borderRadius: 9, background: "color-mix(in oklab, var(--accent-emerald-deep) 12%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 22%, transparent)", marginTop: 18 }}>
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--accent-green)" }} />
+            <span style={{ fontSize: 12.5, color: "oklch(0.78 0 0)", lineHeight: 1.55 }}>
+              Si el archivo exportado no trae la columna <strong>«Número Pedido»</strong>, el sistema no va a poder cruzar las SICs con la OP — es señal de que se exportó otro reporte (por ejemplo, uno de cabeceras) en vez del detalle por línea.
+            </span>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: "14px 24px", borderTop: "1px solid var(--hairline)", flexShrink: 0 }}>
+          <button
+            onClick={onClose}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--accent-green)", color: "oklch(0.10 0 0)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+          >
+            <Check className="w-4 h-4" /> Entendido
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 // ─── Card ─────────────────────────────────────────────────────────────────────
 
 function PlanillaCard({
-  tipo, label, descripcion, accentClass, state, onUpload, onClear,
+  tipo, label, descripcion, accentClass, state, onUpload, onClear, onHelp,
 }: {
   tipo:        PlanillaType;
   label:       string;
@@ -99,6 +175,7 @@ function PlanillaCard({
   state:       PlanillaState;
   onUpload:    (file: File) => void;
   onClear:     () => void;
+  onHelp?:     () => void;
 }) {
   const [drag, setDrag] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
@@ -113,16 +190,27 @@ function PlanillaCard({
 
   return (
     <div className="bg-card border border-border rounded-xl p-5 flex flex-col gap-4">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-2">
         <div>
           <div className={cn("text-xs font-bold uppercase tracking-widest mb-0.5", accentClass)}>{label}</div>
           <p className="text-sm font-semibold text-foreground">{descripcion}</p>
         </div>
-        {!state.loading && hasData && (
-          <span className="flex items-center gap-1 text-xs text-success bg-success/10 px-2 py-1 rounded-full shrink-0">
-            <CheckCircle2 className="w-3 h-3" />OK
-          </span>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onHelp && (
+            <button
+              onClick={onHelp}
+              title="Cómo exportar esta planilla desde SIEPEC"
+              className="flex items-center justify-center w-6 h-6 rounded-full text-muted-foreground hover:text-accent hover:bg-accent/10 transition-colors"
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
+          )}
+          {!state.loading && hasData && (
+            <span className="flex items-center gap-1 text-xs text-success bg-success/10 px-2 py-1 rounded-full">
+              <CheckCircle2 className="w-3 h-3" />OK
+            </span>
+          )}
+        </div>
       </div>
 
       {state.loading ? (
@@ -197,6 +285,8 @@ export function ServiciosPlanillasSection() {
 
   // Archivo de SICs pendiente de confirmar el modo de subida (abre el diálogo).
   const [sicFile, setSicFile] = useState<File | null>(null);
+  // Ayuda: cómo exportar las SICs de Soler desde SIEPEC.
+  const [sicHelpOpen, setSicHelpOpen] = useState(false);
   // Archivo de MATRICULAS pendiente de confirmar el modo (abre el diálogo).
   const [matFile, setMatFile] = useState<File | null>(null);
 
@@ -529,7 +619,7 @@ export function ServiciosPlanillasSection() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         <PlanillaCard tipo="OP"         label="OP"         descripcion="Órdenes de compra"       accentClass="text-blue-400"    state={states.OP}         onUpload={f => handleUpload("OP",         f)} onClear={() => handleClear("OP")}         />
-        <PlanillaCard tipo="SIC"        label="SIC"        descripcion="SICs del Ing. Soler"     accentClass="text-purple-400"  state={states.SIC}        onUpload={f => handleUpload("SIC",        f)} onClear={() => handleClear("SIC")}        />
+        <PlanillaCard tipo="SIC"        label="SIC"        descripcion="SICs del Ing. Soler"     accentClass="text-purple-400"  state={states.SIC}        onUpload={f => handleUpload("SIC",        f)} onClear={() => handleClear("SIC")}        onHelp={() => setSicHelpOpen(true)} />
         <PlanillaCard tipo="MATRICULAS" label="MATRICULAS" descripcion="Catálogo de materiales"   accentClass="text-emerald-400" state={states.MATRICULAS} onUpload={f => handleUpload("MATRICULAS", f)} onClear={() => handleClear("MATRICULAS")} />
       </div>
 
@@ -744,6 +834,8 @@ export function ServiciosPlanillasSection() {
         </div>,
         document.body
       )}
+
+      {sicHelpOpen && <SicHelpModal onClose={() => setSicHelpOpen(false)} />}
     </div>
   );
 }
