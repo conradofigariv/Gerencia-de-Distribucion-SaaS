@@ -1334,18 +1334,10 @@ export function StockZonaSection() {
 
             {/* Terminal-style textarea */}
             <div className="rounded-[10px] border border-border overflow-hidden" style={{ background: "hsl(var(--background))" }}>
-              {/* macOS chrome bar */}
               <div
-                className="flex items-center gap-2 px-3 py-2 border-b border-border/40"
+                className="flex items-center justify-end px-3 py-2 border-b border-border/40"
                 style={{ background: "hsl(var(--secondary) / 0.5)" }}
               >
-                <div className="flex gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: "oklch(0.60 0.15 25 / 0.65)" }} />
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: "oklch(0.70 0.13 75 / 0.65)" }} />
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: "oklch(0.70 0.13 145 / 0.65)" }} />
-                </div>
-                <span className="ml-1.5 text-xs text-muted-foreground/60">datos_pegados.tsv</span>
-                <div className="flex-1" />
                 <span className="text-xs text-muted-foreground/45 tabular-nums">
                   {text.length.toLocaleString("es-AR")} car. · {textRowCount} línea{textRowCount === 1 ? "" : "s"}
                 </span>
