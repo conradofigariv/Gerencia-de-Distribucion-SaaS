@@ -408,6 +408,103 @@ function BeastMultiSelect({
   );
 }
 
+// ─── ZonasCargadasMenu (última carga + desplegable con detalle por zona) ───────
+// Trigger: "Última carga: Zona X · fecha". Al clickear despliega un panel con
+// TODAS las zonas cargadas (registros + hora), cada una con su botón de borrado
+// — se usa un desplegable en vez de un tooltip al pasar el mouse porque el botón
+// de borrar necesita que el panel se mantenga abierto mientras se interactúa.
+
+function ZonasCargadasMenu({
+  uploads, lastUpload, deletingZona, onDelete,
+}: {
+  uploads: ZonaUpload[];
+  lastUpload: ZonaUpload | null;
+  deletingZona: string | null;
+  onDelete: (zona: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; right: number; minWidth: number } | null>(null);
+  const ref = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (ref.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const r = ref.current?.getBoundingClientRect();
+      if (!r) return;
+      setCoords({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right), minWidth: Math.max(260, r.width) });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => { window.removeEventListener("scroll", update, true); window.removeEventListener("resize", update); };
+  }, [open]);
+
+  if (!lastUpload) return null;
+
+  const sorted = [...uploads].sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
+
+  return (
+    <div className="relative" style={{ flexShrink: 0 }}>
+      <button
+        ref={ref}
+        onClick={() => setOpen(v => !v)}
+        className="text-xs whitespace-nowrap inline-flex items-center gap-1.5 transition-colors"
+        style={{ color: "oklch(0.55 0 0)", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
+      >
+        Última carga: <ZonePill zona={lastUpload.zona} small />
+        <span style={{ color: "oklch(0.80 0 0)" }}>{new Date(lastUpload.uploadedAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}</span>
+        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`} style={{ color: "oklch(0.5 0 0)" }} />
+      </button>
+
+      {open && coords && createPortal(
+        <div
+          ref={menuRef}
+          className="overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
+          style={{
+            position: "fixed", zIndex: 300, top: coords.top, right: coords.right, minWidth: coords.minWidth,
+            background: "var(--panel-2)", border: "1px solid var(--hairline)", borderRadius: 10,
+            boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6), 0 0 0 1px oklch(1 0 0 / 0.02) inset",
+            padding: 8, maxHeight: 340, overflowY: "auto",
+          }}
+        >
+          <p className="text-[11px] uppercase tracking-[0.6px] text-muted-foreground px-1.5 pb-2">Zonas cargadas</p>
+          <div className="flex flex-col gap-1">
+            {sorted.map(u => (
+              <div key={u.zona} className="flex items-center gap-2 px-1.5 py-1.5 rounded-lg">
+                <ZonePill zona={u.zona} small />
+                <span className="text-xs text-muted-foreground/80 flex-1 whitespace-nowrap">{u.rows.length} reg.</span>
+                <span className="text-[11px] text-muted-foreground/60 whitespace-nowrap">
+                  {new Date(u.uploadedAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}
+                </span>
+                <button
+                  onClick={() => onDelete(u.zona)}
+                  disabled={deletingZona === u.zona}
+                  className="text-muted-foreground/40 hover:text-destructive transition-colors disabled:opacity-30"
+                >
+                  {deletingZona === u.zona ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
 // ─── Main section ─────────────────────────────────────────────────────────────
 
 export function StockZonaSection() {
@@ -864,18 +961,15 @@ export function StockZonaSection() {
         })}
         end={
           <>
-            {(lastUpload || (tab === "resumen" && pivotMap.size > 0)) && (
-              <span className="text-xs whitespace-nowrap inline-flex items-center gap-1.5" style={{ color: "oklch(0.55 0 0)" }}>
-                {lastUpload && (
-                  <span className="inline-flex items-center gap-1.5">
-                    Última carga: <ZonePill zona={lastUpload.zona} small />
-                    <span style={{ color: "oklch(0.80 0 0)" }}>{new Date(lastUpload.uploadedAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}</span>
-                  </span>
-                )}
-                {lastUpload && tab === "resumen" && pivotMap.size > 0 && <span style={{ opacity: 0.4 }}>·</span>}
-                {tab === "resumen" && pivotMap.size > 0 && (
-                  <span><span className="font-medium" style={{ color: "oklch(0.80 0 0)" }}>{matchedRows.length}</span> de {pivotMap.size} artículos</span>
-                )}
+            <ZonasCargadasMenu
+              uploads={uploads}
+              lastUpload={lastUpload}
+              deletingZona={deletingZona}
+              onDelete={handleDelete}
+            />
+            {tab === "resumen" && pivotMap.size > 0 && (
+              <span className="text-xs whitespace-nowrap" style={{ color: "oklch(0.55 0 0)" }}>
+                <span className="font-medium" style={{ color: "oklch(0.80 0 0)" }}>{matchedRows.length}</span> de {pivotMap.size} artículos
               </span>
             )}
             <button
@@ -1204,26 +1298,6 @@ export function StockZonaSection() {
                   </table>
                 </div>
               </div>
-
-              {/* Loaded zones — compact inline list */}
-              {uploads.length > 0 && (
-                <div className="flex items-center gap-3 flex-wrap pt-1">
-                  <span className="text-xs text-muted-foreground">Zonas cargadas:</span>
-                  {uploads.map(u => (
-                    <div key={u.zona} className="flex items-center gap-1.5">
-                      <ZonePill zona={u.zona} small />
-                      <span className="text-xs text-muted-foreground/70">{u.rows.length} reg.</span>
-                      <button
-                        onClick={() => handleDelete(u.zona)}
-                        disabled={deletingZona === u.zona}
-                        className="text-muted-foreground/40 hover:text-destructive transition-colors disabled:opacity-30"
-                      >
-                        {deletingZona === u.zona ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </>
           )}
         </div>
