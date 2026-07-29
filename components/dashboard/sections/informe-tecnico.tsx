@@ -1050,11 +1050,11 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
           return (
             <div key={r.id} style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)", borderRadius: 14, padding: "16px 18px 18px" }}>
               {/* Renglón header */}
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "oklch(0.16 0.05 155)", background: "var(--accent-green)", padding: "4px 8px", borderRadius: 5, whiteSpace: "nowrap", flexShrink: 0, marginTop: 2 }}>
                   RENGLÓN {r.numero}
                 </div>
-                <div style={{ fontSize: 14.5, fontWeight: 700, color: "oklch(0.97 0 0)" }}>{nombreRenglon}</div>
+                <div style={{ fontSize: 14.5, fontWeight: 700, color: "oklch(0.97 0 0)", minWidth: 0, flex: 1 }}>{nombreRenglon}</div>
               </div>
 
               {/* Tarjetas de oferente */}
@@ -1752,7 +1752,7 @@ function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "oklch(0.16 0.05 155)", background: "var(--accent-green)", padding: "4px 8px", borderRadius: 5, whiteSpace: "nowrap", flexShrink: 0, marginTop: 2 }}>
                   RENGLÓN {r.numero}
                 </div>
-                <div>
+                <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 700, color: "oklch(0.97 0 0)" }}>{nombreRenglon}</div>
                   {descRenglon && (
                     <div style={{ fontSize: 12, lineHeight: 1.4, color: "oklch(0.82 0 0)", maxWidth: 720, marginTop: 3 }}>{descRenglon}</div>
