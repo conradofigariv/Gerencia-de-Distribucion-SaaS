@@ -8,11 +8,12 @@ import {
   Loader2, X, PackageOpen, RefreshCw,
   ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight,
   Download, Wrench, Package, Check, HelpCircle,
-  ChevronLeft, ArrowRight, Lightbulb, ListChecks, Pin, Filter,
+  ChevronLeft, ArrowRight, Lightbulb, ListChecks, Pin, Filter, FileSpreadsheet,
 } from "lucide-react";
 import { CheckIcon } from "lucide-react";
 import { SearchInput } from "@/components/ui/floating-input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
 import type { ZonaUpload, CompraRow } from "@/lib/stockStorage";
 import { getMatriculasInfo } from "@/lib/stockFamilies";
@@ -528,6 +529,8 @@ export function StockZonaSection() {
   const [sortCol, setSortCol]               = useState("articulo");
   const [sortDir, setSortDir]               = useState<SortDir>("asc");
   const [selectedRow, setSelectedRow]       = useState<string | null>(null);
+  const [checkedArticulos, setCheckedArticulos] = useState<Set<string>>(new Set()); // tildadas para exportar
+  const [exporting, setExporting]           = useState(false);
 
   // Toggle de fijar matrícula arriba
   const togglePin = useCallback((articulo: string) => {
@@ -539,6 +542,15 @@ export function StockZonaSection() {
     setSelectedZonas(prev =>
       prev.includes(zona) ? prev.filter(z => z !== zona) : [...prev, zona],
     );
+  }, []);
+
+  // Tildado de filas para exportar a Excel
+  const toggleCheck = useCallback((articulo: string) => {
+    setCheckedArticulos(prev => {
+      const next = new Set(prev);
+      if (next.has(articulo)) next.delete(articulo); else next.add(articulo);
+      return next;
+    });
   }, []);
 
   // Column resize & zone collapse
@@ -853,6 +865,49 @@ export function StockZonaSection() {
     return baseZonas.filter(z => conStock.has(z));
   }, [baseZonas, onlyZonasConStock, pivotRows]);
 
+  // Tildado: "seleccionar todas" actúa solo sobre las filas actualmente visibles
+  // (respeta filtros/búsqueda), sin tocar tildes de otras filas fuera de vista.
+  const allCheckedInView = pivotRows.length > 0 && pivotRows.every(r => checkedArticulos.has(r.articulo));
+  const toggleCheckAll = useCallback(() => {
+    setCheckedArticulos(prev => {
+      const next = new Set(prev);
+      if (allCheckedInView) pivotRows.forEach(r => next.delete(r.articulo));
+      else pivotRows.forEach(r => next.add(r.articulo));
+      return next;
+    });
+  }, [allCheckedInView, pivotRows]);
+
+  // Exporta las matrículas tildadas a un .xlsx (Matrícula, Descripción, UDM,
+  // Tipo, Total + una columna por cada zona actualmente visible).
+  const handleExportSelected = async () => {
+    if (checkedArticulos.size === 0) return;
+    setExporting(true);
+    try {
+      const XLSX = await import("xlsx");
+      const rows = pivotRows.filter(r => checkedArticulos.has(r.articulo));
+      const data = rows.map(r => {
+        const rec: Record<string, string | number> = {
+          "Matrícula":   r.articulo,
+          "Descripción": r.descArticulo,
+          "UDM":         r.udmPrimaria,
+          "Tipo":        tipoMeta(tipoOf(r.articulo))?.label ?? "",
+          "Total":       r.total,
+        };
+        for (const z of visibleZonas) rec[`Zona ${z}`] = r.byZona[z] ?? 0;
+        return rec;
+      });
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Stock");
+      const fecha = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `stock-por-zona_${fecha}.xlsx`);
+    } catch {
+      toast.error("No se pudo generar el Excel");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // ── Virtualización de tablas (rinde solo las filas visibles) ────────────────
   const resumenScrollRef  = useRef<HTMLDivElement>(null);
 
@@ -921,9 +976,10 @@ export function StockZonaSection() {
 
   // ── Table layout ──────────────────────────────────────────────────────────
 
+  const CHECK_W = 36;
   const TOGGLE_W = zonesExpanded ? 36 : 96;
   const tableWidth =
-    colWidths.articulo + colWidths.descArticulo + colWidths.udmPrimaria + colWidths.tipo + colWidths.total +
+    CHECK_W + colWidths.articulo + colWidths.descArticulo + colWidths.udmPrimaria + colWidths.tipo + colWidths.total +
     TOGGLE_W + (zonesExpanded ? visibleZonas.length * zoneWidth : 0);
 
   const fixedCols = [
@@ -1079,6 +1135,35 @@ export function StockZonaSection() {
                   style={{ flex: 1, minWidth: 180 }}
                 />
 
+                {checkedArticulos.size > 0 && (
+                  <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                    <span className="text-xs" style={{ color: "oklch(0.70 0 0)" }}>
+                      {checkedArticulos.size} seleccionada{checkedArticulos.size !== 1 ? "s" : ""}
+                    </span>
+                    <button
+                      onClick={handleExportSelected}
+                      disabled={exporting}
+                      className="inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                      style={{
+                        height: 32, padding: "0 12px", borderRadius: 9,
+                        background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
+                        border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)",
+                        color: "var(--accent-green)", fontSize: 12.5, fontWeight: 500, cursor: "pointer",
+                      }}
+                    >
+                      {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+                      Exportar Excel
+                    </button>
+                    <button
+                      onClick={() => setCheckedArticulos(new Set())}
+                      className="underline decoration-dotted hover:text-foreground"
+                      style={{ fontSize: 11.5, color: "oklch(0.55 0 0)" }}
+                    >
+                      limpiar
+                    </button>
+                  </span>
+                )}
+
                 {(pinnedCount > 0 || matriculasLoading) && (
                   <p className="text-xs text-muted-foreground whitespace-nowrap flex items-center gap-1.5">
                     {pinnedCount > 0 && (
@@ -1107,12 +1192,31 @@ export function StockZonaSection() {
                       : { tableLayout: "fixed", width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 14 }}
                   >
                     <colgroup>
+                      <col style={{ width: CHECK_W }} />
                       {fixedCols.map(c => <col key={c.col} style={{ width: c.w }} />)}
                       <col style={{ width: TOGGLE_W }} />
                       {zonesExpanded && visibleZonas.map(z => <col key={z} style={{ width: zoneWidth }} />)}
                     </colgroup>
                     <thead>
                       <tr>
+                        <th
+                          style={{
+                            width: CHECK_W,
+                            borderBottom: "1px solid hsl(var(--border))",
+                            padding: "10px 8px",
+                            textAlign: "center",
+                            position: "sticky",
+                            top: 0,
+                            zIndex: 2,
+                            background: "var(--panel-header)",
+                          }}
+                        >
+                          <Checkbox
+                            checked={allCheckedInView ? true : pivotRows.some(r => checkedArticulos.has(r.articulo)) ? "indeterminate" : false}
+                            onCheckedChange={() => toggleCheckAll()}
+                            aria-label="Seleccionar todas"
+                          />
+                        </th>
                         {fixedCols.map(({ col, label, align, w }) => {
                           const active = sortCol === col;
                           const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
@@ -1203,7 +1307,7 @@ export function StockZonaSection() {
                       {pivotRows.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={fixedCols.length + 1 + (zonesExpanded ? visibleZonas.length : 0)}
+                            colSpan={fixedCols.length + 2 + (zonesExpanded ? visibleZonas.length : 0)}
                             style={{ padding: "48px 24px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 13 }}
                           >
                             No hay registros que coincidan con los filtros
@@ -1237,6 +1341,13 @@ export function StockZonaSection() {
                                   onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "hsl(var(--secondary) / 0.35)"; }}
                                   onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = baseBg; }}
                                 >
+                                  <td style={{ ...bottomBorder, padding: "8px 8px", textAlign: "center" }} onClick={e => e.stopPropagation()}>
+                                    <Checkbox
+                                      checked={checkedArticulos.has(row.articulo)}
+                                      onCheckedChange={() => toggleCheck(row.articulo)}
+                                      aria-label={`Seleccionar ${row.articulo}`}
+                                    />
+                                  </td>
                                   <td style={{ ...bottomBorder, padding: "8px 12px 8px 10px", fontFamily: "var(--font-mono)", fontSize: 12, color: "#7ee2a8", overflow: "hidden", whiteSpace: "nowrap" }}>
                                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: "100%" }}>
                                       <button
@@ -1345,7 +1456,7 @@ export function StockZonaSection() {
               <textarea
                 value={text}
                 onChange={e => setText(e.target.value)}
-                placeholder={"Pegá aquí el texto copiado del sistema (Ctrl+V)…\n\nDebe contener las columnas: Artículo, Desc Artículo, UDM Primaria, En Mano, Organización"}
+                placeholder="Pegá aquí el texto copiado del sistema (Ctrl+V)…"
                 rows={7}
                 className="w-full px-4 py-3.5 bg-transparent border-none outline-none resize-y text-foreground leading-[1.7] placeholder:text-muted-foreground/35"
                 style={{
