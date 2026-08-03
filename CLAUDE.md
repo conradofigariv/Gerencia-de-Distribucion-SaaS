@@ -91,6 +91,7 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
 | transformadores-carga | `planillas_reserva` |
 | transformadores-tabla | `planillas_reserva` (lectura) |
 | transformadores-resumen | `planillas_reserva`, `transformador_alarms` |
+| consumo-transformadores | `consumo_transformadores` — SQL en [`docs/consumo-transformadores.md`](docs/consumo-transformadores.md) |
 | sic-diagrama | `sic_diagrama_layout`, `sic_diagrama_active` — SQL en [`docs/sic-diagrama.md`](docs/sic-diagrama.md) |
 | informe-tecnico | `licitaciones`, `licitacion_renglones`, `licitacion_items`, `licitacion_oferentes`, `licitacion_ofertas`, `licitacion_evaluaciones_tecnicas`, `licitacion_adjudicaciones`, `matriculas` — SQL en [`docs/informe-tecnico.md`](docs/informe-tecnico.md) |
 | settings | `profiles` |
