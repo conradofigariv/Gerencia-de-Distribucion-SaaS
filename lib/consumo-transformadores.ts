@@ -61,6 +61,17 @@ export interface FiltroConsumo {
   sectores?: readonly string[];
 }
 
+/**
+ * Acota qué meses entran en el cálculo. Es distinto de `FiltroConsumo`: aquel
+ * filtra celdas dentro de un mes, este elige qué meses se consideran.
+ */
+export interface FiltroPeriodo {
+  /** Año calendario. `undefined` = todos. */
+  anio?: number;
+  /** Mes del año (1–12), para comparar el mismo mes entre años. `undefined` = todos. */
+  mesDelAnio?: number;
+}
+
 export interface PuntoSerie {
   mes: string;
   nuevos: number;
@@ -92,6 +103,30 @@ export function normalizarDatos(raw: unknown): ConsumoDatos {
     reparados: d.reparados ?? {},
     obs: d.obs,
   };
+}
+
+/** Años presentes en los registros, de más nuevo a más viejo. */
+export function aniosDisponibles(registros: readonly ConsumoMes[]): number[] {
+  const set = new Set<number>();
+  for (const r of registros) {
+    const a = Number(r.mes.slice(0, 4));
+    if (Number.isFinite(a)) set.add(a);
+  }
+  return [...set].sort((x, y) => y - x);
+}
+
+/** Deja solo los meses que caen dentro del período. */
+export function filtrarPorPeriodo(
+  registros: readonly ConsumoMes[],
+  periodo: FiltroPeriodo = {}
+): ConsumoMes[] {
+  const { anio, mesDelAnio } = periodo;
+  if (anio === undefined && mesDelAnio === undefined) return [...registros];
+  return registros.filter(r => {
+    const a = Number(r.mes.slice(0, 4));
+    const m = Number(r.mes.slice(5, 7));
+    return (anio === undefined || a === anio) && (mesDelAnio === undefined || m === mesDelAnio);
+  });
 }
 
 /** Suma un bloque aplicando los filtros de potencia y sector. */
@@ -128,9 +163,10 @@ export function totalDelMes(datos: ConsumoDatos, filtro: FiltroConsumo = {}): nu
  */
 export function serieMensual(
   registros: readonly ConsumoMes[],
-  filtro: FiltroConsumo = {}
+  filtro: FiltroConsumo = {},
+  periodo: FiltroPeriodo = {}
 ): PuntoSerie[] {
-  return registros
+  return filtrarPorPeriodo(registros, periodo)
     .map(({ mes, datos }) => ({
       mes,
       nuevos: sumarBloque(datos.nuevos, filtro),
@@ -158,6 +194,12 @@ const MESES_CORTOS = [
   "Ene", "Feb", "Mar", "Abr", "May", "Jun",
   "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
 ];
+
+/** Nombres completos, indexados por mes − 1. */
+export const NOMBRES_MESES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+] as const;
 
 /** "2025-01" → "Ene 2025". Devuelve la entrada tal cual si no matchea. */
 export function etiquetaMes(mes: string): string {

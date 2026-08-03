@@ -128,13 +128,29 @@ son strings; `lib/consumo-transformadores.ts` normaliza al comparar.
 | `POT_CONSUMO`, `SECTORES`, `SECTORES_ZONA_A`, `TIPOS_CONSUMO` | Constantes del informe |
 | `normalizarDatos(raw)` | Sanea un `datos` incompleto que viene de la base |
 | `totalDelMes(datos, filtro)` | Consumo de un mes bajo filtro de tipo/potencia/sector |
-| `serieMensual(registros, filtro)` | Serie ordenada por mes, con desglose nuevos/reparados |
+| `aniosDisponibles(registros)` | Años presentes, para poblar el filtro |
+| `filtrarPorPeriodo(registros, periodo)` | Acota a un año y/o a un mes del año |
+| `serieMensual(registros, filtro, periodo)` | Serie ordenada por mes, con desglose nuevos/reparados |
 
 En `serieMensual`, el filtro de `tipo` **no** se aplica a las columnas
 `nuevos`/`reparados` — esas siempre traen su valor real, para que el detalle
 mensual pueda mostrar el desglose completo. Solo `total` respeta el tipo.
 | `promedios(serie)` | Promedio mensual y proyección anual |
 | `etiquetaMes`, `formatPromedio` | Presentación |
+
+### Filtros de período
+
+`FiltroPeriodo` es distinto de `FiltroConsumo`: aquel filtra celdas dentro de un
+mes, este elige **qué meses** entran en el cálculo.
+
+- `anio` → el consumo de un año calendario.
+- `mesDelAnio` (1–12) → el mismo mes across años, para responder "cuánto se
+  consume en promedio en enero".
+
+Cuando `mesDelAnio` está activo, la tarjeta **oculta el promedio anual**:
+multiplicar por 12 el promedio de un único mes del año no significa nada, y el
+número ya lo da el promedio principal. En ese caso el denominador pasa a ser
+años, no meses.
 
 ### Criterio del promedio
 
