@@ -194,11 +194,9 @@ export function parseConsumoGrid(grid: Grid, avisos: string[] = []): ParseConsum
   if (bloques === 0) {
     throw new Error(`No se encontraron bloques de "${TITULO_BLOQUE}" en el documento.`);
   }
-  if (sinTipo > 0) {
-    avisos.push(
-      "El informe no separa nuevos de reparados; esos transformadores se cargaron como «nuevos»."
-    );
-  } else if (bloques !== 3) {
+  // Los informes viejos no separan nuevos de reparados: ese bloque cuenta como
+  // nuevos en silencio, sin avisar en cada import.
+  if (sinTipo === 0 && bloques !== 3) {
     avisos.push(`Se esperaban 3 bloques (nuevos + 2 de reparados) y se encontraron ${bloques}.`);
   }
 
