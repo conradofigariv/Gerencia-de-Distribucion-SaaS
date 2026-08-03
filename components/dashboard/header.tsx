@@ -39,6 +39,7 @@ const sectionTitles: Record<Section, string> = {
   "sic-diagrama":             "Proceso SIC - SIGA",
   "transformadores-carga":    "Stock de Transformadores — Carga de datos",
   "transformadores-consumo-carga": "Consumo de Transformadores — Carga de datos",
+  "transformadores-consumo":       "Consumo de Transformadores",
   "transformadores-tabla":    "Stock de Transformadores — Informe de Reservas",
   "transformadores-resumen":  "Stock de Transformadores — Resumen",
   "stock-zona":               "Stock por Zona",
