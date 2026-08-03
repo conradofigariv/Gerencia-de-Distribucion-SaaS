@@ -18,6 +18,8 @@ import {
   POT_CONSUMO,
   SECTORES,
   TIPOS_CONSUMO,
+  NOMBRES_MESES,
+  aniosDisponibles,
   normalizarDatos,
   serieMensual,
   promedios,
@@ -25,6 +27,7 @@ import {
   etiquetaMes,
   type ConsumoMes,
   type FiltroConsumo,
+  type FiltroPeriodo,
   type TipoConsumo,
 } from "@/lib/consumo-transformadores";
 
@@ -67,6 +70,8 @@ export function TransformadoresConsumoSection() {
   const [tipo, setTipo]         = useState<TipoConsumo | typeof TODOS>(TODOS);
   const [potencia, setPotencia] = useState<string>(TODOS);
   const [sector, setSector]     = useState<string>(TODOS);
+  const [anio, setAnio]         = useState<string>(TODOS);
+  const [mesDelAnio, setMesDelAnio] = useState<string>(TODOS);
   const [detalleAbierto, setDetalleAbierto] = useState(false);
 
   const cargar = useCallback(async () => {
@@ -99,7 +104,13 @@ export function TransformadoresConsumoSection() {
     sectores:  sector   === TODOS ? undefined : [sector],
   }), [tipo, potencia, sector]);
 
-  const serie = useMemo(() => serieMensual(registros, filtro), [registros, filtro]);
+  const periodo: FiltroPeriodo = useMemo(() => ({
+    anio:       anio       === TODOS ? undefined : Number(anio),
+    mesDelAnio: mesDelAnio === TODOS ? undefined : Number(mesDelAnio),
+  }), [anio, mesDelAnio]);
+
+  const anios = useMemo(() => aniosDisponibles(registros), [registros]);
+  const serie = useMemo(() => serieMensual(registros, filtro, periodo), [registros, filtro, periodo]);
   const prom  = useMemo(() => promedios(serie), [serie]);
 
   const rango = useMemo(() => {
@@ -109,7 +120,12 @@ export function TransformadoresConsumoSection() {
     return desde === hasta ? desde : `${desde} → ${hasta}`;
   }, [serie]);
 
-  const hayFiltro = tipo !== TODOS || potencia !== TODOS || sector !== TODOS;
+  const hayFiltro =
+    tipo !== TODOS || potencia !== TODOS || sector !== TODOS ||
+    anio !== TODOS || mesDelAnio !== TODOS;
+
+  // Anualizar un único mes del año no significa nada: doce eneros no son un año.
+  const anualizable = mesDelAnio === TODOS;
 
   return (
     <div className="rounded-xl border border-border bg-secondary/30 overflow-hidden">
@@ -134,6 +150,30 @@ export function TransformadoresConsumoSection() {
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
+          <Select value={anio} onValueChange={setAnio}>
+            <SelectTrigger size="sm" className="w-[134px] text-[12px]">
+              <SelectValue placeholder="Año" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TODOS}>Todos los años</SelectItem>
+              {anios.map(a => (
+                <SelectItem key={a} value={String(a)}>{a}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={mesDelAnio} onValueChange={setMesDelAnio}>
+            <SelectTrigger size="sm" className="w-[136px] text-[12px]">
+              <SelectValue placeholder="Mes" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TODOS}>Todos los meses</SelectItem>
+              {NOMBRES_MESES.map((n, i) => (
+                <SelectItem key={n} value={String(i + 1)}>{n}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Select value={potencia} onValueChange={setPotencia}>
             <SelectTrigger size="sm" className="w-[172px] text-[12px]">
               <SelectValue placeholder="Potencia" />
@@ -174,21 +214,32 @@ export function TransformadoresConsumoSection() {
         </div>
       ) : (
         <>
-          <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
+          <div className={cn(
+            "grid gap-3 p-5 sm:grid-cols-2",
+            anualizable ? "xl:grid-cols-4" : "xl:grid-cols-3"
+          )}>
             <Kpi
               icon={TrendingUp}
-              label="Promedio mensual"
+              label={anualizable
+                ? "Promedio mensual"
+                : `Promedio de ${NOMBRES_MESES[Number(mesDelAnio) - 1]}`}
               valor={formatPromedio(prom.mensual)}
-              detalle={`sobre ${prom.meses} ${prom.meses === 1 ? "mes" : "meses"} con datos`}
+              detalle={anualizable
+                ? `sobre ${prom.meses} ${prom.meses === 1 ? "mes" : "meses"} con datos`
+                : `sobre ${prom.meses} ${prom.meses === 1 ? "año" : "años"}`}
               acento
             />
-            <Kpi
-              icon={CalendarRange}
-              label="Promedio anual"
-              valor={formatPromedio(prom.anual)}
-              detalle="proyección: mensual × 12"
-              acento
-            />
+            {/* Anualizar un solo mes del año no significa nada, y el promedio
+                ya lo cubre el KPI anterior: se omite en vez de duplicarlo. */}
+            {anualizable && (
+              <Kpi
+                icon={CalendarRange}
+                label="Promedio anual"
+                valor={formatPromedio(prom.anual)}
+                detalle="proyección: mensual × 12"
+                acento
+              />
+            )}
             <Kpi
               icon={Sigma}
               label="Total acumulado"
@@ -197,11 +248,17 @@ export function TransformadoresConsumoSection() {
             />
             <Kpi
               icon={Boxes}
-              label="Meses cargados"
+              label={anualizable ? "Meses cargados" : "Años comparados"}
               valor={String(prom.meses)}
               detalle={hayFiltro ? "con el filtro aplicado" : "sin filtros"}
             />
           </div>
+
+          {serie.length === 0 && (
+            <p className="px-5 pb-5 -mt-1 text-[11.5px] text-accent-amber">
+              No hay meses cargados que coincidan con el período elegido.
+            </p>
+          )}
 
           {prom.meses > 0 && prom.total === 0 && (
             <p className="px-5 pb-5 -mt-1 text-[11.5px] text-accent-amber">
