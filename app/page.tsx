@@ -21,6 +21,7 @@ import { ServiciosTablaSection } from "@/components/dashboard/sections/servicios
 import { ServiciosCargaSection } from "@/components/dashboard/sections/servicios-carga";
 import { ServiciosPlanillasSection } from "@/components/dashboard/sections/servicios-planillas";
 import { TransformadoresCargaSection } from "@/components/dashboard/sections/transformadores-carga";
+import { TransformadoresConsumoCargaSection } from "@/components/dashboard/sections/transformadores-consumo-carga";
 import { TransformadoresTablaSection } from "@/components/dashboard/sections/transformadores-tabla";
 import { TransformadoresResumenSection } from "@/components/dashboard/sections/transformadores-resumen";
 import { StockZonaSection } from "@/components/dashboard/sections/stock-zona";
@@ -46,6 +47,7 @@ export type Section =
   | "servicios-resumen" | "servicios-tabla" | "servicios-carga" | "servicios-planillas"
   | "sic-diagrama"
   | "transformadores-carga" | "transformadores-tabla" | "transformadores-resumen"
+  | "transformadores-consumo-carga"
   | "stock-zona"
   | "matriculas" | "matriculas-familias"
   | "informe-tecnico"
@@ -146,6 +148,7 @@ export default function Dashboard() {
       case "servicios-planillas":    return <ServiciosPlanillasSection />;
       case "sic-diagrama":           return <SicDiagramaSection />;
       case "transformadores-carga":  return <TransformadoresCargaSection />;
+      case "transformadores-consumo-carga": return <TransformadoresConsumoCargaSection />;
       case "transformadores-tabla":  return <TransformadoresTablaSection />;
       case "transformadores-resumen": return <TransformadoresResumenSection />;
       case "stock-zona":              return <StockZonaSection />;

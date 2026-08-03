@@ -73,6 +73,7 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
 | `transformadores-resumen` | transformadores-resumen.tsx | Stock de Transformadores | KPIs, gráficos, alarmas de stock de transformadores | — |
 | `transformadores-carga` | transformadores-carga.tsx | Stock de Transformadores | Carga de planilla de reserva de transformadores | — |
 | `transformadores-tabla` | transformadores-tabla.tsx | Stock de Transformadores | Historial de planillas de reserva | — |
+| `transformadores-consumo-carga` | transformadores-consumo-carga.tsx | Stock de Transformadores | Carga mensual de transformadores entregados (consumo) | [`docs/consumo-transformadores.md`](docs/consumo-transformadores.md) |
 | `sic-diagrama` | sic-diagrama.tsx | Proceso SIC - SIGA | Diagrama de flujo neon + seguimiento de SICs | [`docs/sic-diagrama.md`](docs/sic-diagrama.md) |
 | `informe-tecnico` | informe-tecnico.tsx | Licitaciones | Análisis de ofertas y adjudicación por renglón | [`docs/informe-tecnico.md`](docs/informe-tecnico.md) |
 | `settings` | settings.tsx | (raíz) | Gestión de usuarios, perfiles, nivel de acceso | — |
@@ -91,7 +92,7 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
 | transformadores-carga | `planillas_reserva` |
 | transformadores-tabla | `planillas_reserva` (lectura) |
 | transformadores-resumen | `planillas_reserva`, `transformador_alarms` |
-| consumo-transformadores | `consumo_transformadores` — SQL en [`docs/consumo-transformadores.md`](docs/consumo-transformadores.md) |
+| transformadores-consumo-carga | `consumo_transformadores` — SQL en [`docs/consumo-transformadores.md`](docs/consumo-transformadores.md) |
 | sic-diagrama | `sic_diagrama_layout`, `sic_diagrama_active` — SQL en [`docs/sic-diagrama.md`](docs/sic-diagrama.md) |
 | informe-tecnico | `licitaciones`, `licitacion_renglones`, `licitacion_items`, `licitacion_oferentes`, `licitacion_ofertas`, `licitacion_evaluaciones_tecnicas`, `licitacion_adjudicaciones`, `matriculas` — SQL en [`docs/informe-tecnico.md`](docs/informe-tecnico.md) |
 | settings | `profiles` |
