@@ -20,7 +20,34 @@ La hoja trae tres bloques con la misma grilla de 14 sectores × 16 potencias:
 | `CANTIDADES POR POTENCIA (KVA) REPARADOS POR EPEC` | `reparados` |
 
 Los dos bloques de reparados **se suman en uno solo**: no interesa quién hizo la
-reparación.
+reparación. Solo se cuenta como reparado el bloque que lo dice explícitamente.
+
+## Formatos soportados
+
+El formato del informe cambió con los años, así que el parser no asume nada de
+la forma del archivo:
+
+| | Informes nuevos (2025) | Informes viejos (2021) |
+|---|---|---|
+| Hojas | 7 pestañas | una sola, `Hoja1` |
+| Bloques | 3 (nuevos + 2 de reparados) | 1, sin distinguir tipo |
+| Sectores | 14 | 13 (sin "Coordinacion Tecnica") |
+| Título | `INFORME MES ENERO 2025` | `INFORME DEL MES DE ENERO 2021-…` |
+
+Por eso:
+
+- **La hoja se elige por contenido, no por nombre.** Se puntúa cada pestaña por
+  cantidad de bloques y por si menciona la entrega en sus títulos. Hace falta
+  puntuar porque en el informe completo *todas* las pestañas comparten la grilla
+  de `CANTIDADES POR POTENCIA`; quedarse con la primera elegiría
+  `1-BAJA-ALMACENES`.
+- **Un bloque sin tipo se carga como `nuevos`**, y el import lo avisa. Los
+  informes viejos no separan nuevos de reparados, así que la alternativa era
+  inventarle un tipo en silencio.
+- **La cantidad de sectores es variable.** Los nombres se reconocen contra el
+  catálogo normalizando acentos y puntuación, así que `Mant.subterr.` y
+  `Mant. Subterr.` son el mismo sector. Solo se avisa si casi no se reconoció
+  ninguno.
 
 ### Verificación con enero 2025
 
