@@ -129,6 +129,10 @@ son strings; `lib/consumo-transformadores.ts` normaliza al comparar.
 | `normalizarDatos(raw)` | Sanea un `datos` incompleto que viene de la base |
 | `totalDelMes(datos, filtro)` | Consumo de un mes bajo filtro de tipo/potencia/sector |
 | `serieMensual(registros, filtro)` | Serie ordenada por mes, con desglose nuevos/reparados |
+
+En `serieMensual`, el filtro de `tipo` **no** se aplica a las columnas
+`nuevos`/`reparados` — esas siempre traen su valor real, para que el detalle
+mensual pueda mostrar el desglose completo. Solo `total` respeta el tipo.
 | `promedios(serie)` | Promedio mensual y proyección anual |
 | `etiquetaMes`, `formatPromedio` | Presentación |
 

@@ -3,11 +3,17 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
-import { Loader2, TrendingUp, CalendarRange, Sigma, Boxes } from "lucide-react";
+import { Loader2, TrendingUp, CalendarRange, Sigma, Boxes, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Collapsible, CollapsibleContent, CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import {
   POT_CONSUMO,
   SECTORES,
@@ -61,6 +67,7 @@ export function TransformadoresConsumoSection() {
   const [tipo, setTipo]         = useState<TipoConsumo | typeof TODOS>(TODOS);
   const [potencia, setPotencia] = useState<string>(TODOS);
   const [sector, setSector]     = useState<string>(TODOS);
+  const [detalleAbierto, setDetalleAbierto] = useState(false);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -201,6 +208,95 @@ export function TransformadoresConsumoSection() {
               No hay consumo registrado para esta combinación de filtros.
             </p>
           )}
+
+          {/* Detalle mes a mes */}
+          <Collapsible open={detalleAbierto} onOpenChange={setDetalleAbierto}>
+            <CollapsibleTrigger className="flex w-full items-center gap-1.5 border-t border-border px-5 py-2.5 text-[12px] font-semibold text-muted-foreground transition-colors hover:bg-secondary/40 hover:text-foreground">
+              <ChevronRight
+                className={cn("h-3.5 w-3.5 transition-transform", detalleAbierto && "rotate-90")}
+              />
+              Detalle mensual
+              <span className="font-normal text-muted-foreground/60">
+                ({serie.length} {serie.length === 1 ? "mes" : "meses"})
+              </span>
+            </CollapsibleTrigger>
+
+            <CollapsibleContent>
+              <div className="max-h-[420px] overflow-y-auto border-t border-hairline">
+                <Table>
+                  <TableHeader className="sticky top-0 z-10 bg-panel-header">
+                    <TableRow className="border-hairline hover:bg-transparent">
+                      <TableHead className="h-8 pl-5 text-[10px] font-semibold uppercase tracking-[.06em] text-foreground">
+                        Mes
+                      </TableHead>
+                      <TableHead className="h-8 text-right text-[10px] font-semibold uppercase tracking-[.06em] text-foreground">
+                        Nuevos
+                      </TableHead>
+                      <TableHead className="h-8 text-right text-[10px] font-semibold uppercase tracking-[.06em] text-foreground">
+                        Reparados
+                      </TableHead>
+                      <TableHead className="h-8 pr-5 text-right text-[10px] font-semibold uppercase tracking-[.06em] text-accent-green">
+                        Total
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+
+                  <TableBody>
+                    {serie.map((p, i) => (
+                      <TableRow
+                        key={p.mes}
+                        className={cn(
+                          "border-hairline hover:bg-secondary/40",
+                          i % 2 === 1 && "bg-secondary/15"
+                        )}
+                      >
+                        <TableCell className="py-1.5 pl-5 text-[12px] font-semibold text-foreground">
+                          {etiquetaMes(p.mes)}
+                        </TableCell>
+                        <TableCell className={cn(
+                          "py-1.5 text-right text-[12px] tabular-nums",
+                          p.nuevos > 0 ? "text-foreground/80" : "text-muted-foreground/40"
+                        )}>
+                          {p.nuevos || "–"}
+                        </TableCell>
+                        <TableCell className={cn(
+                          "py-1.5 text-right text-[12px] tabular-nums",
+                          p.reparados > 0 ? "text-foreground/80" : "text-muted-foreground/40"
+                        )}>
+                          {p.reparados || "–"}
+                        </TableCell>
+                        <TableCell className={cn(
+                          "py-1.5 pr-5 text-right text-[13px] font-bold tabular-nums",
+                          p.total > 0 ? "text-accent-green" : "text-muted-foreground/40"
+                        )}>
+                          {p.total || "–"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+
+                  <TableFooter className="bg-panel-header">
+                    <TableRow className="border-hairline hover:bg-transparent">
+                      <TableCell className="py-1.5 pl-5 text-[11px] font-bold uppercase tracking-wide text-foreground/80">
+                        Promedio mensual
+                      </TableCell>
+                      <TableCell colSpan={2} />
+                      <TableCell className="py-1.5 pr-5 text-right text-[13px] font-bold tabular-nums text-accent-green">
+                        {formatPromedio(prom.mensual)}
+                      </TableCell>
+                    </TableRow>
+                  </TableFooter>
+                </Table>
+              </div>
+
+              {tipo !== TODOS && (
+                <p className="border-t border-hairline px-5 py-2 text-[11px] text-muted-foreground">
+                  Las columnas Nuevos y Reparados muestran siempre su valor real;
+                  el filtro de tipo solo afecta la columna Total.
+                </p>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
         </>
       )}
     </div>
