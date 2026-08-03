@@ -70,6 +70,42 @@ Unificado: **6 nuevos + 22 reparados = 28**.
 - **Sin depósito:** el desglose es por sector de entrega, no por depósito de
   origen, así que no aplica el filtro Villa Revol / Alta Gracia Norte.
 
+## Import: Excel y PDF
+
+`POST /api/analizar-consumo` acepta `.xlsx`, `.xls` y `.pdf`, y elige el parser
+por extensión / MIME.
+
+El parseo está partido en tres módulos para no duplicar la lógica:
+
+| Módulo | Responsabilidad |
+|---|---|
+| `lib/parse-consumo-grid.ts` | **Núcleo compartido.** Sobre una grilla ya extraída: detecta bloques, reconoce sectores, mapea potencias y arma el resultado. |
+| `lib/parse-consumo-excel.ts` | Elige la hoja y la vuelca a grilla. |
+| `lib/parse-consumo-pdf.ts` | Reconstruye la grilla desde las coordenadas del texto. |
+
+### Reconstrucción de la grilla desde PDF
+
+Un PDF no tiene celdas, solo fragmentos de texto con coordenadas. Reconstruirla
+tiene dos sutilezas que costaron datos hasta resolverse:
+
+- **Se agrupa por el centro de cada fragmento, no por su borde izquierdo**, y la
+  tolerancia de columna se deduce del espaciado real de la tabla (mediana de las
+  distancias entre columnas), no del tamaño de fuente. En el informe de agosto
+  2022 algunas filas tienen las cantidades corridas ~10 puntos respecto del
+  encabezado — más que el alto de la letra— así que una tolerancia chica las
+  mandaba a una columna fantasma y **se perdían sus valores**.
+- **El rótulo de grupo "Zona A" flota** junto a la primera fila de su grupo y
+  puede terminar pegado al nombre del sector en la misma celda. Por eso el
+  reconocimiento de sector acepta que el nombre venga acompañado, tomando la
+  coincidencia más larga.
+
+`pdfjs-dist` va declarado en `serverExternalPackages` (ver `next.config.mjs`):
+resuelve su worker por ruta en disco, y si el bundler lo empaqueta esa ruta
+apunta a los chunks generados y la carga falla en runtime.
+
+Si el PDF es un escaneo sin capa de texto, el import corta con un mensaje
+pidiendo cargar a mano o usar el Excel — no hay OCR.
+
 ## Tabla Supabase
 
 ```sql
