@@ -139,9 +139,31 @@ function asegurarPolyfillDOMMatrix(): void {
   };
 }
 
+/**
+ * En Node, pdfjs corre un "fake worker": en vez de un Web Worker real, importa
+ * su propio archivo de worker para tomar `WorkerMessageHandler` y ejecutarlo
+ * en el mismo hilo. Ese import interno usa una ruta (`GlobalWorkerOptions.
+ * workerSrc`, "./pdf.worker.mjs" por defecto) que resuelve relativa a la
+ * ubicación de `pdf.mjs` en disco — un patrón que el tracer de archivos de
+ * Vercel no puede seguir de forma estática, así que `pdf.worker.mjs` queda
+ * afuera del deploy y esa importación falla con "Cannot find module".
+ *
+ * pdfjs tiene una salida oficial para esto: si `globalThis.pdfjsWorker.
+ * WorkerMessageHandler` ya existe, la usa directo y ni intenta ese import
+ * interno. Alcanza con importar el worker nosotros mismos con un specifier
+ * literal — a diferencia de la ruta que arma pdfjs en runtime, esta sí es
+ * estática y el tracer la sigue, incluyendo el archivo en el deploy.
+ */
+async function registrarWorkerDePdfjs(): Promise<void> {
+  const g = globalThis as { pdfjsWorker?: unknown };
+  if (g.pdfjsWorker) return;
+  g.pdfjsWorker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+}
+
 /** Extrae el consumo del mes desde los bytes de un PDF. */
 export async function parseConsumoPdf(buf: ArrayBuffer | Buffer): Promise<ParseConsumoResult> {
   asegurarPolyfillDOMMatrix();
+  await registrarWorkerDePdfjs();
 
   // Import diferido y del build legacy: pdfjs es ESM y trae APIs de browser que
   // rompen si se resuelve al cargar el módulo en el servidor.
