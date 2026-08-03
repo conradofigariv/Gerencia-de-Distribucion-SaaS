@@ -263,7 +263,7 @@ export function TransformadoresConsumoCargaSection() {
         >
           {analizando
             ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analizando…</>
-            : <><Upload className="w-3.5 h-3.5" /> Importar Excel</>}
+            : <><Upload className="w-3.5 h-3.5" /> Importar informe</>}
         </button>
         </div>
       </div>
@@ -271,7 +271,7 @@ export function TransformadoresConsumoCargaSection() {
       <input
         ref={fileRef}
         type="file"
-        accept=".xlsx,.xls"
+        accept=".xlsx,.xls,.pdf"
         className="hidden"
         onChange={e => {
           const f = e.target.files?.[0];
