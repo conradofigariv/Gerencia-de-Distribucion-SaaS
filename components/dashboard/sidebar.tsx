@@ -104,6 +104,7 @@ const navItems: NavItemDef[] = [
       { id: "transformadores-resumen", label: "Resumen",           icon: LayoutGrid },
       { id: "transformadores-carga",   label: "Carga de datos",    icon: ImagePlus },
       { id: "transformadores-tabla",   label: "Informe de Reservas", icon: Table2 },
+      { id: "transformadores-consumo-carga", label: "Carga de consumo", icon: UploadCloud },
     ],
   },
   {
@@ -151,6 +152,7 @@ const TRANSFORMADORES_SECTIONS: Section[] = [
   "transformadores-carga",
   "transformadores-tabla",
   "transformadores-resumen",
+  "transformadores-consumo-carga",
 ];
 
 const INDICE_IDO_SECTIONS: Section[] = [
