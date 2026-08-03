@@ -114,8 +114,35 @@ function fragmentosAGrilla(frags: Fragmento[]): Grid {
   );
 }
 
+/**
+ * Al cargarse, pdfjs ejecuta `new DOMMatrix()` a nivel de módulo (una matriz de
+ * escala reusada al renderizar a canvas), sin condicionarlo a que esa API
+ * exista. `DOMMatrix` es del navegador; en Node, pdfjs intenta reemplazarla
+ * requiriendo el paquete opcional `@napi-rs/canvas` (un binario nativo), y si
+ * eso falla se limita a advertir y sigue sin definirla. El import entero
+ * revienta ahí mismo con "ReferenceError: DOMMatrix is not defined", antes de
+ * llegar a parsear nada — es justamente lo que pasaba en Vercel, donde ese
+ * binario nativo no resuelve para su plataforma.
+ *
+ * Acá solo se extrae texto con `getTextContent()`, nunca se renderiza una
+ * página a canvas, así que ningún método real de `DOMMatrix` se invoca jamás:
+ * alcanza con un stub que no explote al construirse. Se define ANTES de
+ * importar pdfjs para que ni siquiera intente cargar el binario nativo —
+ * depender de que un paquete nativo resuelva igual en todas las plataformas de
+ * deploy es exactamente la causa raíz de este bug.
+ */
+function asegurarPolyfillDOMMatrix(): void {
+  const g = globalThis as { DOMMatrix?: unknown };
+  if (typeof g.DOMMatrix !== "undefined") return;
+  g.DOMMatrix = class DOMMatrixStub {
+    constructor(..._args: unknown[]) {}
+  };
+}
+
 /** Extrae el consumo del mes desde los bytes de un PDF. */
 export async function parseConsumoPdf(buf: ArrayBuffer | Buffer): Promise<ParseConsumoResult> {
+  asegurarPolyfillDOMMatrix();
+
   // Import diferido y del build legacy: pdfjs es ESM y trae APIs de browser que
   // rompen si se resuelve al cargar el módulo en el servidor.
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
