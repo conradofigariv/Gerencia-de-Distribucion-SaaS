@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
-import { Loader2, CheckCircle2, Eraser } from "lucide-react";
+import { Loader2, CheckCircle2, Eraser, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   POT_CONSUMO,
@@ -98,6 +98,15 @@ export function TransformadoresConsumoCargaSection() {
   const [saving, setSaving]   = useState(false);
   const [dirty, setDirty]     = useState(false);
   const [existe, setExiste]   = useState(false);
+  const [analizando, setAnalizando] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Datos recién importados, para que `cargarMes` los adopte en lugar de
+  // pisarlos con lo que haya en la base. Se guarda junto al mes al que
+  // corresponden y NO se consume al leerlo: adoptarlo tiene que ser idempotente,
+  // porque el efecto de carga puede correr más de una vez para el mismo mes.
+  // Se limpia al cambiar de mes a mano, al guardar y al limpiar la grilla.
+  const importadoRef = useRef<{ mes: string; datos: ConsumoDatos } | null>(null);
 
   // Carga el registro del mes seleccionado.
   const cargarMes = useCallback(async (m: string) => {
@@ -109,13 +118,23 @@ export function TransformadoresConsumoCargaSection() {
         .eq("mes", `${m}-01`)
         .maybeSingle();
       if (error) throw error;
-      setDatos(data ? normalizarDatos(data.datos) : { nuevos: {}, reparados: {} });
       setExiste(Boolean(data));
-      setDirty(false);
+
+      const importado = importadoRef.current;
+      if (importado?.mes === m) {
+        setDatos(importado.datos);
+        setDirty(true);
+      } else {
+        setDatos(data ? normalizarDatos(data.datos) : { nuevos: {}, reparados: {} });
+        setDirty(false);
+      }
     } catch (err: unknown) {
       toast.error((err as Error).message ?? "No se pudo cargar el mes");
-      setDatos({ nuevos: {}, reparados: {} });
       setExiste(false);
+      // Un fallo de red no debe descartar un import recién hecho.
+      const importado = importadoRef.current;
+      setDatos(importado?.mes === m ? importado.datos : { nuevos: {}, reparados: {} });
+      setDirty(importado?.mes === m);
     } finally {
       setLoading(false);
     }
@@ -144,6 +163,7 @@ export function TransformadoresConsumoCargaSection() {
         );
       if (error) throw error;
       toast.success(`Consumo de ${etiquetaMes(mes)} guardado`, { duration: 1500 });
+      importadoRef.current = null;
       setExiste(true);
       setDirty(false);
     } catch (err: unknown) {
@@ -153,7 +173,43 @@ export function TransformadoresConsumoCargaSection() {
     }
   };
 
+  const handleImportar = async (file: File) => {
+    setAnalizando(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/analizar-consumo", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Error al analizar");
+
+      // El informe cubre el mes entero: reemplaza, no fusiona.
+      const mesImportado: string = json.mes ?? mes;
+      const datosImportados = normalizarDatos(json.datos);
+
+      // Se pintan ya: lo importado no depende de que la base responda. La
+      // consulta que sigue solo sirve para saber si el mes ya estaba cargado,
+      // y la ref evita que su respuesta pise la grilla.
+      importadoRef.current = { mes: mesImportado, datos: datosImportados };
+      setDatos(datosImportados);
+      setDirty(true);
+
+      if (mesImportado !== mes) setMes(mesImportado);
+      else void cargarMes(mes);
+
+      for (const aviso of (json.avisos ?? []) as string[]) toast.warning(aviso);
+      toast.success(
+        json.mes ? `Informe de ${etiquetaMes(json.mes)} importado` : "Informe importado",
+        { duration: 1500 }
+      );
+    } catch (err: unknown) {
+      toast.error((err as Error).message ?? "No se pudo analizar el archivo");
+    } finally {
+      setAnalizando(false);
+    }
+  };
+
   const handleLimpiar = () => {
+    importadoRef.current = null;
     setDatos({ nuevos: {}, reparados: {} });
     setDirty(true);
   };
@@ -171,7 +227,7 @@ export function TransformadoresConsumoCargaSection() {
           <input
             type="month"
             value={mes}
-            onChange={e => setMes(e.target.value)}
+            onChange={e => { importadoRef.current = null; setMes(e.target.value); }}
             className="bg-panel-input border border-border rounded-md px-2 py-1 text-[12px] text-foreground focus:outline-none focus:border-accent"
           />
           {loading
@@ -181,8 +237,9 @@ export function TransformadoresConsumoCargaSection() {
               : <span className="text-[11px] text-muted-foreground/60">· sin datos</span>}
         </div>
 
+        <div className="flex items-center gap-2.5 shrink-0">
         {/* Alternador Nuevos / Reparados */}
-        <div className="flex items-center gap-1 rounded-[7px] border border-border bg-panel-input p-0.5 shrink-0">
+        <div className="flex items-center gap-1 rounded-[7px] border border-border bg-panel-input p-0.5">
           {(["nuevos", "reparados"] as const).map(t => (
             <button
               key={t}
@@ -198,7 +255,30 @@ export function TransformadoresConsumoCargaSection() {
             </button>
           ))}
         </div>
+
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={analizando}
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-[7px] bg-accent/10 border border-accent/40 text-accent-green text-[12px] font-semibold hover:bg-accent/20 disabled:opacity-50 transition-colors"
+        >
+          {analizando
+            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analizando…</>
+            : <><Upload className="w-3.5 h-3.5" /> Importar Excel</>}
+        </button>
+        </div>
       </div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".xlsx,.xls"
+        className="hidden"
+        onChange={e => {
+          const f = e.target.files?.[0];
+          if (f) handleImportar(f);
+          e.target.value = "";
+        }}
+      />
 
       {/* Grilla */}
       <div className="overflow-x-auto">
