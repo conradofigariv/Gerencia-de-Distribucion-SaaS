@@ -96,7 +96,29 @@ function usePaleta(): Paleta | null {
 
 const ALTO_GRAFICO = 260;
 
-const ejeTick = (p: Paleta) => ({ fontSize: 11, fill: p["--muted-foreground"] });
+/** Alto reservado para las etiquetas rotadas del eje X en los dos gráficos de barras. */
+const ALTO_ETIQUETAS_X = 104;
+
+const ejeTick = (p: Paleta, fontSize = 11) => ({ fontSize, fill: p["--muted-foreground"] });
+
+/** Rótulo vertical del eje Y. */
+const rotuloEjeY = (p: Paleta, value: string) => ({
+  value,
+  angle: -90 as const,
+  position: "insideLeft" as const,
+  style: { fill: p["--muted-foreground"], fontSize: 11, textAnchor: "middle" as const },
+});
+
+/** Etiquetas de categoría rotadas: los nombres de sector no entran en horizontal. */
+const ejeXRotado = (p: Paleta) => ({
+  tick: ejeTick(p, 10),
+  axisLine: false,
+  tickLine: false,
+  interval: 0 as const,
+  angle: -45,
+  textAnchor: "end" as const,
+  height: ALTO_ETIQUETAS_X,
+});
 
 const estiloTooltip = (p: Paleta) => ({
   contentStyle: {
@@ -377,26 +399,31 @@ export function TransformadoresConsumoSection() {
                   </SinDatosGrafico>
                 ) : (
                   <ResponsiveContainer width="100%" height={ALTO_GRAFICO}>
-                    <LineChart data={serieGrafico} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
+                    {/* Ojo: nada de envolver los hijos en <>…</>. Recharts los busca
+                        por tipo usando react-is@18, que no reconoce los elementos de
+                        React 19: un fragment le llega como un hijo opaco y el gráfico
+                        sale vacío, sin líneas ni eje Y. Van sueltos o en un array. */}
+                    <LineChart data={serieGrafico} margin={{ top: 8, right: 24, left: 8, bottom: 8 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke={paleta["--hairline"]} vertical={false} />
                       <XAxis dataKey="etiqueta" tick={ejeTick(paleta)} axisLine={false} tickLine={false} />
-                      <YAxis tick={ejeTick(paleta)} axisLine={false} tickLine={false} allowDecimals={false} />
+                      {/* Arranca en 0 a propósito: son unidades entregadas, y una
+                          escala que no toca el cero exagera las subidas y bajadas. */}
+                      <YAxis tick={ejeTick(paleta)} axisLine={false} tickLine={false} allowDecimals={false}
+                        domain={[0, "auto"]} label={rotuloEjeY(paleta, "Consumo")} />
                       <ChartTooltip {...estiloTooltip(paleta)} />
-                      {/* Con un tipo elegido, `total` YA es ese tipo: dibujar además
-                          la serie cruda de nuevos/reparados duplicaría la misma línea. */}
-                      {tipo === TODOS ? (
-                        <>
-                          <Legend wrapperStyle={{ fontSize: 11 }} />
-                          <Line type="monotone" dataKey="total" name="Total"
-                            stroke={paleta["--accent-green"]} strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                          <Line type="monotone" dataKey="nuevos" name="Nuevos"
-                            stroke={paleta["--chart-1"]} strokeWidth={1.5} dot={{ r: 2 }} activeDot={{ r: 4 }} />
-                          <Line type="monotone" dataKey="reparados" name="Reparados"
-                            stroke={paleta["--chart-5"]} strokeWidth={1.5} dot={{ r: 2 }} activeDot={{ r: 4 }} />
-                        </>
-                      ) : (
-                        <Line type="monotone" dataKey="total" name={tipo === "nuevos" ? "Nuevos" : "Reparados"}
-                          stroke={paleta["--accent-green"]} strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                      {tipo === TODOS && <Legend wrapperStyle={{ fontSize: 11 }} />}
+                      <Line type="monotone" dataKey="total"
+                        name={tipo === TODOS ? "Total" : tipo === "nuevos" ? "Nuevos" : "Reparados"}
+                        stroke={paleta["--accent-green"]} strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                      {/* Con un tipo elegido, `total` YA es ese tipo: agregar las
+                          series crudas superpondría una línea idéntica sobre otra. */}
+                      {tipo === TODOS && (
+                        <Line type="monotone" dataKey="nuevos" name="Nuevos"
+                          stroke={paleta["--chart-1"]} strokeWidth={1.5} dot={{ r: 2 }} activeDot={{ r: 4 }} />
+                      )}
+                      {tipo === TODOS && (
+                        <Line type="monotone" dataKey="reparados" name="Reparados"
+                          stroke={paleta["--chart-5"]} strokeWidth={1.5} dot={{ r: 2 }} activeDot={{ r: 4 }} />
                       )}
                     </LineChart>
                   </ResponsiveContainer>
@@ -405,14 +432,14 @@ export function TransformadoresConsumoSection() {
 
               <PanelGrafico title="Consumo por potencia" subtitle={`Total de ${rango} · el tooltip trae el promedio mensual`}>
                 {porPotencia.length === 0 ? (
-                  <SinDatosGrafico alto={ALTO_GRAFICO}>Sin consumo para estos filtros.</SinDatosGrafico>
+                  <SinDatosGrafico alto={ALTO_GRAFICO + ALTO_ETIQUETAS_X}>Sin consumo para estos filtros.</SinDatosGrafico>
                 ) : (
-                  <ResponsiveContainer width="100%" height={ALTO_GRAFICO}>
-                    <BarChart data={porPotencia} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                  <ResponsiveContainer width="100%" height={ALTO_GRAFICO + ALTO_ETIQUETAS_X}>
+                    <BarChart data={porPotencia} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke={paleta["--hairline"]} vertical={false} />
-                      <XAxis dataKey="etiqueta" tick={ejeTick(paleta)} axisLine={false} tickLine={false}
-                        interval={0} angle={-40} textAnchor="end" height={56} />
-                      <YAxis tick={ejeTick(paleta)} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <XAxis dataKey="etiqueta" {...ejeXRotado(paleta)} />
+                      <YAxis tick={ejeTick(paleta)} axisLine={false} tickLine={false} allowDecimals={false}
+                        label={rotuloEjeY(paleta, "Consumo")} />
                       <ChartTooltip {...estiloTooltip(paleta)} cursor={{ fill: paleta["--hairline"] }}
                         formatter={formatearAgregado} />
                       <Bar dataKey="total" name="Consumo" fill={paleta["--chart-1"]} radius={[3, 3, 0, 0]} />
@@ -423,17 +450,17 @@ export function TransformadoresConsumoSection() {
 
               <PanelGrafico title="Consumo por sector" subtitle="Sectores de entrega, de mayor a menor">
                 {porSector.length === 0 ? (
-                  <SinDatosGrafico alto={ALTO_GRAFICO}>Sin consumo para estos filtros.</SinDatosGrafico>
+                  <SinDatosGrafico alto={ALTO_GRAFICO + ALTO_ETIQUETAS_X}>Sin consumo para estos filtros.</SinDatosGrafico>
                 ) : (
-                  <ResponsiveContainer width="100%" height={Math.max(ALTO_GRAFICO, porSector.length * 26 + 40)}>
-                    <BarChart data={porSector} layout="vertical" margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={paleta["--hairline"]} horizontal={false} />
-                      <XAxis type="number" tick={ejeTick(paleta)} axisLine={false} tickLine={false} allowDecimals={false} />
-                      <YAxis type="category" dataKey="etiqueta" tick={ejeTick(paleta)} axisLine={false} tickLine={false}
-                        width={132} interval={0} />
+                  <ResponsiveContainer width="100%" height={ALTO_GRAFICO + ALTO_ETIQUETAS_X}>
+                    <BarChart data={porSector} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={paleta["--hairline"]} vertical={false} />
+                      <XAxis dataKey="etiqueta" {...ejeXRotado(paleta)} />
+                      <YAxis tick={ejeTick(paleta)} axisLine={false} tickLine={false} allowDecimals={false}
+                        label={rotuloEjeY(paleta, "Consumo")} />
                       <ChartTooltip {...estiloTooltip(paleta)} cursor={{ fill: paleta["--hairline"] }}
                         formatter={formatearAgregado} />
-                      <Bar dataKey="total" name="Consumo" fill={paleta["--chart-5"]} radius={[0, 3, 3, 0]} />
+                      <Bar dataKey="total" name="Consumo" fill={paleta["--chart-5"]} radius={[3, 3, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}

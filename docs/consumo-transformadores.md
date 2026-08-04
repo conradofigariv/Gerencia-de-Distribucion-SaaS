@@ -184,8 +184,15 @@ cualquier filtro de arriba los redibuja junto con las tarjetas.
 | Gráfico | Qué muestra |
 |---|---|
 | **Evolución del consumo** (línea) | Consumo de cada mes. Con `mesDelAnio` activo el eje pasa a ser año contra año (Ene 24 → Ene 25 → …). |
-| **Consumo por potencia** (barras) | Total del período por kVA, en orden de potencia creciente. |
-| **Consumo por sector** (barras horizontales) | Total por sector de entrega, de mayor a menor. |
+| **Consumo por potencia** (barras verticales) | Total del período por kVA, en orden de potencia creciente. |
+| **Consumo por sector** (barras verticales) | Total por sector de entrega, de mayor a menor. |
+
+> ⚠ **Nunca envolver los hijos de un chart de Recharts en `<>…</>`.** Recharts
+> busca sus hijos por tipo con `react-is@18`, que no reconoce los elementos de
+> **React 19**: `isFragment` devuelve `false`, el fragment le llega como un hijo
+> opaco y **el gráfico sale vacío** — sin líneas y sin eje Y, pero sin ningún
+> error en consola. Para renderizar condicionalmente van sueltos
+> (`{cond && <Line/>}`) o en un array; eso sí funciona.
 
 Decisiones que no son obvias al leer el código:
 
@@ -195,6 +202,9 @@ Decisiones que no son obvias al leer el código:
 - **Las barras muestran el total, y el promedio mensual va en el tooltip.** El
   total cambia de escala según cuántos meses entren en el filtro; tener el
   promedio a mano permite comparar contra el KPI sin que el gráfico salte.
+- **El eje Y arranca en 0** (`domain={[0, "auto"]}`). Son unidades entregadas:
+  una escala que no toca el cero exagera visualmente subidas y bajadas que en
+  unidades son chicas.
 - **La potencia se ordena por kVA y el sector por volumen.** La potencia es una
   escala —desordenarla esconde la forma de la distribución—; entre sectores no
   hay orden natural y lo que interesa es el ranking.
