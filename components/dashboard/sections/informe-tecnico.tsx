@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Gavel, Loader2, ChevronDown, ChevronRight, FileText, Layers, Users, Tag, ClipboardCheck, Trophy, Check, Pencil, Trash2, X, GripVertical, Copy, RefreshCw, HelpCircle, ChevronLeft, AlertTriangle, Lightbulb, ListChecks, ArrowRight } from "lucide-react";
+import { Plus, Gavel, Loader2, ChevronDown, ChevronRight, FileText, Layers, Users, Tag, ClipboardCheck, Trophy, Check, Pencil, Trash2, X, GripVertical, Copy, RefreshCw, HelpCircle, ChevronLeft, AlertTriangle, Lightbulb, ListChecks, ArrowRight, MessageSquare } from "lucide-react";
 import {
   listLicitaciones,
   createLicitacion,
@@ -846,7 +846,7 @@ function FormField({ label, children, className = "" }: { label: string; childre
 // ─── Especificaciones técnicas (specs) ──────────────────────────────
 
 type SpecItem =
-  | { id: string; kind: "check"; label: string; checked: boolean }
+  | { id: string; kind: "check"; label: string; checked: boolean; nota?: string }
   | { id: string; kind: "text"; text: string };
 
 const specSid = () => Math.random().toString(36).slice(2, 9);
@@ -863,7 +863,13 @@ function parseSpecs(raw: string | null): SpecItem[] {
           .filter((x) => x && (x.kind === "check" || x.kind === "text"))
           .map((x) =>
             x.kind === "check"
-              ? { id: String(x.id ?? specSid()), kind: "check", label: String(x.label ?? ""), checked: !!x.checked }
+              ? {
+                  id: String(x.id ?? specSid()),
+                  kind: "check",
+                  label: String(x.label ?? ""),
+                  checked: !!x.checked,
+                  ...(x.nota ? { nota: String(x.nota) } : {}),
+                }
               : { id: String(x.id ?? specSid()), kind: "text", text: String(x.text ?? "") },
           ) as SpecItem[];
       }
@@ -1358,17 +1364,48 @@ function SpecsModal({
                       >
                         {it.checked && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
                       </button>
-                      <input
-                        type="text"
-                        value={it.label}
-                        onChange={(e) => update(it.id, { label: e.target.value } as Partial<SpecItem>)}
-                        placeholder="Especificación (ej: Tensión nominal 13.2 kV)"
+                      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                        <input
+                          type="text"
+                          value={it.label}
+                          onChange={(e) => update(it.id, { label: e.target.value } as Partial<SpecItem>)}
+                          placeholder="Especificación (ej: Tensión nominal 13.2 kV)"
+                          style={{
+                            width: "100%", height: 34, padding: "0 10px", borderRadius: 7,
+                            background: "oklch(0.14 0.005 270)", border: "1px solid var(--hairline)",
+                            color: it.checked ? "oklch(0.92 0 0)" : "oklch(0.78 0 0)", fontSize: 14, outline: "none",
+                          }}
+                        />
+                        {it.nota !== undefined && (
+                          <textarea
+                            value={it.nota}
+                            onChange={(e) => update(it.id, { nota: e.target.value } as Partial<SpecItem>)}
+                            placeholder="Comentario: por qué cumple o no cumple, link de referencia…"
+                            rows={2}
+                            autoFocus
+                            style={{
+                              width: "100%", padding: "7px 10px", borderRadius: 7, resize: "vertical",
+                              background: "oklch(0.12 0.005 270)",
+                              border: "1px solid color-mix(in oklab, var(--accent-emerald) 28%, transparent)",
+                              borderLeft: "2px solid color-mix(in oklab, var(--accent-emerald) 60%, transparent)",
+                              color: "oklch(0.82 0 0)", fontSize: 13, outline: "none", lineHeight: 1.5,
+                            }}
+                          />
+                        )}
+                      </div>
+                      <button
+                        onClick={() => update(it.id, { nota: it.nota === undefined ? "" : undefined } as Partial<SpecItem>)}
+                        title={it.nota === undefined ? "Agregar comentario" : "Quitar comentario"}
                         style={{
-                          flex: 1, minWidth: 0, height: 34, padding: "0 10px", borderRadius: 7,
-                          background: "oklch(0.14 0.005 270)", border: "1px solid var(--hairline)",
-                          color: it.checked ? "oklch(0.92 0 0)" : "oklch(0.78 0 0)", fontSize: 14, outline: "none",
+                          flexShrink: 0, display: "grid", placeItems: "center", width: 28, height: 28, marginTop: 3,
+                          borderRadius: 7, cursor: "pointer",
+                          background: it.nota !== undefined ? "color-mix(in oklab, var(--accent-emerald) 16%, transparent)" : "transparent",
+                          border: `1px solid ${it.nota !== undefined ? "color-mix(in oklab, var(--accent-emerald) 45%, transparent)" : "oklch(1 0 0 / 0.06)"}`,
+                          color: it.nota !== undefined ? "var(--accent-green)" : "oklch(0.50 0 0)",
                         }}
-                      />
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                      </button>
                     </>
                   ) : (
                     <textarea
