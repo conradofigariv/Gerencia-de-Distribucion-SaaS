@@ -90,6 +90,17 @@ export interface PromediosConsumo {
   total: number;
 }
 
+/** Consumo acumulado de una categoría (una potencia, un sector) en el período. */
+export interface PuntoAgregado {
+  /** Valor crudo de la categoría: `"315"` o `"Mant. Sur"`. */
+  clave: string;
+  /** Cómo se muestra en el eje del gráfico. */
+  etiqueta: string;
+  total: number;
+  /** `total` dividido los meses con registro, para comparar contra el promedio. */
+  promedio: number;
+}
+
 // ─── Cálculos ─────────────────────────────────────────────────────────────────
 
 const vacio = (): ConsumoDatos => ({ nuevos: {}, reparados: {} });
@@ -186,6 +197,93 @@ export function promedios(serie: readonly PuntoSerie[]): PromediosConsumo {
   const total = serie.reduce((acc, p) => acc + p.total, 0);
   const mensual = meses > 0 ? total / meses : 0;
   return { mensual, anual: mensual * 12, meses, total };
+}
+
+// ─── Desgloses para gráficos ──────────────────────────────────────────────────
+
+/**
+ * Recorre las celdas que pasan el filtro dentro del período y las entrega una
+ * por una. Devuelve cuántos meses se recorrieron, que es el denominador del
+ * promedio — el mismo criterio que `promedios`: meses **con registro**.
+ */
+function recorrerCeldas(
+  registros: readonly ConsumoMes[],
+  filtro: FiltroConsumo,
+  periodo: FiltroPeriodo,
+  visitar: (sector: string, potencia: string, cantidad: number) => void
+): number {
+  const sectores  = filtro.sectores?.length ? new Set(filtro.sectores) : null;
+  const potencias = filtro.potencias?.length ? new Set(filtro.potencias.map(String)) : null;
+
+  const meses = filtrarPorPeriodo(registros, periodo);
+
+  for (const { datos } of meses) {
+    const bloques: ConsumoPorSector[] = [];
+    if (filtro.tipo !== "reparados") bloques.push(datos.nuevos);
+    if (filtro.tipo !== "nuevos")    bloques.push(datos.reparados);
+
+    for (const bloque of bloques) {
+      for (const [sector, porPot] of Object.entries(bloque)) {
+        if (sectores && !sectores.has(sector)) continue;
+        for (const [pot, cant] of Object.entries(porPot)) {
+          if (potencias && !potencias.has(pot)) continue;
+          if (cant > 0) visitar(sector, pot, cant);
+        }
+      }
+    }
+  }
+  return meses.length;
+}
+
+/** Arma los puntos ya divididos por la cantidad de meses. */
+function agregados(
+  acum: Map<string, number>,
+  meses: number,
+  orden: (claves: string[]) => string[],
+  etiquetar: (clave: string) => string
+): PuntoAgregado[] {
+  return orden([...acum.keys()]).map(clave => {
+    const total = acum.get(clave) ?? 0;
+    return { clave, etiqueta: etiquetar(clave), total, promedio: meses > 0 ? total / meses : 0 };
+  });
+}
+
+/**
+ * Consumo por potencia en el período. Se ordena por kVA creciente y no por
+ * volumen: la potencia es una escala, y leerla desordenada esconde justamente
+ * la forma de la distribución.
+ */
+export function totalesPorPotencia(
+  registros: readonly ConsumoMes[],
+  filtro: FiltroConsumo = {},
+  periodo: FiltroPeriodo = {}
+): PuntoAgregado[] {
+  const acum = new Map<string, number>();
+  const meses = recorrerCeldas(registros, filtro, periodo, (_s, pot, cant) => {
+    acum.set(pot, (acum.get(pot) ?? 0) + cant);
+  });
+  return agregados(acum, meses, claves => claves.sort((a, b) => Number(a) - Number(b)), c => `${c} kVA`);
+}
+
+/**
+ * Consumo por sector en el período, de mayor a menor. Acá sí ordena el volumen:
+ * entre sectores no hay orden natural, y lo que se busca es el ranking.
+ */
+export function totalesPorSector(
+  registros: readonly ConsumoMes[],
+  filtro: FiltroConsumo = {},
+  periodo: FiltroPeriodo = {}
+): PuntoAgregado[] {
+  const acum = new Map<string, number>();
+  const meses = recorrerCeldas(registros, filtro, periodo, (sector, _p, cant) => {
+    acum.set(sector, (acum.get(sector) ?? 0) + cant);
+  });
+  return agregados(
+    acum,
+    meses,
+    claves => claves.sort((a, b) => (acum.get(b) ?? 0) - (acum.get(a) ?? 0)),
+    c => c
+  );
 }
 
 // ─── Presentación ─────────────────────────────────────────────────────────────

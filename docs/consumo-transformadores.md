@@ -167,12 +167,41 @@ son strings; `lib/consumo-transformadores.ts` normaliza al comparar.
 | `aniosDisponibles(registros)` | Años presentes, para poblar el filtro |
 | `filtrarPorPeriodo(registros, periodo)` | Acota a un año y/o a un mes del año |
 | `serieMensual(registros, filtro, periodo)` | Serie ordenada por mes, con desglose nuevos/reparados |
+| `promedios(serie)` | Promedio mensual y proyección anual |
+| `totalesPorPotencia(registros, filtro, periodo)` | Consumo agregado por kVA, para el gráfico de barras |
+| `totalesPorSector(registros, filtro, periodo)` | Consumo agregado por sector de entrega |
+| `etiquetaMes`, `formatPromedio` | Presentación |
 
 En `serieMensual`, el filtro de `tipo` **no** se aplica a las columnas
 `nuevos`/`reparados` — esas siempre traen su valor real, para que el detalle
 mensual pueda mostrar el desglose completo. Solo `total` respeta el tipo.
-| `promedios(serie)` | Promedio mensual y proyección anual |
-| `etiquetaMes`, `formatPromedio` | Presentación |
+
+## Gráficos
+
+Los tres gráficos leen **la misma serie filtrada que los KPIs**, así que tocar
+cualquier filtro de arriba los redibuja junto con las tarjetas.
+
+| Gráfico | Qué muestra |
+|---|---|
+| **Evolución del consumo** (línea) | Consumo de cada mes. Con `mesDelAnio` activo el eje pasa a ser año contra año (Ene 24 → Ene 25 → …). |
+| **Consumo por potencia** (barras) | Total del período por kVA, en orden de potencia creciente. |
+| **Consumo por sector** (barras horizontales) | Total por sector de entrega, de mayor a menor. |
+
+Decisiones que no son obvias al leer el código:
+
+- **La evolución dibuja tres líneas solo sin filtro de tipo.** Con un tipo
+  elegido, `total` *ya es* ese tipo: agregarle las series crudas de
+  `nuevos`/`reparados` superpondría una línea idéntica sobre otra.
+- **Las barras muestran el total, y el promedio mensual va en el tooltip.** El
+  total cambia de escala según cuántos meses entren en el filtro; tener el
+  promedio a mano permite comparar contra el KPI sin que el gráfico salte.
+- **La potencia se ordena por kVA y el sector por volumen.** La potencia es una
+  escala —desordenarla esconde la forma de la distribución—; entre sectores no
+  hay orden natural y lo que interesa es el ranking.
+- **Los colores salen de los tokens, resueltos en runtime.** Recharts pinta como
+  atributo SVG, donde `var(--token)` no resuelve, así que `usePaleta()` lee los
+  `--chart-*` con `getComputedStyle` una vez al montar y los pasa ya resueltos.
+  Es lo que evita clavar literales de color en el componente.
 
 ### Filtros de período
 

@@ -15,6 +15,10 @@ import {
   Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
+  ResponsiveContainer, LineChart, Line, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend,
+} from "recharts";
+import {
   POT_CONSUMO,
   SECTORES,
   TIPOS_CONSUMO,
@@ -23,11 +27,14 @@ import {
   normalizarDatos,
   serieMensual,
   promedios,
+  totalesPorPotencia,
+  totalesPorSector,
   formatPromedio,
   etiquetaMes,
   type ConsumoMes,
   type FiltroConsumo,
   type FiltroPeriodo,
+  type PuntoAgregado,
   type TipoConsumo,
 } from "@/lib/consumo-transformadores";
 
@@ -57,6 +64,84 @@ function Kpi({
         {valor}
       </p>
       <p className="mt-1.5 text-[11px] text-muted-foreground">{detalle}</p>
+    </div>
+  );
+}
+
+// ─── Gráficos ─────────────────────────────────────────────────────────────────
+
+/**
+ * Recharts pinta los colores como atributos SVG, donde `var(--token)` no
+ * resuelve. Para no clavar literales de color en el componente —y que los
+ * gráficos sigan al tema— se leen los tokens una sola vez y se pasan ya
+ * resueltos. Los `--chart-*` no cambian entre claro y oscuro, así que alcanza
+ * con leerlos al montar.
+ */
+const TOKENS_GRAFICO = [
+  "--chart-1", "--chart-5", "--accent-green", "--hairline", "--muted-foreground", "--panel-2",
+] as const;
+
+type Paleta = Record<(typeof TOKENS_GRAFICO)[number], string>;
+
+function usePaleta(): Paleta | null {
+  const [paleta, setPaleta] = useState<Paleta | null>(null);
+  useEffect(() => {
+    const cs = getComputedStyle(document.documentElement);
+    setPaleta(Object.fromEntries(
+      TOKENS_GRAFICO.map(t => [t, cs.getPropertyValue(t).trim()])
+    ) as Paleta);
+  }, []);
+  return paleta;
+}
+
+const ALTO_GRAFICO = 260;
+
+const ejeTick = (p: Paleta) => ({ fontSize: 11, fill: p["--muted-foreground"] });
+
+const estiloTooltip = (p: Paleta) => ({
+  contentStyle: {
+    background: p["--panel-2"],
+    border: `1px solid ${p["--hairline"]}`,
+    borderRadius: 8,
+    fontSize: 12,
+  },
+  labelStyle: { color: p["--muted-foreground"] },
+  itemStyle: { color: p["--accent-green"] },
+});
+
+/**
+ * Las barras muestran el total del período, que depende de cuántos meses entren.
+ * El promedio mensual va en el tooltip para poder comparar contra el KPI sin
+ * cambiar la escala del gráfico cada vez que se toca el filtro de año.
+ */
+const formatearAgregado = (
+  valor: number,
+  _nombre: string,
+  item: { payload?: PuntoAgregado }
+): [string, string] => [
+  `${valor} · ${formatPromedio(item.payload?.promedio ?? 0)} por mes`,
+  "Consumo",
+];
+
+function PanelGrafico({
+  title, subtitle, children, className,
+}: {
+  title: string; subtitle: string; children: React.ReactNode; className?: string;
+}) {
+  return (
+    <div className={cn("rounded-[14px] border border-hairline bg-panel-2 p-5", className)}>
+      <p className="text-[13px] font-semibold text-foreground">{title}</p>
+      <p className="mt-0.5 text-[11.5px] text-muted-foreground">{subtitle}</p>
+      <div className="mt-4">{children}</div>
+    </div>
+  );
+}
+
+/** Mensaje centrado con el alto del gráfico, para que el panel no cambie de tamaño. */
+function SinDatosGrafico({ alto, children }: { alto: number; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-center text-[12px] text-muted-foreground" style={{ height: alto }}>
+      {children}
     </div>
   );
 }
@@ -112,6 +197,16 @@ export function TransformadoresConsumoSection() {
   const anios = useMemo(() => aniosDisponibles(registros), [registros]);
   const serie = useMemo(() => serieMensual(registros, filtro, periodo), [registros, filtro, periodo]);
   const prom  = useMemo(() => promedios(serie), [serie]);
+
+  const paleta      = usePaleta();
+  const porPotencia = useMemo(() => totalesPorPotencia(registros, filtro, periodo), [registros, filtro, periodo]);
+  const porSector   = useMemo(() => totalesPorSector(registros, filtro, periodo),   [registros, filtro, periodo]);
+
+  // Recharts lee las etiquetas del propio dato, así que el mes va ya formateado.
+  const serieGrafico = useMemo(
+    () => serie.map(p => ({ ...p, etiqueta: etiquetaMes(p.mes) })),
+    [serie]
+  );
 
   const rango = useMemo(() => {
     if (serie.length === 0) return "sin datos";
@@ -264,6 +359,86 @@ export function TransformadoresConsumoSection() {
             <p className="px-5 pb-5 -mt-1 text-[11.5px] text-accent-amber">
               No hay consumo registrado para esta combinación de filtros.
             </p>
+          )}
+
+          {/* Gráficos — todos leen la misma serie filtrada que los KPIs */}
+          {paleta && (
+            <div className="grid gap-3 px-5 pb-5 xl:grid-cols-2">
+              <PanelGrafico
+                className="xl:col-span-2"
+                title="Evolución del consumo"
+                subtitle={anualizable
+                  ? "Transformadores entregados en cada mes (según filtros)"
+                  : `${NOMBRES_MESES[Number(mesDelAnio) - 1]} de cada año (según filtros)`}
+              >
+                {serieGrafico.length < 2 ? (
+                  <SinDatosGrafico alto={ALTO_GRAFICO}>
+                    Se necesitan al menos 2 {anualizable ? "meses" : "años"} con datos.
+                  </SinDatosGrafico>
+                ) : (
+                  <ResponsiveContainer width="100%" height={ALTO_GRAFICO}>
+                    <LineChart data={serieGrafico} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={paleta["--hairline"]} vertical={false} />
+                      <XAxis dataKey="etiqueta" tick={ejeTick(paleta)} axisLine={false} tickLine={false} />
+                      <YAxis tick={ejeTick(paleta)} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <ChartTooltip {...estiloTooltip(paleta)} />
+                      {/* Con un tipo elegido, `total` YA es ese tipo: dibujar además
+                          la serie cruda de nuevos/reparados duplicaría la misma línea. */}
+                      {tipo === TODOS ? (
+                        <>
+                          <Legend wrapperStyle={{ fontSize: 11 }} />
+                          <Line type="monotone" dataKey="total" name="Total"
+                            stroke={paleta["--accent-green"]} strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                          <Line type="monotone" dataKey="nuevos" name="Nuevos"
+                            stroke={paleta["--chart-1"]} strokeWidth={1.5} dot={{ r: 2 }} activeDot={{ r: 4 }} />
+                          <Line type="monotone" dataKey="reparados" name="Reparados"
+                            stroke={paleta["--chart-5"]} strokeWidth={1.5} dot={{ r: 2 }} activeDot={{ r: 4 }} />
+                        </>
+                      ) : (
+                        <Line type="monotone" dataKey="total" name={tipo === "nuevos" ? "Nuevos" : "Reparados"}
+                          stroke={paleta["--accent-green"]} strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                      )}
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </PanelGrafico>
+
+              <PanelGrafico title="Consumo por potencia" subtitle={`Total de ${rango} · el tooltip trae el promedio mensual`}>
+                {porPotencia.length === 0 ? (
+                  <SinDatosGrafico alto={ALTO_GRAFICO}>Sin consumo para estos filtros.</SinDatosGrafico>
+                ) : (
+                  <ResponsiveContainer width="100%" height={ALTO_GRAFICO}>
+                    <BarChart data={porPotencia} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={paleta["--hairline"]} vertical={false} />
+                      <XAxis dataKey="etiqueta" tick={ejeTick(paleta)} axisLine={false} tickLine={false}
+                        interval={0} angle={-40} textAnchor="end" height={56} />
+                      <YAxis tick={ejeTick(paleta)} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <ChartTooltip {...estiloTooltip(paleta)} cursor={{ fill: paleta["--hairline"] }}
+                        formatter={formatearAgregado} />
+                      <Bar dataKey="total" name="Consumo" fill={paleta["--chart-1"]} radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </PanelGrafico>
+
+              <PanelGrafico title="Consumo por sector" subtitle="Sectores de entrega, de mayor a menor">
+                {porSector.length === 0 ? (
+                  <SinDatosGrafico alto={ALTO_GRAFICO}>Sin consumo para estos filtros.</SinDatosGrafico>
+                ) : (
+                  <ResponsiveContainer width="100%" height={Math.max(ALTO_GRAFICO, porSector.length * 26 + 40)}>
+                    <BarChart data={porSector} layout="vertical" margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={paleta["--hairline"]} horizontal={false} />
+                      <XAxis type="number" tick={ejeTick(paleta)} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <YAxis type="category" dataKey="etiqueta" tick={ejeTick(paleta)} axisLine={false} tickLine={false}
+                        width={132} interval={0} />
+                      <ChartTooltip {...estiloTooltip(paleta)} cursor={{ fill: paleta["--hairline"] }}
+                        formatter={formatearAgregado} />
+                      <Bar dataKey="total" name="Consumo" fill={paleta["--chart-5"]} radius={[0, 3, 3, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </PanelGrafico>
+            </div>
           )}
 
           {/* Detalle mes a mes */}
