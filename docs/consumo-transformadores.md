@@ -208,6 +208,14 @@ Decisiones que no son obvias al leer el código:
 - **La potencia se ordena por kVA y el sector por volumen.** La potencia es una
   escala —desordenarla esconde la forma de la distribución—; entre sectores no
   hay orden natural y lo que interesa es el ranking.
+- **El eje de potencia va horizontal y el de sector rotado.** Rotar a −45° con
+  `textAnchor: "end"` cuelga cada etiqueta hacia abajo-izquierda del tick. Con
+  nombres largos y desparejos (sectores) el corrimiento se lee como una
+  diagonal; con etiquetas cortas y uniformes (potencias) se ve como si el eje
+  estuviera desalineado de sus barras. Por eso el tick de potencia es solo el
+  número, con el `kVA` una vez como rótulo del eje. Cada eje X aporta su propio
+  alto sobre un `ALTO_GRAFICO` común, así los dos gráficos —que van uno al lado
+  del otro— apoyan las barras sobre la misma línea de base.
 - **Los colores salen de los tokens, resueltos en runtime.** Recharts pinta como
   atributo SVG, donde `var(--token)` no resuelve, así que `usePaleta()` lee los
   `--chart-*` con `getComputedStyle` una vez al montar y los pasa ya resueltos.
