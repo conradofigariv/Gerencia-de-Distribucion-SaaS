@@ -73,7 +73,7 @@ type NavGroup = {
 type NavItemDef = NavLink | NavGroup;
 
 const navItems: NavItemDef[] = [
-  { kind: "link", id: "servicios-planillas", label: "Carga de datos", icon: Layers },
+  { kind: "link", id: "servicios-planillas", label: "Carga de Stock", icon: Layers },
   {
     kind: "group",
     id: "matriculas-group",
@@ -90,7 +90,7 @@ const navItems: NavItemDef[] = [
     label: "Control de servicios",
     icon: Server,
     children: [
-      { id: "servicios-resumen", label: "Resumen",             icon: LayoutGrid },
+      { id: "servicios-resumen", label: "Resumen de Stock",         icon: LayoutGrid },
       { id: "servicios-tabla",   label: "Lista de seguimiento", icon: Table2 },
       { id: "servicios-carga",   label: "Crear seguimiento",    icon: UploadCloud },
     ],
@@ -102,10 +102,10 @@ const navItems: NavItemDef[] = [
     label: "Stock de Transformadores",
     icon: Zap,
     children: [
-      { id: "transformadores-resumen", label: "Resumen",           icon: LayoutGrid },
-      { id: "transformadores-carga",   label: "Carga de datos",    icon: ImagePlus },
-      { id: "transformadores-tabla",   label: "Informe de Reservas", icon: Table2 },
-      { id: "transformadores-consumo",       label: "Consumo",          icon: TrendingUp },
+      { id: "transformadores-resumen", label: "Resumen de Stock",           icon: LayoutGrid },
+      { id: "transformadores-carga",   label: "Carga de Stock",    icon: ImagePlus },
+      { id: "transformadores-tabla",   label: "Historial de reservas", icon: Table2 },
+      { id: "transformadores-consumo",       label: "Resumen de Consumo",          icon: TrendingUp },
       { id: "transformadores-consumo-carga", label: "Carga de consumo", icon: UploadCloud },
     ],
   },
