@@ -94,16 +94,11 @@ function usePaleta(): Paleta | null {
   return paleta;
 }
 
-/**
- * Alto del área de ploteo, igual en los tres gráficos. Cada eje X suma después
- * lo suyo según cómo dibuje sus etiquetas: así los dos gráficos de barras, que
- * van uno al lado del otro, apoyan sus barras sobre la misma línea de base
- * aunque uno rote las etiquetas y el otro no.
- */
+/** Alto del área de ploteo, igual en los tres gráficos. */
 const ALTO_GRAFICO = 260;
 
+/** Alto que suman los dos gráficos de barras para sus etiquetas en diagonal. */
 const ALTO_EJE_X_ROTADO = 104;
-const ALTO_EJE_X_HORIZONTAL = 40;
 
 const ejeTick = (p: Paleta, fontSize = 11) => ({ fontSize, fill: p["--muted-foreground"] });
 
@@ -116,12 +111,9 @@ const rotuloEjeY = (p: Paleta, value: string) => ({
 });
 
 /**
- * Etiquetas de categoría rotadas, para los nombres de sector: no entran en
- * horizontal. Rotar tiene un costo — con `textAnchor: "end"` la etiqueta cuelga
- * hacia abajo-izquierda del tick, así que la fila queda corrida respecto de sus
- * barras. Con nombres largos el corrimiento es parejo y se lee como una
- * diagonal; con etiquetas cortas y uniformes (las potencias) se nota como un
- * desalineado, y por eso ese eje va horizontal.
+ * Etiquetas de categoría en diagonal, compartidas por los dos gráficos de
+ * barras. Los nombres de sector no entran en horizontal, y las potencias van
+ * igual —con su "kVA" en cada tick— para que el par se lea como una sola cosa.
  */
 const ejeXRotado = (p: Paleta) => ({
   tick: ejeTick(p, 10),
@@ -131,21 +123,6 @@ const ejeXRotado = (p: Paleta) => ({
   angle: -45,
   textAnchor: "end" as const,
   height: ALTO_EJE_X_ROTADO,
-});
-
-/** Eje X horizontal con la unidad como rótulo, en vez de repetirla en cada tick. */
-const ejeXHorizontal = (p: Paleta, unidad: string) => ({
-  tick: ejeTick(p, 10),
-  axisLine: false,
-  tickLine: false,
-  interval: 0 as const,
-  height: ALTO_EJE_X_HORIZONTAL,
-  label: {
-    value: unidad,
-    position: "insideBottom" as const,
-    offset: 0,
-    style: { fill: p["--muted-foreground"], fontSize: 11 },
-  },
 });
 
 const estiloTooltip = (p: Paleta) => ({
@@ -460,18 +437,17 @@ export function TransformadoresConsumoSection() {
 
               <PanelGrafico title="Consumo por potencia" subtitle={`Total de ${rango} · el tooltip trae el promedio mensual`}>
                 {porPotencia.length === 0 ? (
-                  <SinDatosGrafico alto={ALTO_GRAFICO + ALTO_EJE_X_HORIZONTAL}>Sin consumo para estos filtros.</SinDatosGrafico>
+                  <SinDatosGrafico alto={ALTO_GRAFICO + ALTO_EJE_X_ROTADO}>Sin consumo para estos filtros.</SinDatosGrafico>
                 ) : (
-                  <ResponsiveContainer width="100%" height={ALTO_GRAFICO + ALTO_EJE_X_HORIZONTAL}>
+                  <ResponsiveContainer width="100%" height={ALTO_GRAFICO + ALTO_EJE_X_ROTADO}>
                     <BarChart data={porPotencia} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke={paleta["--hairline"]} vertical={false} />
-                      {/* El tick es solo el número: repetir "kVA" catorce veces obliga a
-                          rotar, y rotado el eje queda corrido respecto de las barras. */}
-                      <XAxis dataKey="clave" {...ejeXHorizontal(paleta, "kVA")} />
+                      {/* `etiqueta` ya trae el "kVA"; el eje va en diagonal igual que el de sector. */}
+                      <XAxis dataKey="etiqueta" {...ejeXRotado(paleta)} />
                       <YAxis tick={ejeTick(paleta)} axisLine={false} tickLine={false} allowDecimals={false}
                         label={rotuloEjeY(paleta, "Consumo")} />
                       <ChartTooltip {...estiloTooltip(paleta)} cursor={{ fill: paleta["--hairline"] }}
-                        formatter={formatearAgregado} labelFormatter={v => `${v} kVA`} />
+                        formatter={formatearAgregado} />
                       <Bar dataKey="total" name="Consumo" fill={paleta["--chart-1"]} radius={[3, 3, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
