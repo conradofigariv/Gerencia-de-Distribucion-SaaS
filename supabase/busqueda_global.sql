@@ -7,11 +7,13 @@
 --
 -- ── Modelo de dominio ───────────────────────────────────────────────────────
 --   SIC (Solicitud Interna de Compra)
---     └── OP (Orden de Provisión; en algunas bases se llama OC/Orden de Compra
---             — es EL MISMO objeto, ojo al sumar planillas_qw)
+--     └── OP (Orden de Provisión; en algunas bases figura como OC/Orden de
+--             Compra — es EL MISMO objeto, solo cambia el nombre)
 --           └── línea  → QUÉ se compra (una matrícula distinta por línea)
 --                 └── envío → EN CUÁNTAS CUOTAS lo entrega el proveedor
 --                             (ej. 100 un. en 4 envíos de 25 → 4 fechas)
+--
+-- Nota: planillas_qw quedó FUERA DE USO — no se suma en ninguna fase.
 --
 -- Por eso la granularidad del índice es una fila por (OP, línea, envío), que
 -- es la clave real de planillas_op. `relacion` (OP+línea) NO es única: se
@@ -111,6 +113,11 @@ ALTER TABLE busqueda_index ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "busqueda_index_all" ON busqueda_index;
 CREATE POLICY "busqueda_index_all" ON busqueda_index FOR ALL USING (true) WITH CHECK (true);
 
+-- Permisos explícitos: la reconstrucción inserta desde la app (rol anon /
+-- authenticated), así que necesita la tabla y también la secuencia del id.
+GRANT SELECT, INSERT, UPDATE, DELETE ON busqueda_index          TO anon, authenticated;
+GRANT USAGE, SELECT                  ON SEQUENCE busqueda_index_id_seq TO anon, authenticated;
+
 -- ─── Reconstrucción del índice ──────────────────────────────────────────────
 -- Borra y recarga todo. Devuelve la cantidad de filas indexadas.
 
@@ -121,7 +128,10 @@ AS $$
 DECLARE
   total integer;
 BEGIN
-  DELETE FROM busqueda_index;
+  -- El WHERE true es obligatorio: Supabase bloquea los DELETE sin cláusula
+  -- WHERE (protección contra borrados masivos accidentales), incluso dentro
+  -- de una función.
+  DELETE FROM busqueda_index WHERE true;
 
   -- 1) Una fila por (OP, línea, envío), enriquecida con el catálogo.
   INSERT INTO busqueda_index (
