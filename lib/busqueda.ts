@@ -9,7 +9,10 @@ import { supabase } from "@/lib/supabaseClient";
 
 export interface BusquedaRow {
   id:                  number;
-  fuente:              "op" | "catalogo";
+  // 'op'          → fila de compra de planillas_op
+  // 'catalogo'    → matrícula que no aparece en ninguna OP ni movimiento
+  // 'transaccion' → movimientos de una OP que ya no está en la planilla actual
+  fuente:              "op" | "catalogo" | "transaccion";
 
   // Matrícula
   articulo:            string | null;   // código crudo ("00009411.0")
@@ -45,6 +48,18 @@ export interface BusquedaRow {
   estado_autorizacion: string | null;
   estado_cierre:       string | null;
   cargado_at:          string | null;   // uploaded_at de la planilla OP
+
+  // Movimientos reales (tablero_op_transaccion), todo el histórico.
+  // ⚠ Son totales POR LÍNEA: las transacciones no tienen dimensión de envío,
+  // así que si la línea tiene varios envíos todas sus filas repiten el mismo
+  // total. Sirven para leer el estado de la línea, no para sumar la columna.
+  tx_recibido:         number | null;
+  tx_aceptado:         number | null;
+  tx_entregado:        number | null;
+  tx_devoluciones:     number | null;
+  tx_movimientos:      number | null;
+  tx_primera_fecha:    string | null;   // ISO YYYY-MM-DD
+  tx_ultima_fecha:     string | null;   // ISO YYYY-MM-DD
 
   updated_at:          string;
 }
