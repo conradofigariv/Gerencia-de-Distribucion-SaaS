@@ -33,6 +33,7 @@ import { IndiceIdoResumenSection } from "@/components/dashboard/sections/indice-
 import { IndiceIdoCargaSection } from "@/components/dashboard/sections/indice-ido-carga";
 import { TableroOpResumenSection } from "@/components/dashboard/sections/tablero-op-resumen";
 import { TableroOpCargaSection } from "@/components/dashboard/sections/tablero-op-carga";
+import { BuscadorSection } from "@/components/dashboard/sections/buscador";
 import { LoginPage } from "@/components/auth/login";
 import { Loader2 } from "lucide-react";
 
@@ -53,7 +54,8 @@ export type Section =
   | "matriculas" | "matriculas-familias"
   | "informe-tecnico"
   | "indice-ido-resumen" | "indice-ido-carga"
-  | "tablero-op-resumen" | "tablero-op-carga";
+  | "tablero-op-resumen" | "tablero-op-carga"
+  | "buscador";
 
 export interface HeaderProfile {
   nombre:     string;
@@ -161,6 +163,7 @@ export default function Dashboard() {
       case "indice-ido-carga":        return <IndiceIdoCargaSection />;
       case "tablero-op-resumen":      return <TableroOpResumenSection />;
       case "tablero-op-carga":        return <TableroOpCargaSection />;
+      case "buscador":                return <BuscadorSection />;
       default:                       return <OverviewSection />;
     }
   };
