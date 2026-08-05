@@ -29,6 +29,7 @@ export interface BusquedaRow {
   numero_op:           string | null;
   linea:               string | null;
   envio:               string | null;
+  envios_linea:        number | null;   // total de envíos de esa (OP, línea) → «1/2»
   proveedor:           string | null;
   zona:                string | null;
 

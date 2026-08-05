@@ -234,7 +234,22 @@ const COLS: ColDef[] = [
   { key: "relacion",           label: "Relación",     mono: true },
   { key: "numero_op",          label: "OP",           mono: true },
   { key: "linea",              label: "Línea",        mono: true },
-  { key: "envio",              label: "Envío",        mono: true },
+  {
+    // «1/2» = envío 1 de los 2 que tiene esa línea. Deja ver de una que las
+    // filas hermanas son otros envíos de la MISMA línea y que por eso comparten
+    // los totales de movimientos.
+    key: "envio", label: "Envío", mono: true,
+    render: (r) => {
+      if (!r.envio) return "";
+      if (!r.envios_linea || r.envios_linea <= 1) return r.envio;
+      return (
+        <span>
+          {r.envio}
+          <span style={{ color: "oklch(0.5 0 0)" }}>/{r.envios_linea}</span>
+        </span>
+      );
+    },
+  },
   { key: "proveedor",          label: "Proveedor" },
   { key: "zona",               label: "Zona" },
 
@@ -314,7 +329,7 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   relacion:            110,
   numero_op:           90,
   linea:               70,
-  envio:               70,
+  envio:               80,
   proveedor:           180,
   zona:                80,
   cantidad:            95,
