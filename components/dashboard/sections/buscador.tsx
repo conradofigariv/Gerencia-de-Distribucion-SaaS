@@ -81,18 +81,30 @@ interface ColDef {
   render?: (r: BusquedaRow) => ReactNode;
 }
 
+// Todas las columnas de las dos fuentes, agrupadas: matrícula → compra →
+// cantidades → fechas y estados. Se muestran todas; el ancho es ajustable y
+// la tabla scrollea en horizontal.
 const COLS: ColDef[] = [
-  { key: "articulo",          label: "Matrícula",   mono: true },
-  { key: "descripcion",       label: "Descripción" },
-  { key: "tipo",              label: "Tipo",        render: (r) => <TipoPill tipo={r.tipo} /> },
-  { key: "estado_matricula",  label: "Estado",      render: (r) => <EstadoPill estado={r.estado_matricula} /> },
-  { key: "unidad_medida",     label: "UDM" },
-  { key: "numero_op",         label: "OP",          mono: true },
-  { key: "linea",             label: "Línea",       mono: true },
-  { key: "envio",             label: "Envío",       mono: true },
-  { key: "proveedor",         label: "Proveedor" },
-  { key: "cantidad",          label: "Cantidad",    num: true },
-  { key: "cantidad_recibida", label: "Recibida",    num: true },
+  // ── Matrícula ──
+  { key: "articulo",           label: "Matrícula",    mono: true },
+  { key: "descripcion",        label: "Descripción" },
+  { key: "tipo",               label: "Tipo",         render: (r) => <TipoPill tipo={r.tipo} /> },
+  { key: "mat_serv",           label: "Mat/Serv cat." },
+  { key: "estado_matricula",   label: "Estado",       render: (r) => <EstadoPill estado={r.estado_matricula} /> },
+  { key: "unidad_medida",      label: "UDM" },
+
+  // ── Compra ──
+  { key: "relacion",           label: "Relación",     mono: true },
+  { key: "numero_op",          label: "OP",           mono: true },
+  { key: "linea",              label: "Línea",        mono: true },
+  { key: "envio",              label: "Envío",        mono: true },
+  { key: "proveedor",          label: "Proveedor" },
+  { key: "zona",               label: "Zona" },
+
+  // ── Cantidades ──
+  { key: "cantidad",           label: "Cantidad",     num: true },
+  { key: "cantidad_recibida",  label: "Recibida",     num: true },
+  { key: "ctd_aceptada",       label: "Aceptada",     num: true },
   {
     key: "pendiente", label: "Pendiente", num: true,
     render: (r) => {
@@ -105,29 +117,64 @@ const COLS: ColDef[] = [
       );
     },
   },
-  { key: "fecha_pactada",     label: "F. pactada",  mono: true },
-  { key: "zona",              label: "Zona" },
-  { key: "estado_cierre",     label: "Cierre" },
+  {
+    key: "cantidad_vencida", label: "Vencida", num: true,
+    render: (r) => {
+      if (r.cantidad_vencida == null) return "";
+      const v = Number(r.cantidad_vencida);
+      return <span style={{ color: v > 0 ? "#fca5a5" : undefined, fontWeight: v > 0 ? 600 : 400 }}>{fmtNum(v)}</span>;
+    },
+  },
+  { key: "cantidad_rechazada", label: "Rechazada",    num: true },
+  { key: "cantidad_facturada", label: "Facturada",    num: true },
+  { key: "cantidad_cancelada", label: "Cancelada",    num: true },
+
+  // ── Fechas y estados ──
+  { key: "fecha_creacion",     label: "F. creación",  mono: true },
+  { key: "fecha_pactada",      label: "F. pactada",   mono: true },
+  { key: "estado_autorizacion", label: "Autorización" },
+  { key: "estado_cierre",      label: "Cierre" },
+  {
+    // uploaded_at viene como timestamp ISO completo — se muestra solo la fecha.
+    key: "cargado_at", label: "Cargado", mono: true,
+    render: (r) => {
+      if (!r.cargado_at) return "";
+      const d = new Date(r.cargado_at);
+      return Number.isNaN(d.getTime())
+        ? r.cargado_at
+        : d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+    },
+  },
 ];
 
 const COLWIDTHS_KEY = "buscador-colwidths";
 
 const DEFAULT_COL_WIDTHS: Record<string, number> = {
-  articulo:          120,
-  descripcion:       300,
-  tipo:              110,
-  estado_matricula:  105,
-  unidad_medida:     80,
-  numero_op:         90,
-  linea:             70,
-  envio:             70,
-  proveedor:         180,
-  cantidad:          95,
-  cantidad_recibida: 95,
-  pendiente:         95,
-  fecha_pactada:     105,
-  zona:              80,
-  estado_cierre:     95,
+  articulo:            120,
+  descripcion:         300,
+  tipo:                110,
+  mat_serv:            105,
+  estado_matricula:    105,
+  unidad_medida:       80,
+  relacion:            110,
+  numero_op:           90,
+  linea:               70,
+  envio:               70,
+  proveedor:           180,
+  zona:                80,
+  cantidad:            95,
+  cantidad_recibida:   95,
+  ctd_aceptada:        95,
+  pendiente:           95,
+  cantidad_vencida:    95,
+  cantidad_rechazada:  95,
+  cantidad_facturada:  95,
+  cantidad_cancelada:  95,
+  fecha_creacion:      110,
+  fecha_pactada:       110,
+  estado_autorizacion: 120,
+  estado_cierre:       95,
+  cargado_at:          110,
 };
 
 type SortDir = "asc" | "desc";

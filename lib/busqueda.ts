@@ -17,22 +17,34 @@ export interface BusquedaRow {
   descripcion:         string | null;
   unidad_medida:       string | null;
   estado_matricula:    string | null;   // activo / inactivo
-  tipo:                string | null;   // material / servicio
+  tipo:                string | null;   // material / servicio (matricula_tipo — manda)
+  mat_serv:            string | null;   // material / servicio del catálogo (informativo)
   en_catalogo:         boolean;
 
   // Compra
+  relacion:            string | null;   // OP+línea; no es única (se repite por envío)
   numero_op:           string | null;
   linea:               string | null;
   envio:               string | null;
   proveedor:           string | null;
+  zona:                string | null;
+
+  // Cantidades
   cantidad:            number | null;
   cantidad_recibida:   number | null;
+  ctd_aceptada:        number | null;
   pendiente:           number | null;
+  cantidad_vencida:    number | null;
+  cantidad_rechazada:  number | null;
+  cantidad_facturada:  number | null;
+  cantidad_cancelada:  number | null;
+
+  // Fechas y estados
   fecha_creacion:      string | null;
   fecha_pactada:       string | null;
-  zona:                string | null;
   estado_autorizacion: string | null;
   estado_cierre:       string | null;
+  cargado_at:          string | null;   // uploaded_at de la planilla OP
 
   updated_at:          string;
 }

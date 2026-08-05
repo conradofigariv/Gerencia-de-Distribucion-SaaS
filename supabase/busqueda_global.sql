@@ -84,21 +84,34 @@ CREATE TABLE busqueda_index (
   unidad_medida       text,
   estado_matricula    text,        -- activo / inactivo (se muestra, no filtra)
   tipo                text,        -- material / servicio (de matricula_tipo)
+  mat_serv            text,        -- el mat_serv del catálogo (informativo:
+                                   -- el que MANDA es `tipo`)
   en_catalogo         boolean NOT NULL DEFAULT false,
 
   -- ── Compra (OP → línea → envío) ──
+  relacion            text,        -- OP+línea; NO es única (se repite por envío)
   numero_op           text,
   linea               text,
   envio               text,
   proveedor           text,
+  zona                text,        -- organizacion_envio
+
+  -- ── Cantidades ──
   cantidad            numeric,
   cantidad_recibida   numeric,
+  ctd_aceptada        numeric,
   pendiente           numeric,     -- cantidad - recibida
+  cantidad_vencida    numeric,
+  cantidad_rechazada  numeric,
+  cantidad_facturada  numeric,
+  cantidad_cancelada  numeric,
+
+  -- ── Fechas y estados ──
   fecha_creacion      text,        -- texto crudo del Excel
   fecha_pactada       text,        -- texto crudo del Excel
-  zona                text,        -- organizacion_envio
   estado_autorizacion text,
   estado_cierre       text,
+  cargado_at          text,        -- uploaded_at de la planilla OP
 
   -- ── Búsqueda ──
   busqueda            text NOT NULL,   -- todo lo anterior concatenado y normalizado
@@ -164,10 +177,10 @@ BEGIN
   -- colapsaran a la misma clave, sin el DISTINCT ON se multiplicarían las
   -- filas de OP en el join.
   CREATE TEMP TABLE _cat ON COMMIT DROP AS
-    SELECT DISTINCT ON (k) k, articulo, descripcion, unidad_medida, estado
+    SELECT DISTINCT ON (k) k, articulo, descripcion, unidad_medida, estado, mat_serv
       FROM (
         SELECT gd_norm_articulo(articulo) AS k, articulo, descripcion,
-               unidad_medida, estado
+               unidad_medida, estado, mat_serv
           FROM matriculas
       ) x
      ORDER BY k;
@@ -187,9 +200,11 @@ BEGIN
   -- 1) Una fila por (OP, línea, envío), enriquecida con el catálogo.
   INSERT INTO busqueda_index (
     fuente, articulo, articulo_key, descripcion, unidad_medida, estado_matricula,
-    tipo, en_catalogo, numero_op, linea, envio, proveedor, cantidad,
-    cantidad_recibida, pendiente, fecha_creacion, fecha_pactada, zona,
-    estado_autorizacion, estado_cierre, busqueda
+    tipo, mat_serv, en_catalogo, relacion, numero_op, linea, envio, proveedor,
+    zona, cantidad, cantidad_recibida, ctd_aceptada, pendiente, cantidad_vencida,
+    cantidad_rechazada, cantidad_facturada, cantidad_cancelada,
+    fecha_creacion, fecha_pactada, estado_autorizacion, estado_cierre,
+    cargado_at, busqueda
   )
   SELECT
     'op',
@@ -199,24 +214,33 @@ BEGIN
     COALESCE(NULLIF(c.unidad_medida, ''), o.udm),
     c.estado,
     t.tipo,
+    c.mat_serv,
     (c.k IS NOT NULL),
+    o.relacion,
     o.numero,
     o.linea,
     o.envio,
     o.proveedor,
+    o.organizacion_envio,
     o.cantidad,
     o.cantidad_recibida,
+    o.ctd_aceptada,
     COALESCE(o.cantidad, 0) - COALESCE(o.cantidad_recibida, 0),
+    o.cantidad_vencida,
+    o.cantidad_rechazada,
+    o.cantidad_facturada,
+    o.cantidad_cancelada,
     o.fecha_creacion,
     o.fecha_pactada,
-    o.organizacion_envio,
     o.estado_autorizacion,
     o.estado_cierre,
+    o.uploaded_at::text,
     gd_norm_texto(concat_ws(' ',
       o.articulo, o.k,
       COALESCE(NULLIF(c.descripcion, ''), o.descripcion_articulo),
-      o.numero, o.linea, o.envio, o.proveedor, o.organizacion_envio,
-      t.tipo, c.estado, o.estado_cierre, o.fecha_pactada
+      o.relacion, o.numero, o.linea, o.envio, o.proveedor, o.organizacion_envio,
+      t.tipo, c.mat_serv, c.estado, o.estado_autorizacion, o.estado_cierre,
+      o.fecha_creacion, o.fecha_pactada
     ))
   FROM (SELECT *, gd_norm_articulo(articulo) AS k FROM planillas_op) o
   LEFT JOIN _cat  c ON c.k = o.k
@@ -226,7 +250,7 @@ BEGIN
   --    Anti-join contra _op_keys (indexada), NO subconsulta correlacionada.
   INSERT INTO busqueda_index (
     fuente, articulo, articulo_key, descripcion, unidad_medida, estado_matricula,
-    tipo, en_catalogo, busqueda
+    tipo, mat_serv, en_catalogo, busqueda
   )
   SELECT
     'catalogo',
@@ -236,9 +260,10 @@ BEGIN
     c.unidad_medida,
     c.estado,
     t.tipo,
+    c.mat_serv,
     true,
     gd_norm_texto(concat_ws(' ',
-      c.articulo, c.k, c.descripcion, t.tipo, c.estado
+      c.articulo, c.k, c.descripcion, t.tipo, c.mat_serv, c.estado
     ))
   FROM _cat c
   LEFT JOIN _tipo   t  ON t.k  = c.k
