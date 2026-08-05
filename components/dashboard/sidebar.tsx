@@ -24,6 +24,7 @@ import {
   Gauge,
   ClipboardList,
   Tag,
+  Search,
   LogOut,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
@@ -73,6 +74,7 @@ type NavGroup = {
 type NavItemDef = NavLink | NavGroup;
 
 const navItems: NavItemDef[] = [
+  { kind: "link", id: "buscador", label: "Buscador", icon: Search },
   { kind: "link", id: "servicios-planillas", label: "Carga de Stock", icon: Layers },
   {
     kind: "group",
