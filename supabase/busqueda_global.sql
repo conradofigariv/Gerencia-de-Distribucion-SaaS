@@ -126,6 +126,9 @@ CREATE TABLE busqueda_index (
   numero_op           text,
   linea               text,
   envio               text,
+  envios_linea        integer,     -- cuántos envíos tiene esa (OP, línea) en total,
+                                   -- para mostrar «envío 1/2» y que se vea de una
+                                   -- que las filas hermanas comparten el total (mov.)
   proveedor           text,
   zona                text,        -- organizacion_envio
 
@@ -273,6 +276,17 @@ BEGIN
       FROM planillas_op;
   CREATE INDEX ON _op_rows (numero_op, k, linea_k);
 
+  -- Cuántos envíos tiene cada (OP, línea). Una línea se entrega en «cuotas»:
+  -- 100 unidades en 4 envíos de 25 son 4 filas de planillas_op con la misma
+  -- línea. Este conteo permite mostrar «envío 1/4» en la tabla.
+  CREATE TEMP TABLE _env_count ON COMMIT DROP AS
+    SELECT gd_norm_op(numero)                 AS numero_op,
+           COALESCE(gd_norm_linea(linea), '') AS linea_k,
+           COUNT(*)::integer                  AS n
+      FROM planillas_op
+     GROUP BY 1, 2;
+  CREATE INDEX ON _env_count (numero_op, linea_k);
+
   -- Artículos que ya aparecen en alguna OP o en algún movimiento — el resto
   -- del catálogo entra como fila 'catalogo'.
   CREATE TEMP TABLE _op_keys ON COMMIT DROP AS
@@ -284,7 +298,8 @@ BEGIN
   -- 1) Una fila por (OP, línea, envío), enriquecida con el catálogo.
   INSERT INTO busqueda_index (
     fuente, articulo, articulo_key, descripcion, unidad_medida, estado_matricula,
-    tipo, mat_serv, en_catalogo, relacion, numero_op, linea, envio, proveedor,
+    tipo, mat_serv, en_catalogo, relacion, numero_op, linea, envio, envios_linea,
+    proveedor,
     zona, cantidad, cantidad_recibida, ctd_aceptada, pendiente, cantidad_vencida,
     cantidad_rechazada, cantidad_facturada, cantidad_cancelada,
     fecha_creacion, fecha_pactada, estado_autorizacion, estado_cierre,
@@ -307,6 +322,7 @@ BEGIN
     o.numero,
     o.linea,
     o.envio,
+    ec.n,
     o.proveedor,
     o.organizacion_envio,
     o.cantidad,
@@ -346,7 +362,8 @@ BEGIN
   ) o
   LEFT JOIN _cat  c ON c.k = o.k
   LEFT JOIN _tipo t ON t.k = o.k
-  LEFT JOIN _tx   x ON x.numero_op = o.op_k AND x.k = o.k AND x.linea_k = o.linea_k;
+  LEFT JOIN _tx   x ON x.numero_op = o.op_k AND x.k = o.k AND x.linea_k = o.linea_k
+  LEFT JOIN _env_count ec ON ec.numero_op = o.op_k AND ec.linea_k = o.linea_k;
 
   -- 2) Movimientos de (OP, artículo, línea) que NO están en la planilla OP
   --    actual — típicamente OPs viejas que ya salieron del export. Sin esto
