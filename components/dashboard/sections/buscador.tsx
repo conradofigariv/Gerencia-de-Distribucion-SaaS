@@ -20,6 +20,15 @@ const STICKY_BG    = "oklch(0.255 0.006 270)";
 const fmtNum = (n: number | null | undefined) =>
   n == null ? "" : Number(n).toLocaleString("es-AR", { maximumFractionDigits: 2 });
 
+// Fecha ISO "YYYY-MM-DD" → dd/mm/aa. Se parsea a mano para evitar el
+// corrimiento de zona horaria que mete new Date("YYYY-MM-DD") (lo toma UTC).
+const fmtFechaISO = (iso: string | null | undefined) => {
+  if (!iso) return "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  return `${m[3]}/${m[2]}/${m[1].slice(2)}`;
+};
+
 function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
   return (
     <div
@@ -273,6 +282,24 @@ const COLS: ColDef[] = [
         : d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" });
     },
   },
+
+  // ── Movimientos reales (transacciones) ──
+  // Rotuladas «(mov.)» a propósito: son totales POR LÍNEA, no por envío. Si la
+  // línea tiene varios envíos, todas sus filas repiten el mismo total.
+  { key: "tx_recibido",     label: "Recibido (mov.)",  num: true },
+  { key: "tx_aceptado",     label: "Aceptado (mov.)",  num: true },
+  { key: "tx_entregado",    label: "Entregado (mov.)", num: true },
+  {
+    key: "tx_devoluciones", label: "Devoluc. (mov.)", num: true,
+    render: (r) => {
+      if (r.tx_devoluciones == null) return "";
+      const v = Number(r.tx_devoluciones);
+      return <span style={{ color: v > 0 ? "#fca5a5" : undefined, fontWeight: v > 0 ? 600 : 400 }}>{fmtNum(v)}</span>;
+    },
+  },
+  { key: "tx_movimientos",  label: "N° mov.",     num: true },
+  { key: "tx_primera_fecha", label: "1er mov.",   mono: true, render: (r) => fmtFechaISO(r.tx_primera_fecha) },
+  { key: "tx_ultima_fecha",  label: "Últ. mov.",  mono: true, render: (r) => fmtFechaISO(r.tx_ultima_fecha) },
 ];
 
 const COLWIDTHS_KEY = "buscador-colwidths";
@@ -303,6 +330,13 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   estado_autorizacion: 120,
   estado_cierre:       95,
   cargado_at:          110,
+  tx_recibido:         125,
+  tx_aceptado:         125,
+  tx_entregado:        130,
+  tx_devoluciones:     125,
+  tx_movimientos:      85,
+  tx_primera_fecha:    95,
+  tx_ultima_fecha:     95,
 };
 
 const COLUMNS_KEY = "buscador-columns";
@@ -487,7 +521,9 @@ export function BuscadorSection() {
     URL.revokeObjectURL(url);
   }, [sorted, query, visibleCols]);
 
-  const conOp = sorted.filter((r) => r.fuente === "op").length;
+  const conOp    = sorted.filter((r) => r.fuente === "op").length;
+  const soloMov  = sorted.filter((r) => r.fuente === "transaccion").length;
+  const soloCat  = sorted.filter((r) => r.fuente === "catalogo").length;
 
   return (
     <div className="space-y-6">
@@ -596,6 +632,8 @@ export function BuscadorSection() {
           <p className="text-[12.5px]" style={{ color: "oklch(0.55 0 0)", margin: 0 }}>
             <span className="text-foreground font-medium">{sorted.length.toLocaleString("es-AR")}</span> resultado(s)
             {conOp > 0 && <> · {conOp.toLocaleString("es-AR")} con OP</>}
+            {soloMov > 0 && <> · {soloMov.toLocaleString("es-AR")} solo con movimientos (OP fuera de la planilla)</>}
+            {soloCat > 0 && <> · {soloCat.toLocaleString("es-AR")} solo en catálogo</>}
             {sorted.length >= 500 && <> · mostrando los primeros 500, afiná la búsqueda</>}
           </p>
         )}

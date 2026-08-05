@@ -20,14 +20,26 @@
 -- repite en cada envío de esa línea.
 --
 -- ── Fuentes ─────────────────────────────────────────────────────────────────
---   • planillas_op   → los datos de compra (proveedor, cantidades, fechas, zona)
---   • matriculas     → el catálogo maestro (descripción, unidad, estado)
---   • matricula_tipo → material/servicio. Es la clasificación MANUAL que se
---                      carga desde «Stock por Zona» y es la que MANDA sobre
---                      el `mat_serv` del catálogo.
+--   • planillas_op            → datos de compra (proveedor, cantidades, fechas, zona)
+--   • matriculas              → catálogo maestro (descripción, unidad, estado)
+--   • matricula_tipo          → material/servicio. Es la clasificación MANUAL que
+--                               se carga desde «Stock por Zona» y es la que MANDA
+--                               sobre el `mat_serv` del catálogo.
+--   • tablero_op_transaccion  → los MOVIMIENTOS reales (Recibir / Aceptar /
+--                               Entregar / devoluciones), agregados por
+--                               (OP, artículo, línea) sobre TODO el histórico.
 --
--- Las matrículas del catálogo que nunca se pidieron también entran al índice
--- (con la OP vacía), para poder confirmar que una matrícula existe.
+-- Las tres `fuente` posibles de una fila del índice:
+--   'op'          → fila de compra de planillas_op (con sus movimientos, si los hay)
+--   'catalogo'    → matrícula del catálogo que no aparece en ninguna OP ni movimiento
+--   'transaccion' → movimientos de una (OP, artículo, línea) que NO está en la
+--                   planilla OP actual (ej. OPs viejas ya fuera del export).
+--                   Sin esto esos movimientos serían invisibles.
+--
+-- ⚠ Los totales de movimientos son POR LÍNEA, no por envío: las transacciones no
+--   tienen dimensión de envío. Si una línea tiene varios envíos, todas sus filas
+--   muestran el MISMO total de línea — sirven para leer el estado de la línea,
+--   no para sumar la columna. Por eso las columnas se rotulan «(mov.)».
 --
 -- ── Mantenimiento ───────────────────────────────────────────────────────────
 -- planillas_op se borra y recarga entera en cada import (semanal / cada 3
@@ -46,6 +58,27 @@
 CREATE OR REPLACE FUNCTION gd_norm_articulo(raw text)
 RETURNS text AS $$
   SELECT regexp_replace(trim(COALESCE(raw, '')), '\.0+$', '');
+$$ LANGUAGE sql IMMUTABLE;
+
+-- Número de OP. Mismo problema del ".0" del export de Excel: planillas_op.numero
+-- es text ("26846" o "26846.0") y tablero_op_transaccion.numero_pedido es bigint.
+-- Se normalizan los dos lados a text sin sufijo decimal para poder cruzarlos.
+CREATE OR REPLACE FUNCTION gd_norm_op(raw text)
+RETURNS text AS $$
+  SELECT NULLIF(regexp_replace(trim(COALESCE(raw, '')), '\.0+$', ''), '');
+$$ LANGUAGE sql IMMUTABLE;
+
+-- Número de línea. Conviven tres notaciones para lo mismo:
+--   • planillas_op          → "1.0" / "1.1"   (decimal del Excel)
+--   • seguimiento y trans.  → "1"   / "1,1"   (coma, notación SIGA)
+-- Se unifica a punto y sin ".0" final: "1,1" ≡ "1.1", "1.0" ≡ "1".
+-- OJO: solo se quita el ".0"; "1.1" es una línea REAL distinta de "1"
+-- (es la ampliación/recompra), no se puede colapsar.
+CREATE OR REPLACE FUNCTION gd_norm_linea(raw text)
+RETURNS text AS $$
+  SELECT NULLIF(
+    regexp_replace(replace(trim(COALESCE(raw, '')), ',', '.'), '\.0+$', ''),
+  '');
 $$ LANGUAGE sql IMMUTABLE;
 
 -- Normaliza texto para búsqueda: minúsculas y sin acentos, para que "descripcion"
@@ -112,6 +145,17 @@ CREATE TABLE busqueda_index (
   estado_autorizacion text,
   estado_cierre       text,
   cargado_at          text,        -- uploaded_at de la planilla OP
+
+  -- ── Movimientos reales (tablero_op_transaccion) ──
+  -- ⚠ Totales POR LÍNEA (las transacciones no tienen envío): si la línea tiene
+  --   varios envíos, todas sus filas repiten el mismo total. No sumar la columna.
+  tx_recibido         numeric,
+  tx_aceptado         numeric,
+  tx_entregado        numeric,
+  tx_devoluciones     numeric,     -- Rechazar / Devolver a Prov. / a Recep. / Corregir
+  tx_movimientos      integer,     -- cantidad de movimientos registrados
+  tx_primera_fecha    date,
+  tx_ultima_fecha     date,
 
   -- ── Búsqueda ──
   busqueda            text NOT NULL,   -- todo lo anterior concatenado y normalizado
@@ -192,9 +236,49 @@ BEGIN
      ORDER BY k;
   CREATE INDEX ON _tipo (k);
 
-  -- Claves presentes en la planilla OP — una sola pasada, para el anti-join.
+  -- Movimientos reales agregados por (OP, artículo, línea) — TODO el histórico.
+  -- Las transacciones NO tienen dimensión de envío, así que el total es de la
+  -- línea completa. Una sola pasada con hash agg sobre las 60k+ filas.
+  CREATE TEMP TABLE _tx ON COMMIT DROP AS
+    SELECT
+      gd_norm_op(numero_pedido::text)         AS numero_op,
+      gd_norm_articulo(articulo)              AS k,
+      -- Centinela '' en vez de NULL: con NULL el `=` del join nunca matchea
+      -- (NULL <> NULL) y se perderían las filas sin línea. Con '' se puede
+      -- usar igualdad plana y el planner elige hash join.
+      COALESCE(gd_norm_linea(linea), '')      AS linea_k,
+      SUM(CASE WHEN tipo = 'Recibir'  THEN importe ELSE 0 END) AS recibido,
+      SUM(CASE WHEN tipo = 'Aceptar'  THEN importe ELSE 0 END) AS aceptado,
+      SUM(CASE WHEN tipo = 'Entregar' THEN importe ELSE 0 END) AS entregado,
+      SUM(CASE WHEN tipo IN (
+            'Rechazar', 'Devolver a Proveedor', 'Devolver a Recepción', 'Corregir'
+          ) THEN importe ELSE 0 END) AS devoluciones,
+      COUNT(*)::integer  AS movimientos,
+      MIN(fecha)::date   AS primera_fecha,
+      MAX(fecha)::date   AS ultima_fecha,
+      -- Proveedor del movimiento más antiguo que lo tenga cargado.
+      (array_agg(proveedor ORDER BY fecha)
+         FILTER (WHERE proveedor IS NOT NULL AND proveedor <> ''))[1] AS proveedor
+    FROM tablero_op_transaccion
+    GROUP BY 1, 2, 3;
+  CREATE INDEX ON _tx (numero_op, k, linea_k);
+
+  -- Combinaciones (OP, artículo, línea) que SÍ están en la planilla OP, para
+  -- detectar los movimientos huérfanos (OPs viejas fuera del export actual).
+  CREATE TEMP TABLE _op_rows ON COMMIT DROP AS
+    SELECT DISTINCT
+           gd_norm_op(numero)                AS numero_op,
+           gd_norm_articulo(articulo)        AS k,
+           COALESCE(gd_norm_linea(linea), '') AS linea_k
+      FROM planillas_op;
+  CREATE INDEX ON _op_rows (numero_op, k, linea_k);
+
+  -- Artículos que ya aparecen en alguna OP o en algún movimiento — el resto
+  -- del catálogo entra como fila 'catalogo'.
   CREATE TEMP TABLE _op_keys ON COMMIT DROP AS
-    SELECT DISTINCT gd_norm_articulo(articulo) AS k FROM planillas_op;
+    SELECT DISTINCT gd_norm_articulo(articulo) AS k FROM planillas_op
+    UNION
+    SELECT DISTINCT k FROM _tx;
   CREATE INDEX ON _op_keys (k);
 
   -- 1) Una fila por (OP, línea, envío), enriquecida con el catálogo.
@@ -204,7 +288,10 @@ BEGIN
     zona, cantidad, cantidad_recibida, ctd_aceptada, pendiente, cantidad_vencida,
     cantidad_rechazada, cantidad_facturada, cantidad_cancelada,
     fecha_creacion, fecha_pactada, estado_autorizacion, estado_cierre,
-    cargado_at, busqueda
+    cargado_at,
+    tx_recibido, tx_aceptado, tx_entregado, tx_devoluciones, tx_movimientos,
+    tx_primera_fecha, tx_ultima_fecha,
+    busqueda
   )
   SELECT
     'op',
@@ -235,18 +322,76 @@ BEGIN
     o.estado_autorizacion,
     o.estado_cierre,
     o.uploaded_at::text,
+    x.recibido,
+    x.aceptado,
+    x.entregado,
+    x.devoluciones,
+    x.movimientos,
+    x.primera_fecha,
+    x.ultima_fecha,
     gd_norm_texto(concat_ws(' ',
       o.articulo, o.k,
       COALESCE(NULLIF(c.descripcion, ''), o.descripcion_articulo),
       o.relacion, o.numero, o.linea, o.envio, o.proveedor, o.organizacion_envio,
       t.tipo, c.mat_serv, c.estado, o.estado_autorizacion, o.estado_cierre,
-      o.fecha_creacion, o.fecha_pactada
+      o.fecha_creacion, o.fecha_pactada,
+      x.primera_fecha, x.ultima_fecha
     ))
-  FROM (SELECT *, gd_norm_articulo(articulo) AS k FROM planillas_op) o
+  FROM (
+    SELECT *,
+           gd_norm_articulo(articulo)        AS k,
+           gd_norm_op(numero)                AS op_k,
+           COALESCE(gd_norm_linea(linea), '') AS linea_k
+      FROM planillas_op
+  ) o
   LEFT JOIN _cat  c ON c.k = o.k
-  LEFT JOIN _tipo t ON t.k = o.k;
+  LEFT JOIN _tipo t ON t.k = o.k
+  LEFT JOIN _tx   x ON x.numero_op = o.op_k AND x.k = o.k AND x.linea_k = o.linea_k;
 
-  -- 2) Matrículas del catálogo que todavía no aparecen en ninguna OP.
+  -- 2) Movimientos de (OP, artículo, línea) que NO están en la planilla OP
+  --    actual — típicamente OPs viejas que ya salieron del export. Sin esto
+  --    esos movimientos no aparecerían en ninguna búsqueda.
+  --    Anti-join contra _op_rows (indexada), NO subconsulta correlacionada.
+  INSERT INTO busqueda_index (
+    fuente, articulo, articulo_key, descripcion, unidad_medida, estado_matricula,
+    tipo, mat_serv, en_catalogo, numero_op, linea, proveedor,
+    tx_recibido, tx_aceptado, tx_entregado, tx_devoluciones, tx_movimientos,
+    tx_primera_fecha, tx_ultima_fecha, busqueda
+  )
+  SELECT
+    'transaccion',
+    COALESCE(c.articulo, x.k),   -- el código crudo solo existe si está en el catálogo
+    x.k,
+    c.descripcion,
+    c.unidad_medida,
+    c.estado,
+    t.tipo,
+    c.mat_serv,
+    (c.k IS NOT NULL),
+    x.numero_op,
+    NULLIF(x.linea_k, ''),        -- vuelve el centinela a NULL para mostrar
+    x.proveedor,
+    x.recibido,
+    x.aceptado,
+    x.entregado,
+    x.devoluciones,
+    x.movimientos,
+    x.primera_fecha,
+    x.ultima_fecha,
+    gd_norm_texto(concat_ws(' ',
+      COALESCE(c.articulo, x.k), x.k, c.descripcion, x.numero_op, x.linea_k,
+      x.proveedor, t.tipo, c.mat_serv, c.estado,
+      x.primera_fecha, x.ultima_fecha
+    ))
+  FROM _tx x
+  LEFT JOIN _cat     c  ON c.k = x.k
+  LEFT JOIN _tipo    t  ON t.k = x.k
+  LEFT JOIN _op_rows orw ON orw.numero_op = x.numero_op
+                        AND orw.k         = x.k
+                        AND orw.linea_k   = x.linea_k
+  WHERE orw.numero_op IS NULL;
+
+  -- 3) Matrículas del catálogo que no aparecen en ninguna OP ni movimiento.
   --    Anti-join contra _op_keys (indexada), NO subconsulta correlacionada.
   INSERT INTO busqueda_index (
     fuente, articulo, articulo_key, descripcion, unidad_medida, estado_matricula,
