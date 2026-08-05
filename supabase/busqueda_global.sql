@@ -143,11 +143,14 @@ CREATE TABLE busqueda_index (
   cantidad_cancelada  numeric,
 
   -- ── Fechas y estados ──
+  -- fecha_creacion es la fecha REAL de creación de la OP en SIGA. No se indexa
+  -- el uploaded_at de la planilla (cuándo se subió el archivo): es igual en
+  -- todas las filas porque el import reemplaza la tabla entera, y se confundía
+  -- con esta fecha.
   fecha_creacion      text,        -- texto crudo del Excel
   fecha_pactada       text,        -- texto crudo del Excel
   estado_autorizacion text,
   estado_cierre       text,
-  cargado_at          text,        -- uploaded_at de la planilla OP
 
   -- ── Movimientos reales (tablero_op_transaccion) ──
   -- ⚠ Totales POR LÍNEA (las transacciones no tienen envío): si la línea tiene
@@ -303,7 +306,6 @@ BEGIN
     zona, cantidad, cantidad_recibida, ctd_aceptada, pendiente, cantidad_vencida,
     cantidad_rechazada, cantidad_facturada, cantidad_cancelada,
     fecha_creacion, fecha_pactada, estado_autorizacion, estado_cierre,
-    cargado_at,
     tx_recibido, tx_aceptado, tx_entregado, tx_devoluciones, tx_movimientos,
     tx_primera_fecha, tx_ultima_fecha,
     busqueda
@@ -337,7 +339,6 @@ BEGIN
     o.fecha_pactada,
     o.estado_autorizacion,
     o.estado_cierre,
-    o.uploaded_at::text,
     x.recibido,
     x.aceptado,
     x.entregado,

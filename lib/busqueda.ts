@@ -48,7 +48,6 @@ export interface BusquedaRow {
   fecha_pactada:       string | null;
   estado_autorizacion: string | null;
   estado_cierre:       string | null;
-  cargado_at:          string | null;   // uploaded_at de la planilla OP
 
   // Movimientos reales (tablero_op_transaccion), todo el histórico.
   // ⚠ Son totales POR LÍNEA: las transacciones no tienen dimensión de envío,
