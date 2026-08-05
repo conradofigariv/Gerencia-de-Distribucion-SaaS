@@ -124,8 +124,27 @@ CREATE POLICY "busqueda_index_all" ON busqueda_index FOR ALL USING (true) WITH C
 GRANT SELECT, INSERT, UPDATE, DELETE ON busqueda_index          TO anon, authenticated;
 GRANT USAGE, SELECT                  ON SEQUENCE busqueda_index_id_seq TO anon, authenticated;
 
+-- ─── Índices de apoyo en las tablas fuente ──────────────────────────────────
+-- El cruce se hace sobre gd_norm_articulo(articulo), no sobre la columna cruda.
+-- Sin estos índices de expresión, cada pasada tiene que recalcular la función
+-- fila por fila. Son IMMUTABLE, así que se pueden indexar.
+
+CREATE INDEX IF NOT EXISTS idx_planillas_op_articulo_norm
+  ON planillas_op (gd_norm_articulo(articulo));
+CREATE INDEX IF NOT EXISTS idx_matriculas_articulo_norm
+  ON matriculas (gd_norm_articulo(articulo));
+
 -- ─── Reconstrucción del índice ──────────────────────────────────────────────
 -- Borra y recarga todo. Devuelve la cantidad de filas indexadas.
+--
+-- ⚠ PERFORMANCE — no volver a caer en esto:
+-- La primera versión resolvía «matrículas que no están en ninguna OP» con un
+-- NOT EXISTS correlacionado contra planillas_op. Eso escanea la planilla ENTERA
+-- una vez por cada matrícula del catálogo (O(n×m)) y hace saltar el statement
+-- timeout — exactamente el mismo error que ya había tenido gd_tablero.
+--
+-- Ahora se normalizan las claves UNA sola vez en tablas temporales indexadas y
+-- todos los cruces son hash joins sobre columnas ya calculadas.
 
 CREATE OR REPLACE FUNCTION gd_reconstruir_busqueda()
 RETURNS integer
@@ -139,6 +158,32 @@ BEGIN
   -- de una función.
   DELETE FROM busqueda_index WHERE true;
 
+  -- ── Claves normalizadas, calculadas una sola vez ──────────────────────────
+
+  -- Catálogo deduplicado por clave normalizada: si dos filas del catálogo
+  -- colapsaran a la misma clave, sin el DISTINCT ON se multiplicarían las
+  -- filas de OP en el join.
+  CREATE TEMP TABLE _cat ON COMMIT DROP AS
+    SELECT DISTINCT ON (k) k, articulo, descripcion, unidad_medida, estado
+      FROM (
+        SELECT gd_norm_articulo(articulo) AS k, articulo, descripcion,
+               unidad_medida, estado
+          FROM matriculas
+      ) x
+     ORDER BY k;
+  CREATE INDEX ON _cat (k);
+
+  CREATE TEMP TABLE _tipo ON COMMIT DROP AS
+    SELECT DISTINCT ON (k) k, tipo
+      FROM (SELECT gd_norm_articulo(articulo) AS k, tipo FROM matricula_tipo) x
+     ORDER BY k;
+  CREATE INDEX ON _tipo (k);
+
+  -- Claves presentes en la planilla OP — una sola pasada, para el anti-join.
+  CREATE TEMP TABLE _op_keys ON COMMIT DROP AS
+    SELECT DISTINCT gd_norm_articulo(articulo) AS k FROM planillas_op;
+  CREATE INDEX ON _op_keys (k);
+
   -- 1) Una fila por (OP, línea, envío), enriquecida con el catálogo.
   INSERT INTO busqueda_index (
     fuente, articulo, articulo_key, descripcion, unidad_medida, estado_matricula,
@@ -149,12 +194,12 @@ BEGIN
   SELECT
     'op',
     o.articulo,
-    gd_norm_articulo(o.articulo),
-    COALESCE(NULLIF(m.descripcion, ''), o.descripcion_articulo),
-    COALESCE(NULLIF(m.unidad_medida, ''), o.udm),
-    m.estado,
-    mt.tipo,
-    (m.articulo IS NOT NULL),
+    o.k,
+    COALESCE(NULLIF(c.descripcion, ''), o.descripcion_articulo),
+    COALESCE(NULLIF(c.unidad_medida, ''), o.udm),
+    c.estado,
+    t.tipo,
+    (c.k IS NOT NULL),
     o.numero,
     o.linea,
     o.envio,
@@ -168,46 +213,46 @@ BEGIN
     o.estado_autorizacion,
     o.estado_cierre,
     gd_norm_texto(concat_ws(' ',
-      o.articulo, gd_norm_articulo(o.articulo),
-      COALESCE(NULLIF(m.descripcion, ''), o.descripcion_articulo),
+      o.articulo, o.k,
+      COALESCE(NULLIF(c.descripcion, ''), o.descripcion_articulo),
       o.numero, o.linea, o.envio, o.proveedor, o.organizacion_envio,
-      mt.tipo, m.estado, o.estado_cierre, o.fecha_pactada
+      t.tipo, c.estado, o.estado_cierre, o.fecha_pactada
     ))
-  FROM planillas_op o
-  LEFT JOIN matriculas m
-    ON gd_norm_articulo(m.articulo) = gd_norm_articulo(o.articulo)
-  LEFT JOIN matricula_tipo mt
-    ON gd_norm_articulo(mt.articulo) = gd_norm_articulo(o.articulo);
+  FROM (SELECT *, gd_norm_articulo(articulo) AS k FROM planillas_op) o
+  LEFT JOIN _cat  c ON c.k = o.k
+  LEFT JOIN _tipo t ON t.k = o.k;
 
   -- 2) Matrículas del catálogo que todavía no aparecen en ninguna OP.
+  --    Anti-join contra _op_keys (indexada), NO subconsulta correlacionada.
   INSERT INTO busqueda_index (
     fuente, articulo, articulo_key, descripcion, unidad_medida, estado_matricula,
     tipo, en_catalogo, busqueda
   )
   SELECT
     'catalogo',
-    m.articulo,
-    gd_norm_articulo(m.articulo),
-    m.descripcion,
-    m.unidad_medida,
-    m.estado,
-    mt.tipo,
+    c.articulo,
+    c.k,
+    c.descripcion,
+    c.unidad_medida,
+    c.estado,
+    t.tipo,
     true,
     gd_norm_texto(concat_ws(' ',
-      m.articulo, gd_norm_articulo(m.articulo), m.descripcion, mt.tipo, m.estado
+      c.articulo, c.k, c.descripcion, t.tipo, c.estado
     ))
-  FROM matriculas m
-  LEFT JOIN matricula_tipo mt
-    ON gd_norm_articulo(mt.articulo) = gd_norm_articulo(m.articulo)
-  WHERE NOT EXISTS (
-    SELECT 1 FROM planillas_op o
-     WHERE gd_norm_articulo(o.articulo) = gd_norm_articulo(m.articulo)
-  );
+  FROM _cat c
+  LEFT JOIN _tipo   t  ON t.k  = c.k
+  LEFT JOIN _op_keys ok ON ok.k = c.k
+  WHERE ok.k IS NULL;
 
   SELECT count(*) INTO total FROM busqueda_index;
   RETURN total;
 END;
 $$;
+
+-- Margen de tiempo para la reconstrucción: es una operación de mantenimiento
+-- pesada, no una consulta de la API.
+ALTER FUNCTION gd_reconstruir_busqueda() SET statement_timeout = '600s';
 
 -- ─── Búsqueda ───────────────────────────────────────────────────────────────
 -- Coincidencia por subcadena en cualquier campo. Ordena poniendo primero las
