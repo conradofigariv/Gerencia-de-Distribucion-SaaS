@@ -200,7 +200,17 @@ export function BuscadorSection() {
       cargarEstado();
       if (query.trim()) setQuery((q) => q); // vuelve a disparar la búsqueda
     } catch (e) {
-      toast.error(`Error al reconstruir: ${e instanceof Error ? e.message : String(e)}`);
+      const msg = e instanceof Error ? e.message : String(e);
+      // 57014 = statement timeout. La reconstrucción es pesada; si el volumen
+      // supera el límite de la API, se corre desde el SQL Editor (sin ese tope).
+      if (/timeout|57014/i.test(msg)) {
+        toast.error(
+          "La reconstrucción superó el tiempo límite de la API. Corré «SELECT gd_reconstruir_busqueda();» desde el SQL Editor de Supabase.",
+          { duration: 12000 }
+        );
+      } else {
+        toast.error(`Error al reconstruir: ${msg}`);
+      }
     } finally {
       setReconstruyendo(false);
     }
