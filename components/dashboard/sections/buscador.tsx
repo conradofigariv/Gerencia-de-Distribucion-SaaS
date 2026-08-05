@@ -286,17 +286,6 @@ const COLS: ColDef[] = [
   { key: "fecha_pactada",      label: "F. pactada",   mono: true },
   { key: "estado_autorizacion", label: "Autorización" },
   { key: "estado_cierre",      label: "Cierre" },
-  {
-    // uploaded_at viene como timestamp ISO completo — se muestra solo la fecha.
-    key: "cargado_at", label: "Cargado", mono: true,
-    render: (r) => {
-      if (!r.cargado_at) return "";
-      const d = new Date(r.cargado_at);
-      return Number.isNaN(d.getTime())
-        ? r.cargado_at
-        : d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" });
-    },
-  },
 
   // ── Movimientos reales (transacciones) ──
   // Rotuladas «(mov.)» a propósito: son totales POR LÍNEA, no por envío. Si la
@@ -344,7 +333,6 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   fecha_pactada:       110,
   estado_autorizacion: 120,
   estado_cierre:       95,
-  cargado_at:          110,
   tx_recibido:         125,
   tx_aceptado:         125,
   tx_entregado:        130,
