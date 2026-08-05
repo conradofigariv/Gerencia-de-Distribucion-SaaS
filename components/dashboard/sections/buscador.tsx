@@ -530,31 +530,10 @@ export function BuscadorSection() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-start gap-3">
-          <div
-            className="grid place-items-center mt-0.5"
-            style={{
-              width: 36, height: 36, borderRadius: 9,
-              background: "oklch(0.30 0.10 155 / 0.45)",
-              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
-              color: "#86efac",
-            }}
-          >
-            <Search className="w-[18px] h-[18px]" strokeWidth={2} />
-          </div>
-          <div>
-            <h2 className="text-[22px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.4, margin: 0 }}>
-              Buscador
-            </h2>
-            <p className="mt-1 text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
-              Buscá por matrícula, descripción, OP, proveedor o zona — cada resultado trae todo en una fila.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 mt-0.5">
+      {/* Barra de estado del índice — el título de la sección ya lo pone el
+          header general, no hace falta repetirlo acá. */}
+      <div className="flex items-center justify-end gap-4 flex-wrap">
+        <div className="flex items-center gap-2">
           {indice && (
             <span
               className="inline-flex items-center gap-2 px-3 rounded-[9px] text-[12px]"
