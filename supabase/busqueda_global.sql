@@ -62,7 +62,13 @@ $$ LANGUAGE sql IMMUTABLE;
 
 -- ─── Tabla índice ───────────────────────────────────────────────────────────
 
-DROP TABLE IF EXISTS busqueda_index;
+-- gd_buscar() devuelve SETOF busqueda_index, o sea que depende del TIPO de la
+-- tabla: Postgres no deja recrear la tabla mientras la función exista. Por eso
+-- se borra primero la función (más abajo se vuelve a crear). Sin esto, correr
+-- el script una segunda vez falla con «cannot drop table busqueda_index
+-- because other objects depend on it».
+DROP FUNCTION IF EXISTS gd_buscar(text, integer);
+DROP TABLE    IF EXISTS busqueda_index;
 
 CREATE TABLE busqueda_index (
   id                  bigserial PRIMARY KEY,
