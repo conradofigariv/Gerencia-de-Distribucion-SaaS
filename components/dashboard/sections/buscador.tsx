@@ -638,7 +638,7 @@ export function BuscadorSection() {
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Matrícula, descripción, OP, proveedor, zona…"
+              placeholder="SIC, OP, matrícula, preparador, proveedor, zona…"
               className="flex-1 bg-transparent border-none outline-none text-[13.5px] text-foreground placeholder:text-muted-foreground/45"
             />
             {query && (
@@ -717,7 +717,7 @@ export function BuscadorSection() {
           {!query.trim() ? (
             <div className="flex flex-col items-center gap-2.5 py-14 text-sm text-muted-foreground">
               <Search className="w-10 h-10 opacity-20" />
-              Escribí algo para buscar en Matrículas y Planilla OP.
+              Escribí algo para buscar en SIC, OP, Matrículas y Transacciones.
             </div>
           ) : loading ? (
             <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
