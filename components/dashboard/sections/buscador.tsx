@@ -17,6 +17,9 @@ const PANEL_BG     = "oklch(0.205 0.005 270)";
 const PANEL_BORDER = "1px solid oklch(1 0 0 / 0.07)";
 const STICKY_BG    = "oklch(0.255 0.006 270)";
 
+// Alto único de todos los controles de la barra, para que queden alineados.
+const TOOLBAR_H = 34;
+
 const fmtNum = (n: number | null | undefined) =>
   n == null ? "" : Number(n).toLocaleString("es-AR", { maximumFractionDigits: 2 });
 
@@ -91,9 +94,9 @@ function ColumnsMenu({
     <div ref={ref} className="relative shrink-0">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-2 px-3.5 rounded-[9px] text-[13px] font-medium transition-colors"
+        className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors"
         style={{
-          height: 46,
+          height: TOOLBAR_H,
           background: open ? "oklch(0.22 0.005 270)" : "oklch(0.16 0.005 270)",
           border: `1px solid ${open ? "oklch(0.55 0.20 295 / 0.5)" : "oklch(1 0 0 / 0.07)"}`,
           color: "oklch(0.75 0 0)", cursor: "pointer",
@@ -101,7 +104,7 @@ function ColumnsMenu({
       >
         <Columns3 className="w-3.5 h-3.5" />
         Columnas
-        <span style={{ color: "oklch(0.5 0 0)" }}>({visibleCount}/{order.length})</span>
+        <span style={{ color: "oklch(0.5 0 0)" }}>{visibleCount}/{order.length}</span>
       </button>
 
       {open && (
@@ -529,44 +532,20 @@ export function BuscadorSection() {
   const soloCat  = sorted.filter((r) => r.fuente === "catalogo").length;
 
   return (
-    <div className="space-y-6">
-      {/* Barra de estado del índice — el título de la sección ya lo pone el
-          header general, no hace falta repetirlo acá. */}
-      <div className="flex items-center justify-end gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          {indice && (
-            <span
-              className="inline-flex items-center gap-2 px-3 rounded-[9px] text-[12px]"
-              style={{ height: 32, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, color: "oklch(0.6 0 0)" }}
-            >
-              <Database className="w-3.5 h-3.5" style={{ color: "#86efac" }} />
-              {indice.filas.toLocaleString("es-AR")} filas indexadas
-            </span>
-          )}
-          <button
-            onClick={handleReconstruir}
-            disabled={reconstruyendo}
-            title="Vuelve a leer Matrículas + Planilla OP y regenera el índice"
-            className="inline-flex items-center gap-2 px-3.5 rounded-[9px] text-[13px] font-medium transition-colors disabled:opacity-50"
-            style={{ height: 32, background: "oklch(0.22 0.005 270)", border: PANEL_BORDER, color: "oklch(0.75 0 0)", cursor: "pointer" }}
-          >
-            {reconstruyendo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-            {reconstruyendo ? "Reconstruyendo…" : "Reconstruir índice"}
-          </button>
-        </div>
-      </div>
-
-      {/* Card */}
+    <div>
+      {/* Card. El título de la sección ya lo pone el header general, así que
+          acá va directo la barra de herramientas para que la tabla suba. */}
       <div
-        className="px-4 py-6 sm:px-6 overflow-hidden space-y-5"
-        style={{ background: CARD_BG, border: PANEL_BORDER, borderRadius: 14 }}
+        className="p-2.5 overflow-hidden space-y-2"
+        style={{ background: CARD_BG, border: PANEL_BORDER, borderRadius: 12 }}
       >
-        {/* Omnibox */}
-        <div className="flex items-center gap-2.5 flex-wrap">
+        {/* Barra única: búsqueda + acciones + estado del índice, todo en una
+            fila para no gastar alto vertical. */}
+        <div className="flex items-center gap-2 flex-wrap">
           <div
-            className="flex items-center gap-2.5 px-4 flex-1"
+            className="flex items-center gap-2 px-3 flex-1"
             style={{
-              height: 46, minWidth: 280, borderRadius: 11,
+              height: TOOLBAR_H, minWidth: 240, borderRadius: 9,
               background: "oklch(0.16 0.005 270)",
               border: `1px solid ${query ? "oklch(0.55 0.20 295 / 0.5)" : "oklch(1 0 0 / 0.07)"}`,
               boxShadow: query ? "0 0 0 3px oklch(0.55 0.20 295 / 0.12)" : "none",
@@ -574,18 +553,18 @@ export function BuscadorSection() {
             }}
           >
             {loading
-              ? <Loader2 className="w-4 h-4 shrink-0 animate-spin" style={{ color: "#8B5CF6" }} />
-              : <Search className="w-4 h-4 shrink-0" style={{ color: "oklch(0.55 0 0)" }} />}
+              ? <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" style={{ color: "#8B5CF6" }} />
+              : <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "oklch(0.55 0 0)" }} />}
             <input
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Matrícula, descripción, OP, proveedor, zona…"
-              className="flex-1 bg-transparent border-none outline-none text-[15px] text-foreground placeholder:text-muted-foreground/45"
+              className="flex-1 bg-transparent border-none outline-none text-[13.5px] text-foreground placeholder:text-muted-foreground/45"
             />
             {query && (
               <button onClick={() => setQuery("")} className="text-muted-foreground hover:text-foreground shrink-0">
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
@@ -602,16 +581,38 @@ export function BuscadorSection() {
           <button
             onClick={exportCSV}
             disabled={!sorted.length}
-            className="inline-flex items-center gap-2 px-3.5 rounded-[9px] text-[13px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ height: 46, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, color: "oklch(0.65 0 0)", cursor: "pointer" }}
+            className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ height: TOOLBAR_H, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, color: "oklch(0.65 0 0)", cursor: "pointer" }}
           >
             <Download className="w-3.5 h-3.5" />CSV
+          </button>
+
+          {indice && (
+            <span
+              className="inline-flex items-center gap-1.5 px-2.5 rounded-[9px] text-[12px] whitespace-nowrap"
+              style={{ height: TOOLBAR_H, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, color: "oklch(0.6 0 0)" }}
+              title="Filas en el índice de búsqueda"
+            >
+              <Database className="w-3.5 h-3.5" style={{ color: "#86efac" }} />
+              {indice.filas.toLocaleString("es-AR")}
+            </span>
+          )}
+
+          <button
+            onClick={handleReconstruir}
+            disabled={reconstruyendo}
+            title="Vuelve a leer Matrículas + Planilla OP + Transacciones y regenera el índice"
+            className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors disabled:opacity-50"
+            style={{ height: TOOLBAR_H, background: "oklch(0.22 0.005 270)", border: PANEL_BORDER, color: "oklch(0.75 0 0)", cursor: "pointer" }}
+          >
+            {reconstruyendo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            {reconstruyendo ? "Reconstruyendo…" : "Reconstruir"}
           </button>
         </div>
 
         {/* Contador */}
         {buscado && !loading && (
-          <p className="text-[12.5px]" style={{ color: "oklch(0.55 0 0)", margin: 0 }}>
+          <p className="text-[12px] px-0.5" style={{ color: "oklch(0.55 0 0)", margin: 0 }}>
             <span className="text-foreground font-medium">{sorted.length.toLocaleString("es-AR")}</span> resultado(s)
             {conOp > 0 && <> · {conOp.toLocaleString("es-AR")} con OP</>}
             {soloMov > 0 && <> · {soloMov.toLocaleString("es-AR")} solo con movimientos (OP fuera de la planilla)</>}
@@ -621,29 +622,31 @@ export function BuscadorSection() {
         )}
 
         {/* Resultados */}
-        <div className="rounded-[14px] overflow-hidden" style={{ background: PANEL_BG, border: PANEL_BORDER }}>
+        <div className="rounded-[10px] overflow-hidden" style={{ background: PANEL_BG, border: PANEL_BORDER }}>
           {!query.trim() ? (
-            <div className="flex flex-col items-center gap-3 py-20 text-sm text-muted-foreground">
+            <div className="flex flex-col items-center gap-2.5 py-14 text-sm text-muted-foreground">
               <Search className="w-10 h-10 opacity-20" />
               Escribí algo para buscar en Matrículas y Planilla OP.
             </div>
           ) : loading ? (
-            <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+            <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
               <Loader2 className="w-4 h-4 animate-spin" />Buscando…
             </div>
           ) : !sorted.length ? (
-            <div className="flex flex-col items-center gap-3 py-20 text-sm text-muted-foreground">
+            <div className="flex flex-col items-center gap-2.5 py-14 text-sm text-muted-foreground">
               <PackageOpen className="w-10 h-10 opacity-20" />
               Sin resultados para «{query.trim()}».
               {indice?.filas === 0 && <span className="text-[12px]">El índice está vacío — probá «Reconstruir índice».</span>}
             </div>
           ) : !visibleCols.length ? (
-            <div className="flex flex-col items-center gap-3 py-20 text-sm text-muted-foreground">
+            <div className="flex flex-col items-center gap-2.5 py-14 text-sm text-muted-foreground">
               <Columns3 className="w-10 h-10 opacity-20" />
               Ocultaste todas las columnas — abrí «Columnas» para mostrar alguna.
             </div>
           ) : (
-            <div className="overflow-auto" style={{ maxHeight: "70vh" }}>
+            // Alto calculado en vez de un % fijo: con la barra compacta la
+            // tabla puede ocupar casi toda la ventana.
+            <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 190px)" }}>
               <table style={{ tableLayout: "fixed", width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 13 }}>
                 <colgroup>
                   {visibleCols.map((c) => (
@@ -661,7 +664,7 @@ export function BuscadorSection() {
                           onClick={() => handleSort(c.key)}
                           className="relative"
                           style={{
-                            padding: "12px 14px",
+                            padding: "8px 12px",
                             textAlign: c.num ? "right" : "left",
                             fontSize: 12, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase",
                             color: active ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
@@ -701,7 +704,7 @@ export function BuscadorSection() {
                           key={c.key}
                           className={cn("truncate", c.num ? "text-right tabular-nums" : "text-left")}
                           style={{
-                            padding: "10px 14px",
+                            padding: "7px 12px",
                             borderBottom: i === sorted.length - 1 ? "none" : "1px solid oklch(1 0 0 / 0.05)",
                             fontFamily: (c.num || c.mono) ? "ui-monospace, monospace" : undefined,
                             color: c.key === "articulo" ? "hsl(var(--foreground))" : undefined,
