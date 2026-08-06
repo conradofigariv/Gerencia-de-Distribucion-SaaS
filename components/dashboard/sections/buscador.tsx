@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode, type
 import {
   Search, Loader2, X, Download, RefreshCw, Database, PackageOpen,
   ChevronDown, ChevronUp, ChevronsUpDown, Wrench, Package,
-  Columns3, GripVertical, Eye, EyeOff,
+  Columns3, GripVertical, Eye, EyeOff, Pin,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -31,6 +31,15 @@ const fmtFechaISO = (iso: string | null | undefined) => {
   if (!m) return iso;
   return `${m[3]}/${m[2]}/${m[1].slice(2)}`;
 };
+
+// Clave estable de una fila para fijar (Pin), igual criterio que en Stock por
+// Zona. NO se puede usar `id`: es un bigserial que se borra y regenera entero
+// en cada «Reconstruir índice» (DELETE + INSERT), así que cambia de valor con
+// cada reconstrucción y el pin quedaría apuntando a un id que ya no existe.
+// Esta clave sale de los datos de negocio, que sí son estables entre
+// reconstrucciones.
+const rowKey = (r: BusquedaRow) =>
+  `${r.fuente}|${r.articulo_key ?? ""}|${r.numero_op ?? ""}|${r.linea ?? ""}|${r.envio ?? ""}`;
 
 function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
   return (
@@ -346,6 +355,7 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
 };
 
 const COLUMNS_KEY = "buscador-columns";
+const PINNED_KEY   = "buscador-pinned";
 const DEFAULT_COL_ORDER = COLS.map((c) => c.key as string);
 const COL_META: ColMeta[] = COLS.map((c) => ({ key: c.key as string, label: c.label }));
 
@@ -444,6 +454,29 @@ export function BuscadorSection() {
     [colOrder, hiddenCols]
   );
 
+  // Filas fijadas arriba (misma función que en Stock por Zona). Se guarda la
+  // clave estable, no el índice ni el `id` — así el pin sobrevive a cambios de
+  // orden, a re-búsquedas y a reconstrucciones del índice.
+  const [pinnedKeys, setPinnedKeys] = useState<string[]>([]);
+  const pinnedLoaded = useRef(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PINNED_KEY);
+      if (raw) setPinnedKeys(JSON.parse(raw));
+    } catch { /* ignorar */ }
+    pinnedLoaded.current = true;
+  }, []);
+  useEffect(() => {
+    if (!pinnedLoaded.current) return;
+    try { localStorage.setItem(PINNED_KEY, JSON.stringify(pinnedKeys)); } catch { /* ignorar */ }
+  }, [pinnedKeys]);
+
+  const togglePin = useCallback((key: string) => {
+    setPinnedKeys((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  }, []);
+  const unpinAll = useCallback(() => setPinnedKeys([]), []);
+
   const cargarEstado = useCallback(() => {
     estadoIndice().then(setIndice).catch(() => setIndice(null));
   }, []);
@@ -487,7 +520,7 @@ export function BuscadorSection() {
     }
   };
 
-  const sorted = useMemo(() => {
+  const sortedByCol = useMemo(() => {
     if (!sortCol) return rows;
     const dir = sortDir === "asc" ? 1 : -1;
     return [...rows].sort((a, b) => {
@@ -500,6 +533,24 @@ export function BuscadorSection() {
       return String(va).localeCompare(String(vb), "es", { numeric: true, sensitivity: "base" }) * dir;
     });
   }, [rows, sortCol, sortDir]);
+
+  // Filas fijadas: las que están fijadas Y presentes en la búsqueda actual, en
+  // orden de fijado. Se releen desde `rows` para mostrar siempre el dato más
+  // fresco (por si se reconstruyó el índice).
+  const pinnedRows = useMemo(() => {
+    if (!pinnedKeys.length) return [];
+    const byKey = new Map(rows.map((r) => [rowKey(r), r]));
+    return pinnedKeys.map((k) => byKey.get(k)).filter((r): r is BusquedaRow => !!r);
+  }, [pinnedKeys, rows]);
+
+  // Filas fijadas SIEMPRE arriba (en orden de fijado), y debajo el resto en el
+  // orden elegido — misma función que en Stock por Zona.
+  const sorted = useMemo(() => {
+    if (!pinnedRows.length) return sortedByCol;
+    const pinnedSet = new Set(pinnedRows.map(rowKey));
+    const rest = sortedByCol.filter((r) => !pinnedSet.has(rowKey(r)));
+    return [...pinnedRows, ...rest];
+  }, [sortedByCol, pinnedRows]);
 
   const handleSort = (col: keyof BusquedaRow) => {
     if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -611,13 +662,24 @@ export function BuscadorSection() {
         </div>
 
         {/* Contador */}
-        {buscado && !loading && (
-          <p className="text-[12px] px-0.5" style={{ color: "oklch(0.55 0 0)", margin: 0 }}>
-            <span className="text-foreground font-medium">{sorted.length.toLocaleString("es-AR")}</span> resultado(s)
-            {conOp > 0 && <> · {conOp.toLocaleString("es-AR")} con OP</>}
-            {soloMov > 0 && <> · {soloMov.toLocaleString("es-AR")} solo con movimientos (OP fuera de la planilla)</>}
-            {soloCat > 0 && <> · {soloCat.toLocaleString("es-AR")} solo en catálogo</>}
-            {sorted.length >= 500 && <> · mostrando los primeros 500, afiná la búsqueda</>}
+        {(buscado && !loading) && (
+          <p className="text-[12px] px-0.5 flex items-center flex-wrap gap-x-1" style={{ color: "oklch(0.55 0 0)", margin: 0 }}>
+            <span>
+              <span className="text-foreground font-medium">{sorted.length.toLocaleString("es-AR")}</span> resultado(s)
+              {conOp > 0 && <> · {conOp.toLocaleString("es-AR")} con OP</>}
+              {soloMov > 0 && <> · {soloMov.toLocaleString("es-AR")} solo con movimientos (OP fuera de la planilla)</>}
+              {soloCat > 0 && <> · {soloCat.toLocaleString("es-AR")} solo en catálogo</>}
+              {sorted.length >= 500 && <> · mostrando los primeros 500, afiná la búsqueda</>}
+            </span>
+            {pinnedRows.length > 0 && (
+              <span className="inline-flex items-center gap-1">
+                · <Pin className="w-3 h-3" fill="#c4b5fd" strokeWidth={2} style={{ color: "#c4b5fd" }} />
+                {pinnedRows.length} fijada{pinnedRows.length !== 1 ? "s" : ""}
+                <button onClick={unpinAll} className="ml-0.5 underline decoration-dotted hover:text-foreground">
+                  Quitar todas
+                </button>
+              </span>
+            )}
           </p>
         )}
 
@@ -649,12 +711,23 @@ export function BuscadorSection() {
             <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 190px)" }}>
               <table style={{ tableLayout: "fixed", width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 13 }}>
                 <colgroup>
+                  {/* Columna de fijado: fija, no reordenable ni ocultable — se
+                      mantiene igual que en Stock por Zona (icono a la izquierda). */}
+                  <col style={{ width: 30 }} />
                   {visibleCols.map((c) => (
                     <col key={c.key} style={{ width: colWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] }} />
                   ))}
                 </colgroup>
                 <thead>
                   <tr>
+                    <th
+                      style={{
+                        padding: "8px 6px",
+                        position: "sticky", top: 0, zIndex: 2,
+                        background: STICKY_BG,
+                        borderBottom: "1px solid hsl(var(--border))",
+                      }}
+                    />
                     {visibleCols.map((c) => {
                       const active = sortCol === c.key;
                       const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
@@ -690,33 +763,63 @@ export function BuscadorSection() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map((r, i) => (
-                    <tr
-                      key={r.id}
-                      className="transition-colors"
-                      // Las filas que son solo catálogo (matrícula nunca pedida) van atenuadas.
-                      style={{ opacity: r.fuente === "catalogo" ? 0.72 : 1 }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = "oklch(0.25 0.005 270 / 0.5)"; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = ""; }}
-                    >
-                      {visibleCols.map((c) => (
-                        <td
-                          key={c.key}
-                          className={cn("truncate", c.num ? "text-right tabular-nums" : "text-left")}
-                          style={{
-                            padding: "7px 12px",
-                            borderBottom: i === sorted.length - 1 ? "none" : "1px solid oklch(1 0 0 / 0.05)",
-                            fontFamily: (c.num || c.mono) ? "ui-monospace, monospace" : undefined,
-                            color: c.key === "articulo" ? "hsl(var(--foreground))" : undefined,
-                            fontWeight: c.key === "articulo" ? 500 : undefined,
-                          }}
-                          title={c.key === "descripcion" ? (r.descripcion ?? "") : undefined}
-                        >
-                          {c.render ? c.render(r) : c.num ? fmtNum(r[c.key] as number) : ((r[c.key] ?? "") as ReactNode)}
+                  {sorted.map((r, i) => {
+                    const key = rowKey(r);
+                    const isPinned = pinnedRows.length > 0 && i < pinnedRows.length;
+                    const isLastPinned = isPinned && i === pinnedRows.length - 1;
+                    const isLastRow = i === sorted.length - 1;
+                    const pinnedBg = "color-mix(in oklab, var(--accent-violet) 8%, transparent)";
+                    const bottomBorder = isLastPinned
+                      ? "2px solid color-mix(in oklab, var(--accent-violet) 50%, transparent)"
+                      : isLastRow ? "none" : "1px solid oklch(1 0 0 / 0.05)";
+                    return (
+                      <tr
+                        key={key}
+                        className="transition-colors"
+                        // Las filas que son solo catálogo (matrícula nunca pedida) van
+                        // atenuadas; las fijadas llevan un tinte violeta de fondo.
+                        style={{
+                          opacity: r.fuente === "catalogo" ? 0.72 : 1,
+                          background: isPinned ? pinnedBg : undefined,
+                        }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = "oklch(0.25 0.005 270 / 0.5)"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = isPinned ? pinnedBg : ""; }}
+                      >
+                        <td style={{ padding: "6px", borderBottom: bottomBorder, textAlign: "center" }}>
+                          <button
+                            onClick={() => togglePin(key)}
+                            title={isPinned ? "Quitar de fijadas" : "Fijar arriba"}
+                            className="grid place-items-center transition-colors"
+                            style={{
+                              width: 20, height: 20, borderRadius: 5, margin: "0 auto",
+                              color: isPinned ? "#c4b5fd" : "oklch(0.45 0 0)",
+                              background: isPinned ? "color-mix(in oklab, var(--accent-violet) 20%, transparent)" : "transparent",
+                            }}
+                            onMouseEnter={(e) => { if (!isPinned) (e.currentTarget as HTMLButtonElement).style.color = "#c4b5fd"; }}
+                            onMouseLeave={(e) => { if (!isPinned) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.45 0 0)"; }}
+                          >
+                            <Pin className="w-3.5 h-3.5" strokeWidth={2} fill={isPinned ? "#c4b5fd" : "none"} />
+                          </button>
                         </td>
-                      ))}
-                    </tr>
-                  ))}
+                        {visibleCols.map((c) => (
+                          <td
+                            key={c.key}
+                            className={cn("truncate", c.num ? "text-right tabular-nums" : "text-left")}
+                            style={{
+                              padding: "7px 12px",
+                              borderBottom: bottomBorder,
+                              fontFamily: (c.num || c.mono) ? "ui-monospace, monospace" : undefined,
+                              color: c.key === "articulo" ? "hsl(var(--foreground))" : undefined,
+                              fontWeight: c.key === "articulo" ? 500 : undefined,
+                            }}
+                            title={c.key === "descripcion" ? (r.descripcion ?? "") : undefined}
+                          >
+                            {c.render ? c.render(r) : c.num ? fmtNum(r[c.key] as number) : ((r[c.key] ?? "") as ReactNode)}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
