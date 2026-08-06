@@ -28,13 +28,26 @@
 --   • tablero_op_transaccion  → los MOVIMIENTOS reales (Recibir / Aceptar /
 --                               Entregar / devoluciones), agregados por
 --                               (OP, artículo, línea) sobre TODO el histórico.
+--   • seguimiento_sic_soler   → las SIC (Solicitud Interna de Compra), que están
+--                               ARRIBA de la OP en la jerarquía. Se cargan desde
+--                               «Carga de datos → SIC».
 --
--- Las tres `fuente` posibles de una fila del índice:
---   'op'          → fila de compra de planillas_op (con sus movimientos, si los hay)
+-- Las cuatro `fuente` posibles de una fila del índice:
+--   'op'          → fila de compra de planillas_op (con sus movimientos y su SIC)
 --   'catalogo'    → matrícula del catálogo que no aparece en ninguna OP ni movimiento
 --   'transaccion' → movimientos de una (OP, artículo, línea) que NO está en la
 --                   planilla OP actual (ej. OPs viejas ya fuera del export).
 --                   Sin esto esos movimientos serían invisibles.
+--   'sic'         → línea de SIC que todavía NO tiene OP (pedido pendiente de
+--                   convertirse en orden), o cuya OP ya no está en la planilla.
+--
+-- ── Cómo se cruza la SIC ────────────────────────────────────────────────────
+-- Una SIC puede generar VARIAS OPs: cada LÍNEA de la SIC va a una OP distinta
+-- (verificado: SIC 21348 → línea 1 = OP 26846, línea 2 = OP 26845).
+--
+-- ⚠ La línea de la SIC NO es la misma que la línea de la OP — son numeraciones
+--   independientes. El cruce va por (Número Pedido + Artículo), que verificamos
+--   que es único en el export de SIC. NUNCA por línea.
 --
 -- ⚠ Los totales de movimientos son POR LÍNEA, no por envío: las transacciones no
 --   tienen dimensión de envío. Si una línea tiene varios envíos, todas sus filas
@@ -120,6 +133,16 @@ CREATE TABLE busqueda_index (
   mat_serv            text,        -- el mat_serv del catálogo (informativo:
                                    -- el que MANDA es `tipo`)
   en_catalogo         boolean NOT NULL DEFAULT false,
+
+  -- ── SIC (Solicitud Interna de Compra) — el nivel de ARRIBA de la OP ──
+  -- Se cruza por (Número Pedido + Artículo), nunca por línea: la línea de la
+  -- SIC y la de la OP son numeraciones distintas.
+  numero_sic          text,
+  sic_linea           text,
+  sic_cantidad        numeric,
+  sic_udm             text,
+  sic_preparador      text,
+  sic_fecha_creacion  text,
 
   -- ── Compra (OP → línea → envío) ──
   relacion            text,        -- OP+línea; NO es única (se repite por envío)
@@ -279,6 +302,43 @@ BEGIN
       FROM planillas_op;
   CREATE INDEX ON _op_rows (numero_op, k, linea_k);
 
+  -- SIC normalizada. Clave de cruce: (Número Pedido, Artículo) — verificado
+  -- único en el export. `op_k` queda NULL cuando la SIC todavía no generó OP.
+  --
+  -- El DISTINCT ON es defensivo, por si dos líneas de SIC colapsaran a la misma
+  -- (OP, artículo) y multiplicaran las filas de la OP en el join. PERO no puede
+  -- deduplicar por (op_k, art_k) a secas: con op_k NULL (SIC sin OP todavía)
+  -- aplastaría en una sola fila TODAS las SIC distintas que pidan ese artículo.
+  -- Por eso, cuando no hay OP, la clave de dedup cae en (SIC, línea), que es
+  -- única por definición.
+  CREATE TEMP TABLE _sic ON COMMIT DROP AS
+    SELECT DISTINCT ON (dedup_k, art_k)
+           op_k, art_k, numero_sic, linea, cantidad, udm, preparador,
+           fecha_creacion, descripcion
+      FROM (
+        SELECT gd_norm_op(numero_op)        AS op_k,
+               gd_norm_articulo(articulo)   AS art_k,
+               COALESCE(gd_norm_op(numero_op),
+                        numero_sic || '|' || COALESCE(linea, '')) AS dedup_k,
+               numero_sic,
+               linea,
+               cantidad,
+               udm,
+               preparador,
+               fecha_creacion,
+               descripcion
+          FROM seguimiento_sic_soler
+      ) s
+     ORDER BY dedup_k, art_k, numero_sic;
+  CREATE INDEX ON _sic (op_k, art_k);
+
+  -- Combinaciones (OP, artículo) presentes en la planilla OP — para saber qué
+  -- líneas de SIC ya están representadas por una fila de compra y cuáles no.
+  CREATE TEMP TABLE _op_art ON COMMIT DROP AS
+    SELECT DISTINCT gd_norm_op(numero) AS op_k, gd_norm_articulo(articulo) AS art_k
+      FROM planillas_op;
+  CREATE INDEX ON _op_art (op_k, art_k);
+
   -- Cuántos envíos tiene cada (OP, línea). Una línea se entrega en «cuotas»:
   -- 100 unidades en 4 envíos de 25 son 4 filas de planillas_op con la misma
   -- línea. Este conteo permite mostrar «envío 1/4» en la tabla.
@@ -301,7 +361,9 @@ BEGIN
   -- 1) Una fila por (OP, línea, envío), enriquecida con el catálogo.
   INSERT INTO busqueda_index (
     fuente, articulo, articulo_key, descripcion, unidad_medida, estado_matricula,
-    tipo, mat_serv, en_catalogo, relacion, numero_op, linea, envio, envios_linea,
+    tipo, mat_serv, en_catalogo,
+    numero_sic, sic_linea, sic_cantidad, sic_udm, sic_preparador, sic_fecha_creacion,
+    relacion, numero_op, linea, envio, envios_linea,
     proveedor,
     zona, cantidad, cantidad_recibida, ctd_aceptada, pendiente, cantidad_vencida,
     cantidad_rechazada, cantidad_facturada, cantidad_cancelada,
@@ -320,6 +382,12 @@ BEGIN
     t.tipo,
     c.mat_serv,
     (c.k IS NOT NULL),
+    s.numero_sic,
+    s.linea,
+    s.cantidad,
+    s.udm,
+    s.preparador,
+    s.fecha_creacion,
     o.relacion,
     o.numero,
     o.linea,
@@ -352,7 +420,8 @@ BEGIN
       o.relacion, o.numero, o.linea, o.envio, o.proveedor, o.organizacion_envio,
       t.tipo, c.mat_serv, c.estado, o.estado_autorizacion, o.estado_cierre,
       o.fecha_creacion, o.fecha_pactada,
-      x.primera_fecha, x.ultima_fecha
+      x.primera_fecha, x.ultima_fecha,
+      s.numero_sic, s.preparador
     ))
   FROM (
     SELECT *,
@@ -364,7 +433,8 @@ BEGIN
   LEFT JOIN _cat  c ON c.k = o.k
   LEFT JOIN _tipo t ON t.k = o.k
   LEFT JOIN _tx   x ON x.numero_op = o.op_k AND x.k = o.k AND x.linea_k = o.linea_k
-  LEFT JOIN _env_count ec ON ec.numero_op = o.op_k AND ec.linea_k = o.linea_k;
+  LEFT JOIN _env_count ec ON ec.numero_op = o.op_k AND ec.linea_k = o.linea_k
+  LEFT JOIN _sic  s ON s.op_k = o.op_k AND s.art_k = o.k;
 
   -- 2) Movimientos de (OP, artículo, línea) que NO están en la planilla OP
   --    actual — típicamente OPs viejas que ya salieron del export. Sin esto
@@ -372,7 +442,9 @@ BEGIN
   --    Anti-join contra _op_rows (indexada), NO subconsulta correlacionada.
   INSERT INTO busqueda_index (
     fuente, articulo, articulo_key, descripcion, unidad_medida, estado_matricula,
-    tipo, mat_serv, en_catalogo, numero_op, linea, proveedor,
+    tipo, mat_serv, en_catalogo,
+    numero_sic, sic_linea, sic_cantidad, sic_udm, sic_preparador, sic_fecha_creacion,
+    numero_op, linea, proveedor,
     tx_recibido, tx_aceptado, tx_entregado, tx_devoluciones, tx_movimientos,
     tx_primera_fecha, tx_ultima_fecha, busqueda
   )
@@ -386,6 +458,12 @@ BEGIN
     t.tipo,
     c.mat_serv,
     (c.k IS NOT NULL),
+    s.numero_sic,
+    s.linea,
+    s.cantidad,
+    s.udm,
+    s.preparador,
+    s.fecha_creacion,
     x.numero_op,
     NULLIF(x.linea_k, ''),        -- vuelve el centinela a NULL para mostrar
     x.proveedor,
@@ -399,17 +477,59 @@ BEGIN
     gd_norm_texto(concat_ws(' ',
       COALESCE(c.articulo, x.k), x.k, c.descripcion, x.numero_op, x.linea_k,
       x.proveedor, t.tipo, c.mat_serv, c.estado,
-      x.primera_fecha, x.ultima_fecha
+      x.primera_fecha, x.ultima_fecha,
+      s.numero_sic, s.preparador
     ))
   FROM _tx x
   LEFT JOIN _cat     c  ON c.k = x.k
   LEFT JOIN _tipo    t  ON t.k = x.k
+  LEFT JOIN _sic     s  ON s.op_k = x.numero_op AND s.art_k = x.k
   LEFT JOIN _op_rows orw ON orw.numero_op = x.numero_op
                         AND orw.k         = x.k
                         AND orw.linea_k   = x.linea_k
   WHERE orw.numero_op IS NULL;
 
-  -- 3) Matrículas del catálogo que no aparecen en ninguna OP ni movimiento.
+  -- 3) Líneas de SIC que todavía NO tienen OP (pedidos pendientes de
+  --    convertirse en orden), o cuya OP ya no está en la planilla actual.
+  --    Es el «pipeline»: sin esto, una SIC recién cargada sería invisible
+  --    hasta que se le genere la orden.
+  --    Anti-join contra _op_art (indexada), NO subconsulta correlacionada.
+  INSERT INTO busqueda_index (
+    fuente, articulo, articulo_key, descripcion, unidad_medida, estado_matricula,
+    tipo, mat_serv, en_catalogo,
+    numero_sic, sic_linea, sic_cantidad, sic_udm, sic_preparador, sic_fecha_creacion,
+    numero_op, busqueda
+  )
+  SELECT
+    'sic',
+    COALESCE(c.articulo, s.art_k),
+    s.art_k,
+    COALESCE(NULLIF(c.descripcion, ''), s.descripcion),
+    COALESCE(NULLIF(c.unidad_medida, ''), s.udm),
+    c.estado,
+    t.tipo,
+    c.mat_serv,
+    (c.k IS NOT NULL),
+    s.numero_sic,
+    s.linea,
+    s.cantidad,
+    s.udm,
+    s.preparador,
+    s.fecha_creacion,
+    s.op_k,                       -- NULL si la SIC todavía no generó la OP
+    gd_norm_texto(concat_ws(' ',
+      COALESCE(c.articulo, s.art_k), s.art_k,
+      COALESCE(NULLIF(c.descripcion, ''), s.descripcion),
+      s.numero_sic, s.linea, s.op_k, s.preparador, s.fecha_creacion,
+      t.tipo, c.mat_serv, c.estado
+    ))
+  FROM _sic s
+  LEFT JOIN _cat  c ON c.k = s.art_k
+  LEFT JOIN _tipo t ON t.k = s.art_k
+  LEFT JOIN _op_art oa ON oa.op_k = s.op_k AND oa.art_k = s.art_k
+  WHERE oa.op_k IS NULL;
+
+  -- 4) Matrículas del catálogo que no aparecen en ninguna OP, movimiento ni SIC.
   --    Anti-join contra _op_keys (indexada), NO subconsulta correlacionada.
   INSERT INTO busqueda_index (
     fuente, articulo, articulo_key, descripcion, unidad_medida, estado_matricula,

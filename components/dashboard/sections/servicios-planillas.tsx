@@ -21,6 +21,19 @@ type MatUploadMode = "append" | "overwrite";
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const str   = (v: unknown): string => String(v ?? "").trim();
+
+// Fecha de Excel → "YYYY-MM-DD". XLSX se lee con cellDates:true, así que las
+// celdas con formato de fecha llegan como Date; con String() quedarían como
+// "Fri Jul 03 2026 13:24:37 GMT-0300 (…)", ilegible y atado a la zona horaria
+// del navegador que hizo la carga. Se arma a partir de los componentes locales
+// (no toISOString) para que no se corra un día por UTC.
+const fechaStr = (v: unknown): string => {
+  if (v instanceof Date && !Number.isNaN(v.getTime())) {
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${v.getFullYear()}-${p(v.getMonth() + 1)}-${p(v.getDate())}`;
+  }
+  return str(v);
+};
 const BATCH = 500;
 
 // Normaliza un encabezado para comparar sin tildes, mayúsculas ni espacios.
@@ -468,7 +481,7 @@ export function ServiciosPlanillasSection() {
           udm:            str(pick(r, ["UDM", "UdM", "Unidad Medida", "Unidad de Medida", "Unidad Medida Primaria"])),
           preparador:     str(pick(r, ["Preparador", "Preparador Nombre", "SC Preparador Nombre"])),
           numero_op:      str(pick(r, ["Número Pedido", "Numero Pedido", "Nro Pedido", "Número OP", "Numero OP", "OP", "Pedido"])),
-          fecha_creacion: str(pick(r, ["Fecha Creación", "Fecha Creacion", "Fecha de Creación", "Fecha de Creacion"])),
+          fecha_creacion: fechaStr(pick(r, ["Fecha Creación", "Fecha Creacion", "Fecha de Creación", "Fecha de Creacion"])),
         };
       }).filter(r => r.numero_sic);
 
