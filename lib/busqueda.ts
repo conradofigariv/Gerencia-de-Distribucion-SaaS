@@ -12,7 +12,8 @@ export interface BusquedaRow {
   // 'op'          → fila de compra de planillas_op
   // 'catalogo'    → matrícula que no aparece en ninguna OP ni movimiento
   // 'transaccion' → movimientos de una OP que ya no está en la planilla actual
-  fuente:              "op" | "catalogo" | "transaccion";
+  // 'sic'         → línea de SIC sin OP todavía (pedido pendiente)
+  fuente:              "op" | "catalogo" | "transaccion" | "sic";
 
   // Matrícula
   articulo:            string | null;   // código crudo ("00009411.0")
@@ -23,6 +24,15 @@ export interface BusquedaRow {
   tipo:                string | null;   // material / servicio (matricula_tipo — manda)
   mat_serv:            string | null;   // material / servicio del catálogo (informativo)
   en_catalogo:         boolean;
+
+  // SIC — el nivel de arriba de la OP. Se cruza por (Número Pedido + Artículo),
+  // nunca por línea: la línea de la SIC y la de la OP son numeraciones distintas.
+  numero_sic:          string | null;
+  sic_linea:           string | null;
+  sic_cantidad:        number | null;
+  sic_udm:             string | null;
+  sic_preparador:      string | null;
+  sic_fecha_creacion:  string | null;
 
   // Compra
   relacion:            string | null;   // OP+línea; no es única (se repite por envío)

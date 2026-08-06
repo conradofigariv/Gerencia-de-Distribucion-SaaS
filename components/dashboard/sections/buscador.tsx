@@ -242,6 +242,27 @@ const COLS: ColDef[] = [
   { key: "estado_matricula",   label: "Estado",       render: (r) => <EstadoPill estado={r.estado_matricula} /> },
   { key: "unidad_medida",      label: "UDM" },
 
+  // ── SIC (el nivel de arriba de la OP) ──
+  { key: "numero_sic",         label: "SIC",          mono: true },
+  { key: "sic_linea",          label: "Línea SIC",    mono: true },
+  { key: "sic_cantidad",       label: "Cant. SIC",    num: true },
+  { key: "sic_udm",            label: "UDM SIC" },
+  { key: "sic_preparador",     label: "Preparador" },
+  {
+    // Puede venir como fecha ISO (import nuevo) o como toString() de Date
+    // (import viejo) — se muestra normalizada en los dos casos.
+    key: "sic_fecha_creacion", label: "F. SIC", mono: true,
+    render: (r) => {
+      if (!r.sic_fecha_creacion) return "";
+      const iso = /^\d{4}-\d{2}-\d{2}/.exec(r.sic_fecha_creacion);
+      if (iso) return fmtFechaISO(r.sic_fecha_creacion);
+      const d = new Date(r.sic_fecha_creacion);
+      return Number.isNaN(d.getTime())
+        ? r.sic_fecha_creacion
+        : d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+    },
+  },
+
   // ── Compra ──
   { key: "relacion",           label: "Relación",     mono: true },
   { key: "numero_op",          label: "OP",           mono: true },
@@ -327,6 +348,12 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   mat_serv:            105,
   estado_matricula:    105,
   unidad_medida:       80,
+  numero_sic:          85,
+  sic_linea:           85,
+  sic_cantidad:        90,
+  sic_udm:             85,
+  sic_preparador:      150,
+  sic_fecha_creacion:  95,
   relacion:            110,
   numero_op:           90,
   linea:               70,
@@ -581,6 +608,7 @@ export function BuscadorSection() {
   const conOp    = sorted.filter((r) => r.fuente === "op").length;
   const soloMov  = sorted.filter((r) => r.fuente === "transaccion").length;
   const soloCat  = sorted.filter((r) => r.fuente === "catalogo").length;
+  const soloSic  = sorted.filter((r) => r.fuente === "sic").length;
 
   return (
     <div>
@@ -667,6 +695,7 @@ export function BuscadorSection() {
             <span>
               <span className="text-foreground font-medium">{sorted.length.toLocaleString("es-AR")}</span> resultado(s)
               {conOp > 0 && <> · {conOp.toLocaleString("es-AR")} con OP</>}
+              {soloSic > 0 && <> · {soloSic.toLocaleString("es-AR")} SIC sin OP todavía</>}
               {soloMov > 0 && <> · {soloMov.toLocaleString("es-AR")} solo con movimientos (OP fuera de la planilla)</>}
               {soloCat > 0 && <> · {soloCat.toLocaleString("es-AR")} solo en catálogo</>}
               {sorted.length >= 500 && <> · mostrando los primeros 500, afiná la búsqueda</>}
