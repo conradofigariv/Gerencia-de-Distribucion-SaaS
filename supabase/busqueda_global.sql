@@ -458,7 +458,14 @@ AS $$
    ORDER BY
      (articulo_key = gd_norm_articulo(p_q)) DESC,   -- matrícula exacta primero
      (numero_op    = trim(COALESCE(p_q, ''))) DESC, -- después OP exacta
-     fuente,                                        -- 'catalogo' < 'op'
+     -- Orden por fuente EXPLÍCITO, no alfabético: alfabéticamente 'catalogo'
+     -- va antes que 'op' y las filas sin OP (sin línea, envío, proveedor ni
+     -- cantidad) quedaban arriba de todo, que es justo lo menos útil.
+     CASE fuente
+       WHEN 'op'          THEN 0   -- compras: la fila completa
+       WHEN 'transaccion' THEN 1   -- movimientos de OPs fuera de la planilla
+       ELSE 2                      -- 'catalogo': la matrícula existe y nada más
+     END,
      numero_op,
      linea,
      envio
