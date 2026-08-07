@@ -396,7 +396,7 @@ export function ServiciosCargaSection() {
     }
   };
 
-  // ── GENERAR (carga masiva desde la planilla de SICs del Ing. Soler)
+  // ── GENERAR (carga masiva desde la planilla de SICs)
   const handleGenerateFromSIC = async () => {
     setGeneratingSIC(true);
     try {
@@ -487,7 +487,7 @@ export function ServiciosCargaSection() {
         <div className="p-4 space-y-2.5">
           <button onClick={() => handleSave("replace_sic")} disabled={saving}
             className="w-full text-left p-3.5 rounded-lg border border-accent/40 bg-accent/10 hover:bg-accent/15 transition-colors disabled:opacity-50">
-            <p className="text-sm font-semibold text-foreground">Reemplazar solo las SICs de Soler</p>
+            <p className="text-sm font-semibold text-foreground">Reemplazar solo las SICs</p>
             <p className="text-xs text-muted-foreground mt-0.5">Recarga el maestro de SICs y <span className="text-foreground">conserva los casos manuales</span> ya cargados. Recomendado.</p>
           </button>
           <button onClick={() => handleSave("replace_all")} disabled={saving}
@@ -748,7 +748,7 @@ export function ServiciosCargaSection() {
         )}
       </div>
 
-      {/* ── Carga masiva desde la planilla de SICs del Ing. Soler ── */}
+      {/* ── Carga masiva desde la planilla de SICs ── */}
       {!loading && (
         <div className="bg-card border border-border rounded-xl p-5 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-start gap-3">
@@ -756,7 +756,7 @@ export function ServiciosCargaSection() {
               <Database className="w-5 h-5 text-accent" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-foreground">Carga masiva desde SICs de Soler</p>
+              <p className="text-sm font-semibold text-foreground">Carga masiva desde SICs</p>
               <p className="text-xs text-muted-foreground mt-0.5 max-w-xl">
                 Genera el seguimiento cruzando toda la planilla de SICs (subida en «Carga de datos») con OP y matrículas.
                 La zona queda vacía para completarla después. Las SICs sin OP se omiten.
