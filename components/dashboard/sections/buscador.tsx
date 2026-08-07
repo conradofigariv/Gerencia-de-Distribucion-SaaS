@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode, type CSSProperties, type DragEvent } from "react";
+import { useState, useEffect, useReducer, useMemo, useCallback, useRef, type ReactNode, type CSSProperties, type DragEvent } from "react";
 import {
   Search, Loader2, X, Download, RefreshCw, Database, PackageOpen,
   ChevronDown, ChevronUp, ChevronsUpDown, Wrench, Package,
@@ -9,6 +9,8 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { buscar, reconstruirIndice, estadoIndice, type BusquedaRow } from "@/lib/busqueda";
+import { getPreference, setPreference } from "@/lib/userPreferences";
+import { supabase } from "@/lib/supabaseClient";
 
 // ─── Estilos beast pure (alineados con Stock por Zona / Tablero OP) ─────────
 
@@ -436,8 +438,20 @@ export function BuscadorSection() {
   const [reconstruyendo, setReconstruyendo] = useState(false);
   const [indice, setIndice]   = useState<{ filas: number; actualizado: string | null } | null>(null);
 
-  const [sortCol, setSortCol] = useState<keyof BusquedaRow | null>(null);
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  type SortState = { col: keyof BusquedaRow | null; dir: SortDir };
+  const [sortState, dispatchSort] = useReducer(
+    (s: SortState, col: keyof BusquedaRow): SortState => ({
+      col,
+      dir: s.col === col ? (s.dir === "asc" ? "desc" : "asc") : "asc",
+    }),
+    { col: null, dir: "asc" }
+  );
+  const sortCol = sortState.col;
+  const sortDir = sortState.dir;
+
+  const [userId, setUserId] = useState<string | null>(null);
+  const saveWidthsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveColsTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [colWidths, setColWidths] = useState<Record<string, number>>(DEFAULT_COL_WIDTHS);
   const colWidthsLoaded = useRef(false);
@@ -448,7 +462,12 @@ export function BuscadorSection() {
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
   const colOrderLoaded = useRef(false);
 
-  // Anchos de columna persistidos.
+  // Usuario actual (para preferencias en Supabase).
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+  }, []);
+
+  // Anchos de columna: localStorage inmediato, luego Supabase cuando hay sesión.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(COLWIDTHS_KEY);
@@ -457,9 +476,20 @@ export function BuscadorSection() {
     colWidthsLoaded.current = true;
   }, []);
   useEffect(() => {
+    if (!userId) return;
+    getPreference<Record<string, number>>(userId, COLWIDTHS_KEY).then((saved) => {
+      if (saved) setColWidths((c) => ({ ...c, ...saved }));
+    });
+  }, [userId]);
+  useEffect(() => {
     if (!colWidthsLoaded.current) return;
     try { localStorage.setItem(COLWIDTHS_KEY, JSON.stringify(colWidths)); } catch { /* ignorar */ }
-  }, [colWidths]);
+    if (!userId) return;
+    if (saveWidthsTimer.current) clearTimeout(saveWidthsTimer.current);
+    saveWidthsTimer.current = setTimeout(() => {
+      setPreference(userId, COLWIDTHS_KEY, colWidths);
+    }, 1000);
+  }, [colWidths, userId]);
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!resizingRef.current) return;
@@ -490,11 +520,26 @@ export function BuscadorSection() {
     colOrderLoaded.current = true;
   }, []);
   useEffect(() => {
+    if (!userId) return;
+    getPreference<{ order?: string[]; hidden?: string[] }>(userId, COLUMNS_KEY).then((saved) => {
+      if (!saved) return;
+      const validKeys = new Set(DEFAULT_COL_ORDER);
+      const savedOrder = (saved.order ?? []).filter((k) => validKeys.has(k));
+      const missing = DEFAULT_COL_ORDER.filter((k) => !savedOrder.includes(k));
+      setColOrder([...savedOrder, ...missing]);
+      setHiddenCols(new Set((saved.hidden ?? []).filter((k) => validKeys.has(k))));
+    });
+  }, [userId]);
+  useEffect(() => {
     if (!colOrderLoaded.current) return;
-    try {
-      localStorage.setItem(COLUMNS_KEY, JSON.stringify({ order: colOrder, hidden: [...hiddenCols] }));
-    } catch { /* ignorar */ }
-  }, [colOrder, hiddenCols]);
+    const data = { order: colOrder, hidden: [...hiddenCols] };
+    try { localStorage.setItem(COLUMNS_KEY, JSON.stringify(data)); } catch { /* ignorar */ }
+    if (!userId) return;
+    if (saveColsTimer.current) clearTimeout(saveColsTimer.current);
+    saveColsTimer.current = setTimeout(() => {
+      setPreference(userId, COLUMNS_KEY, data);
+    }, 1000);
+  }, [colOrder, hiddenCols, userId]);
 
   const toggleColHidden = useCallback((key: string) => {
     setHiddenCols((prev) => {
@@ -617,10 +662,7 @@ export function BuscadorSection() {
     return [...pinnedRows, ...rest];
   }, [sortedByCol, pinnedRows]);
 
-  const handleSort = (col: keyof BusquedaRow) => {
-    if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortCol(col); setSortDir("asc"); }
-  };
+  const handleSort = useCallback((col: keyof BusquedaRow) => dispatchSort(col), []);
 
   // Exporta las columnas visibles, en el orden elegido (igual a lo que se ve
   // en pantalla). Las columnas ocultas no se pierden — siguen en el índice.
@@ -676,7 +718,7 @@ export function BuscadorSection() {
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="SIC, OP, matrícula, preparador…"
+              placeholder="SIC, OP, matrícula, preparador, proveedor, zona…"
               className="flex-1 bg-transparent border-none outline-none text-[13.5px] text-foreground placeholder:text-muted-foreground/45"
             />
             {query && (
