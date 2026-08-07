@@ -299,17 +299,9 @@ const COLS: ColDef[] = [
   { key: "sic_preparador",     label: "Preparador",   group: "sic" },
   {
     // Puede venir como fecha ISO (import nuevo) o como toString() de Date
-    // (import viejo) — se muestra normalizada en los dos casos.
-    key: "sic_fecha_creacion", label: "F. SIC", group: "sic", mono: true,
-    render: (r) => {
-      if (!r.sic_fecha_creacion) return "";
-      const iso = /^\d{4}-\d{2}-\d{2}/.exec(r.sic_fecha_creacion);
-      if (iso) return fmtFechaISO(r.sic_fecha_creacion);
-      const d = new Date(r.sic_fecha_creacion);
-      return Number.isNaN(d.getTime())
-        ? r.sic_fecha_creacion
-        : d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" });
-    },
+    // (import viejo); fmtFechaISO ya normaliza los dos casos.
+    key: "sic_fecha_creacion", label: "F. creación SIC", group: "sic", mono: true,
+    render: (r) => fmtFechaISO(r.sic_fecha_creacion),
   },
 
   // ── Compra (planilla OP) ──
@@ -364,8 +356,10 @@ const COLS: ColDef[] = [
   { key: "cantidad_cancelada", label: "Cancelada",    group: "op", num: true },
 
   // ── Fechas y estados (planilla OP) ──
-  { key: "fecha_creacion",     label: "F. creación",  group: "op", mono: true, render: (r) => fmtFechaISO(r.fecha_creacion) },
-  { key: "fecha_pactada",      label: "F. pactada",   group: "op", mono: true, render: (r) => fmtFechaISO(r.fecha_pactada) },
+  // Las fechas llevan el origen en la etiqueta: hay tres «fecha de creación»
+  // distintas (SIC, OP y el primer movimiento) y sin el sufijo se confunden.
+  { key: "fecha_creacion",     label: "F. creación OP", group: "op", mono: true, render: (r) => fmtFechaISO(r.fecha_creacion) },
+  { key: "fecha_pactada",      label: "F. pactada OP",  group: "op", mono: true, render: (r) => fmtFechaISO(r.fecha_pactada) },
   { key: "estado_autorizacion", label: "Autorización", group: "op" },
   { key: "estado_cierre",      label: "Cierre",       group: "op" },
 
@@ -384,8 +378,8 @@ const COLS: ColDef[] = [
     },
   },
   { key: "tx_movimientos",  label: "N° mov.",     group: "tx", num: true },
-  { key: "tx_primera_fecha", label: "1er mov.",   group: "tx", mono: true, render: (r) => fmtFechaISO(r.tx_primera_fecha) },
-  { key: "tx_ultima_fecha",  label: "Últ. mov.",  group: "tx", mono: true, render: (r) => fmtFechaISO(r.tx_ultima_fecha) },
+  { key: "tx_primera_fecha", label: "F. 1er mov.",  group: "tx", mono: true, render: (r) => fmtFechaISO(r.tx_primera_fecha) },
+  { key: "tx_ultima_fecha",  label: "F. últ. mov.", group: "tx", mono: true, render: (r) => fmtFechaISO(r.tx_ultima_fecha) },
 ];
 
 // ─── Columnas de seguimiento (solo dentro de una pestaña) ───────────────────
@@ -423,7 +417,7 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   sic_cantidad:        90,
   sic_udm:             85,
   sic_preparador:      150,
-  sic_fecha_creacion:  95,
+  sic_fecha_creacion:  135,
   relacion:            110,
   numero_op:           90,
   linea:               70,
@@ -438,8 +432,8 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   cantidad_rechazada:  95,
   cantidad_facturada:  95,
   cantidad_cancelada:  95,
-  fecha_creacion:      110,
-  fecha_pactada:       110,
+  fecha_creacion:      135,
+  fecha_pactada:       130,
   estado_autorizacion: 120,
   estado_cierre:       95,
   tx_recibido:         125,
@@ -447,8 +441,8 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   tx_entregado:        130,
   tx_devoluciones:     125,
   tx_movimientos:      85,
-  tx_primera_fecha:    95,
-  tx_ultima_fecha:     95,
+  tx_primera_fecha:    120,
+  tx_ultima_fecha:     120,
 };
 
 const COLUMNS_KEY = "buscador-columns";
@@ -594,6 +588,9 @@ export function BuscadorSection() {
   const resetColumnas = useCallback(() => {
     setColOrder(DEFAULT_COL_ORDER);
     setHiddenCols(new Set());
+    // También los anchos: si no, un ancho viejo guardado sigue cortando la
+    // etiqueta de una columna que después se renombró más larga.
+    setColWidths(DEFAULT_COL_WIDTHS);
   }, []);
 
   // Columnas realmente visibles, en el orden elegido — todo lo que se
