@@ -1,9 +1,11 @@
 import { supabase } from "@/lib/supabaseClient";
 
-// ─── Planilla maestra de SICs del Ing. Soler ─────────────────────────────────
+// ─── Planilla maestra de SICs ────────────────────────────────────────────────
 //
-// Tabla seguimiento_sic_soler. Se sube desde "Carga de datos" y alimenta la
-// carga masiva de "Crear seguimiento". Ver supabase/seguimiento_sic_soler.sql.
+// Tabla seguimiento_sic_soler (nombre legado — hoy carga las SICs de toda la
+// empresa, no solo las del Ing. Soler; no se renombró para no tocar infra).
+// Se sube desde "Carga de datos" y alimenta la carga masiva de "Crear
+// seguimiento". Ver supabase/seguimiento_sic_soler.sql.
 
 export interface SicSolerRow {
   numero_sic:     string;

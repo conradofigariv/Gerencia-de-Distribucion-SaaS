@@ -96,11 +96,11 @@ const INIT: PlanillaState = { count: 0, uploadedAt: null, loading: true, uploadi
 
 const REMINDER_DEFS = [
   { key: "planillas-OP",         planilla: "OP" as PlanillaType,         label: "OP",         name: "OP — Órdenes de compra",              descripcion: "Órdenes de compra",      accentClass: "text-blue-400" },
-  { key: "planillas-SIC",        planilla: "SIC" as PlanillaType,        label: "SIC",        name: "SICs del Ing. Soler",                 descripcion: "SICs del Ing. Soler",     accentClass: "text-purple-400" },
+  { key: "planillas-SIC",        planilla: "SIC" as PlanillaType,        label: "SIC",        name: "SICs — Solicitudes internas de compra", descripcion: "Solicitudes internas de compra", accentClass: "text-purple-400" },
   { key: "planillas-MATRICULAS", planilla: "MATRICULAS" as PlanillaType, label: "MATRICULAS", name: "MATRICULAS — Catálogo de materiales",  descripcion: "Catálogo de materiales",  accentClass: "text-emerald-400" },
 ] as const;
 
-// ─── Ayuda: cómo exportar las SICs de Soler desde SIEPEC ───────────────────────
+// ─── Ayuda: cómo exportar las SICs desde SIEPEC ─────────────────────────────
 
 const SIC_HELP_STEPS: { n: number; text: ReactNode }[] = [
   { n: 1, text: <>Entrá a <strong>SIEPEC</strong> y andá a <strong>Siga → Compras → Solicitante</strong>.</> },
@@ -127,7 +127,7 @@ function SicHelpModal({ onClose }: { onClose: () => void }) {
             <div style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 8, background: "color-mix(in oklab, var(--accent-emerald-deep) 35%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 45%, transparent)", color: "var(--accent-green)" }}>
               <HelpCircle className="w-4 h-4" />
             </div>
-            <span style={{ fontSize: 16, fontWeight: 600, color: "var(--foreground)", letterSpacing: -0.3 }}>Cómo exportar las SICs de Soler</span>
+            <span style={{ fontSize: 16, fontWeight: 600, color: "var(--foreground)", letterSpacing: -0.3 }}>Cómo exportar las SICs</span>
           </div>
           <button onClick={onClose} style={{ display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 7, background: "transparent", border: "1px solid oklch(1 0 0 / 0.08)", color: "oklch(0.60 0 0)", cursor: "pointer", transition: "color .15s, background .15s" }}
             onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; (e.currentTarget as HTMLButtonElement).style.background = "oklch(0.22 0.005 270)"; }}
@@ -298,7 +298,7 @@ export function ServiciosPlanillasSection() {
 
   // Archivo de SICs pendiente de confirmar el modo de subida (abre el diálogo).
   const [sicFile, setSicFile] = useState<File | null>(null);
-  // Ayuda: cómo exportar las SICs de Soler desde SIEPEC.
+  // Ayuda: cómo exportar las SICs desde SIEPEC.
   const [sicHelpOpen, setSicHelpOpen] = useState(false);
   // Archivo de MATRICULAS pendiente de confirmar el modo (abre el diálogo).
   const [matFile, setMatFile] = useState<File | null>(null);
@@ -493,7 +493,7 @@ export function ServiciosPlanillasSection() {
       const conOp = mapped.filter(r => r.numero_op !== "").length;
       toast.success(`SIC: ${mapped.length.toLocaleString("es-AR")} filas ${mode === "replace" ? "cargadas" : "actualizadas"} · ${conOp.toLocaleString("es-AR")} con OP`);
       if (conOp === 0) toast.error("Ojo: ninguna fila trae N° de OP (columna 'Número Pedido'). Revisá el archivo.");
-      if (userId) await markUpdated("planillas-SIC", "SICs del Ing. Soler", userId).catch(() => {});
+      if (userId) await markUpdated("planillas-SIC", "SICs", userId).catch(() => {});
     } catch (e) {
       toast.error(`Error SIC: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
@@ -632,7 +632,7 @@ export function ServiciosPlanillasSection() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         <PlanillaCard tipo="OP"         label="OP"         descripcion="Órdenes de compra"       accentClass="text-blue-400"    state={states.OP}         onUpload={f => handleUpload("OP",         f)} onClear={() => handleClear("OP")}         />
-        <PlanillaCard tipo="SIC"        label="SIC"        descripcion="SICs del Ing. Soler"     accentClass="text-purple-400"  state={states.SIC}        onUpload={f => handleUpload("SIC",        f)} onClear={() => handleClear("SIC")}        onHelp={() => setSicHelpOpen(true)} />
+        <PlanillaCard tipo="SIC"        label="SIC"        descripcion="Solicitudes internas de compra" accentClass="text-purple-400"  state={states.SIC}        onUpload={f => handleUpload("SIC",        f)} onClear={() => handleClear("SIC")}        onHelp={() => setSicHelpOpen(true)} />
         <PlanillaCard tipo="MATRICULAS" label="MATRICULAS" descripcion="Catálogo de materiales"   accentClass="text-emerald-400" state={states.MATRICULAS} onUpload={f => handleUpload("MATRICULAS", f)} onClear={() => handleClear("MATRICULAS")} />
       </div>
 
