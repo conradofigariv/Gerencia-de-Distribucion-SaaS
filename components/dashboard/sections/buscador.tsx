@@ -442,13 +442,12 @@ export function BuscadorSection() {
   const [reconstruyendo, setReconstruyendo] = useState(false);
   const [indice, setIndice]   = useState<{ filas: number; actualizado: string | null } | null>(null);
 
-  const [sortCol, setSortCol] = useState<keyof BusquedaRow | null>(null);
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
-  // Refs para leer el estado actual dentro del callback sin depender del closure.
-  const sortColRef = useRef<keyof BusquedaRow | null>(null);
-  const sortDirRef = useRef<SortDir>("asc");
-  sortColRef.current = sortCol;
-  sortDirRef.current = sortDir;
+  // Un solo estado para col+dir: con dos useState separados, un click rápido
+  // podía actualizar el ícono (dir) sin que el array se reordenara de nuevo
+  // (o viceversa) porque quedaban desincronizados entre sí.
+  const [sort, setSort] = useState<{ col: keyof BusquedaRow | null; dir: SortDir }>({ col: null, dir: "asc" });
+  const sortCol = sort.col;
+  const sortDir = sort.dir;
 
   const [userId, setUserId] = useState<string | null>(null);
   const saveWidthsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -664,12 +663,9 @@ export function BuscadorSection() {
   }, [sortedByCol, pinnedRows]);
 
   const handleSort = useCallback((col: keyof BusquedaRow) => {
-    if (sortColRef.current === col) {
-      setSortDir(sortDirRef.current === "asc" ? "desc" : "asc");
-    } else {
-      setSortCol(col);
-      setSortDir("asc");
-    }
+    setSort((prev) =>
+      prev.col === col ? { col, dir: prev.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" }
+    );
   }, []);
 
   // Exporta las columnas visibles, en el orden elegido (igual a lo que se ve
