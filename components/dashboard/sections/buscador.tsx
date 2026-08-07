@@ -4,12 +4,17 @@ import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode, type
 import {
   Search, Loader2, X, Download, RefreshCw, Database, PackageOpen,
   ChevronDown, ChevronUp, ChevronsUpDown, Wrench, Package,
-  Columns3, GripVertical, Eye, EyeOff, Pin,
+  Columns3, GripVertical, Eye, EyeOff, Pin, Plus, Trash2, Pencil, ListPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { buscar, reconstruirIndice, estadoIndice, type BusquedaRow } from "@/lib/busqueda";
 import { getPreference, setPreference } from "@/lib/userPreferences";
+import {
+  fetchTabs, createTab, renameTab, deleteTab, fetchTabFilas, addFilas,
+  updateFilaDatos, deleteFilas, reorderFilas,
+  TRACK_KEYS, ESTADOS, type BuscadorTab, type TabFila,
+} from "@/lib/buscadorTabs";
 import { supabase } from "@/lib/supabaseClient";
 
 // ─── Estilos beast pure (alineados con Stock por Zona / Tablero OP) ─────────
@@ -383,6 +388,27 @@ const COLS: ColDef[] = [
   { key: "tx_ultima_fecha",  label: "Últ. mov.",  group: "tx", mono: true, render: (r) => fmtFechaISO(r.tx_ultima_fecha) },
 ];
 
+// ─── Columnas de seguimiento (solo dentro de una pestaña) ───────────────────
+// No salen del índice: las escribe el usuario. Van al final de la tabla, con
+// fondo propio para que se distingan de los datos copiados.
+
+interface TrackColDef { key: string; label: string; tipo: "texto" | "estado" | "fecha"; width: number }
+
+const TRACK_COLS: TrackColDef[] = [
+  { key: TRACK_KEYS.estado,        label: "Estado seg.",  tipo: "estado", width: 130 },
+  { key: TRACK_KEYS.responsable,   label: "Responsable",  tipo: "texto",  width: 160 },
+  { key: TRACK_KEYS.fechaRevision, label: "F. revisión",  tipo: "fecha",  width: 130 },
+  { key: TRACK_KEYS.nota,          label: "Nota",         tipo: "texto",  width: 260 },
+];
+
+const TRACK_BG = "oklch(0.225 0.012 300)";   // tinte violeta suave
+
+const ESTADO_STYLE: Record<string, { bg: string; fg: string; bd: string }> = {
+  "Pendiente": { bg: "oklch(0.30 0.09 85 / 0.45)",  fg: "#fcd34d", bd: "oklch(0.60 0.12 85 / 0.5)" },
+  "En curso":  { bg: "oklch(0.28 0.08 230 / 0.5)",  fg: "#7dd3fc", bd: "oklch(0.70 0.10 230 / 0.45)" },
+  "Resuelto":  { bg: "oklch(0.30 0.10 155 / 0.45)", fg: "#86efac", bd: "oklch(0.55 0.15 155 / 0.5)" },
+};
+
 const COLWIDTHS_KEY = "buscador-colwidths";
 
 const DEFAULT_COL_WIDTHS: Record<string, number> = {
@@ -445,9 +471,26 @@ export function BuscadorSection() {
   // Un solo estado para col+dir: con dos useState separados, un click rápido
   // podía actualizar el ícono (dir) sin que el array se reordenara de nuevo
   // (o viceversa) porque quedaban desincronizados entre sí.
-  const [sort, setSort] = useState<{ col: keyof BusquedaRow | null; dir: SortDir }>({ col: null, dir: "asc" });
+  // `col` es string (no keyof BusquedaRow) porque dentro de una pestaña también
+  // se puede ordenar por las columnas de seguimiento, que no vienen del índice.
+  const [sort, setSort] = useState<{ col: string | null; dir: SortDir }>({ col: null, dir: "asc" });
   const sortCol = sort.col;
   const sortDir = sort.dir;
+
+  // ── Pestañas de seguimiento ──
+  // activeTab = null → índice maestro (la vista de siempre).
+  const [tabs, setTabs]           = useState<BuscadorTab[]>([]);
+  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [tabFilas, setTabFilas]   = useState<TabFila[]>([]);
+  const [loadingTab, setLoadingTab] = useState(false);
+  // Filas tildadas en el índice maestro, para copiarlas a una pestaña.
+  const [selected, setSelected]   = useState<Set<string>>(new Set());
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  // Celda en edición dentro de una pestaña: { filaId, key }.
+  const [editing, setEditing]     = useState<{ filaId: string; key: string } | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const dragFilaId = useRef<string | null>(null);
+  const [dragOverFilaId, setDragOverFilaId] = useState<string | null>(null);
 
   const [userId, setUserId] = useState<string | null>(null);
   const saveWidthsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -587,13 +630,121 @@ export function BuscadorSection() {
   }, []);
   const unpinAll = useCallback(() => setPinnedKeys([]), []);
 
+  // ─── Pestañas ──────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!userId) return;
+    fetchTabs(userId)
+      .then(setTabs)
+      .catch((e) => toast.error(`No se pudieron cargar las pestañas: ${e.message}`));
+  }, [userId]);
+
+  // Al cambiar de pestaña se traen sus filas. El índice maestro (null) no carga nada.
+  useEffect(() => {
+    if (!activeTab) { setTabFilas([]); return; }
+    setLoadingTab(true);
+    fetchTabFilas(activeTab)
+      .then(setTabFilas)
+      .catch((e) => toast.error(`No se pudieron cargar las filas: ${e.message}`))
+      .finally(() => setLoadingTab(false));
+  }, [activeTab]);
+
+  const handleCreateTab = useCallback(async () => {
+    if (!userId) { toast.error("Iniciá sesión para crear pestañas."); return; }
+    const nombre = window.prompt("Nombre de la pestaña:", "Seguimiento");
+    if (!nombre?.trim()) return;
+    try {
+      const tab = await createTab(userId, nombre.trim(), tabs.length);
+      setTabs((p) => [...p, tab]);
+      setActiveTab(tab.id);
+    } catch (e) {
+      toast.error(`No se pudo crear: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [userId, tabs.length]);
+
+  const handleRenameTab = useCallback(async (tab: BuscadorTab) => {
+    const nombre = window.prompt("Nuevo nombre:", tab.nombre);
+    if (!nombre?.trim() || nombre.trim() === tab.nombre) return;
+    try {
+      await renameTab(tab.id, nombre.trim());
+      setTabs((p) => p.map((t) => (t.id === tab.id ? { ...t, nombre: nombre.trim() } : t)));
+    } catch (e) {
+      toast.error(`No se pudo renombrar: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, []);
+
+  const handleDeleteTab = useCallback(async (tab: BuscadorTab) => {
+    if (!window.confirm(`¿Borrar la pestaña «${tab.nombre}» y todas sus filas?`)) return;
+    try {
+      await deleteTab(tab.id);
+      setTabs((p) => p.filter((t) => t.id !== tab.id));
+      setActiveTab((cur) => (cur === tab.id ? null : cur));
+      toast.success("Pestaña borrada.");
+    } catch (e) {
+      toast.error(`No se pudo borrar: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, []);
+
+  const handleDeleteFila = useCallback(async (id: string) => {
+    const backup = tabFilas;
+    setTabFilas((p) => p.filter((f) => f.id !== id));   // optimista
+    try {
+      await deleteFilas([id]);
+    } catch (e) {
+      setTabFilas(backup);
+      toast.error(`No se pudo borrar: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [tabFilas]);
+
+  // Guarda una celda editada. `datos` es jsonb, así que se manda el objeto
+  // entero con la clave ya aplicada.
+  const commitEdit = useCallback(async (filaId: string, key: string, value: string) => {
+    const fila = tabFilas.find((f) => f.id === filaId);
+    setEditing(null);
+    if (!fila) return;
+    if (String(fila.datos[key] ?? "") === value) return;   // sin cambios
+    const nuevos = { ...fila.datos, [key]: value };
+    setTabFilas((p) => p.map((f) => (f.id === filaId ? { ...f, datos: nuevos } : f)));
+    try {
+      await updateFilaDatos(filaId, nuevos);
+    } catch (e) {
+      setTabFilas((p) => p.map((f) => (f.id === filaId ? fila : f)));
+      toast.error(`No se pudo guardar: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [tabFilas]);
+
+  const handleDropFila = useCallback(async (targetId: string) => {
+    const from = dragFilaId.current;
+    dragFilaId.current = null;
+    setDragOverFilaId(null);
+    if (!from || from === targetId) return;
+    const fromIdx = tabFilas.findIndex((f) => f.id === from);
+    const toIdx   = tabFilas.findIndex((f) => f.id === targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const next = [...tabFilas];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    const renumeradas = next.map((f, i) => ({ ...f, orden: i }));
+    const backup = tabFilas;
+    setTabFilas(renumeradas);
+    try {
+      await reorderFilas(renumeradas.map((f) => ({ id: f.id, orden: f.orden })));
+    } catch (e) {
+      setTabFilas(backup);
+      toast.error(`No se pudo reordenar: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [tabFilas]);
+
   const cargarEstado = useCallback(() => {
     estadoIndice().then(setIndice).catch(() => setIndice(null));
   }, []);
   useEffect(() => { cargarEstado(); }, [cargarEstado]);
 
   // Búsqueda con debounce: dispara 300 ms después de dejar de tipear.
+  // Dentro de una pestaña no se consulta el índice: el filtrado es local sobre
+  // las filas ya copiadas (ver tabFilasFiltradas).
   useEffect(() => {
+    if (activeTab) { setLoading(false); return; }
     const q = query.trim();
     if (!q) { setRows([]); setBuscado(false); setLoading(false); return; }
     setLoading(true);
@@ -604,7 +755,7 @@ export function BuscadorSection() {
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(t);
-  }, [query]);
+  }, [query, activeTab]);
 
   const handleReconstruir = async () => {
     setReconstruyendo(true);
@@ -634,8 +785,8 @@ export function BuscadorSection() {
     if (!sortCol) return rows;
     const dir = sortDir === "asc" ? 1 : -1;
     return [...rows].sort((a, b) => {
-      const va = a[sortCol];
-      const vb = b[sortCol];
+      const va = (a as unknown as Record<string, unknown>)[sortCol];
+      const vb = (b as unknown as Record<string, unknown>)[sortCol];
       if (va == null && vb == null) return 0;
       if (va == null) return 1;
       if (vb == null) return -1;
@@ -662,20 +813,96 @@ export function BuscadorSection() {
     return [...pinnedRows, ...rest];
   }, [sortedByCol, pinnedRows]);
 
-  const handleSort = useCallback((col: keyof BusquedaRow) => {
+  const handleSort = useCallback((col: string) => {
     setSort((prev) =>
       prev.col === col ? { col, dir: prev.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" }
     );
   }, []);
 
+  // Copia las filas tildadas del índice a una pestaña. Las que ya están (mismo
+  // row_key) se saltean para no duplicar.
+  const handleAddSelected = useCallback(async (tabId: string) => {
+    const elegidas = sorted.filter((r) => selected.has(rowKey(r)));
+    if (!elegidas.length) return;
+    setAddMenuOpen(false);
+    try {
+      // Si la pestaña destino no es la abierta hay que traer sus filas para
+      // saber qué ya tiene.
+      const destinoFilas = tabId === activeTab ? tabFilas : await fetchTabFilas(tabId);
+      const existentes = new Set(destinoFilas.map((f) => f.row_key));
+      const nuevas = elegidas.filter((r) => !existentes.has(rowKey(r)));
+      const repetidas = elegidas.length - nuevas.length;
+      if (!nuevas.length) {
+        toast.info("Esas filas ya están en la pestaña.");
+        return;
+      }
+      const creadas = await addFilas(tabId, nuevas, rowKey, destinoFilas.length);
+      if (tabId === activeTab) setTabFilas((p) => [...p, ...creadas]);
+      setSelected(new Set());
+      const destino = tabs.find((t) => t.id === tabId)?.nombre ?? "la pestaña";
+      toast.success(
+        `${creadas.length} fila(s) copiadas a «${destino}»` +
+        (repetidas ? ` — ${repetidas} ya estaban.` : ".")
+      );
+    } catch (e) {
+      toast.error(`No se pudieron copiar: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [sorted, selected, activeTab, tabFilas, tabs]);
+
+  // ── Filas que efectivamente se pintan ──
+  // Un solo shape para los dos modos, así la tabla no se duplica: en el índice
+  // maestro la data es la BusquedaRow; en una pestaña, el `datos` de la fila
+  // copiada (que además trae las claves de seguimiento).
+  const isTabMode = activeTab !== null;
+
+  // Dentro de una pestaña el buscador filtra las filas que ya están copiadas,
+  // no vuelve a pegarle al índice.
+  const tabFilasFiltradas = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return tabFilas;
+    return tabFilas.filter((f) =>
+      Object.values(f.datos).some((v) => v != null && String(v).toLowerCase().includes(q))
+    );
+  }, [tabFilas, query]);
+
+  const tabFilasOrdenadas = useMemo(() => {
+    if (!sortCol) return tabFilasFiltradas;      // sin sort → orden manual
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...tabFilasFiltradas].sort((a, b) => {
+      const va = a.datos[sortCol];
+      const vb = b.datos[sortCol];
+      if (va == null || va === "") return 1;
+      if (vb == null || vb === "") return -1;
+      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+      return String(va).localeCompare(String(vb), "es", { numeric: true, sensitivity: "base" }) * dir;
+    });
+  }, [tabFilasFiltradas, sortCol, sortDir]);
+
+  const displayRows = useMemo(() => {
+    if (isTabMode) {
+      return tabFilasOrdenadas.map((f) => ({
+        key: f.id, filaId: f.id, data: f.datos as Record<string, unknown>,
+      }));
+    }
+    return sorted.map((r) => ({
+      key: rowKey(r), filaId: undefined as string | undefined,
+      data: r as unknown as Record<string, unknown>,
+    }));
+  }, [isTabMode, tabFilasOrdenadas, sorted]);
+
   // Exporta las columnas visibles, en el orden elegido (igual a lo que se ve
   // en pantalla). Las columnas ocultas no se pierden — siguen en el índice.
   const exportCSV = useCallback(() => {
-    if (!sorted.length) { toast.error("No hay datos para exportar."); return; }
-    const head = visibleCols.map((c) => c.label).join(";");
-    const body = sorted.map((r) =>
-      visibleCols.map((c) => {
-        const v = r[c.key];
+    if (!displayRows.length) { toast.error("No hay datos para exportar."); return; }
+    // En una pestaña se suman las columnas de seguimiento al final.
+    const cols: { key: string; label: string }[] = [
+      ...visibleCols.map((c) => ({ key: c.key as string, label: c.label })),
+      ...(isTabMode ? TRACK_COLS.map((c) => ({ key: c.key, label: c.label })) : []),
+    ];
+    const head = cols.map((c) => c.label).join(";");
+    const body = displayRows.map((row) =>
+      cols.map((c) => {
+        const v = row.data[c.key];
         const s = v == null ? "" : String(v);
         return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
       }).join(";")
@@ -684,10 +911,13 @@ export function BuscadorSection() {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href = url;
-    a.download = `busqueda_${query.trim().replace(/\s+/g, "-") || "todo"}.csv`;
+    const nombreTab = tabs.find((t) => t.id === activeTab)?.nombre;
+    a.download = isTabMode
+      ? `${(nombreTab ?? "pestana").replace(/\s+/g, "-")}.csv`
+      : `busqueda_${query.trim().replace(/\s+/g, "-") || "todo"}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [sorted, query, visibleCols]);
+  }, [displayRows, query, visibleCols, isTabMode, tabs, activeTab]);
 
   const conOp    = sorted.filter((r) => r.fuente === "op").length;
   const soloMov  = sorted.filter((r) => r.fuente === "transaccion").length;
@@ -702,6 +932,82 @@ export function BuscadorSection() {
         className="p-2.5 overflow-hidden space-y-2"
         style={{ background: CARD_BG, border: PANEL_BORDER, borderRadius: 12 }}
       >
+        {/* Barra de pestañas. El índice maestro es la vista de siempre; las
+            demás son listas de seguimiento propias del usuario. */}
+        <div className="flex items-center gap-1 flex-wrap" style={{ borderBottom: PANEL_BORDER, paddingBottom: 6 }}>
+          <button
+            onClick={() => { setActiveTab(null); setEditing(null); }}
+            className="inline-flex items-center gap-1.5 px-3 rounded-[8px] text-[12.5px] font-medium transition-colors"
+            style={{
+              height: 30,
+              background: !isTabMode ? "oklch(0.28 0.02 295)" : "transparent",
+              border: `1px solid ${!isTabMode ? "oklch(0.55 0.20 295 / 0.45)" : "transparent"}`,
+              color: !isTabMode ? "oklch(0.92 0 0)" : "oklch(0.6 0 0)", cursor: "pointer",
+            }}
+          >
+            <Database className="w-3.5 h-3.5" />
+            Índice maestro
+          </button>
+
+          {tabs.map((t) => {
+            const act = activeTab === t.id;
+            return (
+              <span key={t.id} className="inline-flex items-center group/tab">
+                <button
+                  onClick={() => { setActiveTab(t.id); setEditing(null); setSort({ col: null, dir: "asc" }); }}
+                  onDoubleClick={() => handleRenameTab(t)}
+                  title="Doble click para renombrar"
+                  className="inline-flex items-center gap-1.5 px-3 rounded-[8px] text-[12.5px] font-medium transition-colors"
+                  style={{
+                    height: 30,
+                    background: act ? "oklch(0.28 0.02 295)" : "transparent",
+                    border: `1px solid ${act ? "oklch(0.55 0.20 295 / 0.45)" : "transparent"}`,
+                    color: act ? "oklch(0.92 0 0)" : "oklch(0.6 0 0)", cursor: "pointer",
+                  }}
+                >
+                  {t.nombre}
+                  {act && tabFilas.length > 0 && (
+                    <span style={{ color: "oklch(0.55 0 0)" }}>{tabFilas.length}</span>
+                  )}
+                </button>
+                {act && (
+                  <span className="inline-flex items-center gap-0.5 ml-0.5">
+                    <button
+                      onClick={() => handleRenameTab(t)}
+                      title="Renombrar"
+                      className="grid place-items-center rounded-[5px] transition-colors"
+                      style={{ width: 22, height: 22, color: "oklch(0.5 0 0)" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = "#c4b5fd"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.5 0 0)"; }}
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTab(t)}
+                      title="Borrar pestaña"
+                      className="grid place-items-center rounded-[5px] transition-colors"
+                      style={{ width: 22, height: 22, color: "oklch(0.5 0 0)" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = "#fca5a5"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.5 0 0)"; }}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+              </span>
+            );
+          })}
+
+          <button
+            onClick={handleCreateTab}
+            title="Nueva pestaña de seguimiento"
+            className="inline-flex items-center gap-1 px-2 rounded-[8px] text-[12.5px] transition-colors"
+            style={{ height: 30, background: "transparent", border: PANEL_BORDER, color: "oklch(0.6 0 0)", cursor: "pointer" }}
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
         {/* Barra única: búsqueda + acciones + estado del índice, todo en una
             fila para no gastar alto vertical. */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -741,9 +1047,69 @@ export function BuscadorSection() {
             onReset={resetColumnas}
           />
 
+          {/* Copiar a pestaña — solo en el índice maestro y con filas tildadas. */}
+          {!isTabMode && selected.size > 0 && (
+            <div className="relative shrink-0">
+              <button
+                onClick={() => setAddMenuOpen((v) => !v)}
+                className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors"
+                style={{
+                  height: TOOLBAR_H,
+                  background: "oklch(0.28 0.02 295)",
+                  border: "1px solid oklch(0.55 0.20 295 / 0.45)",
+                  color: "oklch(0.92 0 0)", cursor: "pointer",
+                }}
+              >
+                <ListPlus className="w-3.5 h-3.5" />
+                Agregar a pestaña
+                <span style={{ color: "#c4b5fd" }}>{selected.size}</span>
+                <ChevronDown className="w-3 h-3" />
+              </button>
+
+              {addMenuOpen && (
+                <div
+                  className="absolute left-0 top-[calc(100%+6px)] z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
+                  style={{
+                    minWidth: 220, maxHeight: 320, overflowY: "auto",
+                    background: "oklch(0.205 0.005 270)", border: PANEL_BORDER,
+                    borderRadius: 10, padding: 6,
+                    boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6)",
+                  }}
+                >
+                  {tabs.length === 0 ? (
+                    <div className="px-2 py-2 text-[12px]" style={{ color: "oklch(0.55 0 0)" }}>
+                      No tenés pestañas todavía — creá una con el «+» de arriba.
+                    </div>
+                  ) : tabs.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => handleAddSelected(t.id)}
+                      className="w-full text-left px-2 py-1.5 rounded-[7px] text-[13px] transition-colors"
+                      style={{ color: "oklch(0.88 0 0)" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      {t.nombre}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!isTabMode && selected.size > 0 && (
+            <button
+              onClick={() => setSelected(new Set())}
+              className="inline-flex items-center gap-1.5 px-2.5 rounded-[9px] text-[12px] transition-colors"
+              style={{ height: TOOLBAR_H, background: "transparent", border: PANEL_BORDER, color: "oklch(0.55 0 0)", cursor: "pointer" }}
+            >
+              <X className="w-3.5 h-3.5" />Quitar selección
+            </button>
+          )}
+
           <button
             onClick={exportCSV}
-            disabled={!sorted.length}
+            disabled={!displayRows.length}
             className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ height: TOOLBAR_H, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, color: "oklch(0.65 0 0)", cursor: "pointer" }}
           >
@@ -773,8 +1139,16 @@ export function BuscadorSection() {
           </button>
         </div>
 
-        {/* Contador */}
-        {(buscado && !loading) && (
+        {/* Contador — en una pestaña cuenta sus filas, no resultados del índice. */}
+        {isTabMode && !loadingTab && tabFilas.length > 0 && (
+          <p className="text-[12px] px-0.5" style={{ color: "oklch(0.55 0 0)", margin: 0 }}>
+            <span className="text-foreground font-medium">{tabFilasFiltradas.length.toLocaleString("es-AR")}</span>
+            {query.trim() ? ` de ${tabFilas.length} fila(s)` : " fila(s)"}
+            {" · doble click en una celda para editarla · arrastrá para reordenar"}
+          </p>
+        )}
+
+        {(!isTabMode && buscado && !loading) && (
           <p className="text-[12px] px-0.5 flex items-center flex-wrap gap-x-1" style={{ color: "oklch(0.55 0 0)", margin: 0 }}>
             <span>
               <span className="text-foreground font-medium">{sorted.length.toLocaleString("es-AR")}</span> resultado(s)
@@ -798,16 +1172,28 @@ export function BuscadorSection() {
 
         {/* Resultados */}
         <div className="rounded-[10px] overflow-hidden" style={{ background: PANEL_BG, border: PANEL_BORDER }}>
-          {!query.trim() ? (
+          {isTabMode && loadingTab ? (
+            <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />Cargando pestaña…
+            </div>
+          ) : isTabMode && !tabFilas.length ? (
+            <div className="flex flex-col items-center gap-2.5 py-14 text-sm text-muted-foreground">
+              <ListPlus className="w-10 h-10 opacity-20" />
+              Esta pestaña está vacía.
+              <span className="text-[12px]">
+                Andá a «Índice maestro», tildá las filas que quieras seguir y usá «Agregar a pestaña».
+              </span>
+            </div>
+          ) : !isTabMode && !query.trim() ? (
             <div className="flex flex-col items-center gap-2.5 py-14 text-sm text-muted-foreground">
               <Search className="w-10 h-10 opacity-20" />
               Escribí algo para buscar en SIC, OP, Matrículas y Transacciones.
             </div>
-          ) : loading ? (
+          ) : !isTabMode && loading ? (
             <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
               <Loader2 className="w-4 h-4 animate-spin" />Buscando…
             </div>
-          ) : !sorted.length ? (
+          ) : !isTabMode && !sorted.length ? (
             <div className="flex flex-col items-center gap-2.5 py-14 text-sm text-muted-foreground">
               <PackageOpen className="w-10 h-10 opacity-20" />
               Sin resultados para «{query.trim()}».
@@ -824,11 +1210,15 @@ export function BuscadorSection() {
             <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 190px)" }}>
               <table style={{ tableLayout: "fixed", width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 13 }}>
                 <colgroup>
-                  {/* Columna de fijado: fija, no reordenable ni ocultable — se
-                      mantiene igual que en Stock por Zona (icono a la izquierda). */}
-                  <col style={{ width: 30 }} />
+                  {/* Columna de acciones: fija, no reordenable ni ocultable.
+                      En el índice maestro lleva el check de selección y el pin;
+                      dentro de una pestaña, el handle de arrastre y el borrar. */}
+                  <col style={{ width: 58 }} />
                   {visibleCols.map((c) => (
                     <col key={c.key} style={{ width: colWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] }} />
+                  ))}
+                  {isTabMode && TRACK_COLS.map((c) => (
+                    <col key={c.key} style={{ width: c.width }} />
                   ))}
                 </colgroup>
                 <thead>
@@ -839,8 +1229,22 @@ export function BuscadorSection() {
                         position: "sticky", top: 0, zIndex: 2,
                         background: STICKY_BG,
                         borderBottom: "1px solid hsl(var(--border))",
+                        textAlign: "center",
                       }}
-                    />
+                    >
+                      {/* Tildar / destildar todo lo que está a la vista. */}
+                      {!isTabMode && (
+                        <input
+                          type="checkbox"
+                          title="Seleccionar todo"
+                          checked={sorted.length > 0 && selected.size === sorted.length}
+                          onChange={(e) => {
+                            setSelected(e.target.checked ? new Set(sorted.map(rowKey)) : new Set());
+                          }}
+                          style={{ accentColor: "#8B5CF6", cursor: "pointer" }}
+                        />
+                      )}
+                    </th>
                     {visibleCols.map((c) => {
                       const active = sortCol === c.key;
                       const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
@@ -878,63 +1282,263 @@ export function BuscadorSection() {
                         </th>
                       );
                     })}
+
+                    {/* Columnas de seguimiento: no vienen del índice, las
+                        escribe el usuario. Fondo propio para diferenciarlas. */}
+                    {isTabMode && TRACK_COLS.map((c) => {
+                      const active = sortCol === c.key;
+                      const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
+                      return (
+                        <th
+                          key={c.key}
+                          onClick={() => handleSort(c.key)}
+                          title="Columna de seguimiento (editable)"
+                          className="relative"
+                          style={{
+                            padding: "8px 12px", textAlign: "left",
+                            fontSize: 12, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase",
+                            color: active ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
+                            cursor: "pointer", userSelect: "none",
+                            position: "sticky", top: 0, zIndex: 2,
+                            background: TRACK_BG,
+                            borderBottom: "1px solid hsl(var(--border))",
+                            boxShadow: "inset 0 2.5px 0 0 #c4b5fd",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%" }}>
+                            <span className="truncate">{c.label}</span>
+                            <SortIcon className={`w-3.5 h-3.5 shrink-0 transition-opacity ${active ? "opacity-100" : "opacity-30"}`} />
+                          </span>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map((r, i) => {
-                    const key = rowKey(r);
-                    const isPinned = pinnedRows.length > 0 && i < pinnedRows.length;
+                  {displayRows.map((row, i) => {
+                    const { key, filaId, data } = row;
+                    const isPinned = !isTabMode && pinnedRows.length > 0 && i < pinnedRows.length;
                     const isLastPinned = isPinned && i === pinnedRows.length - 1;
-                    const isLastRow = i === sorted.length - 1;
+                    const isLastRow = i === displayRows.length - 1;
                     const pinnedBg = "color-mix(in oklab, var(--accent-violet) 8%, transparent)";
                     const bottomBorder = isLastPinned
                       ? "2px solid color-mix(in oklab, var(--accent-violet) 50%, transparent)"
                       : isLastRow ? "none" : "1px solid oklch(1 0 0 / 0.05)";
+                    const isSel = !isTabMode && selected.has(key);
+                    const isDragOver = isTabMode && dragOverFilaId === filaId;
+                    const rowBg = isDragOver
+                      ? "oklch(0.27 0.005 270)"
+                      : isSel ? "color-mix(in oklab, var(--accent-violet) 12%, transparent)"
+                      : isPinned ? pinnedBg : undefined;
+                    // Dentro de una pestaña la fila es una copia editable, no
+                    // tiene sentido atenuar por fuente.
+                    const dim = !isTabMode && data.fuente === "catalogo";
+
                     return (
                       <tr
                         key={key}
                         className="transition-colors"
-                        // Las filas que son solo catálogo (matrícula nunca pedida) van
-                        // atenuadas; las fijadas llevan un tinte violeta de fondo.
-                        style={{
-                          opacity: r.fuente === "catalogo" ? 0.72 : 1,
-                          background: isPinned ? pinnedBg : undefined,
-                        }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = "oklch(0.25 0.005 270 / 0.5)"; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = isPinned ? pinnedBg : ""; }}
+                        draggable={isTabMode}
+                        onDragStart={isTabMode ? (e) => {
+                          dragFilaId.current = filaId!;
+                          e.dataTransfer.setData("text/plain", filaId!);
+                          e.dataTransfer.effectAllowed = "move";
+                        } : undefined}
+                        onDragOver={isTabMode ? (e) => {
+                          e.preventDefault(); e.dataTransfer.dropEffect = "move";
+                          setDragOverFilaId(filaId!);
+                        } : undefined}
+                        onDragLeave={isTabMode ? () => setDragOverFilaId((k) => (k === filaId ? null : k)) : undefined}
+                        onDrop={isTabMode ? (e) => { e.preventDefault(); handleDropFila(filaId!); } : undefined}
+                        onDragEnd={isTabMode ? () => { dragFilaId.current = null; setDragOverFilaId(null); } : undefined}
+                        style={{ opacity: dim ? 0.72 : 1, background: rowBg }}
+                        onMouseEnter={(e) => { if (!rowBg) (e.currentTarget as HTMLTableRowElement).style.background = "oklch(0.25 0.005 270 / 0.5)"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = rowBg ?? ""; }}
                       >
-                        <td style={{ padding: "6px", borderBottom: bottomBorder, textAlign: "center" }}>
-                          <button
-                            onClick={() => togglePin(key)}
-                            title={isPinned ? "Quitar de fijadas" : "Fijar arriba"}
-                            className="grid place-items-center transition-colors"
-                            style={{
-                              width: 20, height: 20, borderRadius: 5, margin: "0 auto",
-                              color: isPinned ? "#c4b5fd" : "oklch(0.45 0 0)",
-                              background: isPinned ? "color-mix(in oklab, var(--accent-violet) 20%, transparent)" : "transparent",
-                            }}
-                            onMouseEnter={(e) => { if (!isPinned) (e.currentTarget as HTMLButtonElement).style.color = "#c4b5fd"; }}
-                            onMouseLeave={(e) => { if (!isPinned) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.45 0 0)"; }}
-                          >
-                            <Pin className="w-3.5 h-3.5" strokeWidth={2} fill={isPinned ? "#c4b5fd" : "none"} />
-                          </button>
+                        {/* Acciones de la fila */}
+                        <td style={{ padding: "6px 4px", borderBottom: bottomBorder }}>
+                          <span className="flex items-center justify-center gap-1">
+                            {isTabMode ? (
+                              <>
+                                <span
+                                  className="cursor-grab active:cursor-grabbing grid place-items-center"
+                                  title="Arrastrar para reordenar"
+                                  style={{ color: "oklch(0.42 0 0)" }}
+                                >
+                                  <GripVertical className="w-3.5 h-3.5" />
+                                </span>
+                                <button
+                                  onClick={() => handleDeleteFila(filaId!)}
+                                  title="Quitar de la pestaña"
+                                  className="grid place-items-center transition-colors"
+                                  style={{ width: 20, height: 20, borderRadius: 5, color: "oklch(0.42 0 0)" }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.color = "#fca5a5"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.42 0 0)"; }}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <input
+                                  type="checkbox"
+                                  checked={isSel}
+                                  onChange={(e) => {
+                                    setSelected((prev) => {
+                                      const s = new Set(prev);
+                                      if (e.target.checked) s.add(key); else s.delete(key);
+                                      return s;
+                                    });
+                                  }}
+                                  title="Seleccionar para copiar a una pestaña"
+                                  style={{ accentColor: "#8B5CF6", cursor: "pointer" }}
+                                />
+                                <button
+                                  onClick={() => togglePin(key)}
+                                  title={isPinned ? "Quitar de fijadas" : "Fijar arriba"}
+                                  className="grid place-items-center transition-colors"
+                                  style={{
+                                    width: 20, height: 20, borderRadius: 5,
+                                    color: isPinned ? "#c4b5fd" : "oklch(0.42 0 0)",
+                                    background: isPinned ? "color-mix(in oklab, var(--accent-violet) 20%, transparent)" : "transparent",
+                                  }}
+                                  onMouseEnter={(e) => { if (!isPinned) e.currentTarget.style.color = "#c4b5fd"; }}
+                                  onMouseLeave={(e) => { if (!isPinned) e.currentTarget.style.color = "oklch(0.42 0 0)"; }}
+                                >
+                                  <Pin className="w-3.5 h-3.5" strokeWidth={2} fill={isPinned ? "#c4b5fd" : "none"} />
+                                </button>
+                              </>
+                            )}
+                          </span>
                         </td>
-                        {visibleCols.map((c) => (
-                          <td
-                            key={c.key}
-                            className={cn("truncate", c.num ? "text-right tabular-nums" : "text-left")}
-                            style={{
-                              padding: "7px 12px",
-                              borderBottom: bottomBorder,
-                              fontFamily: (c.num || c.mono) ? "ui-monospace, monospace" : undefined,
-                              color: c.key === "articulo" ? "hsl(var(--foreground))" : undefined,
-                              fontWeight: c.key === "articulo" ? 500 : undefined,
-                            }}
-                            title={c.key === "descripcion" ? (r.descripcion ?? "") : undefined}
-                          >
-                            {c.render ? c.render(r) : c.num ? fmtNum(r[c.key] as number) : ((r[c.key] ?? "") as ReactNode)}
-                          </td>
-                        ))}
+
+                        {/* Columnas del índice. En una pestaña son copias, así
+                            que se editan con doble click. */}
+                        {visibleCols.map((c) => {
+                          const editando = isTabMode && editing?.filaId === filaId && editing?.key === c.key;
+                          return (
+                            <td
+                              key={c.key}
+                              className={cn(!editando && "truncate", c.num ? "text-right tabular-nums" : "text-left")}
+                              style={{
+                                padding: editando ? "2px 6px" : "7px 12px",
+                                borderBottom: bottomBorder,
+                                fontFamily: (c.num || c.mono) ? "ui-monospace, monospace" : undefined,
+                                color: c.key === "articulo" ? "hsl(var(--foreground))" : undefined,
+                                fontWeight: c.key === "articulo" ? 500 : undefined,
+                                cursor: isTabMode ? "text" : undefined,
+                              }}
+                              title={
+                                isTabMode ? "Doble click para editar"
+                                  : c.key === "descripcion" ? String(data.descripcion ?? "") : undefined
+                              }
+                              onDoubleClick={isTabMode ? () => {
+                                setEditValue(String(data[c.key] ?? ""));
+                                setEditing({ filaId: filaId!, key: c.key });
+                              } : undefined}
+                            >
+                              {editando ? (
+                                <input
+                                  autoFocus
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={() => commitEdit(filaId!, c.key, editValue)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") e.currentTarget.blur();
+                                    if (e.key === "Escape") setEditing(null);
+                                  }}
+                                  className="w-full bg-transparent outline-none text-[13px]"
+                                  style={{
+                                    padding: "5px 6px", borderRadius: 6,
+                                    border: "1px solid oklch(0.55 0.20 295 / 0.6)",
+                                    background: "oklch(0.16 0.005 270)",
+                                    color: "hsl(var(--foreground))",
+                                    textAlign: c.num ? "right" : "left",
+                                  }}
+                                />
+                              ) : (
+                                c.render
+                                  ? c.render(data as unknown as BusquedaRow)
+                                  : c.num ? fmtNum(data[c.key] as number) : ((data[c.key] ?? "") as ReactNode)
+                              )}
+                            </td>
+                          );
+                        })}
+
+                        {/* Columnas de seguimiento */}
+                        {isTabMode && TRACK_COLS.map((c) => {
+                          const editando = editing?.filaId === filaId && editing?.key === c.key;
+                          const val = String(data[c.key] ?? "");
+                          const est = c.tipo === "estado" ? ESTADO_STYLE[val] : undefined;
+                          return (
+                            <td
+                              key={c.key}
+                              className={cn(!editando && "truncate")}
+                              style={{
+                                padding: editando ? "2px 6px" : "7px 12px",
+                                borderBottom: bottomBorder,
+                                background: TRACK_BG,
+                                cursor: "text",
+                              }}
+                              title={c.tipo === "texto" ? val : "Doble click para editar"}
+                              onDoubleClick={() => {
+                                setEditValue(val);
+                                setEditing({ filaId: filaId!, key: c.key });
+                              }}
+                            >
+                              {editando && c.tipo === "estado" ? (
+                                <select
+                                  autoFocus
+                                  value={editValue}
+                                  onChange={(e) => { setEditValue(e.target.value); commitEdit(filaId!, c.key, e.target.value); }}
+                                  onBlur={() => setEditing(null)}
+                                  className="w-full outline-none text-[13px]"
+                                  style={{
+                                    padding: "5px 6px", borderRadius: 6,
+                                    border: "1px solid oklch(0.55 0.20 295 / 0.6)",
+                                    background: "oklch(0.16 0.005 270)", color: "hsl(var(--foreground))",
+                                  }}
+                                >
+                                  <option value="">—</option>
+                                  {ESTADOS.map((e) => <option key={e} value={e}>{e}</option>)}
+                                </select>
+                              ) : editando ? (
+                                <input
+                                  autoFocus
+                                  type={c.tipo === "fecha" ? "date" : "text"}
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={() => commitEdit(filaId!, c.key, editValue)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") e.currentTarget.blur();
+                                    if (e.key === "Escape") setEditing(null);
+                                  }}
+                                  className="w-full bg-transparent outline-none text-[13px]"
+                                  style={{
+                                    padding: "5px 6px", borderRadius: 6,
+                                    border: "1px solid oklch(0.55 0.20 295 / 0.6)",
+                                    background: "oklch(0.16 0.005 270)", color: "hsl(var(--foreground))",
+                                  }}
+                                />
+                              ) : est ? (
+                                <span style={{
+                                  display: "inline-flex", alignItems: "center", gap: 5,
+                                  padding: "3px 9px", borderRadius: 999, whiteSpace: "nowrap",
+                                  background: est.bg, color: est.fg, border: `1px solid ${est.bd}`,
+                                  fontSize: 11, fontWeight: 600, letterSpacing: 0.2,
+                                }}>
+                                  <span style={{ width: 5, height: 5, borderRadius: 3, background: "currentColor" }} />
+                                  {val}
+                                </span>
+                              ) : c.tipo === "fecha" ? (
+                                <span style={{ fontFamily: "ui-monospace, monospace" }}>{fmtFechaISO(val)}</span>
+                              ) : (
+                                val || <span style={{ color: "oklch(0.38 0 0)" }}>—</span>
+                              )}
+                            </td>
+                          );
+                        })}
                       </tr>
                     );
                   })}
