@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   Tag, Plus, Trash2, Pencil, Search, RefreshCw, Loader2, X,
-  FolderPlus, Check, AlertTriangle, Layers,
+  FolderPlus, Check, AlertTriangle, Layers, TableProperties,
 } from "lucide-react";
 import {
   listFamilias, createFamilia, renameFamilia, deleteFamilia,
@@ -15,6 +15,9 @@ import {
   validarContraCatalogo, getMatriculasInfo, getTipoOverrides, setTipoOverride,
   type Familia, type MatriculaInfo, type ArticuloTipo,
 } from "@/lib/familias";
+import { buscarPorMatriculas, rowKey } from "@/lib/busqueda";
+import { fetchTabs, createTab, fetchTabFilas, addFilas, type BuscadorTab } from "@/lib/buscadorTabs";
+import { supabase } from "@/lib/supabaseClient";
 
 // ─── Badge de tipo (Material / Servicio) ────────────────────────────────────
 function TipoBadge({ tipo }: { tipo: ArticuloTipo }) {
@@ -420,6 +423,152 @@ function DeleteFamiliaModal({ familia, count, onClose, onConfirm }: { familia: F
   );
 }
 
+// ─── Enviar una familia a una pestaña del Buscador ──────────────────────────
+// Trae del índice TODAS las líneas de compra (OP/línea/envío) de las matrículas
+// de la familia y las copia a una pestaña de seguimiento. Ahí quedan agrupadas
+// bajo cada matrícula y se pueden editar o borrar línea por línea.
+
+function EnviarABuscadorDialog({
+  familia, articulos, onClose,
+}: {
+  familia: Familia;
+  articulos: string[];
+  onClose: () => void;
+}) {
+  const [userId, setUserId]   = useState<string | null>(null);
+  const [tabs, setTabs]       = useState<BuscadorTab[]>([]);
+  const [destino, setDestino] = useState<string>("__nueva__");
+  const [nombre, setNombre]   = useState(familia.nombre);
+  const [cargando, setCargando] = useState(true);
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      const uid = data.user?.id ?? null;
+      setUserId(uid);
+      if (!uid) { setCargando(false); return; }
+      fetchTabs(uid)
+        .then(setTabs)
+        .catch((e) => toast.error(`No se pudieron leer las pestañas: ${e.message}`))
+        .finally(() => setCargando(false));
+    });
+  }, []);
+
+  const handleEnviar = async () => {
+    if (!userId) { toast.error("Iniciá sesión para usar las pestañas."); return; }
+    if (!articulos.length) { toast.error("La familia no tiene matrículas."); return; }
+    setEnviando(true);
+    try {
+      const filas = await buscarPorMatriculas(articulos);
+      if (!filas.length) {
+        toast.error("Ninguna de esas matrículas está en el índice. Probá «Reconstruir» en el Buscador.");
+        return;
+      }
+
+      let tabId = destino;
+      if (destino === "__nueva__") {
+        const nom = nombre.trim() || familia.nombre;
+        const tab = await createTab(userId, nom, tabs.length);
+        tabId = tab.id;
+      }
+
+      // No duplicar lo que la pestaña ya tenga.
+      const existentes = new Set((await fetchTabFilas(tabId)).map((f) => f.row_key));
+      const nuevas = filas.filter((r) => !existentes.has(rowKey(r)));
+      const repetidas = filas.length - nuevas.length;
+
+      if (!nuevas.length) {
+        toast.info("Esa pestaña ya tiene todas estas líneas.");
+        return;
+      }
+
+      await addFilas(tabId, nuevas, rowKey, existentes.size);
+      const matriculasDistintas = new Set(nuevas.map((r) => r.articulo_key)).size;
+      toast.success(
+        `${nuevas.length} línea(s) de ${matriculasDistintas} matrícula(s) enviadas al Buscador` +
+        (repetidas ? ` — ${repetidas} ya estaban.` : ".")
+      );
+      onClose();
+    } catch (e) {
+      toast.error(`No se pudo enviar: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-xl border border-border bg-card shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 p-4 border-b border-border">
+          <TableProperties className="w-4 h-4 text-accent" />
+          <span className="text-sm font-semibold text-foreground flex-1">Enviar «{familia.nombre}» al Buscador</span>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Se copian todas las líneas de compra (OP / línea / envío) de las{" "}
+            <span className="text-foreground font-medium">{articulos.length}</span> matrículas de esta
+            familia, con todas las columnas del Buscador. En la pestaña quedan agrupadas por matrícula.
+          </p>
+
+          {cargando ? (
+            <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />Leyendo pestañas…
+            </div>
+          ) : (
+            <>
+              <label className="block text-xs text-muted-foreground">Pestaña destino</label>
+              <select
+                value={destino}
+                onChange={(e) => setDestino(e.target.value)}
+                className="w-full h-9 px-2 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
+              >
+                <option value="__nueva__">➕ Pestaña nueva…</option>
+                {tabs.map((t) => (
+                  <option key={t.id} value={t.id}>{t.nombre}</option>
+                ))}
+              </select>
+
+              {destino === "__nueva__" && (
+                <input
+                  value={nombre}
+                  onChange={(e) => setNombre(e.target.value)}
+                  placeholder="Nombre de la pestaña"
+                  className="w-full h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/20"
+                />
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 p-4 border-t border-border">
+          <button
+            onClick={onClose}
+            className="h-9 px-4 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleEnviar}
+            disabled={enviando || cargando}
+            className="flex items-center gap-2 h-9 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-all disabled:opacity-50"
+          >
+            {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <TableProperties className="w-4 h-4" />}
+            {enviando ? "Enviando…" : "Enviar"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Sección principal ──────────────────────────────────────────────────────
 export function MatriculasFamiliasSection() {
   const [familias, setFamilias]         = useState<Familia[]>([]);
@@ -437,6 +586,7 @@ export function MatriculasFamiliasSection() {
   const [pickerOpen, setPickerOpen]     = useState(false);
   const [renameTarget, setRenameTarget] = useState<Familia | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Familia | null>(null);
+  const [enviarOpen, setEnviarOpen]     = useState(false);
 
   // ── Carga ──────────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -697,6 +847,15 @@ export function MatriculasFamiliasSection() {
                     />
                   </div>
                   <button
+                    onClick={() => setEnviarOpen(true)}
+                    disabled={selectedArticulos.length === 0}
+                    title="Copiar las líneas de compra de estas matrículas a una pestaña del Buscador"
+                    className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border bg-secondary text-xs font-medium text-foreground hover:bg-secondary/70 transition-all shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <TableProperties className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Al Buscador</span>
+                  </button>
+                  <button
                     onClick={() => setPickerOpen(true)}
                     className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/90 transition-all shrink-0"
                   >
@@ -761,6 +920,13 @@ export function MatriculasFamiliasSection() {
           yaAsignadas={yaAsignadas}
           onClose={() => setPickerOpen(false)}
           onConfirm={handleAddMatriculas}
+        />
+      )}
+      {enviarOpen && selected && (
+        <EnviarABuscadorDialog
+          familia={selected}
+          articulos={selectedArticulos}
+          onClose={() => setEnviarOpen(false)}
         />
       )}
       {renameTarget && (

@@ -74,6 +74,57 @@ export interface BusquedaRow {
   updated_at:          string;
 }
 
+/**
+ * Clave estable de una fila del índice. NO se puede usar `id`: es un bigserial
+ * que se borra y regenera entero en cada «Reconstruir» (DELETE + INSERT), así
+ * que cambia con cada reconstrucción. Esta sale de los datos de negocio, que sí
+ * son estables.
+ */
+export const rowKey = (r: BusquedaRow) =>
+  `${r.fuente}|${r.articulo_key ?? ""}|${r.numero_op ?? ""}|${r.linea ?? ""}|${r.envio ?? ""}`;
+
+/**
+ * Normaliza el código de matrícula igual que gd_norm_articulo() en SQL: quita
+ * SOLO el sufijo decimal del export de Excel (".0" / ".00"), nunca ".1" ni ".2"
+ * — esos serían variantes distintas. "00009411.0" → "00009411".
+ */
+export const normArticulo = (raw: string) => raw.trim().replace(/\.0+$/, "");
+
+/**
+ * Todas las filas del índice de un conjunto de matrículas. Se usa para volcar
+ * una familia entera a una pestaña de seguimiento.
+ *
+ * Devuelve la granularidad natural del índice: una fila por (OP, línea, envío),
+ * más la fila de catálogo si la matrícula nunca se pidió.
+ */
+export async function buscarPorMatriculas(
+  articulos: string[],
+  limite = 5000
+): Promise<BusquedaRow[]> {
+  const keys = [...new Set(articulos.map(normArticulo).filter(Boolean))];
+  if (!keys.length) return [];
+
+  // .in() con muchas claves puede pasarse del largo máximo de URL, así que se
+  // consulta de a tandas y se junta.
+  const TANDA = 100;
+  const out: BusquedaRow[] = [];
+  for (let i = 0; i < keys.length; i += TANDA) {
+    const { data, error } = await supabase
+      .from("busqueda_index")
+      .select("*")
+      .in("articulo_key", keys.slice(i, i + TANDA))
+      .order("articulo_key", { ascending: true })
+      .order("numero_op",   { ascending: true })
+      .order("linea",       { ascending: true })
+      .order("envio",       { ascending: true })
+      .range(0, limite - 1);
+    if (error) throw new Error(error.message);
+    out.push(...((data ?? []) as BusquedaRow[]));
+    if (out.length >= limite) break;
+  }
+  return out.slice(0, limite);
+}
+
 /** Ejecuta la búsqueda. `q` vacío devuelve las primeras filas del índice. */
 export async function buscar(q: string, limite = 500): Promise<BusquedaRow[]> {
   const { data, error } = await supabase

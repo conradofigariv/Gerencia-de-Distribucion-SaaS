@@ -5,10 +5,11 @@ import {
   Search, Loader2, X, Download, RefreshCw, Database, PackageOpen,
   ChevronDown, ChevronUp, ChevronsUpDown, Wrench, Package,
   Columns3, GripVertical, Eye, EyeOff, Pin, Plus, Trash2, Pencil, ListPlus,
+  ChevronRight, Rows3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { buscar, reconstruirIndice, estadoIndice, type BusquedaRow } from "@/lib/busqueda";
+import { buscar, reconstruirIndice, estadoIndice, rowKey, type BusquedaRow } from "@/lib/busqueda";
 import { getPreference, setPreference } from "@/lib/userPreferences";
 import {
   fetchTabs, createTab, renameTab, deleteTab, fetchTabFilas, addFilas,
@@ -43,14 +44,9 @@ const fmtFechaISO = (v: string | null | undefined) => {
   return v;
 };
 
-// Clave estable de una fila para fijar (Pin), igual criterio que en Stock por
-// Zona. NO se puede usar `id`: es un bigserial que se borra y regenera entero
-// en cada «Reconstruir índice» (DELETE + INSERT), así que cambia de valor con
-// cada reconstrucción y el pin quedaría apuntando a un id que ya no existe.
-// Esta clave sale de los datos de negocio, que sí son estables entre
-// reconstrucciones.
-const rowKey = (r: BusquedaRow) =>
-  `${r.fuente}|${r.articulo_key ?? ""}|${r.numero_op ?? ""}|${r.linea ?? ""}|${r.envio ?? ""}`;
+// `rowKey` vive en lib/busqueda.ts: la comparten esta sección y el volcado de
+// familias desde Matrículas, y tienen que generar exactamente la misma clave
+// para que la detección de duplicados funcione.
 
 function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
   return (
@@ -483,6 +479,9 @@ export function BuscadorSection() {
   // Celda en edición dentro de una pestaña: { filaId, key }.
   const [editing, setEditing]     = useState<{ filaId: string; key: string } | null>(null);
   const [editValue, setEditValue] = useState("");
+  // Agrupar las filas de la pestaña por matrícula, con desplegables.
+  const [agrupar, setAgrupar]     = useState(true);
+  const [colapsados, setColapsados] = useState<Set<string>>(new Set());
   const dragFilaId = useRef<string | null>(null);
   const [dragOverFilaId, setDragOverFilaId] = useState<string | null>(null);
 
@@ -887,6 +886,55 @@ export function BuscadorSection() {
     }));
   }, [isTabMode, tabFilasOrdenadas, sorted]);
 
+  // ── Agrupado por matrícula (solo en pestañas) ──
+  // Una matrícula tiene una fila por (OP, línea, envío), así que una familia
+  // entera desborda la tabla. Agrupando, cada matrícula es un encabezado
+  // plegable y debajo cuelgan sus líneas de compra.
+  type GrupoItem = { tipo: "grupo"; key: string; gkey: string; articulo: string; descripcion: string; count: number };
+  type FilaItem  = { tipo: "fila";  key: string; filaId?: string; data: Record<string, unknown> };
+
+  const displayItems = useMemo<(GrupoItem | FilaItem)[]>(() => {
+    const filas: FilaItem[] = displayRows.map((r) => ({ tipo: "fila", ...r }));
+    if (!isTabMode || !agrupar) return filas;
+
+    // Se respeta el orden en que aparecen: así el agrupado no pelea con el
+    // orden manual ni con el sort por columna.
+    const grupos = new Map<string, FilaItem[]>();
+    for (const f of filas) {
+      const gk = String(f.data.articulo_key ?? f.data.articulo ?? "—");
+      if (!grupos.has(gk)) grupos.set(gk, []);
+      grupos.get(gk)!.push(f);
+    }
+    const out: (GrupoItem | FilaItem)[] = [];
+    for (const [gk, items] of grupos) {
+      const primera = items[0].data;
+      out.push({
+        tipo: "grupo", key: `g:${gk}`, gkey: gk,
+        articulo: String(primera.articulo ?? gk),
+        descripcion: String(primera.descripcion ?? ""),
+        count: items.length,
+      });
+      if (!colapsados.has(gk)) out.push(...items);
+    }
+    return out;
+  }, [displayRows, isTabMode, agrupar, colapsados]);
+
+  const puedeArrastrar = isTabMode && !agrupar;
+
+  const toggleGrupo = useCallback((gk: string) => {
+    setColapsados((prev) => {
+      const s = new Set(prev);
+      if (s.has(gk)) s.delete(gk); else s.add(gk);
+      return s;
+    });
+  }, []);
+
+  // Cantidad de matrículas distintas en la pestaña (para el contador).
+  const gruposCount = useMemo(
+    () => new Set(displayRows.map((r) => String(r.data.articulo_key ?? r.data.articulo ?? "—"))).size,
+    [displayRows]
+  );
+
   // Exporta las columnas visibles, en el orden elegido (igual a lo que se ve
   // en pantalla). Las columnas ocultas no se pierden — siguen en el índice.
   const exportCSV = useCallback(() => {
@@ -1044,6 +1092,38 @@ export function BuscadorSection() {
             onReset={resetColumnas}
           />
 
+          {/* Agrupar por matrícula — solo dentro de una pestaña. */}
+          {isTabMode && (
+            <div className="inline-flex items-center gap-1 shrink-0">
+              <button
+                onClick={() => setAgrupar((v) => !v)}
+                title="Agrupar las líneas de compra bajo cada matrícula"
+                className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors"
+                style={{
+                  height: TOOLBAR_H,
+                  background: agrupar ? "oklch(0.28 0.02 295)" : "oklch(0.16 0.005 270)",
+                  border: `1px solid ${agrupar ? "oklch(0.55 0.20 295 / 0.45)" : "oklch(1 0 0 / 0.07)"}`,
+                  color: agrupar ? "oklch(0.92 0 0)" : "oklch(0.65 0 0)", cursor: "pointer",
+                }}
+              >
+                <Rows3 className="w-3.5 h-3.5" />
+                Agrupar
+              </button>
+              {agrupar && gruposCount > 0 && (
+                <button
+                  onClick={() => setColapsados((prev) =>
+                    prev.size ? new Set() : new Set(displayRows.map((r) => String(r.data.articulo_key ?? r.data.articulo ?? "—")))
+                  )}
+                  title={colapsados.size ? "Abrir todas" : "Cerrar todas"}
+                  className="inline-flex items-center justify-center rounded-[9px] transition-colors"
+                  style={{ height: TOOLBAR_H, width: 32, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, color: "oklch(0.6 0 0)", cursor: "pointer" }}
+                >
+                  {colapsados.size ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Copiar a pestaña — solo en el índice maestro y con filas tildadas. */}
           {!isTabMode && selected.size > 0 && (
             <div className="relative shrink-0">
@@ -1141,7 +1221,9 @@ export function BuscadorSection() {
           <p className="text-[12px] px-0.5" style={{ color: "oklch(0.55 0 0)", margin: 0 }}>
             <span className="text-foreground font-medium">{tabFilasFiltradas.length.toLocaleString("es-AR")}</span>
             {query.trim() ? ` de ${tabFilas.length} fila(s)` : " fila(s)"}
-            {" · doble click en una celda para editarla · arrastrá para reordenar"}
+            {agrupar && gruposCount > 0 && ` en ${gruposCount.toLocaleString("es-AR")} matrícula${gruposCount === 1 ? "" : "s"}`}
+            {" · doble click en una celda para editarla"}
+            {puedeArrastrar && " · arrastrá para reordenar"}
           </p>
         )}
 
@@ -1313,11 +1395,57 @@ export function BuscadorSection() {
                   </tr>
                 </thead>
                 <tbody>
-                  {displayRows.map((row, i) => {
-                    const { key, filaId, data } = row;
+                  {displayItems.map((item, i) => {
+                    // Encabezado de matrícula: ocupa toda la fila y pliega el grupo.
+                    if (item.tipo === "grupo") {
+                      const cerrado = colapsados.has(item.gkey);
+                      return (
+                        <tr key={item.key}>
+                          <td
+                            colSpan={1 + visibleCols.length + (isTabMode ? TRACK_COLS.length : 0)}
+                            style={{
+                              padding: 0,
+                              background: "oklch(0.245 0.008 270)",
+                              borderBottom: "1px solid oklch(1 0 0 / 0.07)",
+                              borderTop: "1px solid oklch(1 0 0 / 0.05)",
+                            }}
+                          >
+                            <button
+                              onClick={() => toggleGrupo(item.gkey)}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"
+                              style={{ cursor: "pointer" }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = "oklch(0.28 0.008 270)"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                            >
+                              {cerrado
+                                ? <ChevronRight className="w-4 h-4 shrink-0" style={{ color: "#fcd34d" }} />
+                                : <ChevronDown  className="w-4 h-4 shrink-0" style={{ color: "#fcd34d" }} />}
+                              <span style={{
+                                fontFamily: "ui-monospace, monospace", fontSize: 12.5,
+                                fontWeight: 600, color: "hsl(var(--foreground))",
+                              }}>
+                                {item.articulo}
+                              </span>
+                              <span className="truncate" style={{ fontSize: 12, color: "oklch(0.62 0 0)", flex: 1 }}>
+                                {item.descripcion}
+                              </span>
+                              <span style={{
+                                fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999,
+                                background: "oklch(0.30 0.10 155 / 0.35)", color: "#86efac",
+                                border: "1px solid oklch(0.55 0.15 155 / 0.4)", whiteSpace: "nowrap",
+                              }}>
+                                {item.count} línea{item.count === 1 ? "" : "s"}
+                              </span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    const { key, filaId, data } = item;
                     const isPinned = !isTabMode && pinnedRows.length > 0 && i < pinnedRows.length;
                     const isLastPinned = isPinned && i === pinnedRows.length - 1;
-                    const isLastRow = i === displayRows.length - 1;
+                    const isLastRow = i === displayItems.length - 1;
                     const pinnedBg = "color-mix(in oklab, var(--accent-violet) 8%, transparent)";
                     const bottomBorder = isLastPinned
                       ? "2px solid color-mix(in oklab, var(--accent-violet) 50%, transparent)"
@@ -1336,19 +1464,22 @@ export function BuscadorSection() {
                       <tr
                         key={key}
                         className="transition-colors"
-                        draggable={isTabMode}
-                        onDragStart={isTabMode ? (e) => {
+                        // Con el agrupado activo el arrastre se desactiva: mover
+                        // una fila entre matrículas no tiene sentido y el regrupado
+                        // la devolvería a su grupo igual.
+                        draggable={puedeArrastrar}
+                        onDragStart={puedeArrastrar ? (e) => {
                           dragFilaId.current = filaId!;
                           e.dataTransfer.setData("text/plain", filaId!);
                           e.dataTransfer.effectAllowed = "move";
                         } : undefined}
-                        onDragOver={isTabMode ? (e) => {
+                        onDragOver={puedeArrastrar ? (e) => {
                           e.preventDefault(); e.dataTransfer.dropEffect = "move";
                           setDragOverFilaId(filaId!);
                         } : undefined}
-                        onDragLeave={isTabMode ? () => setDragOverFilaId((k) => (k === filaId ? null : k)) : undefined}
-                        onDrop={isTabMode ? (e) => { e.preventDefault(); handleDropFila(filaId!); } : undefined}
-                        onDragEnd={isTabMode ? () => { dragFilaId.current = null; setDragOverFilaId(null); } : undefined}
+                        onDragLeave={puedeArrastrar ? () => setDragOverFilaId((k) => (k === filaId ? null : k)) : undefined}
+                        onDrop={puedeArrastrar ? (e) => { e.preventDefault(); handleDropFila(filaId!); } : undefined}
+                        onDragEnd={puedeArrastrar ? () => { dragFilaId.current = null; setDragOverFilaId(null); } : undefined}
                         style={{ opacity: dim ? 0.72 : 1, background: rowBg }}
                         onMouseEnter={(e) => { if (!rowBg) (e.currentTarget as HTMLTableRowElement).style.background = "oklch(0.25 0.005 270 / 0.5)"; }}
                         onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = rowBg ?? ""; }}
@@ -1359,9 +1490,9 @@ export function BuscadorSection() {
                             {isTabMode ? (
                               <>
                                 <span
-                                  className="cursor-grab active:cursor-grabbing grid place-items-center"
-                                  title="Arrastrar para reordenar"
-                                  style={{ color: "oklch(0.42 0 0)" }}
+                                  className={cn("grid place-items-center", puedeArrastrar && "cursor-grab active:cursor-grabbing")}
+                                  title={puedeArrastrar ? "Arrastrar para reordenar" : "Desactivá el agrupado para reordenar"}
+                                  style={{ color: puedeArrastrar ? "oklch(0.42 0 0)" : "oklch(0.28 0 0)" }}
                                 >
                                   <GripVertical className="w-3.5 h-3.5" />
                                 </span>
