@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useReducer, useMemo, useCallback, useRef, type ReactNode, type CSSProperties, type DragEvent } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode, type CSSProperties, type DragEvent } from "react";
 import {
   Search, Loader2, X, Download, RefreshCw, Database, PackageOpen,
   ChevronDown, ChevronUp, ChevronsUpDown, Wrench, Package,
@@ -25,13 +25,17 @@ const TOOLBAR_H = 34;
 const fmtNum = (n: number | null | undefined) =>
   n == null ? "" : Number(n).toLocaleString("es-AR", { maximumFractionDigits: 2 });
 
-// Fecha ISO "YYYY-MM-DD" → dd/mm/aa. Se parsea a mano para evitar el
-// corrimiento de zona horaria que mete new Date("YYYY-MM-DD") (lo toma UTC).
-const fmtFechaISO = (iso: string | null | undefined) => {
-  if (!iso) return "";
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  if (!m) return iso;
-  return `${m[3]}/${m[2]}/${m[1].slice(2)}`;
+// Normaliza fechas a dd/mm/aa. Maneja dos formatos que pueden venir de la DB:
+//   • ISO "YYYY-MM-DD[...]"  → parse manual (evita corrimiento UTC de new Date)
+//   • Date.toString "Tue Jul 23 2024 ..." → new Date() + toLocaleDateString
+const fmtFechaISO = (v: string | null | undefined) => {
+  if (!v) return "";
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1].slice(2)}`;
+  const d = new Date(v);
+  if (!Number.isNaN(d.getTime()))
+    return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  return v;
 };
 
 // Clave estable de una fila para fijar (Pin), igual criterio que en Stock por
@@ -438,16 +442,13 @@ export function BuscadorSection() {
   const [reconstruyendo, setReconstruyendo] = useState(false);
   const [indice, setIndice]   = useState<{ filas: number; actualizado: string | null } | null>(null);
 
-  type SortState = { col: keyof BusquedaRow | null; dir: SortDir };
-  const [sortState, dispatchSort] = useReducer(
-    (s: SortState, col: keyof BusquedaRow): SortState => ({
-      col,
-      dir: s.col === col ? (s.dir === "asc" ? "desc" : "asc") : "asc",
-    }),
-    { col: null, dir: "asc" }
-  );
-  const sortCol = sortState.col;
-  const sortDir = sortState.dir;
+  const [sortCol, setSortCol] = useState<keyof BusquedaRow | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  // Refs para leer el estado actual dentro del callback sin depender del closure.
+  const sortColRef = useRef<keyof BusquedaRow | null>(null);
+  const sortDirRef = useRef<SortDir>("asc");
+  sortColRef.current = sortCol;
+  sortDirRef.current = sortDir;
 
   const [userId, setUserId] = useState<string | null>(null);
   const saveWidthsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -662,7 +663,14 @@ export function BuscadorSection() {
     return [...pinnedRows, ...rest];
   }, [sortedByCol, pinnedRows]);
 
-  const handleSort = useCallback((col: keyof BusquedaRow) => dispatchSort(col), []);
+  const handleSort = useCallback((col: keyof BusquedaRow) => {
+    if (sortColRef.current === col) {
+      setSortDir(sortDirRef.current === "asc" ? "desc" : "asc");
+    } else {
+      setSortCol(col);
+      setSortDir("asc");
+    }
+  }, []);
 
   // Exporta las columnas visibles, en el orden elegido (igual a lo que se ve
   // en pantalla). Las columnas ocultas no se pierden — siguen en el índice.
