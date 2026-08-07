@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode, type CSSProperties } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode, type CSSProperties, type DragEvent } from "react";
 import {
   Search, Loader2, X, Download, RefreshCw, Database, PackageOpen,
   ChevronDown, ChevronUp, ChevronsUpDown, Wrench, Package,
@@ -53,11 +53,25 @@ function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
   );
 }
 
+// ─── Jerarquía de fuentes (para colorear los encabezados) ───────────────────
+// SIC → OP → Transacciones, más el catálogo de Matrículas como eje transversal.
+// El color deja ver de qué tabla sale cada columna, para poder reordenarlas
+// agrupadas por jerarquía en el panel «Columnas».
+
+type ColGroup = "sic" | "op" | "tx" | "cat";
+
+const GROUP_META: Record<ColGroup, { label: string; color: string }> = {
+  sic: { label: "SIC",          color: "#c4b5fd" },  // violeta — nivel de arriba
+  op:  { label: "OP",           color: "#7dd3fc" },  // celeste — planilla OP
+  tx:  { label: "Movimientos",  color: "#86efac" },  // verde — transacciones reales
+  cat: { label: "Matrícula",    color: "#fcd34d" },  // ámbar — catálogo (transversal)
+};
+
 // ─── Selector de columnas (mostrar/ocultar + reordenar) ──────────────────────
 // No borra datos: solo cambia qué columnas se ven y en qué orden. Persistido
 // aparte de colWidths para no perder los anchos guardados al tocar esto.
 
-interface ColMeta { key: string; label: string }
+interface ColMeta { key: string; label: string; group: ColGroup }
 
 function ColumnsMenu({
   cols, order, hidden, onToggle, onReorder, onReset,
@@ -85,7 +99,8 @@ function ColumnsMenu({
   const orderedCols = order.map((k) => byKey.get(k)).filter((c): c is ColMeta => !!c);
   const visibleCount = order.length - hidden.size;
 
-  const handleDrop = (targetKey: string) => {
+  const handleDrop = (e: DragEvent<HTMLDivElement>, targetKey: string) => {
+    e.preventDefault();
     const from = dragKey.current;
     setDragOverKey(null);
     if (!from || from === targetKey) return;
@@ -128,7 +143,7 @@ function ColumnsMenu({
             padding: 6,
           }}
         >
-          <div className="flex items-center justify-between px-2 pt-1 pb-2">
+          <div className="flex items-center justify-between px-2 pt-1 pb-1.5">
             <span className="text-[11px] uppercase tracking-wide" style={{ color: "oklch(0.55 0 0)" }}>
               Mostrar y ordenar
             </span>
@@ -140,6 +155,16 @@ function ColumnsMenu({
               Restablecer
             </button>
           </div>
+          {/* Leyenda de colores: de qué tabla sale cada columna, para agrupar
+              por jerarquía (SIC → OP → Movimientos) al arrastrar. */}
+          <div className="flex items-center flex-wrap gap-x-2.5 gap-y-1 px-2 pb-2 mb-1" style={{ borderBottom: "1px solid oklch(1 0 0 / 0.06)" }}>
+            {(Object.keys(GROUP_META) as ColGroup[]).map((g) => (
+              <span key={g} className="inline-flex items-center gap-1" style={{ fontSize: 10.5, color: "oklch(0.55 0 0)" }}>
+                <span style={{ width: 7, height: 7, borderRadius: 2, background: GROUP_META[g].color, flexShrink: 0 }} />
+                {GROUP_META[g].label}
+              </span>
+            ))}
+          </div>
           {orderedCols.map((c) => {
             const isHidden = hidden.has(c.key);
             const isDragOver = dragOverKey === c.key;
@@ -147,10 +172,18 @@ function ColumnsMenu({
               <div
                 key={c.key}
                 draggable
-                onDragStart={() => { dragKey.current = c.key; }}
-                onDragOver={(e) => { e.preventDefault(); setDragOverKey(c.key); }}
+                onDragStart={(e) => {
+                  dragKey.current = c.key;
+                  // dataTransfer.setData es obligatorio para que el drag arranque
+                  // en Firefox — sin esto, dragstart dispara pero dragover/drop
+                  // nunca llegan y el arrastre queda muerto (Chrome lo tolera,
+                  // por eso pasaba desapercibido).
+                  e.dataTransfer.setData("text/plain", c.key);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverKey(c.key); }}
                 onDragLeave={() => setDragOverKey((k) => (k === c.key ? null : k))}
-                onDrop={() => handleDrop(c.key)}
+                onDrop={(e) => handleDrop(e, c.key)}
                 onDragEnd={() => { dragKey.current = null; setDragOverKey(null); }}
                 className="flex items-center gap-2 px-2 py-1.5 rounded-[7px] cursor-grab active:cursor-grabbing select-none"
                 style={{
@@ -159,6 +192,10 @@ function ColumnsMenu({
                 }}
               >
                 <GripVertical className="w-3.5 h-3.5 shrink-0" style={{ color: "oklch(0.45 0 0)" }} />
+                <span
+                  title={GROUP_META[c.group].label}
+                  style={{ width: 7, height: 7, borderRadius: 2, background: GROUP_META[c.group].color, flexShrink: 0 }}
+                />
                 <button
                   onClick={() => onToggle(c.key)}
                   className="shrink-0 inline-flex items-center justify-center"
@@ -225,33 +262,34 @@ function EstadoPill({ estado }: { estado: string | null }) {
 interface ColDef {
   key:     keyof BusquedaRow;
   label:   string;
+  group:   ColGroup;    // de qué tabla sale — colorea el header y el panel de columnas
   num?:    boolean;
   mono?:   boolean;
   render?: (r: BusquedaRow) => ReactNode;
 }
 
-// Todas las columnas de las dos fuentes, agrupadas: matrícula → compra →
-// cantidades → fechas y estados. Se muestran todas; el ancho es ajustable y
-// la tabla scrollea en horizontal.
+// Todas las columnas de las cuatro fuentes, agrupadas: SIC → matrícula (eje
+// transversal) → compra → cantidades → fechas y estados → movimientos. Se
+// muestran todas; el ancho es ajustable y la tabla scrollea en horizontal.
 const COLS: ColDef[] = [
-  // ── Matrícula ──
-  { key: "articulo",           label: "Matrícula",    mono: true },
-  { key: "descripcion",        label: "Descripción" },
-  { key: "tipo",               label: "Tipo",         render: (r) => <TipoPill tipo={r.tipo} /> },
-  { key: "mat_serv",           label: "Mat/Serv cat." },
-  { key: "estado_matricula",   label: "Estado",       render: (r) => <EstadoPill estado={r.estado_matricula} /> },
-  { key: "unidad_medida",      label: "UDM" },
+  // ── Matrícula (catálogo — eje transversal) ──
+  { key: "articulo",           label: "Matrícula",    group: "cat", mono: true },
+  { key: "descripcion",        label: "Descripción",  group: "cat" },
+  { key: "tipo",               label: "Tipo",         group: "cat", render: (r) => <TipoPill tipo={r.tipo} /> },
+  { key: "mat_serv",           label: "Mat/Serv cat.", group: "cat" },
+  { key: "estado_matricula",   label: "Estado",       group: "cat", render: (r) => <EstadoPill estado={r.estado_matricula} /> },
+  { key: "unidad_medida",      label: "UDM",          group: "cat" },
 
   // ── SIC (el nivel de arriba de la OP) ──
-  { key: "numero_sic",         label: "SIC",          mono: true },
-  { key: "sic_linea",          label: "Línea SIC",    mono: true },
-  { key: "sic_cantidad",       label: "Cant. SIC",    num: true },
-  { key: "sic_udm",            label: "UDM SIC" },
-  { key: "sic_preparador",     label: "Preparador" },
+  { key: "numero_sic",         label: "SIC",          group: "sic", mono: true },
+  { key: "sic_linea",          label: "Línea SIC",    group: "sic", mono: true },
+  { key: "sic_cantidad",       label: "Cant. SIC",    group: "sic", num: true },
+  { key: "sic_udm",            label: "UDM SIC",      group: "sic" },
+  { key: "sic_preparador",     label: "Preparador",   group: "sic" },
   {
     // Puede venir como fecha ISO (import nuevo) o como toString() de Date
     // (import viejo) — se muestra normalizada en los dos casos.
-    key: "sic_fecha_creacion", label: "F. SIC", mono: true,
+    key: "sic_fecha_creacion", label: "F. SIC", group: "sic", mono: true,
     render: (r) => {
       if (!r.sic_fecha_creacion) return "";
       const iso = /^\d{4}-\d{2}-\d{2}/.exec(r.sic_fecha_creacion);
@@ -263,15 +301,15 @@ const COLS: ColDef[] = [
     },
   },
 
-  // ── Compra ──
-  { key: "relacion",           label: "Relación",     mono: true },
-  { key: "numero_op",          label: "OP",           mono: true },
-  { key: "linea",              label: "Línea",        mono: true },
+  // ── Compra (planilla OP) ──
+  { key: "relacion",           label: "Relación",     group: "op", mono: true },
+  { key: "numero_op",          label: "OP",           group: "op", mono: true },
+  { key: "linea",              label: "Línea",        group: "op", mono: true },
   {
     // «1/2» = envío 1 de los 2 que tiene esa línea. Deja ver de una que las
     // filas hermanas son otros envíos de la MISMA línea y que por eso comparten
     // los totales de movimientos.
-    key: "envio", label: "Envío", mono: true,
+    key: "envio", label: "Envío", group: "op", mono: true,
     render: (r) => {
       if (!r.envio) return "";
       if (!r.envios_linea || r.envios_linea <= 1) return r.envio;
@@ -283,15 +321,15 @@ const COLS: ColDef[] = [
       );
     },
   },
-  { key: "proveedor",          label: "Proveedor" },
-  { key: "zona",               label: "Zona" },
+  { key: "proveedor",          label: "Proveedor",    group: "op" },
+  { key: "zona",               label: "Zona",         group: "op" },
 
-  // ── Cantidades ──
-  { key: "cantidad",           label: "Cantidad",     num: true },
-  { key: "cantidad_recibida",  label: "Recibida",     num: true },
-  { key: "ctd_aceptada",       label: "Aceptada",     num: true },
+  // ── Cantidades (planilla OP) ──
+  { key: "cantidad",           label: "Cantidad",     group: "op", num: true },
+  { key: "cantidad_recibida",  label: "Recibida",     group: "op", num: true },
+  { key: "ctd_aceptada",       label: "Aceptada",     group: "op", num: true },
   {
-    key: "pendiente", label: "Pendiente", num: true,
+    key: "pendiente", label: "Pendiente", group: "op", num: true,
     render: (r) => {
       if (r.pendiente == null || r.fuente === "catalogo") return "";
       const pend = Number(r.pendiente);
@@ -303,40 +341,40 @@ const COLS: ColDef[] = [
     },
   },
   {
-    key: "cantidad_vencida", label: "Vencida", num: true,
+    key: "cantidad_vencida", label: "Vencida", group: "op", num: true,
     render: (r) => {
       if (r.cantidad_vencida == null) return "";
       const v = Number(r.cantidad_vencida);
       return <span style={{ color: v > 0 ? "#fca5a5" : undefined, fontWeight: v > 0 ? 600 : 400 }}>{fmtNum(v)}</span>;
     },
   },
-  { key: "cantidad_rechazada", label: "Rechazada",    num: true },
-  { key: "cantidad_facturada", label: "Facturada",    num: true },
-  { key: "cantidad_cancelada", label: "Cancelada",    num: true },
+  { key: "cantidad_rechazada", label: "Rechazada",    group: "op", num: true },
+  { key: "cantidad_facturada", label: "Facturada",    group: "op", num: true },
+  { key: "cantidad_cancelada", label: "Cancelada",    group: "op", num: true },
 
-  // ── Fechas y estados ──
-  { key: "fecha_creacion",     label: "F. creación",  mono: true },
-  { key: "fecha_pactada",      label: "F. pactada",   mono: true },
-  { key: "estado_autorizacion", label: "Autorización" },
-  { key: "estado_cierre",      label: "Cierre" },
+  // ── Fechas y estados (planilla OP) ──
+  { key: "fecha_creacion",     label: "F. creación",  group: "op", mono: true },
+  { key: "fecha_pactada",      label: "F. pactada",   group: "op", mono: true },
+  { key: "estado_autorizacion", label: "Autorización", group: "op" },
+  { key: "estado_cierre",      label: "Cierre",       group: "op" },
 
   // ── Movimientos reales (transacciones) ──
   // Rotuladas «(mov.)» a propósito: son totales POR LÍNEA, no por envío. Si la
   // línea tiene varios envíos, todas sus filas repiten el mismo total.
-  { key: "tx_recibido",     label: "Recibido (mov.)",  num: true },
-  { key: "tx_aceptado",     label: "Aceptado (mov.)",  num: true },
-  { key: "tx_entregado",    label: "Entregado (mov.)", num: true },
+  { key: "tx_recibido",     label: "Recibido (mov.)",  group: "tx", num: true },
+  { key: "tx_aceptado",     label: "Aceptado (mov.)",  group: "tx", num: true },
+  { key: "tx_entregado",    label: "Entregado (mov.)", group: "tx", num: true },
   {
-    key: "tx_devoluciones", label: "Devoluc. (mov.)", num: true,
+    key: "tx_devoluciones", label: "Devoluc. (mov.)", group: "tx", num: true,
     render: (r) => {
       if (r.tx_devoluciones == null) return "";
       const v = Number(r.tx_devoluciones);
       return <span style={{ color: v > 0 ? "#fca5a5" : undefined, fontWeight: v > 0 ? 600 : 400 }}>{fmtNum(v)}</span>;
     },
   },
-  { key: "tx_movimientos",  label: "N° mov.",     num: true },
-  { key: "tx_primera_fecha", label: "1er mov.",   mono: true, render: (r) => fmtFechaISO(r.tx_primera_fecha) },
-  { key: "tx_ultima_fecha",  label: "Últ. mov.",  mono: true, render: (r) => fmtFechaISO(r.tx_ultima_fecha) },
+  { key: "tx_movimientos",  label: "N° mov.",     group: "tx", num: true },
+  { key: "tx_primera_fecha", label: "1er mov.",   group: "tx", mono: true, render: (r) => fmtFechaISO(r.tx_primera_fecha) },
+  { key: "tx_ultima_fecha",  label: "Últ. mov.",  group: "tx", mono: true, render: (r) => fmtFechaISO(r.tx_ultima_fecha) },
 ];
 
 const COLWIDTHS_KEY = "buscador-colwidths";
@@ -384,7 +422,7 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
 const COLUMNS_KEY = "buscador-columns";
 const PINNED_KEY   = "buscador-pinned";
 const DEFAULT_COL_ORDER = COLS.map((c) => c.key as string);
-const COL_META: ColMeta[] = COLS.map((c) => ({ key: c.key as string, label: c.label }));
+const COL_META: ColMeta[] = COLS.map((c) => ({ key: c.key as string, label: c.label, group: c.group }));
 
 type SortDir = "asc" | "desc";
 
@@ -764,6 +802,7 @@ export function BuscadorSection() {
                         <th
                           key={c.key}
                           onClick={() => handleSort(c.key)}
+                          title={`Fuente: ${GROUP_META[c.group].label}`}
                           className="relative"
                           style={{
                             padding: "8px 12px",
@@ -774,6 +813,10 @@ export function BuscadorSection() {
                             position: "sticky", top: 0, zIndex: 2,
                             background: STICKY_BG,
                             borderBottom: "1px solid hsl(var(--border))",
+                            // Franja de color arriba del header: de qué tabla sale la
+                            // columna (SIC / OP / Movimientos / Matrícula). boxShadow
+                            // inset no altera el layout, a diferencia de un borderTop.
+                            boxShadow: `inset 0 2.5px 0 0 ${GROUP_META[c.group].color}`,
                             whiteSpace: "nowrap",
                           }}
                         >
