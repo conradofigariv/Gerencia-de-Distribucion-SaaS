@@ -353,8 +353,8 @@ const COLS: ColDef[] = [
   { key: "cantidad_cancelada", label: "Cancelada",    group: "op", num: true },
 
   // ── Fechas y estados (planilla OP) ──
-  { key: "fecha_creacion",     label: "F. creación",  group: "op", mono: true },
-  { key: "fecha_pactada",      label: "F. pactada",   group: "op", mono: true },
+  { key: "fecha_creacion",     label: "F. creación",  group: "op", mono: true, render: (r) => fmtFechaISO(r.fecha_creacion) },
+  { key: "fecha_pactada",      label: "F. pactada",   group: "op", mono: true, render: (r) => fmtFechaISO(r.fecha_pactada) },
   { key: "estado_autorizacion", label: "Autorización", group: "op" },
   { key: "estado_cierre",      label: "Cierre",       group: "op" },
 
@@ -660,9 +660,9 @@ export function BuscadorSection() {
             fila para no gastar alto vertical. */}
         <div className="flex items-center gap-2 flex-wrap">
           <div
-            className="flex items-center gap-2 px-3 flex-1"
+            className="flex items-center gap-2 px-3"
             style={{
-              height: TOOLBAR_H, minWidth: 240, borderRadius: 9,
+              height: TOOLBAR_H, width: 220, flexShrink: 0, borderRadius: 9,
               background: "oklch(0.16 0.005 270)",
               border: `1px solid ${query ? "oklch(0.55 0.20 295 / 0.5)" : "oklch(1 0 0 / 0.07)"}`,
               boxShadow: query ? "0 0 0 3px oklch(0.55 0.20 295 / 0.12)" : "none",
@@ -676,7 +676,7 @@ export function BuscadorSection() {
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="SIC, OP, matrícula, preparador, proveedor, zona…"
+              placeholder="SIC, OP, matrícula, preparador…"
               className="flex-1 bg-transparent border-none outline-none text-[13.5px] text-foreground placeholder:text-muted-foreground/45"
             />
             {query && (
