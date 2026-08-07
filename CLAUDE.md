@@ -77,6 +77,7 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
 | `transformadores-consumo` | transformadores-consumo.tsx | Stock de Transformadores | Consumo promedio mensual y anual, filtrable por tipo/potencia/sector | [`docs/consumo-transformadores.md`](docs/consumo-transformadores.md) |
 | `sic-diagrama` | sic-diagrama.tsx | Proceso SIC - SIGA | Diagrama de flujo neon + seguimiento de SICs | [`docs/sic-diagrama.md`](docs/sic-diagrama.md) |
 | `informe-tecnico` | informe-tecnico.tsx | Licitaciones | Análisis de ofertas y adjudicación por renglón | [`docs/informe-tecnico.md`](docs/informe-tecnico.md) |
+| `buscador` | buscador.tsx | Herramientas | Búsqueda global + pestañas de seguimiento por usuario | [`docs/buscador.md`](docs/buscador.md) |
 | `settings` | settings.tsx | (raíz) | Gestión de usuarios, perfiles, nivel de acceso | — |
 
 ### Tablas Supabase por sección
@@ -97,6 +98,7 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
 | transformadores-consumo | `consumo_transformadores` (lectura) |
 | sic-diagrama | `sic_diagrama_layout`, `sic_diagrama_active` — SQL en [`docs/sic-diagrama.md`](docs/sic-diagrama.md) |
 | informe-tecnico | `licitaciones`, `licitacion_renglones`, `licitacion_items`, `licitacion_oferentes`, `licitacion_ofertas`, `licitacion_evaluaciones_tecnicas`, `licitacion_adjudicaciones`, `matriculas` — SQL en [`docs/informe-tecnico.md`](docs/informe-tecnico.md) |
+| buscador | `busqueda_index` (lectura), `buscador_tabs`, `buscador_tab_filas` — SQL en `supabase/buscador_tabs.sql` y doc completo en [`docs/buscador.md`](docs/buscador.md) |
 | settings | `profiles` |
 | recordatorios | `reminder_config` |
 
