@@ -13,8 +13,8 @@ import { buscar, reconstruirIndice, estadoIndice, rowKey, type BusquedaRow } fro
 import { getPreference, setPreference } from "@/lib/userPreferences";
 import {
   fetchTabs, createTab, renameTab, deleteTab, fetchTabFilas, addFilas,
-  updateFilaDatos, deleteFilas, reorderFilas,
-  TRACK_KEYS, ESTADOS, type BuscadorTab, type TabFila,
+  updateFilaDatos, deleteFilas, reorderFilas, updateTabConfig,
+  TRACK_KEYS, ESTADOS, type BuscadorTab, type TabFila, type TabConfig,
 } from "@/lib/buscadorTabs";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -482,6 +482,10 @@ export function BuscadorSection() {
   // Agrupar las filas de la pestaña por matrícula, con desplegables.
   const [agrupar, setAgrupar]     = useState(true);
   const [colapsados, setColapsados] = useState<Set<string>>(new Set());
+  // Al agrupar, plegar las columnas cuyo valor se repite igual en todo el grupo
+  // (descripción, udm, mat/serv…): ya están en el encabezado de la matrícula y
+  // solo empujan fuera de pantalla a línea / envío / cantidades.
+  const [compactar, setCompactar] = useState(true);
   const dragFilaId = useRef<string | null>(null);
   const [dragOverFilaId, setDragOverFilaId] = useState<string | null>(null);
 
@@ -497,6 +501,17 @@ export function BuscadorSection() {
   const [colOrder, setColOrder]   = useState<string[]>(DEFAULT_COL_ORDER);
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
   const colOrderLoaded = useRef(false);
+
+  // Layout de columnas POR PESTAÑA (buscador_tabs.config). El índice maestro
+  // sigue usando la preferencia global de arriba; una lista de seguimiento casi
+  // nunca quiere las mismas 37 columnas que la vista maestra, así que cada
+  // pestaña guarda su propio orden / ocultas / anchos.
+  const [tabLayouts, setTabLayouts] = useState<Record<string, TabConfig>>({});
+  // Un timer POR pestaña: con uno solo compartido, tocar A y cambiar enseguida
+  // a B cancelaba el guardado pendiente de A y se perdía su layout.
+  const saveTabCfgTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const isTabMode = activeTab !== null;
 
   // Usuario actual (para preferencias en Supabase).
   useEffect(() => {
@@ -526,17 +541,58 @@ export function BuscadorSection() {
       setPreference(userId, COLWIDTHS_KEY, colWidths);
     }, 1000);
   }, [colWidths, userId]);
+  // Snapshot del layout para los handlers que viven fuera del ciclo de render
+  // (el listener de resize se registra una sola vez) y para no arrastrar medio
+  // componente en las deps de cada callback.
+  const layoutRef = useRef({ tabLayouts, colOrder, hiddenCols, colWidths, activeTab });
+  useEffect(() => {
+    layoutRef.current = { tabLayouts, colOrder, hiddenCols, colWidths, activeTab };
+  });
+
+  /**
+   * Escribe orden / ocultas / anchos en el scope que corresponde: la pestaña
+   * activa si hay una, la preferencia global si estamos en el índice maestro.
+   *
+   * La primera vez que se toca una pestaña hereda lo que se está viendo (la
+   * config del maestro) en lugar de saltar a los defaults — si no, cambiar el
+   * ancho de una columna haría reaparecer de golpe las 37.
+   */
+  const patchLayout = useCallback((patch: TabConfig) => {
+    const s = layoutRef.current;
+    if (s.activeTab) {
+      const id = s.activeTab;
+      const base = s.tabLayouts[id] ?? {};
+      const next: TabConfig = {
+        order:  patch.order  ?? base.order  ?? s.colOrder,
+        hidden: patch.hidden ?? base.hidden ?? [...s.hiddenCols],
+        widths: patch.widths ?? base.widths ?? s.colWidths,
+      };
+      setTabLayouts((p) => ({ ...p, [id]: next }));
+      clearTimeout(saveTabCfgTimers.current[id]);
+      saveTabCfgTimers.current[id] = setTimeout(() => {
+        delete saveTabCfgTimers.current[id];
+        updateTabConfig(id, next).catch(() => { /* se reintenta en el próximo cambio */ });
+      }, 1000);
+    } else {
+      if (patch.order)  setColOrder(patch.order);
+      if (patch.hidden) setHiddenCols(new Set(patch.hidden));
+      if (patch.widths) setColWidths(patch.widths);
+    }
+  }, []);
+
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!resizingRef.current) return;
       const { col, startX, startWidth } = resizingRef.current;
-      setColWidths((p) => ({ ...p, [col]: Math.max(50, startWidth + e.clientX - startX) }));
+      const s = layoutRef.current;
+      const base = (s.activeTab ? s.tabLayouts[s.activeTab]?.widths : null) ?? s.colWidths;
+      patchLayout({ widths: { ...base, [col]: Math.max(50, startWidth + e.clientX - startX) } });
     };
     const onUp = () => { resizingRef.current = null; };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
     return () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
-  }, []);
+  }, [patchLayout]);
 
   // Orden/visibilidad persistidos. Se validan contra COLS por si el set de
   // columnas cambia con el tiempo: las claves desconocidas se descartan y las
@@ -578,29 +634,44 @@ export function BuscadorSection() {
   }, [colOrder, hiddenCols, userId]);
 
   const toggleColHidden = useCallback((key: string) => {
-    setHiddenCols((prev) => {
-      const s = new Set(prev);
-      if (s.has(key)) s.delete(key); else s.add(key);
-      return s;
-    });
-  }, []);
+    const s = layoutRef.current;
+    const actual = (s.activeTab ? s.tabLayouts[s.activeTab]?.hidden : null) ?? [...s.hiddenCols];
+    const next = new Set(actual);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    patchLayout({ hidden: [...next] });
+  }, [patchLayout]);
+
   const resetColumnas = useCallback(() => {
-    setColOrder(DEFAULT_COL_ORDER);
-    setHiddenCols(new Set());
     // También los anchos: si no, un ancho viejo guardado sigue cortando la
     // etiqueta de una columna que después se renombró más larga.
-    setColWidths(DEFAULT_COL_WIDTHS);
-  }, []);
+    patchLayout({ order: DEFAULT_COL_ORDER, hidden: [], widths: DEFAULT_COL_WIDTHS });
+  }, [patchLayout]);
+
+  const setOrden = useCallback((o: string[]) => patchLayout({ order: o }), [patchLayout]);
+
+  // ── Layout efectivo ──
+  // El del maestro o el de la pestaña activa, según dónde estemos. Una pestaña
+  // sin config propia todavía muestra la del maestro (config = {} en la DB).
+  const tabCfg = isTabMode && activeTab ? tabLayouts[activeTab] : undefined;
+  const effOrder = tabCfg?.order ?? colOrder;
+  const effHidden = useMemo(
+    () => (tabCfg?.hidden ? new Set(tabCfg.hidden) : hiddenCols),
+    [tabCfg?.hidden, hiddenCols]
+  );
+  const effWidths = useMemo(
+    () => (tabCfg?.widths ? { ...DEFAULT_COL_WIDTHS, ...tabCfg.widths } : colWidths),
+    [tabCfg?.widths, colWidths]
+  );
 
   // Columnas realmente visibles, en el orden elegido — todo lo que se
   // renderiza (tabla + CSV) sale de acá; COLS completo sigue existiendo para
   // el menú de columnas y no se pierde ningún dato.
   const visibleCols = useMemo(
-    () => colOrder
-      .filter((k) => !hiddenCols.has(k))
+    () => effOrder
+      .filter((k) => !effHidden.has(k))
       .map((k) => COLS.find((c) => c.key === k))
       .filter((c): c is ColDef => !!c),
-    [colOrder, hiddenCols]
+    [effOrder, effHidden]
   );
 
   // Filas fijadas arriba (misma función que en Stock por Zona). Se guarda la
@@ -634,6 +705,20 @@ export function BuscadorSection() {
       .then(setTabs)
       .catch((e) => toast.error(`No se pudieron cargar las pestañas: ${e.message}`));
   }, [userId]);
+
+  // Config de columnas que ya trae cada pestaña. Solo se siembran las que
+  // todavía no están en memoria: un refetch tras renombrar/crear no debe pisar
+  // un layout que el usuario acaba de tocar y sigue en vuelo hacia la DB.
+  useEffect(() => {
+    setTabLayouts((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const t of tabs) {
+        if (!(t.id in next)) { next[t.id] = t.config ?? {}; changed = true; }
+      }
+      return changed ? next : prev;
+    });
+  }, [tabs]);
 
   // Al cambiar de pestaña se traen sus filas. El índice maestro (null) no carga nada.
   useEffect(() => {
@@ -673,6 +758,10 @@ export function BuscadorSection() {
     if (!window.confirm(`¿Borrar la pestaña «${tab.nombre}» y todas sus filas?`)) return;
     try {
       await deleteTab(tab.id);
+      // Cortar un guardado de layout en vuelo: la pestaña ya no existe.
+      clearTimeout(saveTabCfgTimers.current[tab.id]);
+      delete saveTabCfgTimers.current[tab.id];
+      setTabLayouts((p) => { const n = { ...p }; delete n[tab.id]; return n; });
       setTabs((p) => p.filter((t) => t.id !== tab.id));
       setActiveTab((cur) => (cur === tab.id ? null : cur));
       toast.success("Pestaña borrada.");
@@ -849,7 +938,6 @@ export function BuscadorSection() {
   // Un solo shape para los dos modos, así la tabla no se duplica: en el índice
   // maestro la data es la BusquedaRow; en una pestaña, el `datos` de la fila
   // copiada (que además trae las claves de seguimiento).
-  const isTabMode = activeTab !== null;
 
   // Dentro de una pestaña el buscador filtra las filas que ya están copiadas,
   // no vuelve a pegarle al índice.
@@ -934,6 +1022,47 @@ export function BuscadorSection() {
     () => new Set(displayRows.map((r) => String(r.data.articulo_key ?? r.data.articulo ?? "—"))).size,
     [displayRows]
   );
+
+  /**
+   * Columnas que valen lo mismo en todas las filas de cada grupo. Al agrupar por
+   * matrícula son redundantes por construcción (matrícula, descripción, udm,
+   * material/servicio…) y son justo las anchas, así que empujan fuera de la
+   * pantalla lo que sí distingue una fila de otra: línea, envío y cantidades.
+   *
+   * Solo se miran los grupos de 2+ filas: en uno de una sola fila toda columna
+   * es trivialmente constante y esconderíamos la tabla entera.
+   */
+  const colsRedundantes = useMemo(() => {
+    const out = new Set<string>();
+    if (!isTabMode || !agrupar) return out;
+
+    const grupos = new Map<string, Record<string, unknown>[]>();
+    for (const r of displayRows) {
+      const gk = String(r.data.articulo_key ?? r.data.articulo ?? "—");
+      if (!grupos.has(gk)) grupos.set(gk, []);
+      grupos.get(gk)!.push(r.data);
+    }
+    const conVarias = [...grupos.values()].filter((g) => g.length > 1);
+    if (!conVarias.length) return out;
+
+    for (const c of visibleCols) {
+      const constante = conVarias.every((g) => {
+        const v0 = String(g[0][c.key] ?? "");
+        return g.every((d) => String(d[c.key] ?? "") === v0);
+      });
+      if (constante) out.add(c.key as string);
+    }
+    return out;
+  }, [isTabMode, agrupar, displayRows, visibleCols]);
+
+  // Columnas que finalmente se dibujan. El compactado es solo una ayuda de
+  // pantalla — no toca la config de la pestaña ni el CSV, que sigue exportando
+  // todo lo que el usuario eligió ver.
+  const renderCols = useMemo(() => {
+    if (!compactar || !colsRedundantes.size) return visibleCols;
+    const rest = visibleCols.filter((c) => !colsRedundantes.has(c.key as string));
+    return rest.length ? rest : visibleCols;   // nunca dejar la tabla sin columnas
+  }, [visibleCols, colsRedundantes, compactar]);
 
   // Exporta las columnas visibles, en el orden elegido (igual a lo que se ve
   // en pantalla). Las columnas ocultas no se pierden — siguen en el índice.
@@ -1085,10 +1214,10 @@ export function BuscadorSection() {
 
           <ColumnsMenu
             cols={COL_META}
-            order={colOrder}
-            hidden={hiddenCols}
+            order={effOrder}
+            hidden={effHidden}
             onToggle={toggleColHidden}
-            onReorder={setColOrder}
+            onReorder={setOrden}
             onReset={resetColumnas}
           />
 
@@ -1119,6 +1248,28 @@ export function BuscadorSection() {
                   style={{ height: TOOLBAR_H, width: 32, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, color: "oklch(0.6 0 0)", cursor: "pointer" }}
                 >
                   {colapsados.size ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                </button>
+              )}
+              {agrupar && colsRedundantes.size > 0 && (
+                <button
+                  onClick={() => setCompactar((v) => !v)}
+                  title={
+                    compactar
+                      ? `${colsRedundantes.size} columna(s) plegadas por repetirse igual en todo el grupo: ${
+                          [...colsRedundantes].map((k) => COLS.find((c) => c.key === k)?.label ?? k).join(", ")
+                        }. Click para volver a mostrarlas.`
+                      : "Plegar las columnas que se repiten igual dentro de cada matrícula"
+                  }
+                  className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors"
+                  style={{
+                    height: TOOLBAR_H,
+                    background: compactar ? "oklch(0.28 0.02 295)" : "oklch(0.16 0.005 270)",
+                    border: `1px solid ${compactar ? "oklch(0.55 0.20 295 / 0.45)" : "oklch(1 0 0 / 0.07)"}`,
+                    color: compactar ? "oklch(0.92 0 0)" : "oklch(0.65 0 0)", cursor: "pointer",
+                  }}
+                >
+                  <Columns3 className="w-3.5 h-3.5" />
+                  Compactar {colsRedundantes.size}
                 </button>
               )}
             </div>
@@ -1293,8 +1444,8 @@ export function BuscadorSection() {
                       En el índice maestro lleva el check de selección y el pin;
                       dentro de una pestaña, el handle de arrastre y el borrar. */}
                   <col style={{ width: 58 }} />
-                  {visibleCols.map((c) => (
-                    <col key={c.key} style={{ width: colWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] }} />
+                  {renderCols.map((c) => (
+                    <col key={c.key} style={{ width: effWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] }} />
                   ))}
                   {isTabMode && TRACK_COLS.map((c) => (
                     <col key={c.key} style={{ width: c.width }} />
@@ -1324,7 +1475,7 @@ export function BuscadorSection() {
                         />
                       )}
                     </th>
-                    {visibleCols.map((c) => {
+                    {renderCols.map((c) => {
                       const active = sortCol === c.key;
                       const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
                       return (
@@ -1355,7 +1506,7 @@ export function BuscadorSection() {
                           </span>
                           <ResizeHandle
                             onStart={(e) => {
-                              resizingRef.current = { col: c.key, startX: e.clientX, startWidth: colWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] };
+                              resizingRef.current = { col: c.key, startX: e.clientX, startWidth: effWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] };
                             }}
                           />
                         </th>
@@ -1402,7 +1553,7 @@ export function BuscadorSection() {
                       return (
                         <tr key={item.key}>
                           <td
-                            colSpan={1 + visibleCols.length + (isTabMode ? TRACK_COLS.length : 0)}
+                            colSpan={1 + renderCols.length + (isTabMode ? TRACK_COLS.length : 0)}
                             style={{
                               padding: 0,
                               background: "oklch(0.245 0.008 270)",
@@ -1543,7 +1694,7 @@ export function BuscadorSection() {
 
                         {/* Columnas del índice. En una pestaña son copias, así
                             que se editan con doble click. */}
-                        {visibleCols.map((c) => {
+                        {renderCols.map((c) => {
                           const editando = isTabMode && editing?.filaId === filaId && editing?.key === c.key;
                           return (
                             <td
