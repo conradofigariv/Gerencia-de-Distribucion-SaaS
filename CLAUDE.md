@@ -85,9 +85,9 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
 | Sección | Tabla(s) |
 |---|---|
 | servicios-planillas | `planillas_op`, `planillas_qw`, `planillas_matriculas` |
-| servicios-carga | `filas_manuales` |
-| servicios-tabla | `filas_servicios` |
-| servicios-resumen | `filas_servicios` (lectura) |
+| servicios-carga | `filas_manuales` (staging de armado) → escribe en `seguimiento` |
+| servicios-tabla | `seguimiento` |
+| servicios-resumen | `seguimiento` (lectura + edición inline), `matriculas` + `stock_article_families` (para el tipo Material/Servicio), `buscador_tabs` + `buscador_tab_filas` (filtro por pestaña) |
 | matriculas | `matriculas` |
 | matriculas-familias | `familias`, `familia_matriculas`, `matricula_tipo`, `matriculas` (lectura del catálogo) — SQL en [`docs/matriculas-familias.md`](docs/matriculas-familias.md) |
 | stock-zona | `stock_uploads`, `familias` + `familia_matriculas` + `matricula_tipo` (lectura para el filtro), `matriculas` (lectura del catálogo) — SQL en [`docs/stock-zona.md`](docs/stock-zona.md) |

@@ -135,6 +135,36 @@ export async function addFilas(
   return (data ?? []) as TabFila[];
 }
 
+/**
+ * Las matrículas distintas de una pestaña, normalizadas.
+ *
+ * Se usa para filtrar otras secciones por «lo que puse en esta pestaña» — hoy
+ * el Resumen de Control de servicios. Trae SOLO las dos claves que hacen falta
+ * en vez del `datos` entero: una pestaña de cientos de filas pesa varios MB de
+ * jsonb y acá alcanza con la lista de códigos.
+ *
+ * Es deliberado usar la pestaña como conjunto de matrículas y no como fuente de
+ * números: las filas copiadas quedan congeladas al momento de agregarlas, pero
+ * un código de matrícula no envejece, así que este cruce no arrastra ese
+ * problema.
+ */
+export async function fetchTabMatriculas(tabId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("buscador_tab_filas")
+    .select("ak:datos->>articulo_key, a:datos->>articulo")
+    .eq("tab_id", tabId);
+  if (error) throw new Error(error.message);
+
+  const out = new Set<string>();
+  for (const r of (data ?? []) as unknown as { ak: string | null; a: string | null }[]) {
+    // articulo_key ya viene normalizado del índice; `articulo` es el crudo del
+    // Excel ("00009411.0") y necesita el mismo trim que gd_norm_articulo().
+    const k = (r.ak ?? r.a ?? "").trim().replace(/\.0+$/, "");
+    if (k) out.add(k);
+  }
+  return [...out];
+}
+
 /** Guarda el `datos` completo de una fila (una celda editada ya viene aplicada). */
 export async function updateFilaDatos(id: string, datos: Record<string, unknown>): Promise<void> {
   const { error } = await supabase

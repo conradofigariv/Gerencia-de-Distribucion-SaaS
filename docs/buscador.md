@@ -136,6 +136,30 @@ Botón "Al Buscador" en el panel de familia:
 
 ---
 
+---
+
+### Pestaña → Control de servicios
+
+`servicios-resumen` puede usar una pestaña como **universo de filtrado**: muestra
+solo las filas de `seguimiento` cuya `matricula` está en esa pestaña.
+
+- Helper: `fetchTabMatriculas(tabId)` — devuelve las matrículas distintas y
+  normalizadas. Selecciona solo `datos->>articulo_key` / `datos->>articulo`, no
+  el `datos` entero (una pestaña grande son varios MB de jsonb).
+- Punto de inserción: el `useMemo` de `baseRows` en `servicios-resumen.tsx`.
+  Todos los KPIs y la tabla derivan de ahí, así que el filtro se propaga solo.
+- **Reemplaza** al filtro Material/Servicio, no se suma: si además se filtrara
+  por tipo, una matrícula mal clasificada en el catálogo desaparecería sin
+  explicación. El filtro «Abierto» sigue aplicando aparte.
+- La pestaña se usa **solo como conjunto de matrículas**, nunca como fuente de
+  números. Por eso el congelamiento de las filas copiadas no afecta a este
+  cruce: un código de matrícula no envejece.
+- El join funciona porque `normArticulo` de `lib/busqueda.ts` y la de
+  `lib/tableroOp.ts` hacen lo mismo (`.trim().replace(/\.0+$/, "")`), igual que
+  `gd_norm_articulo()` en SQL.
+
+---
+
 ## Normalización y Claves
 
 ### `normArticulo(raw: string)`

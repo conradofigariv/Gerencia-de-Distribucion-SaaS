@@ -19,6 +19,7 @@ import {
   Pin,
   ChevronRight,
   ChevronDown,
+  Search,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
@@ -31,6 +32,7 @@ import {
 } from "@/lib/columnLabels";
 import { getMatriculasInfo, getFamilies, type ArticuloTipo } from "@/lib/stockFamilies";
 import { normArticulo } from "@/lib/tableroOp";
+import { fetchTabs, fetchTabMatriculas, type BuscadorTab } from "@/lib/buscadorTabs";
 
 // Scope de las etiquetas editables para esta sección.
 const LABELS_SCOPE = "servicios-resumen";
@@ -114,6 +116,49 @@ export function ServiciosResumenSection() {
   // Universo: tipo (servicios vs. todas) y estado de la OP (abierto), filtros independientes.
   const [soloServicios, setSoloServicios] = useState(true);
   const [filtroAbierto, setFiltroAbierto] = useState(true);
+
+  // ── Universo alternativo: una pestaña del Buscador ─────────────────────────
+  // Cuando hay pestaña elegida, su lista de matrículas REEMPLAZA al filtro
+  // material/servicio: el usuario ya decidió qué mirar al armar la pestaña, y
+  // filtrar además por tipo haría desaparecer sin explicación una matrícula mal
+  // clasificada en el catálogo. «Abierto» sigue aplicando aparte.
+  const [tabs, setTabs]                 = useState<BuscadorTab[]>([]);
+  const [filtroTabId, setFiltroTabId]   = useState<string | null>(null);
+  const [tabMatriculas, setTabMatriculas] = useState<Set<string> | null>(null);
+  const [loadingTabMats, setLoadingTabMats] = useState(false);
+  const [tabMenuOpen, setTabMenuOpen]   = useState(false);
+  const tabMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) return;
+      fetchTabs(data.user.id).then(setTabs).catch(() => { /* sin pestañas, el filtro no se ofrece */ });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!filtroTabId) { setTabMatriculas(null); return; }
+    setLoadingTabMats(true);
+    let cancelado = false;
+    fetchTabMatriculas(filtroTabId)
+      .then((mats) => { if (!cancelado) setTabMatriculas(new Set(mats)); })
+      .catch((e) => {
+        if (cancelado) return;
+        toast.error(`No se pudieron leer las matrículas de la pestaña: ${e.message}`);
+        setFiltroTabId(null);
+      })
+      .finally(() => { if (!cancelado) setLoadingTabMats(false); });
+    return () => { cancelado = true; };
+  }, [filtroTabId]);
+
+  useEffect(() => {
+    if (!tabMenuOpen) return;
+    const h = (e: MouseEvent) => { if (!tabMenuRef.current?.contains(e.target as Node)) setTabMenuOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [tabMenuOpen]);
+
+  const tabActiva = tabs.find((t) => t.id === filtroTabId) ?? null;
 
   // filtros: null = sin selección
   const [filtroVencer,   setFiltroVencer]   = useState<FiltroVencer>(null);
@@ -360,14 +405,21 @@ export function ServiciosResumenSection() {
     return tipoMap.get(raw) ?? tipoMap.get(normArticulo(raw)) ?? "";
   };
 
-  // ── Universo base: tipo (servicios/todas) y estado (abierto), combinables ──
+  // ── Universo base: tipo (servicios/todas) o pestaña, más estado (abierto) ──
+  // Todo el dashboard cuelga de acá: KPIs, tabla y agrupado por OP derivan de
+  // baseRows, así que filtrar en este único punto se propaga solo.
   const baseRows = useMemo(() => {
     let rows = allRows;
-    if (soloServicios && tipoMap.size > 0) rows = rows.filter(r => tipoOf(r.matricula) === "servicio");
+    if (tabMatriculas) {
+      // La pestaña manda: reemplaza al filtro material/servicio, no se suma.
+      rows = rows.filter(r => tabMatriculas.has(normArticulo(r.matricula)));
+    } else if (soloServicios && tipoMap.size > 0) {
+      rows = rows.filter(r => tipoOf(r.matricula) === "servicio");
+    }
     if (filtroAbierto) rows = rows.filter(r => isAbierto(r.estado));
     return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allRows, soloServicios, filtroAbierto, tipoMap]);
+  }, [allRows, soloServicios, filtroAbierto, tipoMap, tabMatriculas]);
 
   // KPIs fijos (Activos / Vencidos) sobre el universo base.
   const { activos, vencidos } = useMemo(() => {
@@ -421,7 +473,7 @@ export function ServiciosResumenSection() {
   }, [baseRows, filtroVencer, filtroConsumo, filtroActivos, filtroVencidos, pinned]);
 
   // Reinicia la paginación cuando cambia el conjunto mostrado.
-  useEffect(() => { setTablePage(0); }, [tableRows.length, soloServicios, filtroAbierto, groupByOp]);
+  useEffect(() => { setTablePage(0); }, [tableRows.length, soloServicios, filtroAbierto, groupByOp, filtroTabId]);
 
   // Alertas recientes (por vencer / alto consumo) sobre el universo base.
   const alertas = useMemo(() => {
@@ -599,10 +651,10 @@ export function ServiciosResumenSection() {
         <div className="flex items-center gap-2.5 flex-wrap">
           <div className="inline-flex items-center rounded-xl border border-border bg-card p-1 gap-1">
             <button
-              onClick={() => setSoloServicios(true)}
+              onClick={() => { setSoloServicios(true); setFiltroTabId(null); }}
               className={cn(
                 "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all",
-                soloServicios
+                soloServicios && !filtroTabId
                   ? "bg-accent text-accent-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground hover:bg-secondary"
               )}
@@ -611,10 +663,10 @@ export function ServiciosResumenSection() {
               <Wrench className="w-4 h-4" />Solo servicios
             </button>
             <button
-              onClick={() => setSoloServicios(false)}
+              onClick={() => { setSoloServicios(false); setFiltroTabId(null); }}
               className={cn(
                 "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all",
-                !soloServicios
+                !soloServicios && !filtroTabId
                   ? "bg-accent text-accent-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground hover:bg-secondary"
               )}
@@ -622,6 +674,61 @@ export function ServiciosResumenSection() {
             >
               <Layers className="w-4 h-4" />Todas
             </button>
+
+            {/* Tercer universo: las matrículas de una pestaña del Buscador. */}
+            {tabs.length > 0 && (
+              <div className="relative" ref={tabMenuRef}>
+                <button
+                  onClick={() => setTabMenuOpen(v => !v)}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all",
+                    filtroTabId
+                      ? "bg-accent text-accent-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  )}
+                  title="Filtrar por las matrículas de una pestaña del Buscador"
+                >
+                  {loadingTabMats
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <Search className="w-4 h-4" />}
+                  <span className="max-w-[160px] truncate">
+                    {tabActiva ? tabActiva.nombre : "Pestaña…"}
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+                </button>
+
+                {tabMenuOpen && (
+                  <div className="absolute left-0 top-full mt-1.5 z-50 min-w-[220px] rounded-xl border border-border bg-card p-1.5 shadow-xl">
+                    <p className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Pestañas del Buscador
+                    </p>
+                    {tabs.map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => { setFiltroTabId(t.id); setTabMenuOpen(false); }}
+                        className={cn(
+                          "w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm text-left transition-colors",
+                          t.id === filtroTabId
+                            ? "bg-accent/15 text-accent font-medium"
+                            : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                        )}
+                      >
+                        <Search className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{t.nombre}</span>
+                      </button>
+                    ))}
+                    {filtroTabId && (
+                      <button
+                        onClick={() => { setFiltroTabId(null); setTabMenuOpen(false); }}
+                        className="mt-1 w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm text-left text-muted-foreground hover:text-foreground hover:bg-secondary border-t border-border pt-2 transition-colors"
+                      >
+                        <XCircle className="w-3.5 h-3.5 shrink-0" />Quitar filtro
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <button
@@ -638,7 +745,10 @@ export function ServiciosResumenSection() {
           </button>
         </div>
         <p className="text-xs text-muted-foreground">
-          {soloServicios ? "Servicios (Mat/Serv = Servicio)" : "Todas las líneas"}
+          {tabActiva
+            ? <>Pestaña <span className="text-foreground font-medium">{tabActiva.nombre}</span>
+                {tabMatriculas && <> · {tabMatriculas.size.toLocaleString("es-AR")} matrícula{tabMatriculas.size === 1 ? "" : "s"}</>}</>
+            : soloServicios ? "Servicios (Mat/Serv = Servicio)" : "Todas las líneas"}
           {filtroAbierto && " · OP abierta"}
           {!loadingData && <> · <span className="text-foreground font-medium">{baseRows.length.toLocaleString("es-AR")}</span> líneas</>}
         </p>
