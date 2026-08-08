@@ -730,6 +730,15 @@ export function BuscadorSection() {
       .finally(() => setLoadingTab(false));
   }, [activeTab]);
 
+  // Cuando se cargan las filas, colapsar todas las matrículas por defecto.
+  useEffect(() => {
+    if (!isTabMode || tabFilas.length === 0) return;
+    const todasLasMatriculas = new Set(
+      tabFilas.map((f) => String(f.datos.articulo_key ?? f.datos.articulo ?? "—"))
+    );
+    setColapsados(todasLasMatriculas);
+  }, [isTabMode, tabFilas]);
+
   const handleCreateTab = useCallback(async () => {
     if (!userId) { toast.error("Iniciá sesión para crear pestañas."); return; }
     const nombre = window.prompt("Nombre de la pestaña:", "Seguimiento");
