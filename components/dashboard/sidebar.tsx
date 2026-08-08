@@ -75,7 +75,7 @@ type NavItemDef = NavLink | NavGroup;
 
 const navItems: NavItemDef[] = [
   { kind: "link", id: "buscador", label: "Buscador", icon: Search },
-  { kind: "link", id: "servicios-planillas", label: "Carga de Stock", icon: Layers },
+  { kind: "link", id: "servicios-planillas", label: "Carga de datos", icon: Layers },
   {
     kind: "group",
     id: "matriculas-group",
