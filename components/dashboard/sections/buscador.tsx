@@ -1105,6 +1105,22 @@ export function BuscadorSection() {
     }
   }, [tabFilas]);
 
+  /** Borra todas las filas de un grupo entero (una OP, una matrícula, una SIC) de una vez. */
+  const handleDeleteGrupo = useCallback(async (filaIds: string[], titulo: string) => {
+    if (!filaIds.length) return;
+    if (!window.confirm(`¿Quitar de la pestaña las ${filaIds.length} fila(s) de «${titulo}»?`)) return;
+    const backup = tabFilas;
+    const ids = new Set(filaIds);
+    setTabFilas((p) => p.filter((f) => !ids.has(f.id)));   // optimista
+    try {
+      await deleteFilas(filaIds);
+      toast.success(`${filaIds.length} fila(s) de «${titulo}» borradas.`);
+    } catch (e) {
+      setTabFilas(backup);
+      toast.error(`No se pudo borrar: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [tabFilas]);
+
   // Guarda una celda editada. `datos` es jsonb, así que se manda el objeto
   // entero con la clave ya aplicada.
   const commitEdit = useCallback(async (filaId: string, key: string, value: string) => {
@@ -1302,7 +1318,7 @@ export function BuscadorSection() {
   // Una matrícula tiene una fila por (OP, línea, envío), así que una familia
   // entera desborda la tabla. Agrupando, cada valor del criterio elegido
   // (matrícula / SIC / OP) es un encabezado plegable y debajo cuelgan sus filas.
-  type GrupoItem = { tipo: "grupo"; key: string; gkey: string; titulo: string; subtitulo: string; count: number };
+  type GrupoItem = { tipo: "grupo"; key: string; gkey: string; titulo: string; subtitulo: string; count: number; filaIds: string[] };
   type FilaItem  = { tipo: "fila";  key: string; filaId?: string; data: Record<string, unknown> };
 
   const displayItems = useMemo<(GrupoItem | FilaItem)[]>(() => {
@@ -1320,7 +1336,8 @@ export function BuscadorSection() {
     const out: (GrupoItem | FilaItem)[] = [];
     for (const [gk, items] of grupos) {
       const { titulo, subtitulo } = grupoTitulo(gk, items[0].data, agruparPor);
-      out.push({ tipo: "grupo", key: `g:${gk}`, gkey: gk, titulo, subtitulo, count: items.length });
+      const filaIds = items.map((f) => f.filaId).filter((id): id is string => !!id);
+      out.push({ tipo: "grupo", key: `g:${gk}`, gkey: gk, titulo, subtitulo, count: items.length, filaIds });
       if (!colapsados.has(gk)) out.push(...items);
     }
     return out;
@@ -1978,33 +1995,49 @@ export function BuscadorSection() {
                               borderTop: "1px solid oklch(1 0 0 / 0.05)",
                             }}
                           >
-                            <button
-                              onClick={() => toggleGrupo(item.gkey)}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"
-                              style={{ cursor: "pointer" }}
+                            <div
+                              className="w-full flex items-center gap-2 pl-3 pr-2 py-2 transition-colors"
                               onMouseEnter={(e) => { e.currentTarget.style.background = "oklch(0.28 0.008 270)"; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                             >
-                              {cerrado
-                                ? <ChevronRight className="w-4 h-4 shrink-0" style={{ color: "#fcd34d" }} />
-                                : <ChevronDown  className="w-4 h-4 shrink-0" style={{ color: "#fcd34d" }} />}
-                              <span style={{
-                                fontFamily: "ui-monospace, monospace", fontSize: 12.5,
-                                fontWeight: 600, color: "hsl(var(--foreground))",
-                              }}>
-                                {item.titulo}
-                              </span>
-                              <span className="truncate" style={{ fontSize: 12, color: "oklch(0.62 0 0)", flex: 1 }}>
-                                {item.subtitulo}
-                              </span>
-                              <span style={{
-                                fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999,
-                                background: "oklch(0.30 0.10 155 / 0.35)", color: "#86efac",
-                                border: "1px solid oklch(0.55 0.15 155 / 0.4)", whiteSpace: "nowrap",
-                              }}>
-                                {item.count} línea{item.count === 1 ? "" : "s"}
-                              </span>
-                            </button>
+                              <button
+                                onClick={() => toggleGrupo(item.gkey)}
+                                className="flex-1 flex items-center gap-2 text-left min-w-0"
+                                style={{ cursor: "pointer" }}
+                              >
+                                {cerrado
+                                  ? <ChevronRight className="w-4 h-4 shrink-0" style={{ color: "#fcd34d" }} />
+                                  : <ChevronDown  className="w-4 h-4 shrink-0" style={{ color: "#fcd34d" }} />}
+                                <span style={{
+                                  fontFamily: "ui-monospace, monospace", fontSize: 12.5,
+                                  fontWeight: 600, color: "hsl(var(--foreground))",
+                                }}>
+                                  {item.titulo}
+                                </span>
+                                <span className="truncate" style={{ fontSize: 12, color: "oklch(0.62 0 0)", flex: 1 }}>
+                                  {item.subtitulo}
+                                </span>
+                                <span style={{
+                                  fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999,
+                                  background: "oklch(0.30 0.10 155 / 0.35)", color: "#86efac",
+                                  border: "1px solid oklch(0.55 0.15 155 / 0.4)", whiteSpace: "nowrap",
+                                }}>
+                                  {item.count} línea{item.count === 1 ? "" : "s"}
+                                </span>
+                              </button>
+                              {puedoEditar && (
+                                <button
+                                  onClick={() => handleDeleteGrupo(item.filaIds, item.titulo)}
+                                  title={`Quitar de la pestaña las ${item.count} fila(s) de «${item.titulo}»`}
+                                  className="shrink-0 grid place-items-center rounded-[5px] transition-colors"
+                                  style={{ width: 24, height: 24, color: "oklch(0.5 0 0)" }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.color = "#fca5a5"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.5 0 0)"; }}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );

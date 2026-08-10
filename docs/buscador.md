@@ -178,6 +178,7 @@ pasan por estas funciones.
   - Cambiar de criterio recalcula los grupos y los colapsa todos de nuevo (los `colapsados` guardados son claves del criterio anterior, no sirven para el nuevo). `colapsados` en sí NO se persiste — es UI efímera, se resetea a "todo cerrado" cada vez que se cargan las filas de la pestaña o cambia el criterio.
   - Helper: `groupKeyOf(data, criterio)` en `buscador.tsx` — misma clave para agrupar, contar y detectar columnas redundantes.
   - Título del encabezado de grupo por criterio: matrícula → código + descripción; SIC → "SIC {n}" + preparador; OP → "OP {n}" + proveedor.
+  - **Borrar un grupo entero:** ícono de tacho en el encabezado del grupo (junto al de plegar) — borra de la pestaña TODAS las filas de ese grupo (esa OP, esa matrícula, esa SIC) en un solo paso, con confirmación previa. `GrupoItem.filaIds` junta los ids de sus filas al armar `displayItems`; `handleDeleteGrupo(filaIds, titulo)` hace un solo `deleteFilas(filaIds)` en lote (no uno por fila), optimista con rollback si falla. Gateado por `puedoEditar` — no aparece en una pestaña compartida de solo lectura.
 - Edición inline: doble-click en una celda, Enter para guardar, Escape para cancelar.
 - Drag-and-drop para reordenar (deshabilitado si está agrupado).
 
