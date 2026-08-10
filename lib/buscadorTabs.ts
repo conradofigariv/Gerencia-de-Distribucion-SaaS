@@ -298,19 +298,25 @@ export async function fetchMisPermisos(userId: string): Promise<Map<string, Perm
 /** Perfil mínimo para el picker de "compartir con...". */
 export interface PerfilBasico {
   id:         string;
+  email:      string;
   nombre:     string;
   apellido:   string;
   avatar_url: string | null;
 }
 
 /**
- * Todo el equipo (perfiles), para elegir con quién compartir. `profiles` ya es
- * legible por cualquier autenticado (ver `supabase/profile_cumpleanos.sql`),
- * así que no hace falta una API de admin — se trae la lista completa y se
- * filtra por nombre en el cliente (equipos chicos, sin paginación).
+ * Todo el equipo, para elegir con quién compartir — buscable por nombre O por
+ * email, porque no todos tienen el nombre completado en su perfil. El email
+ * vive en `auth.users`, no en `profiles` (que es lo único legible directo
+ * desde el cliente, ver `supabase/profile_cumpleanos.sql`), así que hace
+ * falta pasar por `/api/team` (service role) en vez de una query directa.
  */
 export async function fetchEquipo(): Promise<PerfilBasico[]> {
-  const { data, error } = await supabase.from("profiles").select("id, nombre, apellido, avatar_url");
-  if (error) throw new Error(error.message);
-  return (data ?? []) as PerfilBasico[];
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch("/api/team", {
+    headers: { Authorization: `Bearer ${session?.access_token}` },
+  });
+  if (!res.ok) throw new Error("No se pudo cargar el equipo");
+  const json = await res.json();
+  return (json.equipo ?? []) as PerfilBasico[];
 }

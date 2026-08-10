@@ -144,7 +144,7 @@ pasan por estas funciones.
 - `compartirTab(tabId, userId, permiso)`: Upsert — comparte o cambia el permiso de alguien ya compartido.
 - `descompartirTab(tabId, userId)`: Saca a un colaborador.
 - `fetchMisPermisos(userId)`: Mapa `tab_id → permiso` de TODO lo que otros compartieron con el usuario actual (no incluye las propias). Se trae una sola vez al entrar al Buscador.
-- `fetchEquipo()`: Todos los perfiles (id/nombre/apellido/avatar), para el picker de "compartir con…" — se filtra por nombre en el cliente.
+- `fetchEquipo()`: Todo el equipo (id/email/nombre/apellido/avatar), para el picker de "compartir con…" — se filtra por nombre O email en el cliente. Pasa por `/api/team` (no por una query directa a `profiles`) porque el email vive en `auth.users`, que solo la service role puede leer; a diferencia de `/api/admin/users`, este endpoint NO exige ser administrador — cualquiera puede compartir una pestaña propia y necesita poder buscar a un colega.
 
 ### UI (`buscador.tsx`)
 

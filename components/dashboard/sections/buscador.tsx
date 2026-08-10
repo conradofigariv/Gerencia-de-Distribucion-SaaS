@@ -525,9 +525,16 @@ function ShareDialog({ tabId, tabNombre, ownerId, onClose }: { tabId: string; ta
     const q = query.trim().toLowerCase();
     return equipo
       .filter((p) => p.id !== ownerId && !yaCompartidoCon.has(p.id))
-      .filter((p) => !q || `${p.nombre} ${p.apellido}`.toLowerCase().includes(q))
+      // Por nombre O por email — no todos en el equipo tienen el nombre
+      // completado en su perfil, y el email siempre está.
+      .filter((p) => !q || `${p.nombre} ${p.apellido} ${p.email}`.toLowerCase().includes(q))
       .slice(0, 8);
   }, [equipo, query, ownerId, yaCompartidoCon]);
+
+  // Para mostrar algo mejor que "Usuario" cuando a alguien con acceso le
+  // falta el nombre en su perfil — mismo `equipo` que ya se trajo para la
+  // búsqueda, sin otra vuelta a la API.
+  const equipoPorId = useMemo(() => new Map(equipo.map((p) => [p.id, p])), [equipo]);
 
   const handleAgregar = async (p: PerfilBasico) => {
     setBusy(p.id);
@@ -606,7 +613,8 @@ function ShareDialog({ tabId, tabNombre, ownerId, onClose }: { tabId: string; ta
             ) : (
               <div className="space-y-1">
                 {colaboradores.map((c) => {
-                  const nombre = [c.nombre, c.apellido].filter(Boolean).join(" ").trim() || "Usuario";
+                  const nombre = [c.nombre, c.apellido].filter(Boolean).join(" ").trim()
+                    || equipoPorId.get(c.user_id)?.email || "Usuario";
                   return (
                     <div key={c.id} className="flex items-center gap-2 px-2 py-1.5 rounded-[8px]" style={{ background: "oklch(0.16 0.005 270)" }}>
                       <span className="text-[13px] flex-1 truncate" style={{ color: "hsl(var(--foreground))" }}>{nombre}</span>
@@ -645,7 +653,7 @@ function ShareDialog({ tabId, tabNombre, ownerId, onClose }: { tabId: string; ta
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar por nombre…"
+                placeholder="Buscar por nombre o email…"
                 className="flex-1 text-[13px] outline-none"
                 style={{ background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, borderRadius: 8, padding: "7px 10px", color: "hsl(var(--foreground))" }}
               />
@@ -664,7 +672,8 @@ function ShareDialog({ tabId, tabNombre, ownerId, onClose }: { tabId: string; ta
                 {!resultados.length ? (
                   <p className="text-[12.5px] px-1" style={{ color: "oklch(0.5 0 0)" }}>Sin resultados.</p>
                 ) : resultados.map((p) => {
-                  const nombre = [p.nombre, p.apellido].filter(Boolean).join(" ").trim() || "Usuario";
+                  const nombreCompleto = [p.nombre, p.apellido].filter(Boolean).join(" ").trim();
+                  const nombre = nombreCompleto || p.email || "Usuario";
                   return (
                     <button
                       key={p.id}
@@ -676,7 +685,14 @@ function ShareDialog({ tabId, tabNombre, ownerId, onClose }: { tabId: string; ta
                       onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                     >
                       <UserPlus className="w-3.5 h-3.5 shrink-0" style={{ color: "#86efac" }} />
-                      <span className="text-[13px] flex-1 truncate">{nombre}</span>
+                      <span className="flex-1 min-w-0 truncate">
+                        <span className="text-[13px]">{nombre}</span>
+                        {/* Si ya se muestra el nombre, el email va aparte y más chico
+                            — ayuda a distinguir gente con el mismo nombre. */}
+                        {nombreCompleto && p.email && (
+                          <span className="text-[11px] ml-1.5" style={{ color: "oklch(0.5 0 0)" }}>{p.email}</span>
+                        )}
+                      </span>
                       {busy === p.id && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                     </button>
                   );
