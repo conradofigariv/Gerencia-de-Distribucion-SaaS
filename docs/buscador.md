@@ -2,7 +2,7 @@
 
 El Buscador es un sistema de dos capas:
 1. **Índice maestro** (`busqueda_index`): base de solo lectura que se regenera entera en cada "Reconstruir". Contiene todas las filas de compra (OP/línea/envío) y catálogo.
-2. **Pestañas de seguimiento** (`buscador_tabs`, `buscador_tab_filas`): espacio de trabajo del usuario. Se copian filas del índice acá, editables y reordenables por usuario.
+2. **Pestañas de seguimiento** (`buscador_tabs`, `buscador_tab_filas`): espacio de trabajo del usuario. Se copian filas del índice acá, editables y reordenables por usuario — y **compartibles con otros usuarios** (`buscador_tab_shares`, ver sección propia más abajo).
 
 ## Arquitectura de Datos
 
@@ -91,7 +91,7 @@ updated_at timestamptz NOT NULL DEFAULT now()
 }
 ```
 
-**RLS:** Heredan el dueño de su pestaña — un usuario solo ve filas en pestañas propias.
+**RLS:** Heredan el acceso de su pestaña — dueño y colaboradores compartidos ven las filas (lectura: SELECT; escritura de filas: solo dueño + colaboradores con permiso "edición"). Ver "Compartir pestañas" más abajo.
 
 **Operaciones (lib/buscadorTabs.ts):**
 - `fetchTabFilas(tabId)`: Todas las filas de la pestaña.
@@ -99,6 +99,66 @@ updated_at timestamptz NOT NULL DEFAULT now()
 - `updateFilaDatos(id, datos)`: Guardar edición de una celda (datos completo).
 - `deleteFilas(ids)`: Borrar filas.
 - `reorderFilas(filas[])`: Persistir reorden manual después de drag.
+
+---
+
+## Compartir pestañas
+
+Una pestaña se puede compartir con usuarios puntuales del equipo (elegidos por
+nombre), cada uno con un permiso propio. SQL completo en
+[`supabase/buscador_tab_shares.sql`](../supabase/buscador_tab_shares.sql).
+
+### Modelo
+
+- **Con quién:** usuarios específicos, no "todo el equipo" — se buscan por nombre en `profiles` (ya legible por cualquier autenticado, ver `supabase/profile_cumpleanos.sql`) y se agregan de a uno.
+- **Permiso por persona:**
+  - `lectura`: solo ve la pestaña — filas, columnas, agrupado. No puede editar nada.
+  - `edicion`: además de las filas (agregar, editar columnas de seguimiento, borrar, reordenar), puede tocar `config` (columnas/agrupado) y renombrar la pestaña. **No** puede borrarla ni gestionar quién tiene acceso — eso es exclusivo del dueño.
+- **Vista única:** columnas, orden, anchos y agrupado son el MISMO `buscador_tabs.config` para todo el que abre la pestaña — no hay una vista personal por usuario. Por eso un editor reordenando columnas cambia lo que ven los demás, y por eso un lector no puede tocar esos controles (quedan bloqueados en la UI, ver `ColumnsMenu`'s prop `locked` y el toggle "Agrupar" deshabilitado).
+- **Dueño:** único que puede borrar la pestaña y gestionar colaboradores (agregar, sacar, cambiar permiso). Un trigger (`gd_bloquear_cambio_dueno_pestana`) impide que un UPDATE le cambie el `user_id` a la pestaña, aunque lo intente un editor con acceso directo a la API.
+
+### Tabla `buscador_tab_shares`
+
+```sql
+id, tab_id, user_id, permiso ('lectura'|'edicion'), created_at
+UNIQUE (tab_id, user_id)
+```
+
+### RLS — funciones SECURITY DEFINER
+
+Evitar la recursión de RLS (una policy de `buscador_tabs` que mirara
+`buscador_tab_shares` dispararía la RLS de esa tabla, que podría necesitar
+mirar `buscador_tabs`…) es el motivo de dos funciones `SECURITY DEFINER`:
+
+- `gd_puede_leer_pestana(tab_id)`: dueño o cualquier colaborador (lectura o edición).
+- `gd_puede_editar_pestana(tab_id)`: dueño o colaborador con permiso `edicion`.
+
+Se usan en las policies de `buscador_tabs` (SELECT/UPDATE) y `buscador_tab_filas`
+(SELECT/INSERT/UPDATE/DELETE). INSERT y DELETE de `buscador_tabs` (crear y
+borrar la pestaña en sí) siguen restringidos a `auth.uid() = user_id` — nunca
+pasan por estas funciones.
+
+### Operaciones (lib/buscadorTabs.ts)
+
+- `fetchColaboradores(tabId)`: Lista de colaboradores con nombre/avatar ya resueltos desde `profiles` (dos queries — no hay FK share→profiles para que PostgREST embeba automáticamente).
+- `compartirTab(tabId, userId, permiso)`: Upsert — comparte o cambia el permiso de alguien ya compartido.
+- `descompartirTab(tabId, userId)`: Saca a un colaborador.
+- `fetchMisPermisos(userId)`: Mapa `tab_id → permiso` de TODO lo que otros compartieron con el usuario actual (no incluye las propias). Se trae una sola vez al entrar al Buscador.
+- `fetchEquipo()`: Todos los perfiles (id/nombre/apellido/avatar), para el picker de "compartir con…" — se filtra por nombre en el cliente.
+
+### UI (`buscador.tsx`)
+
+- Ícono `Share2` junto al nombre de la pestaña activa (solo visible para el dueño) abre `ShareDialog` — modal con la lista de colaboradores actuales (cada uno con un `<select>` lectura/edición y botón para sacarlo) y un buscador para agregar gente nueva.
+- En la barra de pestañas, una compartida-conmigo muestra un ícono: `Users` (celeste) si tengo edición, `Lock` (gris) si es de solo lectura.
+- Puntos gateados por `puedoEditar` (deriva de `esPropia || miPermiso === "edicion"`, fail-closed a `"lectura"` si `misPermisos` todavía no cargó):
+  - Doble-click para editar una celda (tanto columnas del índice como las de seguimiento).
+  - Arrastrar para reordenar filas (`puedeArrastrar`).
+  - Botón de borrar fila (no se muestra si es de solo lectura).
+  - Dropdown "Agregar a pestaña" del índice maestro: solo ofrece pestañas donde `permisoDe(t) === "edicion"`.
+  - `ColumnsMenu` recibe `locked={isTabMode && !puedoEditar}` — con eso puesto se puede abrir el menú para VER las columnas pero no arrastrar, ocultar ni restablecer.
+  - Toggle "Agrupar" y el desplegable de criterio, deshabilitados (`disabled`) si es de solo lectura.
+  - `compactar` (plegar columnas redundantes al agrupar) y `colapsados` (qué grupos están cerrados) NO están gateados — son vista local efímera, nunca se persisten, así que un lector los puede tocar libremente sin afectar a nadie.
+- Renombrar (`Pencil`) se ofrece a dueño Y editores; borrar pestaña (`Trash2`) y compartir (`Share2`) solo al dueño.
 
 ---
 

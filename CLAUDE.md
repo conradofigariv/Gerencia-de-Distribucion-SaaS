@@ -98,7 +98,7 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
 | transformadores-consumo | `consumo_transformadores` (lectura) |
 | sic-diagrama | `sic_diagrama_layout`, `sic_diagrama_active` — SQL en [`docs/sic-diagrama.md`](docs/sic-diagrama.md) |
 | informe-tecnico | `licitaciones`, `licitacion_renglones`, `licitacion_items`, `licitacion_oferentes`, `licitacion_ofertas`, `licitacion_evaluaciones_tecnicas`, `licitacion_adjudicaciones`, `matriculas` — SQL en [`docs/informe-tecnico.md`](docs/informe-tecnico.md) |
-| buscador | `busqueda_index` (lectura), `buscador_tabs`, `buscador_tab_filas` — SQL en `supabase/buscador_tabs.sql` y doc completo en [`docs/buscador.md`](docs/buscador.md) |
+| buscador | `busqueda_index` (lectura), `buscador_tabs`, `buscador_tab_filas`, `buscador_tab_shares` (compartir), `profiles` (lectura, para elegir con quién compartir) — SQL en `supabase/buscador_tabs.sql` + `supabase/buscador_tab_shares.sql` y doc completo en [`docs/buscador.md`](docs/buscador.md) |
 | settings | `profiles` |
 | recordatorios | `reminder_config` |
 

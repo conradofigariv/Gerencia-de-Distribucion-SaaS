@@ -60,11 +60,17 @@ export interface TabFila {
 
 // ─── Pestañas ────────────────────────────────────────────────────────────────
 
+/**
+ * Todas las pestañas visibles para el usuario: las propias MÁS las que otros
+ * compartieron con él. No se filtra por `user_id` acá — la RLS de
+ * `buscador_tabs` (ver `supabase/buscador_tab_shares.sql`) ya solo devuelve lo
+ * que este usuario puede leer, así que filtrar de nuevo en el cliente sería
+ * redundante y escondería por error una pestaña compartida.
+ */
 export async function fetchTabs(userId: string): Promise<BuscadorTab[]> {
   const { data, error } = await supabase
     .from("buscador_tabs")
     .select("*")
-    .eq("user_id", userId)
     .order("orden", { ascending: true })
     .order("created_at", { ascending: true });
   if (error) throw new Error(error.message);
@@ -199,4 +205,112 @@ export async function reorderFilas(filas: { id: string; orden: number }[]): Prom
   );
   const failed = results.find((r) => r.error);
   if (failed?.error) throw new Error(failed.error.message);
+}
+
+// ─── Compartir pestañas ──────────────────────────────────────────────────────
+// Ver supabase/buscador_tab_shares.sql para el modelo completo: se comparte
+// con usuarios puntuales, con permiso «lectura» o «edición» por persona, y la
+// vista (columnas/orden/agrupado) es LA MISMA para todo el que la abre — no
+// hay una config por usuario. Solo el dueño gestiona quién tiene acceso.
+
+export type Permiso = "lectura" | "edicion";
+
+export interface TabShare {
+  id:         string;
+  tab_id:     string;
+  user_id:    string;
+  permiso:    Permiso;
+  created_at: string;
+}
+
+/** Un colaborador con su nombre ya resuelto, para pintar la lista sin otra vuelta. */
+export interface Colaborador extends TabShare {
+  nombre:     string;
+  apellido:   string;
+  avatar_url: string | null;
+}
+
+/**
+ * Colaboradores de una pestaña, con nombre y avatar ya resueltos desde
+ * `profiles`. Dos consultas en vez de un join: `buscador_tab_shares.user_id`
+ * apunta a `auth.users`, no a `profiles`, así que PostgREST no puede
+ * embeberlas automáticamente (no hay FK declarada entre esas dos tablas).
+ */
+export async function fetchColaboradores(tabId: string): Promise<Colaborador[]> {
+  const { data: shares, error } = await supabase
+    .from("buscador_tab_shares")
+    .select("*")
+    .eq("tab_id", tabId)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  const rows = (shares ?? []) as TabShare[];
+  if (!rows.length) return [];
+
+  const ids = rows.map((r) => r.user_id);
+  const { data: perfiles } = await supabase
+    .from("profiles")
+    .select("id, nombre, apellido, avatar_url")
+    .in("id", ids);
+  const byId = new Map(
+    ((perfiles ?? []) as { id: string; nombre: string | null; apellido: string | null; avatar_url: string | null }[])
+      .map((p) => [p.id, p])
+  );
+
+  return rows.map((r) => {
+    const p = byId.get(r.user_id);
+    return { ...r, nombre: p?.nombre ?? "", apellido: p?.apellido ?? "", avatar_url: p?.avatar_url ?? null };
+  });
+}
+
+/** Comparte (o cambia el permiso de) una pestaña con un usuario puntual. */
+export async function compartirTab(tabId: string, userId: string, permiso: Permiso): Promise<void> {
+  const { error } = await supabase
+    .from("buscador_tab_shares")
+    .upsert({ tab_id: tabId, user_id: userId, permiso }, { onConflict: "tab_id,user_id" });
+  if (error) throw new Error(error.message);
+}
+
+/** Saca a un colaborador — deja de ver la pestaña en su próxima carga. */
+export async function descompartirTab(tabId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from("buscador_tab_shares")
+    .delete()
+    .eq("tab_id", tabId)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Permiso del usuario ACTUAL en cada pestaña compartida con él (no incluye las
+ * propias — para esas, ser dueño ya implica edición completa). Una sola
+ * consulta al entrar al Buscador, para no pedir el permiso pestaña por
+ * pestaña cada vez que se abre una.
+ */
+export async function fetchMisPermisos(userId: string): Promise<Map<string, Permiso>> {
+  const { data, error } = await supabase
+    .from("buscador_tab_shares")
+    .select("tab_id, permiso")
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  return new Map(((data ?? []) as { tab_id: string; permiso: Permiso }[]).map((r) => [r.tab_id, r.permiso]));
+}
+
+/** Perfil mínimo para el picker de "compartir con...". */
+export interface PerfilBasico {
+  id:         string;
+  nombre:     string;
+  apellido:   string;
+  avatar_url: string | null;
+}
+
+/**
+ * Todo el equipo (perfiles), para elegir con quién compartir. `profiles` ya es
+ * legible por cualquier autenticado (ver `supabase/profile_cumpleanos.sql`),
+ * así que no hace falta una API de admin — se trae la lista completa y se
+ * filtra por nombre en el cliente (equipos chicos, sin paginación).
+ */
+export async function fetchEquipo(): Promise<PerfilBasico[]> {
+  const { data, error } = await supabase.from("profiles").select("id, nombre, apellido, avatar_url");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as PerfilBasico[];
 }

@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode, type ElementType, type CSSProperties, type DragEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   Search, Loader2, X, Download, RefreshCw, Database, PackageOpen,
   ChevronDown, ChevronUp, ChevronsUpDown, Wrench, Package,
   Columns3, GripVertical, Eye, EyeOff, Pin, Plus, Trash2, Pencil, ListPlus,
-  ChevronRight, Rows3, Tag, FileText,
+  ChevronRight, Rows3, Tag, FileText, Share2, Users, Lock, UserMinus, UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -14,7 +15,10 @@ import { getPreference, setPreference } from "@/lib/userPreferences";
 import {
   fetchTabs, createTab, renameTab, deleteTab, fetchTabFilas, addFilas,
   updateFilaDatos, deleteFilas, reorderFilas, updateTabConfig,
-  TRACK_KEYS, ESTADOS, type BuscadorTab, type TabFila, type TabConfig, type AgruparPor,
+  fetchMisPermisos, fetchColaboradores, compartirTab, descompartirTab, fetchEquipo,
+  TRACK_KEYS, ESTADOS,
+  type BuscadorTab, type TabFila, type TabConfig, type AgruparPor,
+  type Permiso, type Colaborador, type PerfilBasico,
 } from "@/lib/buscadorTabs";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -81,7 +85,7 @@ const GROUP_META: Record<ColGroup, { label: string; color: string }> = {
 interface ColMeta { key: string; label: string; group: ColGroup }
 
 function ColumnsMenu({
-  cols, order, hidden, onToggle, onReorder, onReset,
+  cols, order, hidden, onToggle, onReorder, onReset, locked,
 }: {
   cols:     ColMeta[];        // metadata completa (todas las columnas, sin filtrar)
   order:    string[];         // orden actual de TODAS las claves
@@ -89,6 +93,10 @@ function ColumnsMenu({
   onToggle: (key: string) => void;
   onReorder: (newOrder: string[]) => void;
   onReset:  () => void;
+  // Pestaña compartida de solo lectura: se puede ABRIR el menú para ver qué
+  // columnas hay, pero no tocar nada — es una vista única para todos, no una
+  // preferencia personal, así que un lector no puede cambiarla.
+  locked?:  boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -152,15 +160,17 @@ function ColumnsMenu({
         >
           <div className="flex items-center justify-between px-2 pt-1 pb-1.5">
             <span className="text-[11px] uppercase tracking-wide" style={{ color: "oklch(0.55 0 0)" }}>
-              Mostrar y ordenar
+              {locked ? "Solo lectura" : "Mostrar y ordenar"}
             </span>
-            <button
-              onClick={onReset}
-              className="text-[11px] hover:text-foreground transition-colors"
-              style={{ color: "oklch(0.55 0 0)" }}
-            >
-              Restablecer
-            </button>
+            {!locked && (
+              <button
+                onClick={onReset}
+                className="text-[11px] hover:text-foreground transition-colors"
+                style={{ color: "oklch(0.55 0 0)" }}
+              >
+                Restablecer
+              </button>
+            )}
           </div>
           {/* Leyenda de colores: de qué tabla sale cada columna, para agrupar
               por jerarquía (SIC → OP → Movimientos) al arrastrar. */}
@@ -178,8 +188,8 @@ function ColumnsMenu({
             return (
               <div
                 key={c.key}
-                draggable
-                onDragStart={(e) => {
+                draggable={!locked}
+                onDragStart={locked ? undefined : (e) => {
                   dragKey.current = c.key;
                   // dataTransfer.setData es obligatorio para que el drag arranque
                   // en Firefox — sin esto, dragstart dispara pero dragover/drop
@@ -188,29 +198,30 @@ function ColumnsMenu({
                   e.dataTransfer.setData("text/plain", c.key);
                   e.dataTransfer.effectAllowed = "move";
                 }}
-                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverKey(c.key); }}
-                onDragLeave={() => setDragOverKey((k) => (k === c.key ? null : k))}
-                onDrop={(e) => handleDrop(e, c.key)}
-                onDragEnd={() => { dragKey.current = null; setDragOverKey(null); }}
-                className="flex items-center gap-2 px-2 py-1.5 rounded-[7px] cursor-grab active:cursor-grabbing select-none"
+                onDragOver={locked ? undefined : (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverKey(c.key); }}
+                onDragLeave={locked ? undefined : () => setDragOverKey((k) => (k === c.key ? null : k))}
+                onDrop={locked ? undefined : (e) => handleDrop(e, c.key)}
+                onDragEnd={locked ? undefined : () => { dragKey.current = null; setDragOverKey(null); }}
+                className={cn("flex items-center gap-2 px-2 py-1.5 rounded-[7px] select-none", !locked && "cursor-grab active:cursor-grabbing")}
                 style={{
                   opacity: isHidden ? 0.5 : 1,
                   background: isDragOver ? "oklch(0.27 0.005 270)" : "transparent",
                 }}
               >
-                <GripVertical className="w-3.5 h-3.5 shrink-0" style={{ color: "oklch(0.45 0 0)" }} />
+                <GripVertical className="w-3.5 h-3.5 shrink-0" style={{ color: locked ? "oklch(0.3 0 0)" : "oklch(0.45 0 0)" }} />
                 <span
                   title={GROUP_META[c.group].label}
                   style={{ width: 7, height: 7, borderRadius: 2, background: GROUP_META[c.group].color, flexShrink: 0 }}
                 />
                 <button
                   onClick={() => onToggle(c.key)}
-                  className="shrink-0 inline-flex items-center justify-center"
-                  title={isHidden ? "Mostrar columna" : "Ocultar columna"}
+                  disabled={locked}
+                  className="shrink-0 inline-flex items-center justify-center disabled:cursor-default"
+                  title={locked ? undefined : isHidden ? "Mostrar columna" : "Ocultar columna"}
                 >
                   {isHidden
                     ? <EyeOff className="w-3.5 h-3.5" style={{ color: "oklch(0.5 0 0)" }} />
-                    : <Eye className="w-3.5 h-3.5" style={{ color: "#86efac" }} />}
+                    : <Eye className="w-3.5 h-3.5" style={{ color: locked ? "oklch(0.5 0 0)" : "#86efac" }} />}
                 </button>
                 <span className="text-[13px] truncate flex-1" style={{ color: "oklch(0.88 0 0)" }}>
                   {c.label}
@@ -483,6 +494,208 @@ const COL_META: ColMeta[] = COLS.map((c) => ({ key: c.key as string, label: c.la
 
 type SortDir = "asc" | "desc";
 
+// ─── Compartir pestaña ───────────────────────────────────────────────────────
+// Modal de gestión de colaboradores de UNA pestaña — solo la abre el dueño
+// (ver botón «Share2» en la barra de pestañas). Ver supabase/buscador_tab_shares.sql
+// para el modelo completo de permisos.
+
+const PERMISO_LABEL: Record<Permiso, string> = { lectura: "Lectura", edicion: "Edición" };
+
+function ShareDialog({ tabId, tabNombre, ownerId, onClose }: { tabId: string; tabNombre: string; ownerId: string; onClose: () => void }) {
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
+  const [equipo, setEquipo]               = useState<PerfilBasico[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [query, setQuery]                 = useState("");
+  const [nuevoPermiso, setNuevoPermiso]   = useState<Permiso>("edicion");
+  const [busy, setBusy]                   = useState<string | null>(null); // user_id en vuelo
+
+  const cargar = useCallback(() => {
+    setLoading(true);
+    Promise.all([fetchColaboradores(tabId), fetchEquipo()])
+      .then(([cols, eq]) => { setColaboradores(cols); setEquipo(eq); })
+      .catch((e) => toast.error(`No se pudo cargar: ${e instanceof Error ? e.message : String(e)}`))
+      .finally(() => setLoading(false));
+  }, [tabId]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const yaCompartidoCon = useMemo(() => new Set(colaboradores.map((c) => c.user_id)), [colaboradores]);
+
+  const resultados = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return equipo
+      .filter((p) => p.id !== ownerId && !yaCompartidoCon.has(p.id))
+      .filter((p) => !q || `${p.nombre} ${p.apellido}`.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [equipo, query, ownerId, yaCompartidoCon]);
+
+  const handleAgregar = async (p: PerfilBasico) => {
+    setBusy(p.id);
+    try {
+      await compartirTab(tabId, p.id, nuevoPermiso);
+      setQuery("");
+      cargar();
+    } catch (e) {
+      toast.error(`No se pudo compartir: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleCambiarPermiso = async (userId: string, permiso: Permiso) => {
+    setColaboradores((p) => p.map((c) => (c.user_id === userId ? { ...c, permiso } : c))); // optimista
+    try {
+      await compartirTab(tabId, userId, permiso);
+    } catch (e) {
+      toast.error(`No se pudo cambiar el permiso: ${e instanceof Error ? e.message : String(e)}`);
+      cargar();
+    }
+  };
+
+  const handleQuitar = async (userId: string) => {
+    const backup = colaboradores;
+    setColaboradores((p) => p.filter((c) => c.user_id !== userId)); // optimista
+    try {
+      await descompartirTab(tabId, userId);
+    } catch (e) {
+      setColaboradores(backup);
+      toast.error(`No se pudo quitar: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const dialog = (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      style={{ background: "oklch(0 0 0 / 0.55)" }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full animate-in fade-in zoom-in-95 duration-150"
+        style={{
+          maxWidth: 420, background: "oklch(0.205 0.005 270)", border: PANEL_BORDER,
+          borderRadius: 14, boxShadow: "0 24px 60px -20px rgba(0,0,0,0.7)",
+        }}
+      >
+        <div className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: PANEL_BORDER }}>
+          <div className="flex items-center gap-2 min-w-0">
+            <Share2 className="w-4 h-4 shrink-0" style={{ color: "#7dd3fc" }} />
+            <span className="text-[14px] font-semibold truncate" style={{ color: "hsl(var(--foreground))" }}>
+              Compartir «{tabNombre}»
+            </span>
+          </div>
+          <button onClick={onClose} className="shrink-0 grid place-items-center rounded-[6px]" style={{ width: 24, height: 24, color: "oklch(0.55 0 0)" }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {/* Colaboradores actuales */}
+          <div>
+            <p className="text-[11px] uppercase tracking-wide mb-2" style={{ color: "oklch(0.55 0 0)" }}>
+              Con acceso
+            </p>
+            {loading ? (
+              <div className="flex items-center gap-2 py-2 text-[13px]" style={{ color: "oklch(0.6 0 0)" }}>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />Cargando…
+              </div>
+            ) : !colaboradores.length ? (
+              <p className="text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
+                Todavía no compartiste esta pestaña con nadie.
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {colaboradores.map((c) => {
+                  const nombre = [c.nombre, c.apellido].filter(Boolean).join(" ").trim() || "Usuario";
+                  return (
+                    <div key={c.id} className="flex items-center gap-2 px-2 py-1.5 rounded-[8px]" style={{ background: "oklch(0.16 0.005 270)" }}>
+                      <span className="text-[13px] flex-1 truncate" style={{ color: "hsl(var(--foreground))" }}>{nombre}</span>
+                      <select
+                        value={c.permiso}
+                        onChange={(e) => handleCambiarPermiso(c.user_id, e.target.value as Permiso)}
+                        className="text-[12px] rounded-[6px] outline-none"
+                        style={{ background: "oklch(0.22 0.005 270)", border: PANEL_BORDER, color: "oklch(0.8 0 0)", padding: "3px 6px" }}
+                      >
+                        <option value="lectura">Lectura</option>
+                        <option value="edicion">Edición</option>
+                      </select>
+                      <button
+                        onClick={() => handleQuitar(c.user_id)}
+                        title="Quitar acceso"
+                        className="grid place-items-center rounded-[6px] transition-colors"
+                        style={{ width: 24, height: 24, color: "oklch(0.5 0 0)" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = "#fca5a5"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.5 0 0)"; }}
+                      >
+                        <UserMinus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Agregar colaborador */}
+          <div>
+            <p className="text-[11px] uppercase tracking-wide mb-2" style={{ color: "oklch(0.55 0 0)" }}>
+              Agregar
+            </p>
+            <div className="flex items-center gap-2 mb-2">
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Buscar por nombre…"
+                className="flex-1 text-[13px] outline-none"
+                style={{ background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, borderRadius: 8, padding: "7px 10px", color: "hsl(var(--foreground))" }}
+              />
+              <select
+                value={nuevoPermiso}
+                onChange={(e) => setNuevoPermiso(e.target.value as Permiso)}
+                className="text-[12px] rounded-[8px] outline-none shrink-0"
+                style={{ background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, color: "oklch(0.8 0 0)", padding: "7px 8px" }}
+              >
+                <option value="edicion">Edición</option>
+                <option value="lectura">Lectura</option>
+              </select>
+            </div>
+            {query.trim() && (
+              <div className="space-y-1 max-h-[160px] overflow-y-auto">
+                {!resultados.length ? (
+                  <p className="text-[12.5px] px-1" style={{ color: "oklch(0.5 0 0)" }}>Sin resultados.</p>
+                ) : resultados.map((p) => {
+                  const nombre = [p.nombre, p.apellido].filter(Boolean).join(" ").trim() || "Usuario";
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => handleAgregar(p)}
+                      disabled={busy === p.id}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-[8px] text-left transition-colors disabled:opacity-50"
+                      style={{ color: "hsl(var(--foreground))" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "oklch(0.16 0.005 270)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <UserPlus className="w-3.5 h-3.5 shrink-0" style={{ color: "#86efac" }} />
+                      <span className="text-[13px] flex-1 truncate">{nombre}</span>
+                      {busy === p.id && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <p className="text-[11.5px] leading-relaxed" style={{ color: "oklch(0.5 0 0)" }}>
+            {PERMISO_LABEL.lectura}: solo ve la pestaña. {PERMISO_LABEL.edicion}: además edita filas, columnas y agrupado — la vista es la misma para todos.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
+  return createPortal(dialog, document.body);
+}
+
 // ─── Sección ─────────────────────────────────────────────────────────────────
 
 export function BuscadorSection() {
@@ -508,6 +721,12 @@ export function BuscadorSection() {
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [tabFilas, setTabFilas]   = useState<TabFila[]>([]);
   const [loadingTab, setLoadingTab] = useState(false);
+  // Permiso del usuario actual en cada pestaña que OTRO compartió con él
+  // (tab_id → permiso). Las propias no están acá: ser dueño ya es edición
+  // completa. Se trae una sola vez al conocer al usuario (ver más abajo).
+  const [misPermisos, setMisPermisos] = useState<Map<string, Permiso>>(new Map());
+  // Pestaña cuyo diálogo "Compartir" está abierto (null = cerrado).
+  const [shareTabId, setShareTabId] = useState<string | null>(null);
   // Filas tildadas en el índice maestro, para copiarlas a una pestaña.
   const [selected, setSelected]   = useState<Set<string>>(new Set());
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -562,6 +781,15 @@ export function BuscadorSection() {
   // antes: agrupada por matrícula.
   const agrupar    = tabCfg?.agrupar    ?? true;
   const agruparPor = tabCfg?.agruparPor ?? "articulo";
+
+  // ── Permisos de la pestaña activa ──
+  // Dueño = edición completa siempre. Compartida = lo que diga `misPermisos`
+  // (fail-closed: si todavía no cargó, "lectura" — nunca se asume edición por
+  // las dudas). En el índice maestro no hay restricción: no es de nadie.
+  const tabActiva  = isTabMode ? tabs.find((t) => t.id === activeTab) ?? null : null;
+  const esPropia   = !!tabActiva && tabActiva.user_id === userId;
+  const miPermiso: Permiso = esPropia ? "edicion" : (activeTab ? misPermisos.get(activeTab) ?? "lectura" : "edicion");
+  const puedoEditar = !isTabMode || esPropia || miPermiso === "edicion";
 
   // Usuario actual (para preferencias en Supabase).
   useEffect(() => {
@@ -773,7 +1001,18 @@ export function BuscadorSection() {
     fetchTabs(userId)
       .then(setTabs)
       .catch((e) => toast.error(`No se pudieron cargar las pestañas: ${e.message}`));
+    fetchMisPermisos(userId)
+      .then(setMisPermisos)
+      .catch(() => { /* sin esto, las compartidas se ven como solo-lectura por las dudas */ });
   }, [userId]);
+
+  /** Permiso del usuario actual en CUALQUIER pestaña (propia o compartida) —
+   *  a diferencia de `miPermiso`, que es solo de la activa. Se usa para decidir
+   *  qué pestañas ofrecer en "Agregar a pestaña" y qué badge mostrar en la barra. */
+  const permisoDe = useCallback(
+    (tab: BuscadorTab): Permiso => (tab.user_id === userId ? "edicion" : misPermisos.get(tab.id) ?? "lectura"),
+    [userId, misPermisos]
+  );
 
   // Config de columnas que ya trae cada pestaña. Solo se siembran las que
   // todavía no están en memoria: un refetch tras renombrar/crear no debe pisar
@@ -1087,7 +1326,7 @@ export function BuscadorSection() {
     return out;
   }, [displayRows, isTabMode, agrupar, agruparPor, colapsados]);
 
-  const puedeArrastrar = isTabMode && !agrupar;
+  const puedeArrastrar = isTabMode && !agrupar && puedoEditar;
 
   const toggleGrupo = useCallback((gk: string) => {
     setColapsados((prev) => {
@@ -1205,12 +1444,18 @@ export function BuscadorSection() {
 
           {tabs.map((t) => {
             const act = activeTab === t.id;
+            const propia = t.user_id === userId;
+            const permiso = permisoDe(t);
             return (
               <span key={t.id} className="inline-flex items-center group/tab">
                 <button
                   onClick={() => { setActiveTab(t.id); setEditing(null); setSort({ col: null, dir: "asc" }); }}
-                  onDoubleClick={() => handleRenameTab(t)}
-                  title="Doble click para renombrar"
+                  onDoubleClick={permiso === "edicion" ? () => handleRenameTab(t) : undefined}
+                  title={
+                    propia ? "Doble click para renombrar"
+                      : permiso === "edicion" ? "Compartida — podés editarla y renombrarla"
+                      : "Compartida — solo lectura"
+                  }
                   className="inline-flex items-center gap-1.5 px-3 rounded-[8px] text-[12.5px] font-medium transition-colors"
                   style={{
                     height: 30,
@@ -1219,13 +1464,30 @@ export function BuscadorSection() {
                     color: act ? "oklch(0.92 0 0)" : "oklch(0.6 0 0)", cursor: "pointer",
                   }}
                 >
+                  {!propia && (
+                    permiso === "edicion"
+                      ? <Users className="w-3 h-3 shrink-0" style={{ color: "#7dd3fc" }} />
+                      : <Lock  className="w-3 h-3 shrink-0" style={{ color: "oklch(0.55 0 0)" }} />
+                  )}
                   {t.nombre}
                   {act && tabFilas.length > 0 && (
                     <span style={{ color: "oklch(0.55 0 0)" }}>{tabFilas.length}</span>
                   )}
                 </button>
-                {act && (
+                {act && (propia || permiso === "edicion") && (
                   <span className="inline-flex items-center gap-0.5 ml-0.5">
+                    {propia && (
+                      <button
+                        onClick={() => setShareTabId(t.id)}
+                        title="Compartir con otros usuarios"
+                        className="grid place-items-center rounded-[5px] transition-colors"
+                        style={{ width: 22, height: 22, color: "oklch(0.5 0 0)" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = "#7dd3fc"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.5 0 0)"; }}
+                      >
+                        <Share2 className="w-3 h-3" />
+                      </button>
+                    )}
                     <button
                       onClick={() => handleRenameTab(t)}
                       title="Renombrar"
@@ -1236,16 +1498,18 @@ export function BuscadorSection() {
                     >
                       <Pencil className="w-3 h-3" />
                     </button>
-                    <button
-                      onClick={() => handleDeleteTab(t)}
-                      title="Borrar pestaña"
-                      className="grid place-items-center rounded-[5px] transition-colors"
-                      style={{ width: 22, height: 22, color: "oklch(0.5 0 0)" }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = "#fca5a5"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.5 0 0)"; }}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
+                    {propia && (
+                      <button
+                        onClick={() => handleDeleteTab(t)}
+                        title="Borrar pestaña"
+                        className="grid place-items-center rounded-[5px] transition-colors"
+                        style={{ width: 22, height: 22, color: "oklch(0.5 0 0)" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = "#fca5a5"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.5 0 0)"; }}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
                   </span>
                 )}
               </span>
@@ -1299,6 +1563,7 @@ export function BuscadorSection() {
             onToggle={toggleColHidden}
             onReorder={setOrden}
             onReset={resetColumnas}
+            locked={isTabMode && !puedoEditar}
           />
 
           {/* Agrupar — solo dentro de una pestaña. El criterio (matrícula / SIC /
@@ -1307,13 +1572,14 @@ export function BuscadorSection() {
             <div className="inline-flex items-center gap-1 shrink-0">
               <button
                 onClick={() => setAgrupar((v) => !v)}
-                title="Agrupar las filas bajo el criterio elegido"
-                className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors"
+                disabled={!puedoEditar}
+                title={puedoEditar ? "Agrupar las filas bajo el criterio elegido" : "Solo lectura — el agrupado es la misma vista para todos"}
+                className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors disabled:cursor-default"
                 style={{
                   height: TOOLBAR_H,
                   background: agrupar ? "oklch(0.28 0.02 295)" : "oklch(0.16 0.005 270)",
                   border: `1px solid ${agrupar ? "oklch(0.55 0.20 295 / 0.45)" : "oklch(1 0 0 / 0.07)"}`,
-                  color: agrupar ? "oklch(0.92 0 0)" : "oklch(0.65 0 0)", cursor: "pointer",
+                  color: agrupar ? "oklch(0.92 0 0)" : "oklch(0.65 0 0)", cursor: puedoEditar ? "pointer" : "default",
                 }}
               >
                 <Rows3 className="w-3.5 h-3.5" />
@@ -1323,12 +1589,13 @@ export function BuscadorSection() {
               {agrupar && (
                 <div className="relative" ref={agruparMenuRef}>
                   <button
-                    onClick={() => setAgruparMenuOpen((v) => !v)}
-                    title="Elegir por qué agrupar"
-                    className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors"
+                    onClick={() => puedoEditar && setAgruparMenuOpen((v) => !v)}
+                    disabled={!puedoEditar}
+                    title={puedoEditar ? "Elegir por qué agrupar" : "Solo lectura"}
+                    className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors disabled:cursor-default"
                     style={{
                       height: TOOLBAR_H, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER,
-                      color: "oklch(0.75 0 0)", cursor: "pointer",
+                      color: "oklch(0.75 0 0)", cursor: puedoEditar ? "pointer" : "default",
                     }}
                   >
                     {(() => {
@@ -1336,10 +1603,10 @@ export function BuscadorSection() {
                       const Icon = opt.icon;
                       return <><Icon className="w-3.5 h-3.5" />{opt.label}</>;
                     })()}
-                    <ChevronDown className="w-3 h-3 opacity-60" />
+                    {puedoEditar && <ChevronDown className="w-3 h-3 opacity-60" />}
                   </button>
 
-                  {agruparMenuOpen && (
+                  {agruparMenuOpen && puedoEditar && (
                     <div
                       className="absolute left-0 top-[calc(100%+6px)] z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
                       style={{
@@ -1435,22 +1702,33 @@ export function BuscadorSection() {
                     boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6)",
                   }}
                 >
-                  {tabs.length === 0 ? (
-                    <div className="px-2 py-2 text-[12px]" style={{ color: "oklch(0.55 0 0)" }}>
-                      No tenés pestañas todavía — creá una con el «+» de arriba.
-                    </div>
-                  ) : tabs.map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => handleAddSelected(t.id)}
-                      className="w-full text-left px-2 py-1.5 rounded-[7px] text-[13px] transition-colors"
-                      style={{ color: "oklch(0.88 0 0)" }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                    >
-                      {t.nombre}
-                    </button>
-                  ))}
+                  {(() => {
+                    // Solo pestañas donde se puede escribir: una compartida
+                    // "solo lectura" no admite que le agreguen filas.
+                    const editables = tabs.filter((t) => permisoDe(t) === "edicion");
+                    if (!editables.length) {
+                      return (
+                        <div className="px-2 py-2 text-[12px]" style={{ color: "oklch(0.55 0 0)" }}>
+                          {tabs.length === 0
+                            ? "No tenés pestañas todavía — creá una con el «+» de arriba."
+                            : "No tenés ninguna pestaña editable — las compartidas contigo son de solo lectura."}
+                        </div>
+                      );
+                    }
+                    return editables.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => handleAddSelected(t.id)}
+                        className="w-full text-left px-2 py-1.5 rounded-[7px] text-[13px] transition-colors"
+                        style={{ color: "oklch(0.88 0 0)" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        {t.nombre}
+                        {t.user_id !== userId && <span style={{ color: "oklch(0.5 0 0)" }}> · compartida</span>}
+                      </button>
+                    ));
+                  })()}
                 </div>
               )}
             </div>
@@ -1786,16 +2064,18 @@ export function BuscadorSection() {
                                 >
                                   <GripVertical className="w-3.5 h-3.5" />
                                 </span>
-                                <button
-                                  onClick={() => handleDeleteFila(filaId!)}
-                                  title="Quitar de la pestaña"
-                                  className="grid place-items-center transition-colors"
-                                  style={{ width: 20, height: 20, borderRadius: 5, color: "oklch(0.42 0 0)" }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.color = "#fca5a5"; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.42 0 0)"; }}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                {puedoEditar && (
+                                  <button
+                                    onClick={() => handleDeleteFila(filaId!)}
+                                    title="Quitar de la pestaña"
+                                    className="grid place-items-center transition-colors"
+                                    style={{ width: 20, height: 20, borderRadius: 5, color: "oklch(0.42 0 0)" }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.color = "#fca5a5"; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.42 0 0)"; }}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </>
                             ) : (
                               <>
@@ -1845,13 +2125,13 @@ export function BuscadorSection() {
                                 fontFamily: (c.num || c.mono) ? "ui-monospace, monospace" : undefined,
                                 color: c.key === "articulo" ? "hsl(var(--foreground))" : undefined,
                                 fontWeight: c.key === "articulo" ? 500 : undefined,
-                                cursor: isTabMode ? "text" : undefined,
+                                cursor: isTabMode && puedoEditar ? "text" : undefined,
                               }}
                               title={
-                                isTabMode ? "Doble click para editar"
+                                isTabMode ? (puedoEditar ? "Doble click para editar" : "Solo lectura — pedile al dueño permiso de edición")
                                   : c.key === "descripcion" ? String(data.descripcion ?? "") : undefined
                               }
-                              onDoubleClick={isTabMode ? () => {
+                              onDoubleClick={isTabMode && puedoEditar ? () => {
                                 setEditValue(String(data[c.key] ?? ""));
                                 setEditing({ filaId: filaId!, key: c.key });
                               } : undefined}
@@ -1897,13 +2177,13 @@ export function BuscadorSection() {
                                 padding: editando ? "2px 6px" : "7px 12px",
                                 borderBottom: bottomBorder,
                                 background: TRACK_BG,
-                                cursor: "text",
+                                cursor: puedoEditar ? "text" : "default",
                               }}
-                              title={c.tipo === "texto" ? val : "Doble click para editar"}
-                              onDoubleClick={() => {
+                              title={!puedoEditar ? "Solo lectura — pedile al dueño permiso de edición" : c.tipo === "texto" ? val : "Doble click para editar"}
+                              onDoubleClick={puedoEditar ? () => {
                                 setEditValue(val);
                                 setEditing({ filaId: filaId!, key: c.key });
-                              }}
+                              } : undefined}
                             >
                               {editando && c.tipo === "estado" ? (
                                 <select
@@ -1966,6 +2246,21 @@ export function BuscadorSection() {
           )}
         </div>
       </div>
+
+      {shareTabId && (() => {
+        const tab = tabs.find((t) => t.id === shareTabId);
+        // Defensivo: si la pestaña se borró justo mientras el diálogo estaba
+        // abierto, o si por algún motivo ya no es la tuya, no se renderiza.
+        if (!tab || tab.user_id !== userId) return null;
+        return (
+          <ShareDialog
+            tabId={tab.id}
+            tabNombre={tab.nombre}
+            ownerId={tab.user_id}
+            onClose={() => setShareTabId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
