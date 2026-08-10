@@ -576,6 +576,11 @@ AS $$
    WHERE gd_norm_texto(COALESCE(p_q, '')) = ''
       OR busqueda LIKE '%' || gd_norm_texto(p_q) || '%'
    ORDER BY
+     -- Sin búsqueda (pantalla de entrada al Buscador): las OP más nuevas
+     -- primero. Es un CASE que solo «pesa» en este modo — con texto buscado
+     -- da NULL en todas las filas (NULLS LAST no mueve nada) y el orden por
+     -- relevancia de abajo queda intacto, como antes.
+     CASE WHEN gd_norm_texto(COALESCE(p_q, '')) = '' THEN fecha_creacion END DESC NULLS LAST,
      (articulo_key = gd_norm_articulo(p_q)) DESC,   -- matrícula exacta primero
      (numero_op    = trim(COALESCE(p_q, ''))) DESC, -- después OP exacta
      -- Orden por fuente EXPLÍCITO, no alfabético: alfabéticamente 'catalogo'

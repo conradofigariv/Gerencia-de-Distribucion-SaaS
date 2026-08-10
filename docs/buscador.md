@@ -167,7 +167,7 @@ pasan por estas funciones.
 ### Buscador (`components/dashboard/sections/buscador.tsx`)
 
 **Modo índice:**
-- Búsqueda global (vacío = primeras filas).
+- Búsqueda global. Caja vacía = las OP más nuevas primero (`gd_buscar` ordena por `fecha_creacion DESC` cuando `p_q` viene vacío — ver `supabase/busqueda_global.sql`). Antes, con la caja vacía se mostraba un cartel de "escribí algo" y no se pedía nada al índice.
 - Checkboxes para seleccionar filas.
 - Dropdown "Agregar a pestaña" → copia las seleccionadas a la pestaña elegida.
 

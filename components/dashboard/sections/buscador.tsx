@@ -1184,10 +1184,14 @@ export function BuscadorSection() {
   // Búsqueda con debounce: dispara 300 ms después de dejar de tipear.
   // Dentro de una pestaña no se consulta el índice: el filtrado es local sobre
   // las filas ya copiadas (ver tabFilasFiltradas).
+  //
+  // Con la caja vacía TAMBIÉN se consulta (antes se mostraba un cartel de
+  // "escribí algo" y no se veía nada): `gd_buscar` con `p_q` vacío devuelve
+  // todo el índice ordenado por `fecha_creacion` DESC, así que el Buscador
+  // abre mostrando las OP más nuevas en vez de una pantalla en blanco.
   useEffect(() => {
     if (activeTab) { setLoading(false); return; }
     const q = query.trim();
-    if (!q) { setRows([]); setBuscado(false); setLoading(false); return; }
     setLoading(true);
     const t = setTimeout(() => {
       buscar(q)
@@ -1864,19 +1868,15 @@ export function BuscadorSection() {
                 Andá a «Índice maestro», tildá las filas que quieras seguir y usá «Agregar a pestaña».
               </span>
             </div>
-          ) : !isTabMode && !query.trim() ? (
-            <div className="flex flex-col items-center gap-2.5 py-14 text-sm text-muted-foreground">
-              <Search className="w-10 h-10 opacity-20" />
-              Escribí algo para buscar en SIC, OP, Matrículas y Transacciones.
-            </div>
           ) : !isTabMode && loading ? (
             <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" />Buscando…
+              <Loader2 className="w-4 h-4 animate-spin" />
+              {query.trim() ? "Buscando…" : "Cargando las OP más recientes…"}
             </div>
           ) : !isTabMode && !sorted.length ? (
             <div className="flex flex-col items-center gap-2.5 py-14 text-sm text-muted-foreground">
               <PackageOpen className="w-10 h-10 opacity-20" />
-              Sin resultados para «{query.trim()}».
+              {query.trim() ? `Sin resultados para «${query.trim()}».` : "El índice no tiene filas todavía."}
               {indice?.filas === 0 && <span className="text-[12px]">El índice está vacío — probá «Reconstruir índice».</span>}
             </div>
           ) : !visibleCols.length ? (
