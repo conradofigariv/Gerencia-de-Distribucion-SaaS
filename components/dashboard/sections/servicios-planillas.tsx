@@ -96,7 +96,7 @@ interface PlanillaState {
 const INIT: PlanillaState = { count: 0, uploadedAt: null, loading: true, uploading: false };
 
 const REMINDER_DEFS = [
-  { key: "planillas-OP",         planilla: "OP" as PlanillaType,         label: "OP",         name: "OP — Órdenes de compra",              descripcion: "Órdenes de compra",      accentClass: "text-blue-400" },
+  { key: "planillas-OP",         planilla: "OP" as PlanillaType,         label: "OP",         name: "OP — Envíos (órdenes de compra)",      descripcion: "Planilla «Envíos»",      accentClass: "text-blue-400" },
   { key: "planillas-SIC",        planilla: "SIC" as PlanillaType,        label: "SIC",        name: "SICs — Solicitudes internas de compra", descripcion: "Solicitudes internas de compra", accentClass: "text-purple-400" },
   { key: "planillas-MATRICULAS", planilla: "MATRICULAS" as PlanillaType, label: "MATRICULAS", name: "MATRICULAS — Catálogo de materiales",  descripcion: "Catálogo de materiales",  accentClass: "text-emerald-400" },
 ] as const;
@@ -445,7 +445,7 @@ export function ServiciosPlanillasSection() {
         if (error) { toast.error(`Error insertando OP: ${error.message}`); return; }
       }
       toast.success(`OP: ${mapped.length.toLocaleString("es-AR")} filas guardadas`);
-      if (userId) await markUpdated("planillas-OP", "OP — Órdenes de compra", userId).catch(() => {});
+      if (userId) await markUpdated("planillas-OP", "OP — Envíos (órdenes de compra)", userId).catch(() => {});
       reconstruirIndiceEnSegundoPlano("cargar OP");
     } catch (e) {
       toast.error(`Error OP: ${e instanceof Error ? e.message : "Error"}`);
@@ -635,7 +635,7 @@ export function ServiciosPlanillasSection() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <PlanillaCard tipo="OP"         label="OP"         descripcion="Órdenes de compra"       accentClass="text-blue-400"    state={states.OP}         onUpload={f => handleUpload("OP",         f)} onClear={() => handleClear("OP")}         />
+        <PlanillaCard tipo="OP"         label="OP"         descripcion="Planilla «Envíos»"       accentClass="text-blue-400"    state={states.OP}         onUpload={f => handleUpload("OP",         f)} onClear={() => handleClear("OP")}         />
         <PlanillaCard tipo="SIC"        label="SIC"        descripcion="Solicitudes internas de compra" accentClass="text-purple-400"  state={states.SIC}        onUpload={f => handleUpload("SIC",        f)} onClear={() => handleClear("SIC")}        onHelp={() => setSicHelpOpen(true)} />
         <PlanillaCard tipo="MATRICULAS" label="MATRICULAS" descripcion="Catálogo de materiales"   accentClass="text-emerald-400" state={states.MATRICULAS} onUpload={f => handleUpload("MATRICULAS", f)} onClear={() => handleClear("MATRICULAS")} />
       </div>

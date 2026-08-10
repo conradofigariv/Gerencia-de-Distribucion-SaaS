@@ -42,6 +42,10 @@ export interface BusquedaRow {
   envio:               string | null;
   envios_linea:        number | null;   // total de envíos de esa (OP, línea) → «1/2»
   proveedor:           string | null;
+  // Descripción de la OP — NO la de la matrícula (que va en `descripcion`).
+  // Se carga a mano en `op_datos`; ver lib/opDatos.ts.
+  op_descripcion:      string | null;
+  // Zona manual de `op_datos` si está cargada; si no, la de la planilla.
   zona:                string | null;
 
   // Cantidades

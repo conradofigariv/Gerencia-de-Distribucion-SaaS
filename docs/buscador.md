@@ -16,7 +16,8 @@ Tabla maestro regenerada en cada reconstrucción. Una fila por (OP, línea, env�
 - `descripcion`, `unidad_medida`, `estado_matricula`, `tipo`, `mat_serv`, `en_catalogo`: datos de la matrícula.
 - `numero_sic`, `sic_linea`, `sic_cantidad`, `sic_udm`, `sic_preparador`, `sic_fecha_creacion`: contexto SIC si aplica.
 - `relacion`, `numero_op`, `linea`, `envio`, `envios_linea`: identificadores de compra.
-- `proveedor`, `zona`: metadata de compra.
+- `proveedor`: metadata de compra.
+- `op_descripcion`, `zona`: **cargados a mano** en `op_datos`, no vienen de la planilla. Ver "Datos manuales de OP" más abajo.
 - `cantidad`, `cantidad_recibida`, `ctd_aceptada`, `pendiente`, `cantidad_vencida`, `cantidad_rechazada`, `cantidad_facturada`, `cantidad_cancelada`: cantidades por estado.
 - `fecha_creacion`, `fecha_pactada`, `estado_autorizacion`, `estado_cierre`: fechas y estados.
 - `tx_recibido`, `tx_aceptado`, `tx_entregado`, `tx_devoluciones`, `tx_movimientos`: totales por línea de `tablero_op_transaccion`.
@@ -99,6 +100,51 @@ updated_at timestamptz NOT NULL DEFAULT now()
 - `updateFilaDatos(id, datos)`: Guardar edición de una celda (datos completo).
 - `deleteFilas(ids)`: Borrar filas.
 - `reorderFilas(filas[])`: Persistir reorden manual después de drag.
+
+---
+
+## Datos manuales de OP — `op_datos`
+
+La planilla de OPs (**«Envíos»**, una fila por OP/línea/envío) no trae ninguna
+descripción de la OP en sí — la única que llega es la de la matrícula, que es
+otra cosa — y su columna de zona (`organizacion_envio`) no es confiable.
+
+`op_datos` guarda lo que el usuario carga a mano, **una fila por OP**:
+
+```sql
+numero_op (PK) · descripcion · zona · updated_at · updated_by
+```
+
+**Por qué una tabla aparte:**
+- `busqueda_index` se borra y recrea entera en cada «Reconstruir» — cualquier dato manual ahí se perdería.
+- Las filas de `buscador_tab_filas` son copias congeladas y privadas de una pestaña: habría que recargar el dato en cada pestaña donde aparezca esa OP, se perdería al borrarla y no lo vería nadie más.
+- Es el mismo patrón que `matricula_tipo` (override manual de Material/Servicio, cargado desde Stock por Zona), que el rebuild ya joinea desde antes.
+
+**Granularidad:** por OP. Se carga una vez y vale para todas sus líneas y envíos —
+una OP de 12 líneas es 1 carga, no 12.
+
+**La zona manual pisa a la de la planilla** (`COALESCE(NULLIF(od.zona,''), o.organizacion_envio)`):
+un solo campo `zona`, con la manual ganando si está cargada.
+
+### Cómo llega a la vista — dos caminos
+
+1. **`gd_reconstruir_busqueda()`** hace `LEFT JOIN _opd` en las tres ramas que tienen OP (`op`, `transaccion`, `sic`) y escribe los valores dentro de `busqueda_index`. Ambos campos entran además al texto buscable, así que se puede buscar «zona sur» y traer todas las OP de esa zona.
+2. **Overlay en el cliente** (`aplicarOpDatos` en `lib/opDatos.ts`): entre dos reconstrucciones el índice queda viejo, y las filas de pestaña están congeladas desde el día que se copiaron. El Buscador superpone `op_datos` sobre lo que cargó (`rowsConOp`, `tabFilasConOp`), así lo último escrito se ve al instante sin reconstruir nada.
+
+Las claves se normalizan con `gd_norm_op()` en SQL y `normOp()` en TS (mismo
+`.trim().replace(/\.0+$/, "")`), así da igual con qué forma del número se haya
+guardado.
+
+### Edición
+
+`OP_MANUAL_COLS = { op_descripcion, zona }` marca las dos columnas que NO se
+guardan en la fila. En `commitEdit` hay una rama propia: van a `op_datos` vía
+`upsertOpDato()` en vez de al `datos` jsonb de la fila.
+
+- Se editan con doble-click **tanto en una pestaña como en el índice maestro** (el resto de las columnas del índice maestro sigue siendo de solo lectura). Como en el maestro no hay `filaId`, la clave de edición pasa a ser la fila visible.
+- Editar una fila actualiza **todas** las filas de esa OP en pantalla al instante — es un dato de la OP, no de la fila.
+- Una fila sin `numero_op` (matrícula solo de catálogo) no es editable, con el motivo en el tooltip.
+- Respetan `puedoEditar`: en una pestaña compartida de solo lectura no se pueden tocar.
 
 ---
 

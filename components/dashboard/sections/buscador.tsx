@@ -13,6 +13,9 @@ import { cn } from "@/lib/utils";
 import { buscar, reconstruirIndice, estadoIndice, rowKey, type BusquedaRow } from "@/lib/busqueda";
 import { getPreference, setPreference } from "@/lib/userPreferences";
 import {
+  fetchOpDatos, upsertOpDato, aplicarOpDatos, normOp, OP_MANUAL_COLS, type OpDato,
+} from "@/lib/opDatos";
+import {
   fetchTabs, createTab, renameTab, deleteTab, fetchTabFilas, addFilas,
   updateFilaDatos, deleteFilas, reorderFilas, updateTabConfig,
   fetchMisPermisos, fetchColaboradores, compartirTab, descompartirTab, fetchEquipo,
@@ -332,6 +335,9 @@ const COLS: ColDef[] = [
     },
   },
   { key: "proveedor",          label: "Proveedor",    group: "op" },
+  // Las dos siguientes se cargan A MANO (op_datos), no vienen de la planilla:
+  // son datos de la OP entera, no de la fila. Ver lib/opDatos.ts.
+  { key: "op_descripcion",     label: "Descripción OP", group: "op" },
   { key: "zona",               label: "Zona",         group: "op" },
 
   // ── Cantidades (planilla OP) ──
@@ -465,7 +471,8 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   linea:               70,
   envio:               80,
   proveedor:           180,
-  zona:                80,
+  op_descripcion:      240,
+  zona:                140,
   cantidad:            95,
   cantidad_recibida:   95,
   ctd_aceptada:        95,
@@ -717,6 +724,10 @@ function ShareDialog({ tabId, tabNombre, ownerId, onClose }: { tabId: string; ta
 export function BuscadorSection() {
   const [query, setQuery]     = useState("");
   const [rows, setRows]       = useState<BusquedaRow[]>([]);
+  // Datos manuales de la OP (descripción + zona real), por OP normalizada. Se
+  // superponen a lo que traiga el índice o la copia congelada de la pestaña,
+  // así lo último cargado se ve al toque sin esperar un «Reconstruir».
+  const [opDatos, setOpDatos] = useState<Map<string, OpDato>>(new Map());
   const [loading, setLoading] = useState(false);
   const [buscado, setBuscado] = useState(false);
   const [reconstruyendo, setReconstruyendo] = useState(false);
@@ -1139,9 +1150,50 @@ export function BuscadorSection() {
 
   // Guarda una celda editada. `datos` es jsonb, así que se manda el objeto
   // entero con la clave ya aplicada.
-  const commitEdit = useCallback(async (filaId: string, key: string, value: string) => {
-    const fila = tabFilas.find((f) => f.id === filaId);
+  /**
+   * Guarda una celda editada. Hay DOS destinos según la columna:
+   *
+   *  • `op_descripcion` / `zona` → son datos de la OP ENTERA, no de la fila.
+   *    Van a `op_datos` (tabla compartida) y se ven al instante en todas las
+   *    filas de esa OP, en todas las pestañas y para todo el equipo. Por eso
+   *    también se pueden editar desde el índice maestro, donde no hay `filaId`.
+   *
+   *  • cualquier otra → es la copia privada de esta pestaña; se guarda el
+   *    `datos` jsonb completo de esa fila.
+   */
+  const commitEdit = useCallback(async (filaId: string | null, key: string, value: string, numeroOp?: string | null) => {
     setEditing(null);
+
+    if (OP_MANUAL_COLS.has(key)) {
+      const clave = normOp(numeroOp);
+      if (!clave) { toast.error("Esta fila no tiene número de OP — no se le puede cargar zona ni descripción."); return; }
+      const previo = opDatos.get(clave);
+      const limpio = value.trim();
+      const campo  = key === "zona" ? "zona" : "descripcion";
+      if (String(previo?.[campo] ?? "") === limpio) return;   // sin cambios
+
+      const backup = opDatos;
+      setOpDatos((p) => {
+        const n = new Map(p);
+        n.set(clave, {
+          numero_op:   clave,
+          descripcion: previo?.descripcion ?? null,
+          zona:        previo?.zona ?? null,
+          [campo]:     limpio || null,
+        } as OpDato);
+        return n;
+      });
+      try {
+        await upsertOpDato(clave, { [campo]: limpio || null }, userId);
+      } catch (e) {
+        setOpDatos(backup);
+        toast.error(`No se pudo guardar: ${e instanceof Error ? e.message : String(e)}`);
+      }
+      return;
+    }
+
+    if (!filaId) return;
+    const fila = tabFilas.find((f) => f.id === filaId);
     if (!fila) return;
     if (String(fila.datos[key] ?? "") === value) return;   // sin cambios
     const nuevos = { ...fila.datos, [key]: value };
@@ -1152,7 +1204,7 @@ export function BuscadorSection() {
       setTabFilas((p) => p.map((f) => (f.id === filaId ? fila : f)));
       toast.error(`No se pudo guardar: ${e instanceof Error ? e.message : String(e)}`);
     }
-  }, [tabFilas]);
+  }, [tabFilas, opDatos, userId]);
 
   const handleDropFila = useCallback(async (targetId: string) => {
     const from = dragFilaId.current;
@@ -1180,6 +1232,14 @@ export function BuscadorSection() {
     estadoIndice().then(setIndice).catch(() => setIndice(null));
   }, []);
   useEffect(() => { cargarEstado(); }, [cargarEstado]);
+
+  // Datos manuales de OP: se traen una vez y se mantienen en memoria. La tabla
+  // solo tiene fila por OP que alguien anotó, así que es chica.
+  useEffect(() => {
+    fetchOpDatos()
+      .then(setOpDatos)
+      .catch(() => { /* sin esto se ve la zona de la planilla, degrada bien */ });
+  }, []);
 
   // Búsqueda con debounce: dispara 300 ms después de dejar de tipear.
   // Dentro de una pestaña no se consulta el índice: el filtrado es local sobre
@@ -1226,10 +1286,15 @@ export function BuscadorSection() {
     }
   };
 
+  // Filas del índice con los datos manuales de OP ya superpuestos. Todo lo de
+  // abajo (ordenar, fijar, agrupar, CSV) sale de acá, así nunca se ve un valor
+  // viejo por un lado y el nuevo por otro.
+  const rowsConOp = useMemo(() => aplicarOpDatos(rows, opDatos), [rows, opDatos]);
+
   const sortedByCol = useMemo(() => {
-    if (!sortCol) return rows;
+    if (!sortCol) return rowsConOp;
     const dir = sortDir === "asc" ? 1 : -1;
-    return [...rows].sort((a, b) => {
+    return [...rowsConOp].sort((a, b) => {
       const va = (a as unknown as Record<string, unknown>)[sortCol];
       const vb = (b as unknown as Record<string, unknown>)[sortCol];
       if (va == null && vb == null) return 0;
@@ -1238,16 +1303,16 @@ export function BuscadorSection() {
       if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
       return String(va).localeCompare(String(vb), "es", { numeric: true, sensitivity: "base" }) * dir;
     });
-  }, [rows, sortCol, sortDir]);
+  }, [rowsConOp, sortCol, sortDir]);
 
   // Filas fijadas: las que están fijadas Y presentes en la búsqueda actual, en
   // orden de fijado. Se releen desde `rows` para mostrar siempre el dato más
   // fresco (por si se reconstruyó el índice).
   const pinnedRows = useMemo(() => {
     if (!pinnedKeys.length) return [];
-    const byKey = new Map(rows.map((r) => [rowKey(r), r]));
+    const byKey = new Map(rowsConOp.map((r) => [rowKey(r), r]));
     return pinnedKeys.map((k) => byKey.get(k)).filter((r): r is BusquedaRow => !!r);
-  }, [pinnedKeys, rows]);
+  }, [pinnedKeys, rowsConOp]);
 
   // Filas fijadas SIEMPRE arriba (en orden de fijado), y debajo el resto en el
   // orden elegido — misma función que en Stock por Zona.
@@ -1299,15 +1364,26 @@ export function BuscadorSection() {
   // maestro la data es la BusquedaRow; en una pestaña, el `datos` de la fila
   // copiada (que además trae las claves de seguimiento).
 
+  // Igual que en el índice: las filas copiadas quedaron congeladas el día que
+  // se agregaron, así que la descripción y la zona de la OP se superponen
+  // desde op_datos para mostrar siempre lo último cargado.
+  const tabFilasConOp = useMemo(() => {
+    if (!opDatos.size) return tabFilas;
+    return tabFilas.map((f) => {
+      const [datos] = aplicarOpDatos([f.datos], opDatos);
+      return datos === f.datos ? f : { ...f, datos };
+    });
+  }, [tabFilas, opDatos]);
+
   // Dentro de una pestaña el buscador filtra las filas que ya están copiadas,
   // no vuelve a pegarle al índice.
   const tabFilasFiltradas = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return tabFilas;
-    return tabFilas.filter((f) =>
+    if (!q) return tabFilasConOp;
+    return tabFilasConOp.filter((f) =>
       Object.values(f.datos).some((v) => v != null && String(v).toLowerCase().includes(q))
     );
-  }, [tabFilas, query]);
+  }, [tabFilasConOp, query]);
 
   const tabFilasOrdenadas = useMemo(() => {
     if (!sortCol) return tabFilasFiltradas;      // sin sort → orden manual
@@ -2170,7 +2246,16 @@ export function BuscadorSection() {
                         {/* Columnas del índice. En una pestaña son copias, así
                             que se editan con doble click. */}
                         {renderCols.map((c) => {
-                          const editando = isTabMode && editing?.filaId === filaId && editing?.key === c.key;
+                          // Las columnas manuales de OP (descripción / zona) se
+                          // editan TAMBIÉN en el índice maestro, donde no hay
+                          // filaId: la clave de edición es la fila visible.
+                          const esManualOp = OP_MANUAL_COLS.has(c.key as string);
+                          const numeroOp   = String(data.numero_op ?? "");
+                          const editKey    = isTabMode ? filaId : key;
+                          const editable   = esManualOp
+                            ? (puedoEditar && !!numeroOp)
+                            : (isTabMode && puedoEditar);
+                          const editando = editing?.filaId === editKey && editing?.key === c.key;
                           return (
                             <td
                               key={c.key}
@@ -2181,15 +2266,19 @@ export function BuscadorSection() {
                                 fontFamily: (c.num || c.mono) ? "ui-monospace, monospace" : undefined,
                                 color: c.key === "articulo" ? "hsl(var(--foreground))" : undefined,
                                 fontWeight: c.key === "articulo" ? 500 : undefined,
-                                cursor: isTabMode && puedoEditar ? "text" : undefined,
+                                cursor: editable ? "text" : undefined,
                               }}
                               title={
-                                isTabMode ? (puedoEditar ? "Doble click para editar" : "Solo lectura — pedile al dueño permiso de edición")
+                                esManualOp
+                                  ? (!numeroOp ? "Esta fila no tiene OP"
+                                     : !puedoEditar ? "Solo lectura — pedile al dueño permiso de edición"
+                                     : `Doble click para editar — se guarda para toda la OP ${numeroOp}`)
+                                : isTabMode ? (puedoEditar ? "Doble click para editar" : "Solo lectura — pedile al dueño permiso de edición")
                                   : c.key === "descripcion" ? String(data.descripcion ?? "") : undefined
                               }
-                              onDoubleClick={isTabMode && puedoEditar ? () => {
+                              onDoubleClick={editable ? () => {
                                 setEditValue(String(data[c.key] ?? ""));
-                                setEditing({ filaId: filaId!, key: c.key });
+                                setEditing({ filaId: editKey!, key: c.key });
                               } : undefined}
                             >
                               {editando ? (
@@ -2197,7 +2286,7 @@ export function BuscadorSection() {
                                   autoFocus
                                   value={editValue}
                                   onChange={(e) => setEditValue(e.target.value)}
-                                  onBlur={() => commitEdit(filaId!, c.key, editValue)}
+                                  onBlur={() => commitEdit(isTabMode ? filaId ?? null : null, c.key, editValue, numeroOp)}
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter") e.currentTarget.blur();
                                     if (e.key === "Escape") setEditing(null);

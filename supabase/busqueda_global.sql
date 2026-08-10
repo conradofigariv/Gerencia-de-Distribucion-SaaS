@@ -153,7 +153,13 @@ CREATE TABLE busqueda_index (
                                    -- para mostrar «envío 1/2» y que se vea de una
                                    -- que las filas hermanas comparten el total (mov.)
   proveedor           text,
-  zona                text,        -- organizacion_envio
+  -- Descripción de la OP (NO la de la matrícula, que va en `descripcion`).
+  -- Se carga a mano en op_datos; sirve para saber de qué se trata la OP y de
+  -- qué zona es. Ver supabase/op_datos.sql.
+  op_descripcion      text,
+  -- La zona MANUAL de op_datos si está cargada; si no, organizacion_envio de
+  -- la planilla (que no es confiable, por eso el override).
+  zona                text,
 
   -- ── Cantidades ──
   cantidad            numeric,
@@ -265,6 +271,17 @@ BEGIN
      ORDER BY k;
   CREATE INDEX ON _tipo (k);
 
+  -- Datos manuales de la OP (descripción real + zona real). Mismo patrón que
+  -- _tipo: se normaliza la clave de los dos lados y se deduplica, así da igual
+  -- si en op_datos quedó guardada la OP con o sin el ".0" del Excel.
+  -- Ver supabase/op_datos.sql.
+  CREATE TEMP TABLE _opd ON COMMIT DROP AS
+    SELECT DISTINCT ON (k) k, descripcion, zona
+      FROM (SELECT gd_norm_op(numero_op) AS k, descripcion, zona FROM op_datos) x
+     WHERE k IS NOT NULL
+     ORDER BY k;
+  CREATE INDEX ON _opd (k);
+
   -- Movimientos reales agregados por (OP, artículo, línea) — TODO el histórico.
   -- Las transacciones NO tienen dimensión de envío, así que el total es de la
   -- línea completa. Una sola pasada con hash agg sobre las 60k+ filas.
@@ -364,7 +381,7 @@ BEGIN
     tipo, mat_serv, en_catalogo,
     numero_sic, sic_linea, sic_cantidad, sic_udm, sic_preparador, sic_fecha_creacion,
     relacion, numero_op, linea, envio, envios_linea,
-    proveedor,
+    proveedor, op_descripcion,
     zona, cantidad, cantidad_recibida, ctd_aceptada, pendiente, cantidad_vencida,
     cantidad_rechazada, cantidad_facturada, cantidad_cancelada,
     fecha_creacion, fecha_pactada, estado_autorizacion, estado_cierre,
@@ -394,7 +411,8 @@ BEGIN
     o.envio,
     ec.n,
     o.proveedor,
-    o.organizacion_envio,
+    od.descripcion,
+    COALESCE(NULLIF(od.zona, ''), o.organizacion_envio),   -- la manual pisa
     o.cantidad,
     o.cantidad_recibida,
     o.ctd_aceptada,
@@ -417,7 +435,10 @@ BEGIN
     gd_norm_texto(concat_ws(' ',
       o.articulo, o.k,
       COALESCE(NULLIF(c.descripcion, ''), o.descripcion_articulo),
-      o.relacion, o.numero, o.linea, o.envio, o.proveedor, o.organizacion_envio,
+      o.relacion, o.numero, o.linea, o.envio, o.proveedor,
+      -- La descripción y la zona manuales entran al texto buscable: así se
+      -- puede buscar «zona sur» y traer todas las OP de esa zona.
+      od.descripcion, COALESCE(NULLIF(od.zona, ''), o.organizacion_envio),
       t.tipo, c.mat_serv, c.estado, o.estado_autorizacion, o.estado_cierre,
       o.fecha_creacion, o.fecha_pactada,
       x.primera_fecha, x.ultima_fecha,
@@ -432,6 +453,7 @@ BEGIN
   ) o
   LEFT JOIN _cat  c ON c.k = o.k
   LEFT JOIN _tipo t ON t.k = o.k
+  LEFT JOIN _opd  od ON od.k = o.op_k
   LEFT JOIN _tx   x ON x.numero_op = o.op_k AND x.k = o.k AND x.linea_k = o.linea_k
   LEFT JOIN _env_count ec ON ec.numero_op = o.op_k AND ec.linea_k = o.linea_k
   LEFT JOIN _sic  s ON s.op_k = o.op_k AND s.art_k = o.k;
@@ -444,7 +466,7 @@ BEGIN
     fuente, articulo, articulo_key, descripcion, unidad_medida, estado_matricula,
     tipo, mat_serv, en_catalogo,
     numero_sic, sic_linea, sic_cantidad, sic_udm, sic_preparador, sic_fecha_creacion,
-    numero_op, linea, proveedor,
+    numero_op, linea, proveedor, op_descripcion, zona,
     tx_recibido, tx_aceptado, tx_entregado, tx_devoluciones, tx_movimientos,
     tx_primera_fecha, tx_ultima_fecha, busqueda
   )
@@ -467,6 +489,8 @@ BEGIN
     x.numero_op,
     NULLIF(x.linea_k, ''),        -- vuelve el centinela a NULL para mostrar
     x.proveedor,
+    od.descripcion,
+    NULLIF(od.zona, ''),          -- estas filas no traen zona de planilla
     x.recibido,
     x.aceptado,
     x.entregado,
@@ -476,13 +500,14 @@ BEGIN
     x.ultima_fecha,
     gd_norm_texto(concat_ws(' ',
       COALESCE(c.articulo, x.k), x.k, c.descripcion, x.numero_op, x.linea_k,
-      x.proveedor, t.tipo, c.mat_serv, c.estado,
+      x.proveedor, od.descripcion, od.zona, t.tipo, c.mat_serv, c.estado,
       x.primera_fecha, x.ultima_fecha,
       s.numero_sic, s.preparador
     ))
   FROM _tx x
   LEFT JOIN _cat     c  ON c.k = x.k
   LEFT JOIN _tipo    t  ON t.k = x.k
+  LEFT JOIN _opd     od ON od.k = x.numero_op
   LEFT JOIN _sic     s  ON s.op_k = x.numero_op AND s.art_k = x.k
   LEFT JOIN _op_rows orw ON orw.numero_op = x.numero_op
                         AND orw.k         = x.k
@@ -498,7 +523,7 @@ BEGIN
     fuente, articulo, articulo_key, descripcion, unidad_medida, estado_matricula,
     tipo, mat_serv, en_catalogo,
     numero_sic, sic_linea, sic_cantidad, sic_udm, sic_preparador, sic_fecha_creacion,
-    numero_op, busqueda
+    numero_op, op_descripcion, zona, busqueda
   )
   SELECT
     'sic',
@@ -517,15 +542,19 @@ BEGIN
     s.preparador,
     s.fecha_creacion,
     s.op_k,                       -- NULL si la SIC todavía no generó la OP
+    od.descripcion,
+    NULLIF(od.zona, ''),
     gd_norm_texto(concat_ws(' ',
       COALESCE(c.articulo, s.art_k), s.art_k,
       COALESCE(NULLIF(c.descripcion, ''), s.descripcion),
       s.numero_sic, s.linea, s.op_k, s.preparador, s.fecha_creacion,
+      od.descripcion, od.zona,
       t.tipo, c.mat_serv, c.estado
     ))
   FROM _sic s
   LEFT JOIN _cat  c ON c.k = s.art_k
   LEFT JOIN _tipo t ON t.k = s.art_k
+  LEFT JOIN _opd  od ON od.k = s.op_k
   LEFT JOIN _op_art oa ON oa.op_k = s.op_k AND oa.art_k = s.art_k
   WHERE oa.op_k IS NULL;
 
