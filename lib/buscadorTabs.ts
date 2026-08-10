@@ -20,10 +20,19 @@ export const TRACK_KEYS = {
 export const ESTADOS = ["Pendiente", "En curso", "Resuelto"] as const;
 export type Estado = (typeof ESTADOS)[number];
 
+/** Eje de agrupado de una pestaña — igual a las claves de BusquedaRow que se
+ *  usan como criterio (matrícula usa `articulo_key`/`articulo`, no una clave
+ *  propia, por eso "articulo" es un alias especial en vez de una columna real). */
+export type AgruparPor = "articulo" | "numero_sic" | "numero_op";
+
 export interface TabConfig {
-  order?:  string[];
-  hidden?: string[];
-  widths?: Record<string, number>;
+  order?:      string[];
+  hidden?:     string[];
+  widths?:     Record<string, number>;
+  // Vista de agrupado — cada pestaña puede mirar sus filas agrupadas por un eje
+  // distinto (o sin agrupar), independiente de las demás.
+  agrupar?:    boolean;
+  agruparPor?: AgruparPor;
 }
 
 export interface BuscadorTab {

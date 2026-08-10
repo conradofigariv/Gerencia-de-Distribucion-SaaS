@@ -114,7 +114,8 @@ updated_at timestamptz NOT NULL DEFAULT now()
 **Modo pestaña:**
 - Muestra filas copiadas + 4 columnas de seguimiento (estado, responsable, fechaRevision, nota).
 - Agrupa (collapsible) por el criterio elegido: **Matrícula** (default), **SIC** u **OP** — desplegable al lado del toggle "Agrupar".
-  - Cambiar de criterio recalcula los grupos y los colapsa todos de nuevo (los `colapsados` guardados son claves del criterio anterior, no sirven para el nuevo).
+  - **Tanto el toggle "Agrupar" como el criterio son propios de CADA pestaña** — se guardan en `buscador_tabs.config` (`agrupar`, `agruparPor`), igual que el orden/visibilidad/ancho de columnas. Una pestaña puede estar agrupada por OP mientras otra no agrupa nada, y cada una lo recuerda al volver a abrirla (`buscador.tsx`: `agrupar`/`agruparPor` son valores DERIVADOS de `tabCfg`, no estado propio — ver `patchLayout`).
+  - Cambiar de criterio recalcula los grupos y los colapsa todos de nuevo (los `colapsados` guardados son claves del criterio anterior, no sirven para el nuevo). `colapsados` en sí NO se persiste — es UI efímera, se resetea a "todo cerrado" cada vez que se cargan las filas de la pestaña o cambia el criterio.
   - Helper: `groupKeyOf(data, criterio)` en `buscador.tsx` — misma clave para agrupar, contar y detectar columnas redundantes.
   - Título del encabezado de grupo por criterio: matrícula → código + descripción; SIC → "SIC {n}" + preparador; OP → "OP {n}" + proveedor.
 - Edición inline: doble-click en una celda, Enter para guardar, Escape para cancelar.
@@ -182,18 +183,25 @@ Se usa para:
 
 ---
 
-## Configuración de Columnas (Phase 2)
+## Configuración por pestaña — `buscador_tabs.config`
 
-**Estado actual:** Global (`user_preferences` tabla).
+Cada pestaña tiene su propio `config` (jsonb), independiente del índice
+maestro (que sigue usando `user_preferences`, global) y de las demás pestañas:
 
-**Próximo:** Per-tab — cada pestaña tiene su propio `config` (jsonb):
 ```json
 {
-  "order": ["articulo", "descripcion", "numero_op", "..."],
-  "hidden": ["tx_recibido", "tx_aceptado"],
-  "widths": { "articulo": 120, "numero_op": 100 }
+  "order":      ["articulo", "descripcion", "numero_op", "..."],
+  "hidden":     ["tx_recibido", "tx_aceptado"],
+  "widths":     { "articulo": 120, "numero_op": 100 },
+  "agrupar":    true,
+  "agruparPor": "numero_op"
 }
 ```
+
+- `order` / `hidden` / `widths`: columnas de esa pestaña — ver "Modo pestaña" arriba.
+- `agrupar` / `agruparPor`: vista de agrupado de esa pestaña — default `true` / `"articulo"` si no están guardados (pestaña vieja o recién creada).
+- Todo se escribe con el mismo mecanismo: `patchLayout()` en `buscador.tsx` arma el objeto completo (mergeando con lo que ya había) y lo persiste con `updateTabConfig()` tras 1s de debounce, con un timer POR pestaña (`saveTabCfgTimers`, un `Record<tabId, timer>`) — así tocar la pestaña A y saltar enseguida a la B no cancela el guardado pendiente de A.
+- Se lee al hacer `fetchTabs()`: cada pestaña trae su `config` completo desde la primera carga, sembrando `tabLayouts[tab.id]` — no hace falta abrir la pestaña para que esté disponible.
 
 ---
 

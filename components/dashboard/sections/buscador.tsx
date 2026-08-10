@@ -14,7 +14,7 @@ import { getPreference, setPreference } from "@/lib/userPreferences";
 import {
   fetchTabs, createTab, renameTab, deleteTab, fetchTabFilas, addFilas,
   updateFilaDatos, deleteFilas, reorderFilas, updateTabConfig,
-  TRACK_KEYS, ESTADOS, type BuscadorTab, type TabFila, type TabConfig,
+  TRACK_KEYS, ESTADOS, type BuscadorTab, type TabFila, type TabConfig, type AgruparPor,
 } from "@/lib/buscadorTabs";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -394,9 +394,8 @@ const TRACK_COLS: TrackColDef[] = [
 // ─── Agrupado de pestañas ────────────────────────────────────────────────────
 // Una pestaña puede agruparse por distintos ejes de la jerarquía del dominio
 // (SIC → OP → línea → envío, con la matrícula como eje transversal). Cada uno
-// vive en una columna distinta del `datos` copiado.
-
-type AgruparPor = "articulo" | "numero_sic" | "numero_op";
+// vive en una columna distinta del `datos` copiado. El tipo vive en
+// lib/buscadorTabs.ts porque se guarda en buscador_tabs.config.
 
 const AGRUPAR_OPTIONS: { value: AgruparPor; label: string; icon: ElementType }[] = [
   { value: "articulo",   label: "Matrícula", icon: Tag },
@@ -515,12 +514,10 @@ export function BuscadorSection() {
   // Celda en edición dentro de una pestaña: { filaId, key }.
   const [editing, setEditing]     = useState<{ filaId: string; key: string } | null>(null);
   const [editValue, setEditValue] = useState("");
-  // Agrupar las filas de la pestaña, con desplegables. `agruparPor` elige el
-  // eje: matrícula (por defecto — una familia entera desborda la tabla), SIC
-  // (todas las líneas que salieron del mismo pedido) u OP (todo lo que se le
-  // compró a esa orden, cruzando matrículas distintas).
-  const [agrupar, setAgrupar]     = useState(true);
-  const [agruparPor, setAgruparPor] = useState<AgruparPor>("articulo");
+  // Vista de agrupado — `agrupar`/`agruparPor` viven en buscador_tabs.config
+  // (ver más abajo, junto a tabLayouts/patchLayout): son valores DERIVADOS de
+  // la pestaña activa, no estado propio, para que cada pestaña recuerde su
+  // propio criterio igual que ya hace con sus columnas.
   const [agruparMenuOpen, setAgruparMenuOpen] = useState(false);
   const agruparMenuRef = useRef<HTMLDivElement>(null);
   const [colapsados, setColapsados] = useState<Set<string>>(new Set());
@@ -554,6 +551,17 @@ export function BuscadorSection() {
   const saveTabCfgTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const isTabMode = activeTab !== null;
+
+  // Config guardada de la pestaña activa (columnas Y agrupado): `undefined` si
+  // es el índice maestro o si la pestaña todavía no tiene nada guardado.
+  const tabCfg = isTabMode && activeTab ? tabLayouts[activeTab] : undefined;
+
+  // Vista de agrupado — de la pestaña activa, no un toggle global: cada
+  // pestaña recuerda su propio criterio (matrícula / SIC / OP) igual que ya
+  // recuerda sus columnas. Sin agrupado ni criterio guardado, arranca como
+  // antes: agrupada por matrícula.
+  const agrupar    = tabCfg?.agrupar    ?? true;
+  const agruparPor = tabCfg?.agruparPor ?? "articulo";
 
   // Usuario actual (para preferencias en Supabase).
   useEffect(() => {
@@ -592,12 +600,15 @@ export function BuscadorSection() {
   });
 
   /**
-   * Escribe orden / ocultas / anchos en el scope que corresponde: la pestaña
-   * activa si hay una, la preferencia global si estamos en el índice maestro.
+   * Escribe orden / ocultas / anchos / agrupado en el scope que corresponde: la
+   * pestaña activa si hay una, la preferencia global si estamos en el índice
+   * maestro (agrupar/agruparPor no aplican ahí — el maestro no agrupa).
    *
    * La primera vez que se toca una pestaña hereda lo que se está viendo (la
-   * config del maestro) en lugar de saltar a los defaults — si no, cambiar el
-   * ancho de una columna haría reaparecer de golpe las 37.
+   * config del maestro para columnas, los defaults para agrupado) en lugar de
+   * saltar a otra cosa — si no, cambiar el ancho de una columna haría
+   * reaparecer de golpe las 37, o tocar el agrupado perdería el criterio ya
+   * elegido en esa pestaña.
    */
   const patchLayout = useCallback((patch: TabConfig) => {
     const s = layoutRef.current;
@@ -605,9 +616,11 @@ export function BuscadorSection() {
       const id = s.activeTab;
       const base = s.tabLayouts[id] ?? {};
       const next: TabConfig = {
-        order:  patch.order  ?? base.order  ?? s.colOrder,
-        hidden: patch.hidden ?? base.hidden ?? [...s.hiddenCols],
-        widths: patch.widths ?? base.widths ?? s.colWidths,
+        order:      patch.order      ?? base.order      ?? s.colOrder,
+        hidden:     patch.hidden     ?? base.hidden      ?? [...s.hiddenCols],
+        widths:     patch.widths     ?? base.widths      ?? s.colWidths,
+        agrupar:    patch.agrupar    ?? base.agrupar     ?? true,
+        agruparPor: patch.agruparPor ?? base.agruparPor  ?? "articulo",
       };
       setTabLayouts((p) => ({ ...p, [id]: next }));
       clearTimeout(saveTabCfgTimers.current[id]);
@@ -621,6 +634,20 @@ export function BuscadorSection() {
       if (patch.widths) setColWidths(patch.widths);
     }
   }, []);
+
+  /** Toggle del agrupado de la pestaña activa — no hace nada en el maestro. */
+  const setAgrupar = useCallback((updater: boolean | ((prev: boolean) => boolean)) => {
+    const s = layoutRef.current;
+    if (!s.activeTab) return;
+    const current = s.tabLayouts[s.activeTab]?.agrupar ?? true;
+    const next = typeof updater === "function" ? (updater as (p: boolean) => boolean)(current) : updater;
+    patchLayout({ agrupar: next });
+  }, [patchLayout]);
+
+  /** Cambia el criterio de agrupado de la pestaña activa. */
+  const setAgruparPor = useCallback((value: AgruparPor) => {
+    patchLayout({ agruparPor: value });
+  }, [patchLayout]);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -694,7 +721,7 @@ export function BuscadorSection() {
   // ── Layout efectivo ──
   // El del maestro o el de la pestaña activa, según dónde estemos. Una pestaña
   // sin config propia todavía muestra la del maestro (config = {} en la DB).
-  const tabCfg = isTabMode && activeTab ? tabLayouts[activeTab] : undefined;
+  // (`tabCfg` ya se calculó más arriba, junto a `agrupar`/`agruparPor`.)
   const effOrder = tabCfg?.order ?? colOrder;
   const effHidden = useMemo(
     () => (tabCfg?.hidden ? new Set(tabCfg.hidden) : hiddenCols),
