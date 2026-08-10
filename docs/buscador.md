@@ -113,7 +113,10 @@ updated_at timestamptz NOT NULL DEFAULT now()
 
 **Modo pestaña:**
 - Muestra filas copiadas + 4 columnas de seguimiento (estado, responsable, fechaRevision, nota).
-- Agrupa por matrícula (collapsible) si está habilitada la opción.
+- Agrupa (collapsible) por el criterio elegido: **Matrícula** (default), **SIC** u **OP** — desplegable al lado del toggle "Agrupar".
+  - Cambiar de criterio recalcula los grupos y los colapsa todos de nuevo (los `colapsados` guardados son claves del criterio anterior, no sirven para el nuevo).
+  - Helper: `groupKeyOf(data, criterio)` en `buscador.tsx` — misma clave para agrupar, contar y detectar columnas redundantes.
+  - Título del encabezado de grupo por criterio: matrícula → código + descripción; SIC → "SIC {n}" + preparador; OP → "OP {n}" + proveedor.
 - Edición inline: doble-click en una celda, Enter para guardar, Escape para cancelar.
 - Drag-and-drop para reordenar (deshabilitado si está agrupado).
 

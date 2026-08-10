@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode, type CSSProperties, type DragEvent } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode, type ElementType, type CSSProperties, type DragEvent } from "react";
 import {
   Search, Loader2, X, Download, RefreshCw, Database, PackageOpen,
   ChevronDown, ChevronUp, ChevronsUpDown, Wrench, Package,
   Columns3, GripVertical, Eye, EyeOff, Pin, Plus, Trash2, Pencil, ListPlus,
-  ChevronRight, Rows3,
+  ChevronRight, Rows3, Tag, FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -391,6 +391,42 @@ const TRACK_COLS: TrackColDef[] = [
   { key: TRACK_KEYS.nota,          label: "Nota",         tipo: "texto",  width: 260 },
 ];
 
+// ─── Agrupado de pestañas ────────────────────────────────────────────────────
+// Una pestaña puede agruparse por distintos ejes de la jerarquía del dominio
+// (SIC → OP → línea → envío, con la matrícula como eje transversal). Cada uno
+// vive en una columna distinta del `datos` copiado.
+
+type AgruparPor = "articulo" | "numero_sic" | "numero_op";
+
+const AGRUPAR_OPTIONS: { value: AgruparPor; label: string; icon: ElementType }[] = [
+  { value: "articulo",   label: "Matrícula", icon: Tag },
+  { value: "numero_sic", label: "SIC",       icon: FileText },
+  { value: "numero_op",  label: "OP",        icon: Package },
+];
+
+const SIN_DATO = "— (sin dato)";
+
+/** Clave de grupo de una fila según el criterio elegido. */
+function groupKeyOf(data: Record<string, unknown>, criterio: AgruparPor): string {
+  if (criterio === "articulo") {
+    const k = data.articulo_key ?? data.articulo;
+    return k == null || k === "" ? SIN_DATO : String(k);
+  }
+  const v = data[criterio];
+  return v == null || v === "" ? SIN_DATO : String(v);
+}
+
+/** Título + subtítulo del encabezado de grupo, según el criterio elegido. */
+function grupoTitulo(gk: string, primera: Record<string, unknown>, criterio: AgruparPor): { titulo: string; subtitulo: string } {
+  if (criterio === "articulo") {
+    return { titulo: String(primera.articulo ?? gk), subtitulo: String(primera.descripcion ?? "") };
+  }
+  if (criterio === "numero_sic") {
+    return { titulo: gk === SIN_DATO ? gk : `SIC ${gk}`, subtitulo: String(primera.sic_preparador ?? "") };
+  }
+  return { titulo: gk === SIN_DATO ? gk : `OP ${gk}`, subtitulo: String(primera.proveedor ?? "") };
+}
+
 const TRACK_BG = "oklch(0.225 0.012 300)";   // tinte violeta suave
 
 const ESTADO_STYLE: Record<string, { bg: string; fg: string; bd: string }> = {
@@ -479,8 +515,14 @@ export function BuscadorSection() {
   // Celda en edición dentro de una pestaña: { filaId, key }.
   const [editing, setEditing]     = useState<{ filaId: string; key: string } | null>(null);
   const [editValue, setEditValue] = useState("");
-  // Agrupar las filas de la pestaña por matrícula, con desplegables.
+  // Agrupar las filas de la pestaña, con desplegables. `agruparPor` elige el
+  // eje: matrícula (por defecto — una familia entera desborda la tabla), SIC
+  // (todas las líneas que salieron del mismo pedido) u OP (todo lo que se le
+  // compró a esa orden, cruzando matrículas distintas).
   const [agrupar, setAgrupar]     = useState(true);
+  const [agruparPor, setAgruparPor] = useState<AgruparPor>("articulo");
+  const [agruparMenuOpen, setAgruparMenuOpen] = useState(false);
+  const agruparMenuRef = useRef<HTMLDivElement>(null);
   const [colapsados, setColapsados] = useState<Set<string>>(new Set());
   // Al agrupar, plegar las columnas cuyo valor se repite igual en todo el grupo
   // (descripción, udm, mat/serv…): ya están en el encabezado de la matrícula y
@@ -730,14 +772,21 @@ export function BuscadorSection() {
       .finally(() => setLoadingTab(false));
   }, [activeTab]);
 
-  // Cuando se cargan las filas, colapsar todas las matrículas por defecto.
+  // Cuando se cargan las filas (o cambia el criterio de agrupado), colapsar
+  // todos los grupos por defecto — si no, cambiar de «Matrícula» a «OP» dejaría
+  // los grupos viejos marcados como cerrados y los nuevos todos abiertos.
   useEffect(() => {
     if (!isTabMode || tabFilas.length === 0) return;
-    const todasLasMatriculas = new Set(
-      tabFilas.map((f) => String(f.datos.articulo_key ?? f.datos.articulo ?? "—"))
-    );
-    setColapsados(todasLasMatriculas);
-  }, [isTabMode, tabFilas]);
+    const todos = new Set(tabFilas.map((f) => groupKeyOf(f.datos, agruparPor)));
+    setColapsados(todos);
+  }, [isTabMode, tabFilas, agruparPor]);
+
+  useEffect(() => {
+    if (!agruparMenuOpen) return;
+    const h = (e: MouseEvent) => { if (!agruparMenuRef.current?.contains(e.target as Node)) setAgruparMenuOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [agruparMenuOpen]);
 
   const handleCreateTab = useCallback(async () => {
     if (!userId) { toast.error("Iniciá sesión para crear pestañas."); return; }
@@ -983,11 +1032,11 @@ export function BuscadorSection() {
     }));
   }, [isTabMode, tabFilasOrdenadas, sorted]);
 
-  // ── Agrupado por matrícula (solo en pestañas) ──
+  // ── Agrupado (solo en pestañas) ──
   // Una matrícula tiene una fila por (OP, línea, envío), así que una familia
-  // entera desborda la tabla. Agrupando, cada matrícula es un encabezado
-  // plegable y debajo cuelgan sus líneas de compra.
-  type GrupoItem = { tipo: "grupo"; key: string; gkey: string; articulo: string; descripcion: string; count: number };
+  // entera desborda la tabla. Agrupando, cada valor del criterio elegido
+  // (matrícula / SIC / OP) es un encabezado plegable y debajo cuelgan sus filas.
+  type GrupoItem = { tipo: "grupo"; key: string; gkey: string; titulo: string; subtitulo: string; count: number };
   type FilaItem  = { tipo: "fila";  key: string; filaId?: string; data: Record<string, unknown> };
 
   const displayItems = useMemo<(GrupoItem | FilaItem)[]>(() => {
@@ -998,23 +1047,18 @@ export function BuscadorSection() {
     // orden manual ni con el sort por columna.
     const grupos = new Map<string, FilaItem[]>();
     for (const f of filas) {
-      const gk = String(f.data.articulo_key ?? f.data.articulo ?? "—");
+      const gk = groupKeyOf(f.data, agruparPor);
       if (!grupos.has(gk)) grupos.set(gk, []);
       grupos.get(gk)!.push(f);
     }
     const out: (GrupoItem | FilaItem)[] = [];
     for (const [gk, items] of grupos) {
-      const primera = items[0].data;
-      out.push({
-        tipo: "grupo", key: `g:${gk}`, gkey: gk,
-        articulo: String(primera.articulo ?? gk),
-        descripcion: String(primera.descripcion ?? ""),
-        count: items.length,
-      });
+      const { titulo, subtitulo } = grupoTitulo(gk, items[0].data, agruparPor);
+      out.push({ tipo: "grupo", key: `g:${gk}`, gkey: gk, titulo, subtitulo, count: items.length });
       if (!colapsados.has(gk)) out.push(...items);
     }
     return out;
-  }, [displayRows, isTabMode, agrupar, colapsados]);
+  }, [displayRows, isTabMode, agrupar, agruparPor, colapsados]);
 
   const puedeArrastrar = isTabMode && !agrupar;
 
@@ -1026,17 +1070,17 @@ export function BuscadorSection() {
     });
   }, []);
 
-  // Cantidad de matrículas distintas en la pestaña (para el contador).
+  // Cantidad de grupos distintos en la pestaña, según el criterio (para el contador).
   const gruposCount = useMemo(
-    () => new Set(displayRows.map((r) => String(r.data.articulo_key ?? r.data.articulo ?? "—"))).size,
-    [displayRows]
+    () => new Set(displayRows.map((r) => groupKeyOf(r.data, agruparPor))).size,
+    [displayRows, agruparPor]
   );
 
   /**
    * Columnas que valen lo mismo en todas las filas de cada grupo. Al agrupar por
-   * matrícula son redundantes por construcción (matrícula, descripción, udm,
-   * material/servicio…) y son justo las anchas, así que empujan fuera de la
-   * pantalla lo que sí distingue una fila de otra: línea, envío y cantidades.
+   * matrícula, por ejemplo, son redundantes por construcción (matrícula,
+   * descripción, udm, material/servicio…) y son justo las anchas, así que
+   * empujan fuera de la pantalla lo que sí distingue una fila de otra.
    *
    * Solo se miran los grupos de 2+ filas: en uno de una sola fila toda columna
    * es trivialmente constante y esconderíamos la tabla entera.
@@ -1047,7 +1091,7 @@ export function BuscadorSection() {
 
     const grupos = new Map<string, Record<string, unknown>[]>();
     for (const r of displayRows) {
-      const gk = String(r.data.articulo_key ?? r.data.articulo ?? "—");
+      const gk = groupKeyOf(r.data, agruparPor);
       if (!grupos.has(gk)) grupos.set(gk, []);
       grupos.get(gk)!.push(r.data);
     }
@@ -1062,7 +1106,7 @@ export function BuscadorSection() {
       if (constante) out.add(c.key as string);
     }
     return out;
-  }, [isTabMode, agrupar, displayRows, visibleCols]);
+  }, [isTabMode, agrupar, agruparPor, displayRows, visibleCols]);
 
   // Columnas que finalmente se dibujan. El compactado es solo una ayuda de
   // pantalla — no toca la config de la pestaña ni el CSV, que sigue exportando
@@ -1230,12 +1274,13 @@ export function BuscadorSection() {
             onReset={resetColumnas}
           />
 
-          {/* Agrupar por matrícula — solo dentro de una pestaña. */}
+          {/* Agrupar — solo dentro de una pestaña. El criterio (matrícula / SIC /
+              OP) se elige en el desplegable de al lado. */}
           {isTabMode && (
             <div className="inline-flex items-center gap-1 shrink-0">
               <button
                 onClick={() => setAgrupar((v) => !v)}
-                title="Agrupar las líneas de compra bajo cada matrícula"
+                title="Agrupar las filas bajo el criterio elegido"
                 className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors"
                 style={{
                   height: TOOLBAR_H,
@@ -1247,10 +1292,60 @@ export function BuscadorSection() {
                 <Rows3 className="w-3.5 h-3.5" />
                 Agrupar
               </button>
+
+              {agrupar && (
+                <div className="relative" ref={agruparMenuRef}>
+                  <button
+                    onClick={() => setAgruparMenuOpen((v) => !v)}
+                    title="Elegir por qué agrupar"
+                    className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors"
+                    style={{
+                      height: TOOLBAR_H, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER,
+                      color: "oklch(0.75 0 0)", cursor: "pointer",
+                    }}
+                  >
+                    {(() => {
+                      const opt = AGRUPAR_OPTIONS.find((o) => o.value === agruparPor)!;
+                      const Icon = opt.icon;
+                      return <><Icon className="w-3.5 h-3.5" />{opt.label}</>;
+                    })()}
+                    <ChevronDown className="w-3 h-3 opacity-60" />
+                  </button>
+
+                  {agruparMenuOpen && (
+                    <div
+                      className="absolute left-0 top-[calc(100%+6px)] z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
+                      style={{
+                        minWidth: 170, background: "oklch(0.205 0.005 270)", border: PANEL_BORDER,
+                        borderRadius: 10, padding: 6, boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6)",
+                      }}
+                    >
+                      {AGRUPAR_OPTIONS.map((o) => {
+                        const Icon = o.icon;
+                        const activo = o.value === agruparPor;
+                        return (
+                          <button
+                            key={o.value}
+                            onClick={() => { setAgruparPor(o.value); setAgruparMenuOpen(false); }}
+                            className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 rounded-[7px] text-[13px] transition-colors"
+                            style={{ color: activo ? "oklch(0.92 0 0)" : "oklch(0.75 0 0)", background: activo ? "oklch(0.28 0.02 295)" : "transparent" }}
+                            onMouseEnter={(e) => { if (!activo) e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
+                            onMouseLeave={(e) => { if (!activo) e.currentTarget.style.background = "transparent"; }}
+                          >
+                            <Icon className="w-3.5 h-3.5 shrink-0" />
+                            {o.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {agrupar && gruposCount > 0 && (
                 <button
                   onClick={() => setColapsados((prev) =>
-                    prev.size ? new Set() : new Set(displayRows.map((r) => String(r.data.articulo_key ?? r.data.articulo ?? "—")))
+                    prev.size ? new Set() : new Set(displayRows.map((r) => groupKeyOf(r.data, agruparPor)))
                   )}
                   title={colapsados.size ? "Abrir todas" : "Cerrar todas"}
                   className="inline-flex items-center justify-center rounded-[9px] transition-colors"
@@ -1386,7 +1481,10 @@ export function BuscadorSection() {
           <p className="text-[12px] px-0.5" style={{ color: "oklch(0.55 0 0)", margin: 0 }}>
             <span className="text-foreground font-medium">{tabFilasFiltradas.length.toLocaleString("es-AR")}</span>
             {query.trim() ? ` de ${tabFilas.length} fila(s)` : " fila(s)"}
-            {agrupar && gruposCount > 0 && ` en ${gruposCount.toLocaleString("es-AR")} matrícula${gruposCount === 1 ? "" : "s"}`}
+            {agrupar && gruposCount > 0 && (() => {
+              const nombre = agruparPor === "articulo" ? "matrícula" : agruparPor === "numero_sic" ? "SIC" : "OP";
+              return ` en ${gruposCount.toLocaleString("es-AR")} ${nombre}${gruposCount === 1 || agruparPor !== "articulo" ? "" : "s"}`;
+            })()}
             {" · doble click en una celda para editarla"}
             {puedeArrastrar && " · arrastrá para reordenar"}
           </p>
@@ -1589,10 +1687,10 @@ export function BuscadorSection() {
                                 fontFamily: "ui-monospace, monospace", fontSize: 12.5,
                                 fontWeight: 600, color: "hsl(var(--foreground))",
                               }}>
-                                {item.articulo}
+                                {item.titulo}
                               </span>
                               <span className="truncate" style={{ fontSize: 12, color: "oklch(0.62 0 0)", flex: 1 }}>
-                                {item.descripcion}
+                                {item.subtitulo}
                               </span>
                               <span style={{
                                 fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999,
