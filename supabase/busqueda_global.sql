@@ -106,6 +106,48 @@ RETURNS text AS $$
   ));
 $$ LANGUAGE sql IMMUTABLE;
 
+-- Fecha del Excel → date. `planillas_op` guarda las fechas como TEXTO CRUDO y
+-- conviven dos formatos según cuándo se importó la planilla:
+--   • ISO            "2024-07-23"                      (import nuevo)
+--   • Date.toString  "Tue Jul 23 2024 00:00:48 GMT-03" (import viejo)
+--
+-- Ordenar ese texto directamente da cualquier cosa: las letras van después de
+-- los dígitos en ASCII (todo el formato viejo queda de un lado) y entre sí se
+-- ordenan por el NOMBRE DEL DÍA — "Tue" antes que "Mon". De ahí que haga falta
+-- parsear a date de verdad antes de comparar.
+--
+-- Devuelve NULL ante cualquier cosa que no reconozca: una fecha rota en una
+-- fila no puede tumbar una reconstrucción de 10 minutos.
+CREATE OR REPLACE FUNCTION gd_parse_fecha(raw text)
+RETURNS date
+LANGUAGE plpgsql IMMUTABLE
+AS $$
+BEGIN
+  IF raw IS NULL OR btrim(raw) = '' THEN
+    RETURN NULL;
+  END IF;
+  IF raw ~ '^\d{4}-\d{2}-\d{2}' THEN
+    RETURN substring(raw FROM 1 FOR 10)::date;
+  END IF;
+  IF raw ~ '^[A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{4}' THEN
+    -- Se descarta el día de la semana y se rearma "Mon DD YYYY".
+    RETURN to_date(
+      regexp_replace(raw, '^[A-Za-z]{3}\s+([A-Za-z]{3})\s+(\d{1,2})\s+(\d{4}).*$', '\1 \2 \3'),
+      'Mon DD YYYY'
+    );
+  END IF;
+  -- Red de seguridad: si alguna celda del Excel vino como TEXTO en vez de
+  -- fecha, llega "23/07/2024". Se interpreta dd/mm/aaaa (formato local), no
+  -- mm/dd — es el que usa el resto de la app.
+  IF raw ~ '^\d{1,2}/\d{1,2}/\d{4}' THEN
+    RETURN to_date(substring(raw FROM '^\d{1,2}/\d{1,2}/\d{4}'), 'DD/MM/YYYY');
+  END IF;
+  RETURN NULL;
+EXCEPTION WHEN others THEN
+  RETURN NULL;
+END;
+$$;
+
 -- ─── Tabla índice ───────────────────────────────────────────────────────────
 
 -- gd_buscar() devuelve SETOF busqueda_index, o sea que depende del TIPO de la
@@ -176,8 +218,13 @@ CREATE TABLE busqueda_index (
   -- el uploaded_at de la planilla (cuándo se subió el archivo): es igual en
   -- todas las filas porque el import reemplaza la tabla entera, y se confundía
   -- con esta fecha.
-  fecha_creacion      text,        -- texto crudo del Excel
-  fecha_pactada       text,        -- texto crudo del Excel
+  fecha_creacion      text,        -- texto crudo del Excel (se muestra tal cual)
+  fecha_pactada       text,        -- texto crudo del Excel (se muestra tal cual)
+  -- Las mismas dos fechas parseadas a date, para ORDENAR y FILTRAR. El texto
+  -- crudo no sirve para eso: conviven dos formatos y ordenarlo alfabéticamente
+  -- termina ordenando por el nombre del día (ver gd_parse_fecha).
+  fecha_creacion_d    date,
+  fecha_pactada_d     date,
   estado_autorizacion text,
   estado_cierre       text,
 
@@ -206,6 +253,11 @@ CREATE INDEX idx_busqueda_index_busqueda ON busqueda_index USING gin (busqueda g
 
 CREATE INDEX idx_busqueda_index_articulo_key ON busqueda_index (articulo_key);
 CREATE INDEX idx_busqueda_index_numero_op    ON busqueda_index (numero_op);
+
+-- La vista de entrada del Buscador (sin texto buscado) ordena por esta columna.
+-- Sin el índice, cada apertura hace un sort completo de las 112k+ filas.
+CREATE INDEX idx_busqueda_index_fecha_creacion_d
+  ON busqueda_index (fecha_creacion_d DESC NULLS LAST);
 
 ALTER TABLE busqueda_index ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "busqueda_index_all" ON busqueda_index;
@@ -384,7 +436,8 @@ BEGIN
     proveedor, op_descripcion,
     zona, cantidad, cantidad_recibida, ctd_aceptada, pendiente, cantidad_vencida,
     cantidad_rechazada, cantidad_facturada, cantidad_cancelada,
-    fecha_creacion, fecha_pactada, estado_autorizacion, estado_cierre,
+    fecha_creacion, fecha_pactada, fecha_creacion_d, fecha_pactada_d,
+    estado_autorizacion, estado_cierre,
     tx_recibido, tx_aceptado, tx_entregado, tx_devoluciones, tx_movimientos,
     tx_primera_fecha, tx_ultima_fecha,
     busqueda
@@ -423,6 +476,8 @@ BEGIN
     o.cantidad_cancelada,
     o.fecha_creacion,
     o.fecha_pactada,
+    gd_parse_fecha(o.fecha_creacion),
+    gd_parse_fecha(o.fecha_pactada),
     o.estado_autorizacion,
     o.estado_cierre,
     x.recibido,
@@ -609,7 +664,11 @@ AS $$
      -- primero. Es un CASE que solo «pesa» en este modo — con texto buscado
      -- da NULL en todas las filas (NULLS LAST no mueve nada) y el orden por
      -- relevancia de abajo queda intacto, como antes.
-     CASE WHEN gd_norm_texto(COALESCE(p_q, '')) = '' THEN fecha_creacion END DESC NULLS LAST,
+     --
+     -- Va por `fecha_creacion_d` (date), NUNCA por `fecha_creacion` (text): el
+     -- texto crudo tiene dos formatos mezclados y ordenarlo alfabéticamente
+     -- termina ordenando por el nombre del día. Ver gd_parse_fecha.
+     CASE WHEN gd_norm_texto(COALESCE(p_q, '')) = '' THEN fecha_creacion_d END DESC NULLS LAST,
      (articulo_key = gd_norm_articulo(p_q)) DESC,   -- matrícula exacta primero
      (numero_op    = trim(COALESCE(p_q, ''))) DESC, -- después OP exacta
      -- Orden por fuente EXPLÍCITO, no alfabético: alfabéticamente 'catalogo'

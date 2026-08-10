@@ -51,6 +51,39 @@ const fmtFechaISO = (v: string | null | undefined) => {
   return v;
 };
 
+// Columnas que guardan una FECHA como texto. Ordenarlas comparando el string
+// da mal por el mismo motivo que en SQL (ver gd_parse_fecha): conviven el
+// formato ISO y el `Date.toString()` de los imports viejos, y alfabéticamente
+// el segundo se ordena por el nombre del día. Hay que parsear antes de comparar.
+const DATE_COLS = new Set<string>([
+  "sic_fecha_creacion", "fecha_creacion", "fecha_pactada",
+  "tx_primera_fecha", "tx_ultima_fecha", TRACK_KEYS.fechaRevision,
+]);
+
+/** Fecha comparable (ms). Los dos formatos posibles; NaN → al final del orden. */
+const fechaMs = (v: unknown): number => {
+  if (v == null || v === "") return NaN;
+  const s = String(v);
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (iso) return Date.UTC(+iso[1], +iso[2] - 1, +iso[3]);
+  const t = new Date(s).getTime();
+  return Number.isNaN(t) ? NaN : t;
+};
+
+/** Comparador de una columna, sabiendo si es fecha, número o texto. */
+const compararValores = (va: unknown, vb: unknown, col: string, dir: number): number => {
+  if (DATE_COLS.has(col)) {
+    const a = fechaMs(va), b = fechaMs(vb);
+    const na = Number.isNaN(a), nb = Number.isNaN(b);
+    if (na && nb) return 0;
+    if (na) return 1;          // sin fecha, siempre al final
+    if (nb) return -1;
+    return (a - b) * dir;
+  }
+  if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+  return String(va).localeCompare(String(vb), "es", { numeric: true, sensitivity: "base" }) * dir;
+};
+
 // `rowKey` vive en lib/busqueda.ts: la comparten esta sección y el volcado de
 // familias desde Matrículas, y tienen que generar exactamente la misma clave
 // para que la detección de duplicados funcione.
@@ -1300,8 +1333,7 @@ export function BuscadorSection() {
       if (va == null && vb == null) return 0;
       if (va == null) return 1;
       if (vb == null) return -1;
-      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
-      return String(va).localeCompare(String(vb), "es", { numeric: true, sensitivity: "base" }) * dir;
+      return compararValores(va, vb, sortCol, dir);
     });
   }, [rowsConOp, sortCol, sortDir]);
 
@@ -1393,8 +1425,7 @@ export function BuscadorSection() {
       const vb = b.datos[sortCol];
       if (va == null || va === "") return 1;
       if (vb == null || vb === "") return -1;
-      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
-      return String(va).localeCompare(String(vb), "es", { numeric: true, sensitivity: "base" }) * dir;
+      return compararValores(va, vb, sortCol, dir);
     });
   }, [tabFilasFiltradas, sortCol, sortDir]);
 

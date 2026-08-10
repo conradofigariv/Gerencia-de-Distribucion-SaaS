@@ -19,7 +19,9 @@ Tabla maestro regenerada en cada reconstrucción. Una fila por (OP, línea, env�
 - `proveedor`: metadata de compra.
 - `op_descripcion`, `zona`: **cargados a mano** en `op_datos`, no vienen de la planilla. Ver "Datos manuales de OP" más abajo.
 - `cantidad`, `cantidad_recibida`, `ctd_aceptada`, `pendiente`, `cantidad_vencida`, `cantidad_rechazada`, `cantidad_facturada`, `cantidad_cancelada`: cantidades por estado.
-- `fecha_creacion`, `fecha_pactada`, `estado_autorizacion`, `estado_cierre`: fechas y estados.
+- `fecha_creacion`, `fecha_pactada`: texto crudo del Excel, **para mostrar**.
+- `fecha_creacion_d`, `fecha_pactada_d` (date): las mismas parseadas, **para ordenar y filtrar**. Ver "Fechas" abajo.
+- `estado_autorizacion`, `estado_cierre`: estados.
 - `tx_recibido`, `tx_aceptado`, `tx_entregado`, `tx_devoluciones`, `tx_movimientos`: totales por línea de `tablero_op_transaccion`.
 - `tx_primera_fecha`, `tx_ultima_fecha`: rango de movimientos en ISO YYYY-MM-DD.
 - `updated_at` (timestamptz): última reconstrucción.
@@ -268,6 +270,40 @@ solo las filas de `seguimiento` cuya `matricula` está en esa pestaña.
 - El join funciona porque `normArticulo` de `lib/busqueda.ts` y la de
   `lib/tableroOp.ts` hacen lo mismo (`.trim().replace(/\.0+$/, "")`), igual que
   `gd_norm_articulo()` en SQL.
+
+---
+
+## Fechas — dos formatos conviviendo
+
+`planillas_op` guarda las fechas como **texto crudo** y hay dos formatos según
+cuándo se importó la planilla:
+
+| Formato | Origen |
+|---|---|
+| `2024-07-23` (ISO) | imports nuevos |
+| `Tue Jul 23 2024 00:00:48 GMT-0300` | imports viejos |
+
+**Ordenar ese texto directamente da mal.** Las letras van después de los dígitos
+en ASCII, así que todo el formato viejo queda de un lado; y entre sí se ordenan
+por el **nombre del día** (`Tue` antes que `Mon`). No es un orden parcialmente
+correcto: es un orden por día de la semana.
+
+Tres piezas lo resuelven:
+
+1. **`gd_parse_fecha(text) → date`** (SQL): entiende los dos formatos, más
+   `dd/mm/aaaa` como red de seguridad. Devuelve `NULL` ante cualquier cosa que
+   no reconozca — una fecha rota no puede tumbar una reconstrucción de 10 min.
+2. **Columnas `date` en el índice**: `fecha_creacion_d` / `fecha_pactada_d`, que
+   es por donde ordena `gd_buscar` (con su propio índice; sin él, cada apertura
+   del Buscador hacía un sort completo de 112k filas). El texto original se
+   conserva para mostrar.
+3. **`compararValores()` en el front** (`buscador.tsx`): al ordenar por una
+   columna de `DATE_COLS` parsea antes de comparar, en vez de `localeCompare`
+   sobre el string. Aplica igual en el índice maestro y dentro de una pestaña.
+
+**En el origen:** `uploadOP` pasó a usar `fechaStr()` en vez de `str()`, así que
+los imports nuevos ya guardan ISO y el formato viejo deja de crecer. Lo ya
+cargado se sigue leyendo bien por los tres puntos de arriba.
 
 ---
 

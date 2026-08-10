@@ -422,8 +422,14 @@ export function ServiciosPlanillasSection() {
         articulo:             str(r["Artículo"]            ?? r["Articulo"]),
         descripcion_articulo: str(r["Descripción Artículo"] ?? r["Descripcion Articulo"]),
         udm:                  str(r["UDM"]                 ?? r["UdM"]),
-        fecha_creacion:       str(r["Fecha Creación"]      ?? r["Fecha Creacion"]),
-        fecha_pactada:        str(r["Fecha Pactada"]),
+        // fechaStr, NO str: con str() una celda de fecha del Excel queda como
+        // "Tue Jul 23 2024 00:00:48 GMT-0300", que no se puede ordenar ni
+        // comparar (alfabéticamente ordena por el nombre del día). fechaStr la
+        // deja en ISO "YYYY-MM-DD", igual que ya hacía la carga de SIC.
+        // Lo viejo ya cargado se sigue leyendo bien: gd_parse_fecha() en SQL y
+        // fmtFechaISO() en el front entienden los dos formatos.
+        fecha_creacion:       fechaStr(r["Fecha Creación"]  ?? r["Fecha Creacion"]),
+        fecha_pactada:        fechaStr(r["Fecha Pactada"]),
         organizacion_envio:   str(r["Organización Envío"]  ?? r["Organizacion Envio"]),
         cantidad:             r["Cantidad"]           != null ? Number(r["Cantidad"])           : null,
         cantidad_vencida:     r["Cantidad Vencida"]   != null ? Number(r["Cantidad Vencida"])   : null,
