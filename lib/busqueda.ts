@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
+import { toast } from "sonner";
 
 // ─── Buscador global ─────────────────────────────────────────────────────────
 // Fase 1: Matrículas + Planilla OP. Ver supabase/busqueda_global.sql.
@@ -139,6 +140,40 @@ export async function reconstruirIndice(): Promise<number> {
   const { data, error } = await supabase.rpc("gd_reconstruir_busqueda");
   if (error) throw new Error(error.message);
   return (data as number) ?? 0;
+}
+
+/**
+ * Dispara la reconstrucción del índice en segundo plano, sin que la pantalla
+ * que la llama tenga que esperarla ni saber nada de `busqueda_index`.
+ *
+ * Pensado para colgarlo del `finally` de un import masivo (OP, MATRICULAS, SIC,
+ * transacciones): son las cuatro fuentes de `busqueda_index` y, al ser cargas
+ * completas poco frecuentes (semanales), el usuario ya no tiene que acordarse
+ * de ir al Buscador y tocar «Reconstruir» después de cada una.
+ *
+ * Deliberadamente NO se usa para ediciones sueltas (una matrícula, un override
+ * de Material/Servicio, un renglón del catálogo): el RPC puede tardar hasta 10
+ * minutos con el volumen real (ver `statement_timeout` en
+ * `gd_reconstruir_busqueda`), así que dispararlo en cada edición chica dejaría
+ * al usuario esperando por algo que no pidió. Para esos casos sigue estando el
+ * botón manual «Reconstruir» del Buscador.
+ */
+export function reconstruirIndiceEnSegundoPlano(origen: string): void {
+  reconstruirIndice()
+    .then((n) => {
+      toast.success(`Índice del Buscador actualizado tras ${origen} — ${n.toLocaleString("es-AR")} fila(s).`);
+    })
+    .catch((e) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/timeout|57014/i.test(msg)) {
+        toast.error(
+          `El índice del Buscador no se reconstruyó solo (tardó demasiado tras ${origen}) — hacelo manualmente desde Buscador o corré «SELECT gd_reconstruir_busqueda();» en el SQL Editor.`,
+          { duration: 12000 }
+        );
+      } else {
+        toast.error(`No se pudo actualizar el índice del Buscador tras ${origen}: ${msg}`);
+      }
+    });
 }
 
 /** Cantidad de filas actualmente indexadas y fecha de la última reconstrucción. */

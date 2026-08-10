@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { markUpdated, fetchReminders, upsertConfig } from "@/lib/reminders";
 import { replaceSicSoler, upsertSicSoler, clearSicSoler, getSicSolerStatus, type SicSolerRow } from "@/lib/sicSoler";
+import { reconstruirIndiceEnSegundoPlano } from "@/lib/busqueda";
 
 // Modo de subida de la planilla de SICs: reemplazar todo o actualizar lo existente.
 type SicUploadMode = "replace" | "update";
@@ -445,6 +446,7 @@ export function ServiciosPlanillasSection() {
       }
       toast.success(`OP: ${mapped.length.toLocaleString("es-AR")} filas guardadas`);
       if (userId) await markUpdated("planillas-OP", "OP — Órdenes de compra", userId).catch(() => {});
+      reconstruirIndiceEnSegundoPlano("cargar OP");
     } catch (e) {
       toast.error(`Error OP: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
@@ -494,6 +496,7 @@ export function ServiciosPlanillasSection() {
       toast.success(`SIC: ${mapped.length.toLocaleString("es-AR")} filas ${mode === "replace" ? "cargadas" : "actualizadas"} · ${conOp.toLocaleString("es-AR")} con OP`);
       if (conOp === 0) toast.error("Ojo: ninguna fila trae N° de OP (columna 'Número Pedido'). Revisá el archivo.");
       if (userId) await markUpdated("planillas-SIC", "SICs", userId).catch(() => {});
+      reconstruirIndiceEnSegundoPlano("cargar SIC");
     } catch (e) {
       toast.error(`Error SIC: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
@@ -546,6 +549,7 @@ export function ServiciosPlanillasSection() {
           : `MATRICULAS: ${mapped.length.toLocaleString("es-AR")} filas agregadas/actualizadas`,
       );
       if (userId) await markUpdated("planillas-MATRICULAS", "MATRICULAS — Catálogo de materiales", userId).catch(() => {});
+      reconstruirIndiceEnSegundoPlano("cargar MATRICULAS");
     } catch (e) {
       toast.error(`Error MATRICULAS: ${e instanceof Error ? e.message : "Error"}`);
     } finally {

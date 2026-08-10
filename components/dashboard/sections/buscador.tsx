@@ -1367,7 +1367,12 @@ export function BuscadorSection() {
           <button
             onClick={handleReconstruir}
             disabled={reconstruyendo}
-            title="Vuelve a leer Matrículas + Planilla OP + Transacciones y regenera el índice"
+            title={
+              "Vuelve a leer Matrículas + Planilla OP + Transacciones y regenera el índice.\n\n" +
+              "Ya no hace falta tocarlo después de cada carga de OP / MATRICULAS / SIC / Transacciones " +
+              "— eso reconstruye solo. Usalo a mano si cambiaste un Material/Servicio o un dato del " +
+              "catálogo y no querés esperar a la próxima carga masiva."
+            }
             className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors disabled:opacity-50"
             style={{ height: TOOLBAR_H, background: "oklch(0.22 0.005 270)", border: PANEL_BORDER, color: "oklch(0.75 0 0)", cursor: "pointer" }}
           >

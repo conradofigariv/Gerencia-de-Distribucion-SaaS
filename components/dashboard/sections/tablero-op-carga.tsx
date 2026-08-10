@@ -13,6 +13,7 @@ import {
   normArticulo, parseNum, parseEntero, parseFechaArg,
 } from "@/lib/tableroOp";
 import type { SeguimientoRow, SeguimientoDbRow, TransaccionRow, StockRow } from "@/lib/tableroOp";
+import { reconstruirIndiceEnSegundoPlano } from "@/lib/busqueda";
 
 // ─── Pestañas ────────────────────────────────────────────────────────────────
 
@@ -663,6 +664,9 @@ function ImportPanel<T extends Record<string, unknown>>({
       setRaw("");
       setPreview(null);
       await loadCount();
+      // Única de las dos tablas de este panel que alimenta busqueda_index — la
+      // otra (tablero_op_stock) es para Stock por Zona y no participa del Buscador.
+      if (table === "tablero_op_transaccion") reconstruirIndiceEnSegundoPlano("cargar transacciones");
     } catch (e) {
       toast.error(`Error al guardar: ${e instanceof Error ? e.message : String(e)}`);
     } finally {

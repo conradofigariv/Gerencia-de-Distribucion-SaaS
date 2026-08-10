@@ -198,9 +198,28 @@ Se usa para:
 
 RPC `gd_reconstruir_busqueda()`:
 - Borra la tabla `busqueda_index` (CASCADE — no toca pestañas, no hay FK).
-- Reconstruye desde `planillas_op` + `matriculas`.
+- Reconstruye desde `planillas_op` + `matriculas` + `matricula_tipo` + `tablero_op_transaccion` + `seguimiento_sic_soler`.
+- Puede tardar hasta 10 minutos con el volumen real (`ALTER FUNCTION ... SET statement_timeout = '600s'` en `supabase/busqueda_global.sql`).
 - La fila que copió a una pestaña queda "congelada" — `row_key` apunta a ella, pero si ya no existe en el índice, la pestaña la conserva (será huérfana, pero editable).
 - Botón "Actualizar desde el índice" (Phase 2): refresco manual por fila — rellena de nuevo desde el índice usando `row_key`.
+
+### Reconstrucción automática tras cada carga masiva
+
+`reconstruirIndiceEnSegundoPlano(origen)` en `lib/busqueda.ts` — se cuelga del
+`finally`/éxito de una carga masiva y dispara el RPC sin bloquear la pantalla
+que lo llama; avisa por toast cuando termina (o si se pasó del timeout).
+
+**Enganchada en:**
+- `servicios-planillas.tsx` → `uploadOP`, `uploadSIC`, `uploadMatriculas`.
+- `tablero-op-carga.tsx` → `ImportPanel.handleReplace`, solo cuando
+  `table === "tablero_op_transaccion"` (la otra tabla de ese panel,
+  `tablero_op_stock`, alimenta Stock por Zona, no el Buscador).
+
+**Deliberadamente NO enganchada en ediciones sueltas** (`setTipoOverride` de
+`matricula_tipo` desde Familias, ni el CRUD manual de `matriculas.tsx`): son
+ediciones fila por fila, frecuentes, y esperar hasta 10 minutos de rebuild
+después de tildar un checkbox sería peor que no reconstruir. Para esos casos
+sigue el botón manual "Reconstruir" del Buscador.
 
 ---
 
