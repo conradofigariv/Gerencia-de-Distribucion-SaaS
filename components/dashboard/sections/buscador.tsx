@@ -1996,18 +1996,37 @@ export function BuscadorSection() {
                             }}
                           >
                             <div
-                              className="w-full flex items-center gap-2 pl-3 pr-2 py-2 transition-colors"
+                              className="w-full flex items-center gap-1 pl-3 pr-2 py-2 transition-colors"
                               onMouseEnter={(e) => { e.currentTarget.style.background = "oklch(0.28 0.008 270)"; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                             >
                               <button
                                 onClick={() => toggleGrupo(item.gkey)}
+                                title={cerrado ? "Abrir grupo" : "Cerrar grupo"}
+                                className="shrink-0 grid place-items-center rounded-[5px]"
+                                style={{ width: 22, height: 22, cursor: "pointer" }}
+                              >
+                                {cerrado
+                                  ? <ChevronRight className="w-4 h-4" style={{ color: "#fcd34d" }} />
+                                  : <ChevronDown  className="w-4 h-4" style={{ color: "#fcd34d" }} />}
+                              </button>
+                              {puedoEditar && (
+                                <button
+                                  onClick={() => handleDeleteGrupo(item.filaIds, item.titulo)}
+                                  title={`Quitar de la pestaña las ${item.count} fila(s) de «${item.titulo}»`}
+                                  className="shrink-0 grid place-items-center rounded-[5px] transition-colors"
+                                  style={{ width: 22, height: 22, color: "oklch(0.5 0 0)", cursor: "pointer" }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.color = "#fca5a5"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.5 0 0)"; }}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => toggleGrupo(item.gkey)}
                                 className="flex-1 flex items-center gap-2 text-left min-w-0"
                                 style={{ cursor: "pointer" }}
                               >
-                                {cerrado
-                                  ? <ChevronRight className="w-4 h-4 shrink-0" style={{ color: "#fcd34d" }} />
-                                  : <ChevronDown  className="w-4 h-4 shrink-0" style={{ color: "#fcd34d" }} />}
                                 <span style={{
                                   fontFamily: "ui-monospace, monospace", fontSize: 12.5,
                                   fontWeight: 600, color: "hsl(var(--foreground))",
@@ -2025,18 +2044,6 @@ export function BuscadorSection() {
                                   {item.count} línea{item.count === 1 ? "" : "s"}
                                 </span>
                               </button>
-                              {puedoEditar && (
-                                <button
-                                  onClick={() => handleDeleteGrupo(item.filaIds, item.titulo)}
-                                  title={`Quitar de la pestaña las ${item.count} fila(s) de «${item.titulo}»`}
-                                  className="shrink-0 grid place-items-center rounded-[5px] transition-colors"
-                                  style={{ width: 24, height: 24, color: "oklch(0.5 0 0)" }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.color = "#fca5a5"; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.5 0 0)"; }}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
                             </div>
                           </td>
                         </tr>
