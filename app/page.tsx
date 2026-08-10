@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
-import { Sidebar } from "@/components/dashboard/sidebar";
+import { Sidebar, SIDEBAR_SECTIONS } from "@/components/dashboard/sidebar";
+import { puedeVerSeccion } from "@/lib/sectionAccess";
 import { Header } from "@/components/dashboard/header";
 import { CanvasBackground } from "@/components/canvas-background";
 import type { BgEffect } from "@/components/canvas-background";
@@ -73,6 +74,9 @@ export default function Dashboard() {
   const [headerProfile, setHeaderProfile]   = useState<HeaderProfile | null>(null);
   // Texto chico junto al título del header global (ej. "24.632 matrículas").
   const [matriculasSummary, setMatriculasSummary] = useState<string | null>(null);
+  // Permisos de sección del usuario actual — null mientras no se conoce
+  // todavía (evita un parpadeo mandando a "settings" antes de tener la data).
+  const [accessInfo, setAccessInfo] = useState<{ nivelAcceso: string | null; secciones: string[] | null } | null>(null);
 
   // Auth state
   useEffect(() => {
@@ -86,12 +90,13 @@ export default function Dashboard() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Carga el perfil (nombre/apellido/avatar) para el avatar del header
+  // Carga el perfil (nombre/apellido/avatar) para el avatar del header, y de
+  // paso el nivel de acceso + secciones permitidas para el sidebar.
   useEffect(() => {
-    if (!user) { setHeaderProfile(null); return; }
+    if (!user) { setHeaderProfile(null); setAccessInfo(null); return; }
     supabase
       .from("profiles")
-      .select("nombre, apellido, avatar_url")
+      .select("nombre, apellido, avatar_url, nivel_acceso, secciones_permitidas")
       .eq("id", user.id)
       .single()
       .then(({ data }) => {
@@ -100,8 +105,29 @@ export default function Dashboard() {
           apellido: data?.apellido ?? "",
           avatar_url: data?.avatar_url ?? "",
         });
+        setAccessInfo({
+          nivelAcceso: data?.nivel_acceso ?? null,
+          secciones:   data?.secciones_permitidas ?? null,
+        });
       });
   }, [user]);
+
+  const puedeVer = useCallback(
+    (section: Section) => puedeVerSeccion(accessInfo?.nivelAcceso, accessInfo?.secciones, section),
+    [accessInfo]
+  );
+
+  // Si la sección activa deja de estar permitida (login inicial en una
+  // restringida, o el admin le sacó acceso mientras navegaba), saltar a la
+  // primera que sí puede ver. Se espera a tener `accessInfo` cargado — sin
+  // eso, puedeVer() todavía no sabe la respuesta real y mandaría a todos a
+  // "settings" por un instante en cada carga de página.
+  useEffect(() => {
+    if (!accessInfo) return;
+    if (puedeVer(activeSection)) return;
+    const primera = SIDEBAR_SECTIONS.find((s) => puedeVer(s.id));
+    setActiveSection(primera?.id ?? "settings");
+  }, [accessInfo, activeSection, puedeVer]);
 
   useEffect(() => {
     const stored = localStorage.getItem("bgEffect") as BgEffect | null;
@@ -181,6 +207,7 @@ export default function Dashboard() {
           onMobileOpenChange={setMobileSidebarOpen}
           userProfile={headerProfile}
           userEmail={user.email}
+          puedeVer={puedeVer}
         />
 
         {/* Backdrop del drawer (solo mobile) */}

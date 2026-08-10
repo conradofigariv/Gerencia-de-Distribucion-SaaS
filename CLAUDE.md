@@ -99,7 +99,7 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
 | sic-diagrama | `sic_diagrama_layout`, `sic_diagrama_active` — SQL en [`docs/sic-diagrama.md`](docs/sic-diagrama.md) |
 | informe-tecnico | `licitaciones`, `licitacion_renglones`, `licitacion_items`, `licitacion_oferentes`, `licitacion_ofertas`, `licitacion_evaluaciones_tecnicas`, `licitacion_adjudicaciones`, `matriculas` — SQL en [`docs/informe-tecnico.md`](docs/informe-tecnico.md) |
 | buscador | `busqueda_index` (lectura), `buscador_tabs`, `buscador_tab_filas`, `buscador_tab_shares` (compartir), `profiles` (lectura, para elegir con quién compartir) — SQL en `supabase/buscador_tabs.sql` + `supabase/buscador_tab_shares.sql` y doc completo en [`docs/buscador.md`](docs/buscador.md) |
-| settings | `profiles` |
+| settings | `profiles` (incluye `nivel_acceso` y `secciones_permitidas`) |
 | recordatorios | `reminder_config` |
 
 ---
@@ -123,6 +123,35 @@ Cada sección de carga de datos puede tener un recordatorio configurable.
 7. Agregar la clave a `ALL_REMINDER_KEYS` en `reminder-bell.tsx`.
 
 (Ejemplo real ya implementado: `transformadores-carga.tsx`.)
+
+---
+
+## Permisos de Sección por Usuario
+
+Cada usuario puede tener restringidas las secciones del sidebar que ve. Se
+gestiona desde **Configuración → Usuarios** (solo administradores), con un
+picker de checkboxes por usuario.
+
+- **Columna:** `profiles.secciones_permitidas` (`text[]`, nullable). `null` =
+  sin restricción, ve todo (default — así ningún usuario existente se rompe al
+  agregar la columna). Un array (incluso vacío) es una allowlist explícita.
+- **`settings` nunca se restringe** — todo usuario necesita llegar a su perfil
+  propio y cambiar su contraseña.
+- **El administrador nunca se autobloquea**, aunque tenga una allowlist rara
+  guardada — `nivel_acceso === "administrador"` pisa cualquier restricción.
+- **Solo restringe navegación**, no es un límite de datos a nivel de fila —
+  no reemplaza RLS. Si dos secciones leen la misma tabla, ocultar una sección
+  no oculta esos datos si el usuario los alcanza por otro camino.
+- **Fuente de verdad de qué secciones existen:** `SIDEBAR_SECTIONS` en
+  `components/dashboard/sidebar.tsx`, derivada de `navItems` (nunca se
+  desalinea — agregar un item ahí alcanza para que el picker lo ofrezca solo).
+- **Lib:** `lib/sectionAccess.ts` — `puedeVerSeccion(nivelAcceso, secciones, id)`.
+- **Solo el admin puede cambiarlo:** la escritura pasa por `/api/admin/users`
+  (service role, bypasea RLS). Un trigger en SQL
+  (`gd_bloquear_autoescalada_secciones`, ver `supabase/profile_secciones.sql`)
+  bloquea que un usuario se autoasigne secciones vía un UPDATE directo a
+  `profiles` desde el cliente.
+- **SQL:** `supabase/profile_secciones.sql` (columna + trigger).
 
 ---
 

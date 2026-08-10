@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
@@ -11,8 +11,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   User as UserIcon, Shield, RefreshCw, Check, LogOut, Eye, EyeOff,
-  Lock, Loader2, Upload, Users, Trash2, Plus,
+  Lock, Loader2, Upload, Users, Trash2, Plus, ListChecks, ChevronDown,
 } from "lucide-react";
+import { SIDEBAR_SECTIONS } from "@/components/dashboard/sidebar";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,12 +31,14 @@ interface Profile {
 }
 
 interface AdminUser {
-  id:           string;
-  email:        string;
-  nombre:       string;
-  apellido:     string;
-  nivel_acceso: NivelAcceso;
-  created_at:   string;
+  id:                   string;
+  email:                string;
+  nombre:               string;
+  apellido:             string;
+  nivel_acceso:         NivelAcceso;
+  // null = sin restricción, ve todo (default). Ver lib/sectionAccess.ts.
+  secciones_permitidas: string[] | null;
+  created_at:           string;
 }
 
 const EMPTY_PROFILE: Profile = {
@@ -47,6 +50,117 @@ const NIVEL_BADGE: Record<NivelAcceso, { label: string; cls: string }> = {
   editor:        { label: "Editor",        cls: "bg-chart-1/20 text-chart-1 border-chart-1/30" },
   visualizador:  { label: "Visualizador",  cls: "bg-muted text-muted-foreground border-border" },
 };
+
+// ─── Picker de secciones permitidas ─────────────────────────────────────────
+// Un desplegable por usuario en la lista de "Usuarios" (admin). `null` interno
+// = "sin restricción" (ve todo); un array (incluso vacío) es la allowlist.
+
+function SeccionesPicker({
+  value, onSave,
+}: {
+  value:  string[] | null;
+  onSave: (secciones: string[] | null) => Promise<void>;
+}) {
+  const [open, setOpen]     = useState(false);
+  const [draft, setDraft]   = useState<string[] | null>(value);
+  const [saving, setSaving] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Si la lista se refresca desde afuera (ej. "Actualizar"), seguir esa data
+  // mientras el picker está cerrado — no pisar un draft que el admin está editando.
+  useEffect(() => { if (!open) setDraft(value); }, [value, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  const grupos = useMemo(() => {
+    const map = new Map<string, { id: string; label: string }[]>();
+    for (const s of SIDEBAR_SECTIONS) {
+      const g = s.group ?? "";
+      if (!map.has(g)) map.set(g, []);
+      map.get(g)!.push({ id: s.id, label: s.label });
+    }
+    return [...map.entries()];
+  }, []);
+
+  const sinRestriccion = draft === null;
+
+  const toggle = (id: string) => {
+    setDraft((prev) => {
+      // Si venía "sin restricción" y tocan un check puntual, arranca de "todo
+      // marcado menos ese" — más intuitivo que arrancar de "nada marcado".
+      const base = prev ?? SIDEBAR_SECTIONS.map((s) => s.id);
+      return base.includes(id) ? base.filter((x) => x !== id) : [...base, id];
+    });
+  };
+
+  const handleGuardar = async () => {
+    setSaving(true);
+    try {
+      await onSave(draft);
+      setOpen(false);
+    } catch { /* onSave ya avisó el error por toast */ }
+    finally { setSaving(false); }
+  };
+
+  const resumen = sinRestriccion ? "Todas" : `${draft!.length}/${SIDEBAR_SECTIONS.length}`;
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        title="Secciones que puede ver en el sidebar"
+        className="h-7 px-2.5 rounded border text-xs font-medium inline-flex items-center gap-1.5 bg-transparent border-border text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ListChecks className="w-3.5 h-3.5" />
+        {resumen}
+        <ChevronDown className="w-3 h-3 opacity-60" />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-72 max-h-[380px] overflow-y-auto rounded-lg border border-border bg-card shadow-xl p-3 space-y-3">
+          <label className="flex items-center gap-2 text-sm font-medium pb-2 border-b border-border cursor-pointer">
+            <input
+              type="checkbox"
+              checked={sinRestriccion}
+              onChange={(e) => setDraft(e.target.checked ? null : SIDEBAR_SECTIONS.map((s) => s.id))}
+              className="accent-accent"
+            />
+            Sin restricción (ve todo)
+          </label>
+
+          {!sinRestriccion && grupos.map(([grupo, items]) => (
+            <div key={grupo || "_top"}>
+              {grupo && <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">{grupo}</p>}
+              <div className="space-y-1">
+                {items.map((it) => (
+                  <label key={it.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={draft?.includes(it.id) ?? false}
+                      onChange={() => toggle(it.id)}
+                      className="accent-accent"
+                    />
+                    {it.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <Button size="sm" variant="accent" className="w-full" onClick={handleGuardar} disabled={saving}>
+            {saving ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-2" />}
+            Guardar
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -258,6 +372,26 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
       setAdminUsers(us => us.map(u => u.id === userId ? { ...u, nivel_acceso: nivel } : u));
     } else {
       toast.error("Error al actualizar nivel");
+    }
+  };
+
+  // ── Admin: qué secciones del sidebar puede ver este usuario
+  const handleChangeSecciones = async (userId: string, secciones: string[] | null) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({ userId, secciones_permitidas: secciones }),
+    });
+    if (res.ok) {
+      toast.success("Secciones actualizadas");
+      setAdminUsers(us => us.map(u => u.id === userId ? { ...u, secciones_permitidas: secciones } : u));
+    } else {
+      toast.error("Error al actualizar secciones");
+      throw new Error("No se pudo guardar"); // el picker no cierra si falló
     }
   };
 
@@ -647,6 +781,19 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
                               <option value="editor">Editor</option>
                               <option value="administrador">Administrador</option>
                             </select>
+                            {u.nivel_acceso === "administrador" ? (
+                              <span
+                                title="Los administradores siempre ven todas las secciones"
+                                className="h-7 px-2 rounded border border-border text-xs font-medium text-muted-foreground inline-flex items-center"
+                              >
+                                Ve todo
+                              </span>
+                            ) : (
+                              <SeccionesPicker
+                                value={u.secciones_permitidas}
+                                onSave={(secciones) => handleChangeSecciones(u.id, secciones)}
+                              />
+                            )}
                             {u.id !== user.id && (
                               <button
                                 onClick={() => handleDeleteUser(u.id)}

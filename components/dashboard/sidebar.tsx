@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import type { Section, HeaderProfile } from "@/app/page";
 import { supabase } from "@/lib/supabaseClient";
@@ -43,6 +43,9 @@ interface SidebarProps {
   onMobileOpenChange?: (open: boolean) => void;
   userProfile?: HeaderProfile | null;
   userEmail?: string | null;
+  /** ¿Este usuario puede ver esta sección? Si no se pasa, se asume que sí a
+   *  todo (evita romper otros lugares que todavía no pasan la prop). */
+  puedeVer?: (section: Section) => boolean;
 }
 
 /** Envuelve un item en tooltip sólo cuando el sidebar está colapsado. */
@@ -144,6 +147,24 @@ const navItems: NavItemDef[] = [
   { kind: "link", id: "settings", label: "Configuración", icon: Settings },
 ];
 
+/**
+ * Lista plana de secciones navegables (id + etiqueta + grupo), derivada de
+ * `navItems` para que nunca se desalinee con el sidebar real. La usa
+ * `settings.tsx` para armar el checklist de "qué puede ver cada usuario" —
+ * agregar una sección acá (arriba) alcanza para que el picker de permisos la
+ * ofrezca sola, sin tocar nada en Configuración.
+ *
+ * `settings` queda afuera a propósito: es de acceso siempre permitido (perfil
+ * propio, cambio de contraseña), no se restringe por usuario.
+ */
+export const SIDEBAR_SECTIONS: { id: Section; label: string; group?: string }[] = navItems
+  .flatMap((item) =>
+    item.kind === "link"
+      ? [{ id: item.id, label: item.label }]
+      : item.children.map((c) => ({ id: c.id, label: c.label, group: item.label }))
+  )
+  .filter((s) => s.id !== "settings");
+
 const SERVICIOS_SECTIONS: Section[] = [
   "servicios-resumen",
   "servicios-tabla",
@@ -179,12 +200,22 @@ export function Sidebar({
   onMobileOpenChange,
   userProfile,
   userEmail,
+  puedeVer = () => true,
 }: SidebarProps) {
   // Selección de sección: en mobile además cierra el drawer
   const handleSelect = (section: Section) => {
     onSectionChange(section);
     onMobileOpenChange?.(false);
   };
+
+  // Items visibles para este usuario: un link se oculta si no puede verlo; un
+  // grupo se oculta entero si ninguno de sus hijos es visible (no tiene
+  // sentido un grupo vacío en el menú).
+  const visibleNavItems = useMemo(() => navItems.flatMap((item): NavItemDef[] => {
+    if (item.kind === "link") return puedeVer(item.id) ? [item] : [];
+    const children = item.children.filter((c) => puedeVer(c.id));
+    return children.length ? [{ ...item, children }] : [];
+  }), [puedeVer]);
 
   // Datos para el mini-perfil del footer
   const displayName =
@@ -317,7 +348,7 @@ export function Sidebar({
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }}>
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           if (item.kind === "link") {
             const Icon = item.icon;
             const isActive = activeSection === item.id;

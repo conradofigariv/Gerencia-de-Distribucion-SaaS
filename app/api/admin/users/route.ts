@@ -34,18 +34,19 @@ export async function GET(req: NextRequest) {
 
   const { data: profiles } = await supabaseAdmin
     .from("profiles")
-    .select("id, nombre, apellido, nivel_acceso");
+    .select("id, nombre, apellido, nivel_acceso, secciones_permitidas");
 
-  type ProfileRow = { id: string; nombre: string; apellido: string; nivel_acceso: string };
+  type ProfileRow = { id: string; nombre: string; apellido: string; nivel_acceso: string; secciones_permitidas: string[] | null };
   const profileMap = Object.fromEntries((profiles ?? [] as ProfileRow[]).map((p: ProfileRow) => [p.id, p]));
 
   const users = authData.users.map(u => ({
-    id:           u.id,
-    email:        u.email ?? "",
-    nombre:       profileMap[u.id]?.nombre ?? "",
-    apellido:     profileMap[u.id]?.apellido ?? "",
-    nivel_acceso: profileMap[u.id]?.nivel_acceso ?? "visualizador",
-    created_at:   u.created_at,
+    id:                   u.id,
+    email:                u.email ?? "",
+    nombre:               profileMap[u.id]?.nombre ?? "",
+    apellido:             profileMap[u.id]?.apellido ?? "",
+    nivel_acceso:         profileMap[u.id]?.nivel_acceso ?? "visualizador",
+    secciones_permitidas: profileMap[u.id]?.secciones_permitidas ?? null,
+    created_at:           u.created_at,
   }));
 
   return NextResponse.json({ users });
@@ -84,14 +85,23 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const { userId, nivel_acceso } = await req.json();
-  if (!userId || !nivel_acceso) {
-    return NextResponse.json({ error: "userId y nivel_acceso requeridos" }, { status: 400 });
+  // secciones_permitidas es opcional y puede venir explícitamente `null`
+  // (para "sin restricción, ve todo") — por eso se distingue con `in` en vez
+  // de solo chequear verdad/falsedad, que trataría `null` como "no vino".
+  const body = await req.json();
+  const { userId, nivel_acceso } = body;
+  const tocaSecciones = "secciones_permitidas" in body;
+  if (!userId || (!nivel_acceso && !tocaSecciones)) {
+    return NextResponse.json({ error: "userId y (nivel_acceso o secciones_permitidas) requeridos" }, { status: 400 });
   }
+
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (nivel_acceso) update.nivel_acceso = nivel_acceso;
+  if (tocaSecciones) update.secciones_permitidas = body.secciones_permitidas;
 
   const { error } = await supabaseAdmin
     .from("profiles")
-    .update({ nivel_acceso, updated_at: new Date().toISOString() })
+    .update(update)
     .eq("id", userId);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
