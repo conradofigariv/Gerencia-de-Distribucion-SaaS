@@ -430,7 +430,10 @@ export function ServiciosPlanillasSection() {
         // fmtFechaISO() en el front entienden los dos formatos.
         fecha_creacion:       fechaStr(r["Fecha Creación"]  ?? r["Fecha Creacion"]),
         fecha_pactada:        fechaStr(r["Fecha Pactada"]),
-        organizacion_envio:   str(r["Organización Envío"]  ?? r["Organizacion Envio"]),
+        // organizacion_envio (columna «Organización Envío» del Excel) se dejó
+        // de cargar: no era confiable y la Zona pasó a ser 100% manual, desde
+        // op_datos (ver docs/buscador.md). La columna se borró de planillas_op
+        // — ver supabase/planillas_op_drop_organizacion_envio.sql.
         cantidad:             r["Cantidad"]           != null ? Number(r["Cantidad"])           : null,
         cantidad_vencida:     r["Cantidad Vencida"]   != null ? Number(r["Cantidad Vencida"])   : null,
         cantidad_recibida:    r["Cantidad Recibida"]  != null ? Number(r["Cantidad Recibida"])  : null,

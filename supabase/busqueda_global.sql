@@ -199,8 +199,8 @@ CREATE TABLE busqueda_index (
   -- Se carga a mano en op_datos; sirve para saber de qué se trata la OP y de
   -- qué zona es. Ver supabase/op_datos.sql.
   op_descripcion      text,
-  -- La zona MANUAL de op_datos si está cargada; si no, organizacion_envio de
-  -- la planilla (que no es confiable, por eso el override).
+  -- Zona 100% manual, de op_datos. `organizacion_envio` de la planilla se dejó
+  -- de usar del todo (no era confiable) — sin cargar a mano, esto es NULL.
   zona                text,
 
   -- ── Cantidades ──
@@ -465,7 +465,7 @@ BEGIN
     ec.n,
     o.proveedor,
     od.descripcion,
-    COALESCE(NULLIF(od.zona, ''), o.organizacion_envio),   -- la manual pisa
+    NULLIF(od.zona, ''),   -- 100% manual; sin cargar, NULL
     o.cantidad,
     o.cantidad_recibida,
     o.ctd_aceptada,
@@ -493,7 +493,7 @@ BEGIN
       o.relacion, o.numero, o.linea, o.envio, o.proveedor,
       -- La descripción y la zona manuales entran al texto buscable: así se
       -- puede buscar «zona sur» y traer todas las OP de esa zona.
-      od.descripcion, COALESCE(NULLIF(od.zona, ''), o.organizacion_envio),
+      od.descripcion, od.zona,
       t.tipo, c.mat_serv, c.estado, o.estado_autorizacion, o.estado_cierre,
       o.fecha_creacion, o.fecha_pactada,
       x.primera_fecha, x.ultima_fecha,

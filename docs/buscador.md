@@ -125,8 +125,12 @@ numero_op (PK) · descripcion · zona · updated_at · updated_by
 **Granularidad:** por OP. Se carga una vez y vale para todas sus líneas y envíos —
 una OP de 12 líneas es 1 carga, no 12.
 
-**La zona manual pisa a la de la planilla** (`COALESCE(NULLIF(od.zona,''), o.organizacion_envio)`):
-un solo campo `zona`, con la manual ganando si está cargada.
+**Zona 100% manual.** `organizacion_envio` (columna «Organización Envío» de la
+planilla) se sacó del sistema entero — no era confiable y no se usa más: no se
+lee al importar, no entra al índice, y se borró de `planillas_op` (ver
+`supabase/planillas_op_drop_organizacion_envio.sql`). Sin `op_datos.zona`
+cargada, el campo `zona` del índice queda `NULL` — vacío, no un dato de la
+planilla.
 
 ### Cómo llega a la vista — dos caminos
 
