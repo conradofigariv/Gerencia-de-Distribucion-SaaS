@@ -1661,6 +1661,37 @@ export function BuscadorSection() {
     tabs, permisoDe, togglePin, handleDeleteFila, handleDeleteGrupo, handleAddRowToTab,
   ]);
 
+  /** Menú contextual de una PESTAÑA (click derecho en la barra de arriba). */
+  const abrirMenuPestana = useCallback((e: React.MouseEvent, t: BuscadorTab) => {
+    e.preventDefault();
+    const propia  = t.user_id === userId;
+    const permiso = permisoDe(t);
+    const items: (CtxItem | "sep")[] = [];
+
+    if (activeTab !== t.id) {
+      items.push({
+        label: "Abrir",
+        icon: Database,
+        onClick: () => { setActiveTab(t.id); setEditing(null); setSort({ col: null, dir: "asc" }); },
+      });
+    }
+    // Renombrar lo puede hacer el dueño y también un colaborador con edición.
+    if (propia || permiso === "edicion") {
+      items.push({ label: "Renombrar…", icon: Pencil, onClick: () => handleRenameTab(t) });
+    }
+    // Compartir y borrar son solo del dueño.
+    if (propia) {
+      items.push({ label: "Compartir…", icon: Share2, onClick: () => setShareTabId(t.id) });
+      items.push("sep");
+      items.push({ label: "Borrar pestaña", icon: Trash2, danger: true, onClick: () => handleDeleteTab(t) });
+    }
+
+    // Compartida de solo lectura y ya abierta: no hay nada que ofrecer.
+    if (!items.length) return;
+    setCtxMenu({ x: e.clientX, y: e.clientY, items });
+  }, [activeTab, userId, permisoDe, handleRenameTab, handleDeleteTab]);
+
+
   // ── Filas que efectivamente se pintan ──
   // Un solo shape para los dos modos, así la tabla no se duplica: en el índice
   // maestro la data es la BusquedaRow; en una pestaña, el `datos` de la fila
@@ -1749,6 +1780,53 @@ export function BuscadorSection() {
       return s;
     });
   }, []);
+
+  /** Menú contextual del encabezado de un GRUPO (dentro de una pestaña). */
+  const abrirMenuGrupo = useCallback((
+    e: React.MouseEvent,
+    g: { gkey: string; titulo: string; count: number; filaIds: string[] }
+  ) => {
+    e.preventDefault();
+    const cerrado = colapsados.has(g.gkey);
+    const items: (CtxItem | "sep")[] = [
+      {
+        label: cerrado ? "Abrir grupo" : "Cerrar grupo",
+        icon: cerrado ? ChevronDown : ChevronRight,
+        onClick: () => toggleGrupo(g.gkey),
+      },
+      {
+        label: "Abrir todos",
+        icon: ChevronDown,
+        onClick: () => setColapsados(new Set()),
+      },
+      {
+        label: "Cerrar todos",
+        icon: ChevronRight,
+        onClick: () => setColapsados(new Set(displayRows.map((r) => groupKeyOf(r.data, agruparPor)))),
+      },
+      {
+        label: "Copiar nombre",
+        icon: Copy,
+        onClick: () => {
+          navigator.clipboard.writeText(g.titulo)
+            .then(() => toast.success("Copiado."))
+            .catch(() => toast.error("No se pudo copiar."));
+        },
+      },
+    ];
+    if (puedoEditar) {
+      items.push("sep");
+      items.push({
+        label: `Quitar «${g.titulo}» entero`,
+        icon: Trash2,
+        danger: true,
+        hint: `${g.count}`,
+        disabled: !g.filaIds.length,
+        onClick: () => handleDeleteGrupo(g.filaIds, g.titulo),
+      });
+    }
+    setCtxMenu({ x: e.clientX, y: e.clientY, items });
+  }, [colapsados, displayRows, agruparPor, puedoEditar, toggleGrupo, handleDeleteGrupo]);
 
   // Cantidad de grupos distintos en la pestaña, según el criterio (para el contador).
   const gruposCount = useMemo(
@@ -1861,7 +1939,11 @@ export function BuscadorSection() {
             const propia = t.user_id === userId;
             const permiso = permisoDe(t);
             return (
-              <span key={t.id} className="inline-flex items-center group/tab">
+              <span
+                key={t.id}
+                className="inline-flex items-center group/tab"
+                onContextMenu={(e) => abrirMenuPestana(e, t)}
+              >
                 <button
                   onClick={() => { setActiveTab(t.id); setEditing(null); setSort({ col: null, dir: "asc" }); }}
                   onDoubleClick={permiso === "edicion" ? () => handleRenameTab(t) : undefined}
@@ -2442,6 +2524,7 @@ export function BuscadorSection() {
                               className="w-full flex items-center gap-1 pl-3 pr-2 py-2 transition-colors"
                               onMouseEnter={(e) => { e.currentTarget.style.background = "oklch(0.28 0.008 270)"; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                              onContextMenu={(e) => abrirMenuGrupo(e, item)}
                             >
                               <button
                                 onClick={() => toggleGrupo(item.gkey)}
@@ -2570,20 +2653,20 @@ export function BuscadorSection() {
                                   title="Seleccionar para copiar a una pestaña"
                                   style={{ accentColor: "#8B5CF6", cursor: "pointer" }}
                                 />
-                                <button
-                                  onClick={() => togglePin(key)}
-                                  title={isPinned ? "Quitar de fijadas" : "Fijar arriba"}
-                                  className="grid place-items-center transition-colors"
-                                  style={{
-                                    width: 20, height: 20, borderRadius: 5,
-                                    color: isPinned ? "#c4b5fd" : "oklch(0.42 0 0)",
-                                    background: isPinned ? "color-mix(in oklab, var(--accent-violet) 20%, transparent)" : "transparent",
-                                  }}
-                                  onMouseEnter={(e) => { if (!isPinned) e.currentTarget.style.color = "#c4b5fd"; }}
-                                  onMouseLeave={(e) => { if (!isPinned) e.currentTarget.style.color = "oklch(0.42 0 0)"; }}
-                                >
-                                  <Pin className="w-3.5 h-3.5" strokeWidth={2} fill={isPinned ? "#c4b5fd" : "none"} />
-                                </button>
+                                {/* Fijar salió de acá: se hace con click
+                                    derecho. Igual la fila fijada se reconoce
+                                    sola — va arriba de todo, con fondo violeta
+                                    y un separador debajo del último. El ícono
+                                    solo se muestra como indicador. */}
+                                {isPinned && (
+                                  <span
+                                    className="grid place-items-center"
+                                    title="Fijada arriba — click derecho para quitarla"
+                                    style={{ width: 20, height: 20, color: "#c4b5fd" }}
+                                  >
+                                    <Pin className="w-3.5 h-3.5" strokeWidth={2} fill="#c4b5fd" />
+                                  </span>
+                                )}
                               </>
                             )}
                           </span>

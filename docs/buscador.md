@@ -240,12 +240,29 @@ ofrecer acciones de esa celda puntual. Los items dependen del modo y del permiso
 | Quitar de la pestaña | — | ✅ |
 | Quitar el grupo entero | — | ✅ si está agrupado |
 
+El mismo menú (`RowContextMenu`, que solo recibe posición + items) se usa en
+otros dos lugares:
+
+**Click derecho en una pestaña** (`abrirMenuPestana`): Abrir (si no es la
+activa), Renombrar (dueño o colaborador con edición), Compartir… y Borrar
+pestaña (solo el dueño). En una pestaña compartida de solo lectura ya abierta no
+hay nada que ofrecer y el menú no se abre.
+
+**Click derecho en el encabezado de un grupo** (`abrirMenuGrupo`): Abrir/Cerrar
+ese grupo, Abrir todos, Cerrar todos, Copiar nombre y — con permiso de edición —
+Quitar el grupo entero con el conteo de filas.
+
 El menú se reposiciona solo si se sale de la ventana, y se cierra con Escape,
 click afuera, resize o **scroll** (queda anclado a coordenadas de pantalla: sin
 eso, scrollear la tabla lo dejaría apuntando a otra fila).
 
-**El tacho de borrar fila salió de la columna de acciones** y vive solo acá: era
-una acción destructiva a un click suelto, pegada al handle de arrastre.
+**Qué salió de la fila al mover las acciones acá:**
+- El **tacho de borrar fila**: era una acción destructiva a un click suelto, pegada al handle de arrastre.
+- El **botón de fijar** del índice maestro: fijar se hace con click derecho. La fila fijada se sigue reconociendo sola (va arriba de todo, con fondo violeta y un separador debajo de la última) y conserva el ícono de chincheta **como indicador**, ya no como botón.
+
+Se quedan en la fila el **checkbox** de selección (necesita estado visible
+permanente) y el **handle de arrastre** (arrastrar necesita algo de dónde
+agarrar).
 
 **Modo pestaña:**
 - Muestra filas copiadas + 4 columnas de seguimiento (estado, responsable, fechaRevision, nota).
