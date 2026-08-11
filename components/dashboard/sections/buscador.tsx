@@ -1279,10 +1279,14 @@ export function BuscadorSection() {
         const { data: sess } = await supabase.auth.getSession();
         const token = sess.session?.access_token;
         const payload = token?.split(".")[1];
-        const sub = payload
-          ? (JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as { sub?: string }).sub
+        const claims = payload
+          ? (JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as { sub?: string; role?: string; aud?: string; exp?: number })
           : undefined;
-        diagnostico = ` [debug: sub del token=${sub ?? "?"}, user_id enviado=${userId ?? "?"}]`;
+        // PostgREST mapea el claim `role` del JWT al rol de Postgres que corre
+        // el insert (las policies son "TO authenticated"): si viniera con otro
+        // valor, el insert cae sin ninguna policy aplicable y da este mismo
+        // error genérico aunque `sub` coincida perfecto con `user_id`.
+        diagnostico = ` [debug: sub=${claims?.sub ?? "?"}, role=${claims?.role ?? "?"}, aud=${claims?.aud ?? "?"}, exp=${claims?.exp ? new Date(claims.exp * 1000).toISOString() : "?"}, user_id enviado=${userId ?? "?"}]`;
       } catch { /* si falla el diagnóstico, que al menos se vea el error normal */ }
       toast.error(`No se pudo crear: ${e instanceof Error ? e.message : String(e)}${diagnostico}`, { duration: 15000 });
     }
