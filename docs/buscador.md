@@ -242,6 +242,7 @@ pasan por estas funciones.
 - Doble-click en nombre de pestaña: renombra.
 - Botón `×` en pestaña: elimina.
 - Toggle "Agrupar": agrupa por matrícula (desactiva reorden, activa collapsibles).
+- Chip de estado del índice (N filas): abre un menú con las filas indexadas, la fecha de la última reconstrucción y el botón **"Reconstruir ahora"** (con confirmación). Está adentro del menú y no suelto en la barra a propósito: tarda varios minutos y, desde que cada carga masiva reconstruye sola, casi nunca hace falta a mano.
 - "Restablecer": limpia orden/visibilidad/anchos de columnas → defaults.
 
 ---

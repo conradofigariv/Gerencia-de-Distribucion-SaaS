@@ -765,6 +765,11 @@ export function BuscadorSection() {
   const [buscado, setBuscado] = useState(false);
   const [reconstruyendo, setReconstruyendo] = useState(false);
   const [indice, setIndice]   = useState<{ filas: number; actualizado: string | null } | null>(null);
+  // Menú del estado del índice. «Reconstruir» vive acá adentro y no suelto en
+  // la barra: es una operación de varios minutos que además ya corre sola
+  // después de cada carga masiva, así que casi nunca hace falta a mano.
+  const [indiceMenuOpen, setIndiceMenuOpen] = useState(false);
+  const indiceMenuRef = useRef<HTMLDivElement>(null);
 
   // Un solo estado para col+dir: con dos useState separados, un click rápido
   // podía actualizar el ícono (dir) sin que el array se reordenara de nuevo
@@ -1130,6 +1135,13 @@ export function BuscadorSection() {
     return () => document.removeEventListener("mousedown", h);
   }, [agruparMenuOpen]);
 
+  useEffect(() => {
+    if (!indiceMenuOpen) return;
+    const h = (e: MouseEvent) => { if (!indiceMenuRef.current?.contains(e.target as Node)) setIndiceMenuOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [indiceMenuOpen]);
+
   const handleCreateTab = useCallback(async () => {
     if (!userId) { toast.error("Iniciá sesión para crear pestañas."); return; }
     const nombre = window.prompt("Nombre de la pestaña:", "Seguimiento");
@@ -1312,6 +1324,14 @@ export function BuscadorSection() {
   }, [query, activeTab]);
 
   const handleReconstruir = async () => {
+    // Confirmación explícita: son varios minutos y no es algo que haga falta
+    // en el uso normal (las cargas masivas ya reconstruyen solas).
+    if (!window.confirm(
+      "Reconstruir el índice vuelve a leer Matrículas + Envíos + SIC + Transacciones. " +
+      "Tarda varios minutos y no hace falta después de una carga de datos, porque eso " +
+      "ya reconstruye solo.\n\n¿Reconstruir igual?"
+    )) return;
+    setIndiceMenuOpen(false);
     setReconstruyendo(true);
     try {
       const n = await reconstruirIndice();
@@ -1931,32 +1951,64 @@ export function BuscadorSection() {
             <Download className="w-3.5 h-3.5" />CSV
           </button>
 
+          {/* Estado del índice. «Reconstruir» vive adentro de este menú y no
+              suelto en la barra: tarda varios minutos y, desde que cada carga
+              masiva reconstruye sola, casi nunca hace falta a mano. */}
           {indice && (
-            <span
-              className="inline-flex items-center gap-1.5 px-2.5 rounded-[9px] text-[12px] whitespace-nowrap"
-              style={{ height: TOOLBAR_H, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, color: "oklch(0.6 0 0)" }}
-              title="Filas en el índice de búsqueda"
-            >
-              <Database className="w-3.5 h-3.5" style={{ color: "#86efac" }} />
-              {indice.filas.toLocaleString("es-AR")}
-            </span>
-          )}
+            <div className="relative shrink-0" ref={indiceMenuRef}>
+              <button
+                onClick={() => setIndiceMenuOpen((v) => !v)}
+                title="Estado del índice de búsqueda"
+                className="inline-flex items-center gap-1.5 px-2.5 rounded-[9px] text-[12px] whitespace-nowrap transition-colors"
+                style={{
+                  height: TOOLBAR_H, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER,
+                  color: "oklch(0.6 0 0)", cursor: "pointer",
+                }}
+              >
+                {reconstruyendo
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "#fcd34d" }} />
+                  : <Database className="w-3.5 h-3.5" style={{ color: "#86efac" }} />}
+                {reconstruyendo ? "Reconstruyendo…" : indice.filas.toLocaleString("es-AR")}
+                <ChevronDown className="w-3 h-3 opacity-60" />
+              </button>
 
-          <button
-            onClick={handleReconstruir}
-            disabled={reconstruyendo}
-            title={
-              "Vuelve a leer Matrículas + Planilla OP + Transacciones y regenera el índice.\n\n" +
-              "Ya no hace falta tocarlo después de cada carga de OP / MATRICULAS / SIC / Transacciones " +
-              "— eso reconstruye solo. Usalo a mano si cambiaste un Material/Servicio o un dato del " +
-              "catálogo y no querés esperar a la próxima carga masiva."
-            }
-            className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors disabled:opacity-50"
-            style={{ height: TOOLBAR_H, background: "oklch(0.22 0.005 270)", border: PANEL_BORDER, color: "oklch(0.75 0 0)", cursor: "pointer" }}
-          >
-            {reconstruyendo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-            {reconstruyendo ? "Reconstruyendo…" : "Reconstruir"}
-          </button>
+              {indiceMenuOpen && (
+                <div
+                  className="absolute right-0 top-[calc(100%+6px)] z-50 animate-in fade-in slide-in-from-top-1 duration-150"
+                  style={{
+                    width: 280, background: "oklch(0.205 0.005 270)", border: PANEL_BORDER,
+                    borderRadius: 10, padding: 12, boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6)",
+                  }}
+                >
+                  <p className="text-[11px] uppercase tracking-wide mb-2" style={{ color: "oklch(0.55 0 0)" }}>
+                    Índice de búsqueda
+                  </p>
+                  <p className="text-[12.5px] mb-1" style={{ color: "oklch(0.85 0 0)" }}>
+                    <span className="font-medium">{indice.filas.toLocaleString("es-AR")}</span> filas indexadas
+                  </p>
+                  {indice.actualizado && (
+                    <p className="text-[11.5px] mb-2.5" style={{ color: "oklch(0.55 0 0)" }}>
+                      Actualizado el {fmtFechaISO(indice.actualizado)}
+                    </p>
+                  )}
+                  <p className="text-[11.5px] leading-relaxed mb-3" style={{ color: "oklch(0.5 0 0)" }}>
+                    Se reconstruye solo después de cargar Envíos, SIC, MATRICULAS o
+                    Transacciones. Hacelo a mano solo si cambiaste un Material/Servicio
+                    o el catálogo y no querés esperar a la próxima carga.
+                  </p>
+                  <button
+                    onClick={handleReconstruir}
+                    disabled={reconstruyendo}
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-[8px] text-[12.5px] font-medium transition-colors disabled:opacity-50"
+                    style={{ background: "oklch(0.22 0.005 270)", border: PANEL_BORDER, color: "oklch(0.75 0 0)", cursor: "pointer" }}
+                  >
+                    {reconstruyendo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                    {reconstruyendo ? "Reconstruyendo…" : "Reconstruir ahora"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Contador — en una pestaña cuenta sus filas, no resultados del índice. */}
