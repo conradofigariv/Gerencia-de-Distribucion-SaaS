@@ -908,10 +908,6 @@ export function BuscadorSection() {
   const [agruparMenuOpen, setAgruparMenuOpen] = useState(false);
   const agruparMenuRef = useRef<HTMLDivElement>(null);
   const [colapsados, setColapsados] = useState<Set<string>>(new Set());
-  // Al agrupar, plegar las columnas cuyo valor se repite igual en todo el grupo
-  // (descripción, udm, mat/serv…): ya están en el encabezado de la matrícula y
-  // solo empujan fuera de pantalla a línea / envío / cantidades.
-  const [compactar, setCompactar] = useState(true);
   const dragFilaId = useRef<string | null>(null);
   const [dragOverFilaId, setDragOverFilaId] = useState<string | null>(null);
   // Fila resaltada al hacer click — como en Excel: sirve de referencia al
@@ -1839,47 +1835,6 @@ export function BuscadorSection() {
     [displayRows, agruparPor]
   );
 
-  /**
-   * Columnas que valen lo mismo en todas las filas de cada grupo. Al agrupar por
-   * matrícula, por ejemplo, son redundantes por construcción (matrícula,
-   * descripción, udm, material/servicio…) y son justo las anchas, así que
-   * empujan fuera de la pantalla lo que sí distingue una fila de otra.
-   *
-   * Solo se miran los grupos de 2+ filas: en uno de una sola fila toda columna
-   * es trivialmente constante y esconderíamos la tabla entera.
-   */
-  const colsRedundantes = useMemo(() => {
-    const out = new Set<string>();
-    if (!isTabMode || !agrupar) return out;
-
-    const grupos = new Map<string, Record<string, unknown>[]>();
-    for (const r of displayRows) {
-      const gk = groupKeyOf(r.data, agruparPor);
-      if (!grupos.has(gk)) grupos.set(gk, []);
-      grupos.get(gk)!.push(r.data);
-    }
-    const conVarias = [...grupos.values()].filter((g) => g.length > 1);
-    if (!conVarias.length) return out;
-
-    for (const c of visibleCols) {
-      const constante = conVarias.every((g) => {
-        const v0 = String(g[0][c.key] ?? "");
-        return g.every((d) => String(d[c.key] ?? "") === v0);
-      });
-      if (constante) out.add(c.key as string);
-    }
-    return out;
-  }, [isTabMode, agrupar, agruparPor, displayRows, visibleCols]);
-
-  // Columnas que finalmente se dibujan. El compactado es solo una ayuda de
-  // pantalla — no toca la config de la pestaña ni el CSV, que sigue exportando
-  // todo lo que el usuario eligió ver.
-  const renderCols = useMemo(() => {
-    if (!compactar || !colsRedundantes.size) return visibleCols;
-    const rest = visibleCols.filter((c) => !colsRedundantes.has(c.key as string));
-    return rest.length ? rest : visibleCols;   // nunca dejar la tabla sin columnas
-  }, [visibleCols, colsRedundantes, compactar]);
-
   // Exporta las columnas visibles, en el orden elegido (igual a lo que se ve
   // en pantalla). Las columnas ocultas no se pierden — siguen en el índice.
   const exportCSV = useCallback(() => {
@@ -1975,44 +1930,8 @@ export function BuscadorSection() {
                     <span style={{ color: "oklch(0.55 0 0)" }}>{tabFilas.length}</span>
                   )}
                 </button>
-                {act && (propia || permiso === "edicion") && (
-                  <span className="inline-flex items-center gap-0.5 ml-0.5">
-                    {propia && (
-                      <button
-                        onClick={() => setShareTabId(t.id)}
-                        title="Compartir con otros usuarios"
-                        className="grid place-items-center rounded-[5px] transition-colors"
-                        style={{ width: 22, height: 22, color: "oklch(0.5 0 0)" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = "#7dd3fc"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.5 0 0)"; }}
-                      >
-                        <Share2 className="w-3 h-3" />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleRenameTab(t)}
-                      title="Renombrar"
-                      className="grid place-items-center rounded-[5px] transition-colors"
-                      style={{ width: 22, height: 22, color: "oklch(0.5 0 0)" }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = "#c4b5fd"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.5 0 0)"; }}
-                    >
-                      <Pencil className="w-3 h-3" />
-                    </button>
-                    {propia && (
-                      <button
-                        onClick={() => handleDeleteTab(t)}
-                        title="Borrar pestaña"
-                        className="grid place-items-center rounded-[5px] transition-colors"
-                        style={{ width: 22, height: 22, color: "oklch(0.5 0 0)" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = "#fca5a5"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.5 0 0)"; }}
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
-                  </span>
-                )}
+                {/* Compartir / Renombrar / Borrar salieron de acá: click
+                    derecho en la pestaña abre el mismo menú (abrirMenuPestana). */}
               </span>
             );
           })}
@@ -2147,28 +2066,6 @@ export function BuscadorSection() {
                   style={{ height: TOOLBAR_H, width: 32, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, color: "oklch(0.6 0 0)", cursor: "pointer" }}
                 >
                   {colapsados.size ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                </button>
-              )}
-              {agrupar && colsRedundantes.size > 0 && (
-                <button
-                  onClick={() => setCompactar((v) => !v)}
-                  title={
-                    compactar
-                      ? `${colsRedundantes.size} columna(s) plegadas por repetirse igual en todo el grupo: ${
-                          [...colsRedundantes].map((k) => COLS.find((c) => c.key === k)?.label ?? k).join(", ")
-                        }. Click para volver a mostrarlas.`
-                      : "Plegar las columnas que se repiten igual dentro de cada matrícula"
-                  }
-                  className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors"
-                  style={{
-                    height: TOOLBAR_H,
-                    background: compactar ? "oklch(0.28 0.02 295)" : "oklch(0.16 0.005 270)",
-                    border: `1px solid ${compactar ? "oklch(0.55 0.20 295 / 0.45)" : "oklch(1 0 0 / 0.07)"}`,
-                    color: compactar ? "oklch(0.92 0 0)" : "oklch(0.65 0 0)", cursor: "pointer",
-                  }}
-                >
-                  <Columns3 className="w-3.5 h-3.5" />
-                  Compactar {colsRedundantes.size}
                 </button>
               )}
             </div>
@@ -2397,7 +2294,7 @@ export function BuscadorSection() {
                       En el índice maestro lleva el check de selección y el pin;
                       dentro de una pestaña, el handle de arrastre y el borrar. */}
                   <col style={{ width: 58 }} />
-                  {renderCols.map((c) => (
+                  {visibleCols.map((c) => (
                     <col key={c.key} style={{ width: effWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] }} />
                   ))}
                   {isTabMode && TRACK_COLS.map((c) => (
@@ -2439,7 +2336,7 @@ export function BuscadorSection() {
                         />
                       )}
                     </th>
-                    {renderCols.map((c) => {
+                    {visibleCols.map((c) => {
                       const active = sortCol === c.key;
                       const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
                       return (
@@ -2517,7 +2414,7 @@ export function BuscadorSection() {
                       return (
                         <tr key={item.key}>
                           <td
-                            colSpan={1 + renderCols.length + (isTabMode ? TRACK_COLS.length : 0)}
+                            colSpan={1 + visibleCols.length + (isTabMode ? TRACK_COLS.length : 0)}
                             style={{
                               padding: 0,
                               background: "oklch(0.245 0.008 270)",
@@ -2684,7 +2581,7 @@ export function BuscadorSection() {
 
                         {/* Columnas del índice. En una pestaña son copias, así
                             que se editan con doble click. */}
-                        {renderCols.map((c) => {
+                        {visibleCols.map((c) => {
                           // Las columnas manuales de OP (descripción / zona) se
                           // editan TAMBIÉN en el índice maestro, donde no hay
                           // filaId: la clave de edición es la fila visible.

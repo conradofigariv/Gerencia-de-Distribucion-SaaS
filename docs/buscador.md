@@ -200,17 +200,16 @@ pasan por estas funciones.
 
 ### UI (`buscador.tsx`)
 
-- Ícono `Share2` junto al nombre de la pestaña activa (solo visible para el dueño) abre `ShareDialog` — modal con la lista de colaboradores actuales (cada uno con un `<select>` lectura/edición y botón para sacarlo) y un buscador para agregar gente nueva.
+- **Compartir / Renombrar / Borrar pestaña** viven en el menú contextual (click derecho sobre la pestaña, `abrirMenuPestana`) — no hay íconos sueltos al lado del nombre. Ver "Menú contextual de fila" más abajo para el detalle de qué ofrece cada uno según el permiso.
 - En la barra de pestañas, una compartida-conmigo muestra un ícono: `Users` (celeste) si tengo edición, `Lock` (gris) si es de solo lectura.
 - Puntos gateados por `puedoEditar` (deriva de `esPropia || miPermiso === "edicion"`, fail-closed a `"lectura"` si `misPermisos` todavía no cargó):
   - Doble-click para editar una celda (tanto columnas del índice como las de seguimiento).
   - Arrastrar para reordenar filas (`puedeArrastrar`).
-  - Botón de borrar fila (no se muestra si es de solo lectura).
+  - Quitar fila / quitar grupo entero (menú contextual, no se ofrecen si es de solo lectura).
   - Dropdown "Agregar a pestaña" del índice maestro: solo ofrece pestañas donde `permisoDe(t) === "edicion"`.
   - `ColumnsMenu` recibe `locked={isTabMode && !puedoEditar}` — con eso puesto se puede abrir el menú para VER las columnas pero no arrastrar, ocultar ni restablecer.
   - Toggle "Agrupar" y el desplegable de criterio, deshabilitados (`disabled`) si es de solo lectura.
-  - `compactar` (plegar columnas redundantes al agrupar) y `colapsados` (qué grupos están cerrados) NO están gateados — son vista local efímera, nunca se persisten, así que un lector los puede tocar libremente sin afectar a nadie.
-- Renombrar (`Pencil`) se ofrece a dueño Y editores; borrar pestaña (`Trash2`) y compartir (`Share2`) solo al dueño.
+  - `colapsados` (qué grupos están cerrados) NO está gateado — es vista local efímera, nunca se persiste, así que un lector lo puede tocar libremente sin afectar a nadie.
 
 ---
 
