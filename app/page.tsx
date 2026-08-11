@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import { toast } from "sonner";
 import { Sidebar, SIDEBAR_SECTIONS } from "@/components/dashboard/sidebar";
 import { puedeVerSeccion } from "@/lib/sectionAccess";
 import { Header } from "@/components/dashboard/header";
@@ -99,7 +100,16 @@ export default function Dashboard() {
       .select("nombre, apellido, avatar_url, nivel_acceso, secciones_permitidas")
       .eq("id", user.id)
       .single()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) {
+          // Si `secciones_permitidas` todavía no existe en la base (falta
+          // correr supabase/profile_secciones.sql), este select entero falla
+          // y ANTES se perdía en silencio: nombre/apellido/foto quedaban
+          // vacíos en el header sin ningún aviso — parecía un bug de sesión.
+          console.error("No se pudo cargar el perfil del header:", error.message);
+          toast.error(`No se pudo cargar tu perfil: ${error.message}`);
+          return;
+        }
         setHeaderProfile({
           nombre: data?.nombre ?? "",
           apellido: data?.apellido ?? "",
