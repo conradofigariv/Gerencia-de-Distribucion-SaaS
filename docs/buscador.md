@@ -224,6 +224,29 @@ pasan por estas funciones.
 - Dropdown "Agregar a pestaña" → copia las seleccionadas a la pestaña elegida. ⚠ Solo copia las que están **dentro de la búsqueda actual** (`sorted.filter(...)`), así que el botón muestra `seleccionadasVisibles` y, si hay tildadas fuera, aclara «de N». El checkbox de "seleccionar todo" del header opera solo sobre lo visible por el mismo motivo, y conserva lo tildado en otras búsquedas.
 - Las celdas editables muestran un **lápiz al pasar el mouse** — el doble click es el único gesto de edición y sin eso no se anuncia. Importa sobre todo en Zona y Descripción OP, que arrancan vacías.
 
+### Menú contextual de fila (click derecho)
+
+`RowContextMenu` + `abrirMenuFila()` en `buscador.tsx`. Se abre con click derecho
+sobre cualquier celda y **sabe sobre qué columna se hizo click**, así puede
+ofrecer acciones de esa celda puntual. Los items dependen del modo y del permiso:
+
+| | Índice maestro | Dentro de una pestaña |
+|---|---|---|
+| Editar «columna» | solo Zona / Descripción OP | cualquier columna + las de seguimiento |
+| Copiar valor | ✅ | ✅ |
+| Fijar arriba / Quitar de fijadas | ✅ | — |
+| Seleccionar / Quitar de la selección | ✅ | — |
+| Agregar a «pestaña» | una por cada pestaña editable | — |
+| Quitar de la pestaña | — | ✅ |
+| Quitar el grupo entero | — | ✅ si está agrupado |
+
+El menú se reposiciona solo si se sale de la ventana, y se cierra con Escape,
+click afuera, resize o **scroll** (queda anclado a coordenadas de pantalla: sin
+eso, scrollear la tabla lo dejaría apuntando a otra fila).
+
+**El tacho de borrar fila salió de la columna de acciones** y vive solo acá: era
+una acción destructiva a un click suelto, pegada al handle de arrastre.
+
 **Modo pestaña:**
 - Muestra filas copiadas + 4 columnas de seguimiento (estado, responsable, fechaRevision, nota).
 - Agrupa (collapsible) por el criterio elegido: **Matrícula** (default), **SIC** u **OP** — desplegable al lado del toggle "Agrupar".

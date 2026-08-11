@@ -7,6 +7,7 @@ import {
   ChevronDown, ChevronUp, ChevronsUpDown, Wrench, Package,
   Columns3, GripVertical, Eye, EyeOff, Pin, Plus, Trash2, Pencil, ListPlus,
   ChevronRight, Rows3, Tag, FileText, Share2, Users, Lock, UserMinus, UserPlus,
+  Copy, Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -476,6 +477,13 @@ function grupoTitulo(gk: string, primera: Record<string, unknown>, criterio: Agr
   return { titulo: gk === SIN_DATO ? gk : `OP ${gk}`, subtitulo: String(primera.proveedor ?? "") };
 }
 
+// Etiqueta legible de cualquier columna (del índice o de seguimiento), para
+// que el menú contextual pueda decir «Editar «Fecha pactada OP»».
+const LABEL_POR_COL: Record<string, string> = {
+  ...Object.fromEntries(COLS.map((c) => [c.key as string, c.label])),
+  ...Object.fromEntries(TRACK_COLS.map((c) => [c.key, c.label])),
+};
+
 const TRACK_BG = "oklch(0.225 0.012 300)";   // tinte violeta suave
 
 const ESTADO_STYLE: Record<string, { bg: string; fg: string; bd: string }> = {
@@ -533,6 +541,99 @@ const DEFAULT_COL_ORDER = COLS.map((c) => c.key as string);
 const COL_META: ColMeta[] = COLS.map((c) => ({ key: c.key as string, label: c.label, group: c.group }));
 
 type SortDir = "asc" | "desc";
+
+// ─── Menú contextual de fila ─────────────────────────────────────────────────
+// Junta en un solo lugar las acciones que antes estaban desparramadas en
+// iconitos de la columna de acciones (fijar, borrar) y en gestos invisibles
+// (doble click para editar). Se abre con click derecho sobre cualquier celda,
+// y sabe en qué columna se hizo click para ofrecer «Editar esta columna».
+
+interface CtxItem {
+  label:     string;
+  icon:      ElementType;
+  onClick:   () => void;
+  danger?:   boolean;
+  disabled?: boolean;
+  hint?:     string;
+}
+
+/** Lo que se abrió: dónde, sobre qué fila y sobre qué columna. */
+interface CtxState {
+  x: number;
+  y: number;
+  items: (CtxItem | "sep")[];
+}
+
+function RowContextMenu({ state, onClose }: { state: CtxState; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ x: state.x, y: state.y });
+
+  // Reposiciona si se sale de la ventana: se mide después de pintar, porque el
+  // alto depende de cuántos items tenga este menú en particular.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const { width, height } = el.getBoundingClientRect();
+    setPos({
+      x: state.x + width  > window.innerWidth  - 8 ? Math.max(8, state.x - width)  : state.x,
+      y: state.y + height > window.innerHeight - 8 ? Math.max(8, state.y - height) : state.y,
+    });
+  }, [state.x, state.y]);
+
+  useEffect(() => {
+    const cerrar = () => onClose();
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    // `capture` en el scroll: el menú queda anclado a coordenadas de pantalla,
+    // así que si la tabla scrollea abajo del menú, este queda apuntando a otra fila.
+    document.addEventListener("mousedown", cerrar);
+    document.addEventListener("scroll", cerrar, true);
+    document.addEventListener("keydown", esc);
+    window.addEventListener("resize", cerrar);
+    return () => {
+      document.removeEventListener("mousedown", cerrar);
+      document.removeEventListener("scroll", cerrar, true);
+      document.removeEventListener("keydown", esc);
+      window.removeEventListener("resize", cerrar);
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      ref={ref}
+      onMouseDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
+      className="animate-in fade-in zoom-in-95 duration-100"
+      style={{
+        position: "fixed", left: pos.x, top: pos.y, zIndex: 200,
+        minWidth: 210, padding: 5,
+        maxHeight: "min(70vh, 420px)", overflowY: "auto",
+        background: "oklch(0.205 0.005 270)", border: PANEL_BORDER, borderRadius: 10,
+        boxShadow: "0 18px 40px -18px rgba(0,0,0,0.75)",
+      }}
+    >
+      {state.items.map((it, i) =>
+        it === "sep" ? (
+          <div key={`s${i}`} style={{ height: 1, background: "oklch(1 0 0 / 0.07)", margin: "4px 6px" }} />
+        ) : (
+          <button
+            key={it.label}
+            disabled={it.disabled}
+            onClick={() => { it.onClick(); onClose(); }}
+            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-[7px] text-left text-[13px] transition-colors disabled:opacity-35 disabled:cursor-default"
+            style={{ color: it.danger ? "#fca5a5" : "oklch(0.88 0 0)" }}
+            onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = it.danger ? "oklch(0.30 0.08 25 / 0.35)" : "oklch(0.27 0.005 270)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            <it.icon className="w-3.5 h-3.5 shrink-0" />
+            <span className="flex-1 truncate">{it.label}</span>
+            {it.hint && <span className="text-[11px] shrink-0" style={{ color: "oklch(0.5 0 0)" }}>{it.hint}</span>}
+          </button>
+        )
+      )}
+    </div>,
+    document.body
+  );
+}
 
 // ─── Compartir pestaña ───────────────────────────────────────────────────────
 // Modal de gestión de colaboradores de UNA pestaña — solo la abre el dueño
@@ -770,6 +871,8 @@ export function BuscadorSection() {
   // después de cada carga masiva, así que casi nunca hace falta a mano.
   const [indiceMenuOpen, setIndiceMenuOpen] = useState(false);
   const indiceMenuRef = useRef<HTMLDivElement>(null);
+  // Menú contextual de fila (click derecho). null = cerrado.
+  const [ctxMenu, setCtxMenu] = useState<CtxState | null>(null);
 
   // Un solo estado para col+dir: con dos useState separados, un click rápido
   // podía actualizar el ícono (dir) sin que el array se reordenara de nuevo
@@ -1439,6 +1542,125 @@ export function BuscadorSection() {
     }
   }, [sorted, selected, activeTab, tabFilas, tabs]);
 
+  /** Copia UNA fila del índice a una pestaña (desde el menú contextual). */
+  const handleAddRowToTab = useCallback(async (tabId: string, r: BusquedaRow) => {
+    try {
+      const destinoFilas = tabId === activeTab ? tabFilas : await fetchTabFilas(tabId);
+      const destino = tabs.find((t) => t.id === tabId)?.nombre ?? "la pestaña";
+      if (destinoFilas.some((f) => f.row_key === rowKey(r))) {
+        toast.info(`Esa fila ya está en «${destino}».`);
+        return;
+      }
+      const creadas = await addFilas(tabId, [r], rowKey, destinoFilas.length);
+      if (tabId === activeTab) setTabFilas((p) => [...p, ...creadas]);
+      toast.success(`Fila copiada a «${destino}».`);
+    } catch (e) {
+      toast.error(`No se pudo copiar: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [activeTab, tabFilas, tabs]);
+
+  /**
+   * Arma y abre el menú contextual de una fila. Junta las acciones que antes
+   * estaban repartidas entre iconitos de la columna de acciones (fijar,
+   * borrar) y gestos sin anunciar (doble click para editar).
+   *
+   * Recibe la columna sobre la que se hizo click para poder ofrecer «Editar
+   * esta columna» y «Copiar valor» de esa celda puntual.
+   */
+  const abrirMenuFila = useCallback((
+    e: React.MouseEvent,
+    ctx: { key: string; filaId?: string; data: Record<string, unknown>; colKey?: string }
+  ) => {
+    e.preventDefault();
+    const items: (CtxItem | "sep")[] = [];
+
+    const colKey    = ctx.colKey;
+    const label     = colKey ? LABEL_POR_COL[colKey] ?? colKey : "";
+    const esManual  = !!colKey && OP_MANUAL_COLS.has(colKey);
+    const numeroOp  = String(ctx.data.numero_op ?? "");
+    const editable  = !!colKey && (esManual ? (puedoEditar && !!numeroOp) : (isTabMode && puedoEditar));
+    const editKey   = isTabMode ? ctx.filaId : ctx.key;
+    const valor     = colKey ? String(ctx.data[colKey] ?? "") : "";
+
+    if (colKey) {
+      items.push({
+        label: `Editar «${label}»`,
+        icon: Pencil,
+        disabled: !editable,
+        hint: esManual && editable ? "toda la OP" : undefined,
+        onClick: () => { setEditValue(valor); setEditing({ filaId: editKey!, key: colKey }); },
+      });
+      items.push({
+        label: "Copiar valor",
+        icon: Copy,
+        disabled: !valor,
+        onClick: () => {
+          navigator.clipboard.writeText(valor)
+            .then(() => toast.success("Copiado."))
+            .catch(() => toast.error("No se pudo copiar."));
+        },
+      });
+    }
+
+    if (isTabMode) {
+      if (items.length) items.push("sep");
+      items.push({
+        label: "Quitar de la pestaña",
+        icon: Trash2,
+        danger: true,
+        disabled: !puedoEditar || !ctx.filaId,
+        onClick: () => handleDeleteFila(ctx.filaId!),
+      });
+      if (agrupar) {
+        const gk = groupKeyOf(ctx.data, agruparPor);
+        const delGrupo = tabFilas.filter((f) => groupKeyOf(f.datos, agruparPor) === gk);
+        const { titulo } = grupoTitulo(gk, ctx.data, agruparPor);
+        items.push({
+          label: `Quitar «${titulo}» entero`,
+          icon: Trash2,
+          danger: true,
+          hint: `${delGrupo.length}`,
+          disabled: !puedoEditar || !delGrupo.length,
+          onClick: () => handleDeleteGrupo(delGrupo.map((f) => f.id), titulo),
+        });
+      }
+    } else {
+      if (items.length) items.push("sep");
+      const fijada = pinnedKeys.includes(ctx.key);
+      items.push({
+        label: fijada ? "Quitar de fijadas" : "Fijar arriba",
+        icon: Pin,
+        onClick: () => togglePin(ctx.key),
+      });
+      items.push({
+        label: selected.has(ctx.key) ? "Quitar de la selección" : "Seleccionar",
+        icon: selected.has(ctx.key) ? X : Check,
+        onClick: () => setSelected((prev) => {
+          const s = new Set(prev);
+          if (s.has(ctx.key)) s.delete(ctx.key); else s.add(ctx.key);
+          return s;
+        }),
+      });
+
+      const editables = tabs.filter((t) => permisoDe(t) === "edicion");
+      if (editables.length) {
+        items.push("sep");
+        for (const t of editables) {
+          items.push({
+            label: `Agregar a «${t.nombre}»`,
+            icon: ListPlus,
+            onClick: () => handleAddRowToTab(t.id, ctx.data as unknown as BusquedaRow),
+          });
+        }
+      }
+    }
+
+    setCtxMenu({ x: e.clientX, y: e.clientY, items });
+  }, [
+    isTabMode, puedoEditar, agrupar, agruparPor, tabFilas, pinnedKeys, selected,
+    tabs, permisoDe, togglePin, handleDeleteFila, handleDeleteGrupo, handleAddRowToTab,
+  ]);
+
   // ── Filas que efectivamente se pintan ──
   // Un solo shape para los dos modos, así la tabla no se duplica: en el índice
   // maestro la data es la BusquedaRow; en una pestaña, el `datos` de la fila
@@ -2020,7 +2242,7 @@ export function BuscadorSection() {
               const nombre = agruparPor === "articulo" ? "matrícula" : agruparPor === "numero_sic" ? "SIC" : "OP";
               return ` en ${gruposCount.toLocaleString("es-AR")} ${nombre}${gruposCount === 1 || agruparPor !== "articulo" ? "" : "s"}`;
             })()}
-            {" · doble click en una celda para editarla"}
+            {" · doble click para editar · click derecho para más acciones"}
             {puedeArrastrar && " · arrastrá para reordenar"}
           </p>
         )}
@@ -2034,6 +2256,7 @@ export function BuscadorSection() {
               {soloMov > 0 && <> · {soloMov.toLocaleString("es-AR")} solo con movimientos (OP fuera de la planilla)</>}
               {soloCat > 0 && <> · {soloCat.toLocaleString("es-AR")} solo en catálogo</>}
               {sorted.length >= 500 && <> · mostrando los primeros 500, afiná la búsqueda</>}
+              {" · click derecho en una fila para más acciones"}
             </span>
             {pinnedRows.length > 0 && (
               <span className="inline-flex items-center gap-1">
@@ -2313,7 +2536,10 @@ export function BuscadorSection() {
                         onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = rowBg ?? ""; }}
                       >
                         {/* Acciones de la fila */}
-                        <td style={{ padding: "6px 4px", borderBottom: bottomBorder }}>
+                        <td
+                          style={{ padding: "6px 4px", borderBottom: bottomBorder }}
+                          onContextMenu={(e) => abrirMenuFila(e, { key, filaId, data })}
+                        >
                           <span className="flex items-center justify-center gap-1">
                             {isTabMode ? (
                               <>
@@ -2324,18 +2550,10 @@ export function BuscadorSection() {
                                 >
                                   <GripVertical className="w-3.5 h-3.5" />
                                 </span>
-                                {puedoEditar && (
-                                  <button
-                                    onClick={() => handleDeleteFila(filaId!)}
-                                    title="Quitar de la pestaña"
-                                    className="grid place-items-center transition-colors"
-                                    style={{ width: 20, height: 20, borderRadius: 5, color: "oklch(0.42 0 0)" }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.color = "#fca5a5"; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.42 0 0)"; }}
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
+                                {/* Borrar salió de acá: era una acción
+                                    destructiva a un click suelto al lado del
+                                    handle de arrastre. Ahora está en el menú
+                                    contextual (click derecho). */}
                               </>
                             ) : (
                               <>
@@ -2412,6 +2630,7 @@ export function BuscadorSection() {
                                 setEditValue(String(data[c.key] ?? ""));
                                 setEditing({ filaId: editKey!, key: c.key });
                               } : undefined}
+                              onContextMenu={(e) => abrirMenuFila(e, { key, filaId, data, colKey: c.key as string })}
                             >
                               {editando ? (
                                 <input
@@ -2480,6 +2699,7 @@ export function BuscadorSection() {
                                 setEditValue(val);
                                 setEditing({ filaId: filaId!, key: c.key });
                               } : undefined}
+                              onContextMenu={(e) => abrirMenuFila(e, { key, filaId, data, colKey: c.key })}
                             >
                               {editando && c.tipo === "estado" ? (
                                 <select
@@ -2556,6 +2776,8 @@ export function BuscadorSection() {
           )}
         </div>
       </div>
+
+      {ctxMenu && <RowContextMenu state={ctxMenu} onClose={() => setCtxMenu(null)} />}
 
       {shareTabId && (() => {
         const tab = tabs.find((t) => t.id === shareTabId);
