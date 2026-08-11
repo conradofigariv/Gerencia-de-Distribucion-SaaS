@@ -102,10 +102,19 @@ CREATE TRIGGER trg_bloquear_cambio_dueno_pestana
 
 DROP POLICY IF EXISTS "buscador_tabs_own" ON buscador_tabs;
 
+-- ⚠ La rama `user_id = auth.uid()` NO es una optimización, es obligatoria.
+-- `createTab()` hace INSERT ... RETURNING, y un INSERT con RETURNING aplica
+-- también esta policy de SELECT sobre la fila nueva. Con solo
+-- `gd_puede_leer_pestana(id)`, esa función consulta `buscador_tabs` desde una
+-- función STABLE — que ve el snapshot previo a la sentencia y por lo tanto NO
+-- ve la fila recién insertada — y devuelve false: crear una pestaña fallaba con
+-- "new row violates row-level security policy", un error que parece del INSERT
+-- pero viene del RETURNING. La comparación directa se evalúa sobre la tupla
+-- nueva y corta en true antes de llegar a la función.
 DROP POLICY IF EXISTS "buscador_tabs_select" ON buscador_tabs;
 CREATE POLICY "buscador_tabs_select"
   ON buscador_tabs FOR SELECT TO authenticated
-  USING (gd_puede_leer_pestana(id));
+  USING (user_id = auth.uid() OR gd_puede_leer_pestana(id));
 
 DROP POLICY IF EXISTS "buscador_tabs_insert" ON buscador_tabs;
 CREATE POLICY "buscador_tabs_insert"
@@ -115,8 +124,8 @@ CREATE POLICY "buscador_tabs_insert"
 DROP POLICY IF EXISTS "buscador_tabs_update" ON buscador_tabs;
 CREATE POLICY "buscador_tabs_update"
   ON buscador_tabs FOR UPDATE TO authenticated
-  USING (gd_puede_editar_pestana(id))
-  WITH CHECK (gd_puede_editar_pestana(id));
+  USING      (user_id = auth.uid() OR gd_puede_editar_pestana(id))
+  WITH CHECK (user_id = auth.uid() OR gd_puede_editar_pestana(id));
 
 DROP POLICY IF EXISTS "buscador_tabs_delete" ON buscador_tabs;
 CREATE POLICY "buscador_tabs_delete"
