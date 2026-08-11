@@ -1267,7 +1267,24 @@ export function BuscadorSection() {
       setTabs((p) => [...p, tab]);
       setActiveTab(tab.id);
     } catch (e) {
-      toast.error(`No se pudo crear: ${e instanceof Error ? e.message : String(e)}`);
+      // Diagnóstico temporal para el 42501 de RLS que no se explicaba con
+      // código, policy, proyecto ni sesión: se decodifica el JWT actual (sin
+      // validar firma, solo se lee el payload — es lo mismo que ya viaja en
+      // cada pedido) y se compara el `sub` contra el user_id que se mandó.
+      // Si coinciden, el problema no es esto y hay que seguir buscando; si no
+      // coinciden, ahí está la causa. Se muestra en el toast para no depender
+      // de que alguien abra las herramientas de desarrollador.
+      let diagnostico = "";
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        const token = sess.session?.access_token;
+        const payload = token?.split(".")[1];
+        const sub = payload
+          ? (JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as { sub?: string }).sub
+          : undefined;
+        diagnostico = ` [debug: sub del token=${sub ?? "?"}, user_id enviado=${userId ?? "?"}]`;
+      } catch { /* si falla el diagnóstico, que al menos se vea el error normal */ }
+      toast.error(`No se pudo crear: ${e instanceof Error ? e.message : String(e)}${diagnostico}`, { duration: 15000 });
     }
   }, [userId, tabs.length]);
 
