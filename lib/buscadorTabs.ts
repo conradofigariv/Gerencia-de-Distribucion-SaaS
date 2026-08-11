@@ -1,5 +1,22 @@
+import type { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import type { BusquedaRow } from "@/lib/busqueda";
+
+/**
+ * `error.message` de Supabase muchas veces es genérico ("new row violates
+ * row-level security policy for table X") y no dice POR QUÉ — el motivo real
+ * suele venir en `details`/`hint`/`code`, que se descartaban en cada
+ * `throw new Error(error.message)` de este archivo. Esta función junta todo
+ * lo disponible para que el toast de error en pantalla ya traiga la pista,
+ * sin tener que ir a mirar la Network tab cada vez.
+ */
+function errorSupabase(error: PostgrestError): Error {
+  const partes = [error.message];
+  if (error.details) partes.push(`Detalle: ${error.details}`);
+  if (error.hint)    partes.push(`Pista: ${error.hint}`);
+  if (error.code)    partes.push(`(código ${error.code})`);
+  return new Error(partes.join(" — "));
+}
 
 // ─── Pestañas del Buscador ───────────────────────────────────────────────────
 // Listas de seguimiento privadas: se copian filas del índice maestro y desde
@@ -73,7 +90,7 @@ export async function fetchTabs(userId: string): Promise<BuscadorTab[]> {
     .select("*")
     .order("orden", { ascending: true })
     .order("created_at", { ascending: true });
-  if (error) throw new Error(error.message);
+  if (error) throw errorSupabase(error);
   return (data ?? []) as BuscadorTab[];
 }
 
@@ -83,7 +100,7 @@ export async function createTab(userId: string, nombre: string, orden: number): 
     .insert({ user_id: userId, nombre, orden })
     .select()
     .single();
-  if (error) throw new Error(error.message);
+  if (error) throw errorSupabase(error);
   return data as BuscadorTab;
 }
 
@@ -92,7 +109,7 @@ export async function renameTab(id: string, nombre: string): Promise<void> {
     .from("buscador_tabs")
     .update({ nombre, updated_at: new Date().toISOString() })
     .eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw errorSupabase(error);
 }
 
 export async function updateTabConfig(id: string, config: TabConfig): Promise<void> {
@@ -100,13 +117,13 @@ export async function updateTabConfig(id: string, config: TabConfig): Promise<vo
     .from("buscador_tabs")
     .update({ config, updated_at: new Date().toISOString() })
     .eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw errorSupabase(error);
 }
 
 /** Borra la pestaña. Las filas caen solas por ON DELETE CASCADE. */
 export async function deleteTab(id: string): Promise<void> {
   const { error } = await supabase.from("buscador_tabs").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw errorSupabase(error);
 }
 
 // ─── Filas ───────────────────────────────────────────────────────────────────
@@ -117,7 +134,7 @@ export async function fetchTabFilas(tabId: string): Promise<TabFila[]> {
     .select("*")
     .eq("tab_id", tabId)
     .order("orden", { ascending: true });
-  if (error) throw new Error(error.message);
+  if (error) throw errorSupabase(error);
   return (data ?? []) as TabFila[];
 }
 
@@ -146,7 +163,7 @@ export async function addFilas(
     } as Record<string, unknown>,
   }));
   const { data, error } = await supabase.from("buscador_tab_filas").insert(payload).select();
-  if (error) throw new Error(error.message);
+  if (error) throw errorSupabase(error);
   return (data ?? []) as TabFila[];
 }
 
@@ -168,7 +185,7 @@ export async function fetchTabMatriculas(tabId: string): Promise<string[]> {
     .from("buscador_tab_filas")
     .select("ak:datos->>articulo_key, a:datos->>articulo")
     .eq("tab_id", tabId);
-  if (error) throw new Error(error.message);
+  if (error) throw errorSupabase(error);
 
   const out = new Set<string>();
   for (const r of (data ?? []) as unknown as { ak: string | null; a: string | null }[]) {
@@ -186,13 +203,13 @@ export async function updateFilaDatos(id: string, datos: Record<string, unknown>
     .from("buscador_tab_filas")
     .update({ datos, updated_at: new Date().toISOString() })
     .eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw errorSupabase(error);
 }
 
 export async function deleteFilas(ids: string[]): Promise<void> {
   if (!ids.length) return;
   const { error } = await supabase.from("buscador_tab_filas").delete().in("id", ids);
-  if (error) throw new Error(error.message);
+  if (error) throw errorSupabase(error);
 }
 
 /** Persiste el orden manual después de un drag. Una llamada por fila movida. */
@@ -242,7 +259,7 @@ export async function fetchColaboradores(tabId: string): Promise<Colaborador[]> 
     .select("*")
     .eq("tab_id", tabId)
     .order("created_at", { ascending: true });
-  if (error) throw new Error(error.message);
+  if (error) throw errorSupabase(error);
   const rows = (shares ?? []) as TabShare[];
   if (!rows.length) return [];
 
@@ -267,7 +284,7 @@ export async function compartirTab(tabId: string, userId: string, permiso: Permi
   const { error } = await supabase
     .from("buscador_tab_shares")
     .upsert({ tab_id: tabId, user_id: userId, permiso }, { onConflict: "tab_id,user_id" });
-  if (error) throw new Error(error.message);
+  if (error) throw errorSupabase(error);
 }
 
 /** Saca a un colaborador — deja de ver la pestaña en su próxima carga. */
@@ -277,7 +294,7 @@ export async function descompartirTab(tabId: string, userId: string): Promise<vo
     .delete()
     .eq("tab_id", tabId)
     .eq("user_id", userId);
-  if (error) throw new Error(error.message);
+  if (error) throw errorSupabase(error);
 }
 
 /**
@@ -291,7 +308,7 @@ export async function fetchMisPermisos(userId: string): Promise<Map<string, Perm
     .from("buscador_tab_shares")
     .select("tab_id, permiso")
     .eq("user_id", userId);
-  if (error) throw new Error(error.message);
+  if (error) throw errorSupabase(error);
   return new Map(((data ?? []) as { tab_id: string; permiso: Permiso }[]).map((r) => [r.tab_id, r.permiso]));
 }
 
