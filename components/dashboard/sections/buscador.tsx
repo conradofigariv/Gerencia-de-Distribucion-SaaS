@@ -914,6 +914,11 @@ export function BuscadorSection() {
   const [compactar, setCompactar] = useState(true);
   const dragFilaId = useRef<string | null>(null);
   const [dragOverFilaId, setDragOverFilaId] = useState<string | null>(null);
+  // Fila resaltada al hacer click — como en Excel: sirve de referencia al
+  // desplazarse horizontalmente por columnas que quedan lejos de las
+  // primeras, para no perder de vista a qué fila corresponden. Un solo click
+  // más la marca/desmarca; no es selección ni fijado, es puramente visual.
+  const [filaResaltada, setFilaResaltada] = useState<string | null>(null);
 
   const [userId, setUserId] = useState<string | null>(null);
   const saveWidthsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2586,8 +2591,12 @@ export function BuscadorSection() {
                       : isLastRow ? "none" : "1px solid oklch(1 0 0 / 0.05)";
                     const isSel = !isTabMode && selected.has(key);
                     const isDragOver = isTabMode && dragOverFilaId === filaId;
+                    const isResaltada = filaResaltada === key;
+                    // Ámbar a propósito: distinto de la selección (violeta) y
+                    // de fijado (violeta tenue), para que no se confundan.
                     const rowBg = isDragOver
                       ? "oklch(0.27 0.005 270)"
+                      : isResaltada ? "oklch(0.32 0.09 85 / 0.22)"
                       : isSel ? "color-mix(in oklab, var(--accent-violet) 12%, transparent)"
                       : isPinned ? pinnedBg : undefined;
                     // Dentro de una pestaña la fila es una copia editable, no
@@ -2598,6 +2607,7 @@ export function BuscadorSection() {
                       <tr
                         key={key}
                         className="transition-colors"
+                        onClick={() => setFilaResaltada((prev) => (prev === key ? null : key))}
                         // Con el agrupado activo el arrastre se desactiva: mover
                         // una fila entre matrículas no tiene sentido y el regrupado
                         // la devolvería a su grupo igual.
@@ -2774,7 +2784,10 @@ export function BuscadorSection() {
                               style={{
                                 padding: editando ? "2px 6px" : "7px 12px",
                                 borderBottom: bottomBorder,
-                                background: TRACK_BG,
+                                // Estas columnas pintan su propio fondo (para
+                                // distinguirse como "de seguimiento") y si no
+                                // se mezcla acá, tapan el resaltado de fila.
+                                background: isResaltada ? "oklch(0.32 0.09 85 / 0.22)" : TRACK_BG,
                                 cursor: puedoEditar ? "text" : "default",
                               }}
                               title={!puedoEditar ? "Solo lectura — pedile al dueño permiso de edición" : c.tipo === "texto" ? val : "Doble click para editar"}

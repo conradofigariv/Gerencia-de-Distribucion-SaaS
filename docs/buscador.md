@@ -223,6 +223,7 @@ pasan por estas funciones.
 - Checkboxes para seleccionar filas. La selección **sobrevive a cambiar la búsqueda** (tildar a lo largo de varias búsquedas es un caso legítimo).
 - Dropdown "Agregar a pestaña" → copia las seleccionadas a la pestaña elegida. ⚠ Solo copia las que están **dentro de la búsqueda actual** (`sorted.filter(...)`), así que el botón muestra `seleccionadasVisibles` y, si hay tildadas fuera, aclara «de N». El checkbox de "seleccionar todo" del header opera solo sobre lo visible por el mismo motivo, y conserva lo tildado en otras búsquedas.
 - Las celdas editables muestran un **lápiz al pasar el mouse** — el doble click es el único gesto de edición y sin eso no se anuncia. Importa sobre todo en Zona y Descripción OP, que arrancan vacías.
+- **Resaltar fila con un click** (como Excel): un click en cualquier parte de la fila la tiñe de ámbar (`filaResaltada`, toggle — otro click la destiñe). Como el color se aplica a nivel `<tr>`, viaja con la fila al hacer scroll horizontal — sirve de referencia para no perderse al mirar columnas lejos de las primeras. Ámbar a propósito, para no confundirse con la selección (violeta) ni con fijado (violeta tenue). Las columnas de seguimiento pintan su propio fondo (`TRACK_BG`) y se mezclan aparte para no taparlo.
 
 ### Menú contextual de fila (click derecho)
 
