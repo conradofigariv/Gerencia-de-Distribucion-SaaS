@@ -1247,11 +1247,23 @@ export function BuscadorSection() {
   }, [indiceMenuOpen]);
 
   const handleCreateTab = useCallback(async () => {
-    if (!userId) { toast.error("Iniciá sesión para crear pestañas."); return; }
     const nombre = window.prompt("Nombre de la pestaña:", "Seguimiento");
     if (!nombre?.trim()) return;
     try {
-      const tab = await createTab(userId, nombre.trim(), tabs.length);
+      // Se pide el usuario FRESCO en vez de usar el `userId` de estado (que se
+      // fijó una sola vez al montar la sección): si la sesión cambió mientras
+      // la pestaña del navegador estuvo abierta, el estado viejo manda un
+      // user_id que ya no coincide con auth.uid() del lado del servidor, y el
+      // insert rebota contra la RLS con un error que no dice esto para nada.
+      const { data, error: authError } = await supabase.auth.getUser();
+      const uidFresco = data.user?.id ?? null;
+      if (authError || !uidFresco) {
+        toast.error("Tu sesión no está activa — recargá la página e iniciá sesión de nuevo.");
+        return;
+      }
+      if (uidFresco !== userId) setUserId(uidFresco); // resincroniza el estado
+
+      const tab = await createTab(uidFresco, nombre.trim(), tabs.length);
       setTabs((p) => [...p, tab]);
       setActiveTab(tab.id);
     } catch (e) {
