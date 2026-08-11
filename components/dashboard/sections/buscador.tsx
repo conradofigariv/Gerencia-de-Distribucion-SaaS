@@ -1098,14 +1098,30 @@ export function BuscadorSection() {
       .finally(() => setLoadingTab(false));
   }, [activeTab]);
 
-  // Cuando se cargan las filas (o cambia el criterio de agrupado), colapsar
-  // todos los grupos por defecto — si no, cambiar de «Matrícula» a «OP» dejaría
-  // los grupos viejos marcados como cerrados y los nuevos todos abiertos.
+  // Espejo de `tabFilas` para el efecto de plegado de abajo, que necesita las
+  // filas actuales pero NO puede tenerlas en sus deps (ver ahí por qué).
+  const tabFilasRef = useRef(tabFilas);
+  useEffect(() => { tabFilasRef.current = tabFilas; });
+
+  /**
+   * Estado de plegado de los grupos:
+   *   • al abrir una pestaña o cambiar el criterio → todos cerrados, para ver
+   *     de un vistazo qué hay sin scrollear cientos de filas.
+   *   • al escribir en el buscador → todos ABIERTOS. Si no, el filtro deja los
+   *     resultados escondidos adentro de grupos cerrados y la búsqueda parece
+   *     no encontrar nada.
+   *   • al limpiar la búsqueda → vuelven a cerrarse.
+   *
+   * ⚠ `tabFilas` NO va en las deps a propósito: cambia de identidad en CADA
+   *   edición de celda, borrado o reordenamiento, y con ella acá los grupos se
+   *   cerraban de golpe cada vez que se tocaba un dato. Por eso se lee por ref
+   *   y el disparador de la recarga es `loadingTab` (false = terminó de traer).
+   */
   useEffect(() => {
-    if (!isTabMode || tabFilas.length === 0) return;
-    const todos = new Set(tabFilas.map((f) => groupKeyOf(f.datos, agruparPor)));
-    setColapsados(todos);
-  }, [isTabMode, tabFilas, agruparPor]);
+    if (!isTabMode) return;
+    if (query.trim()) { setColapsados(new Set()); return; }
+    setColapsados(new Set(tabFilasRef.current.map((f) => groupKeyOf(f.datos, agruparPor))));
+  }, [isTabMode, activeTab, agruparPor, query, loadingTab]);
 
   useEffect(() => {
     if (!agruparMenuOpen) return;
@@ -1354,6 +1370,18 @@ export function BuscadorSection() {
     const rest = sortedByCol.filter((r) => !pinnedSet.has(rowKey(r)));
     return [...pinnedRows, ...rest];
   }, [sortedByCol, pinnedRows]);
+
+  /**
+   * Cuántas de las filas tildadas están DENTRO de la búsqueda actual.
+   *
+   * La selección se mantiene al cambiar la búsqueda (tildar en varias búsquedas
+   * es un caso legítimo), pero «Agregar a pestaña» solo copia lo visible
+   * (`sorted.filter(...)`). Sin esta cuenta el botón prometía 12 y agregaba 3.
+   */
+  const seleccionadasVisibles = useMemo(
+    () => sorted.reduce((n, r) => n + (selected.has(rowKey(r)) ? 1 : 0), 0),
+    [sorted, selected]
+  );
 
   const handleSort = useCallback((col: string) => {
     setSort((prev) =>
@@ -1832,7 +1860,12 @@ export function BuscadorSection() {
               >
                 <ListPlus className="w-3.5 h-3.5" />
                 Agregar a pestaña
-                <span style={{ color: "#c4b5fd" }}>{selected.size}</span>
+                <span style={{ color: "#c4b5fd" }}>{seleccionadasVisibles}</span>
+                {/* Hay tildadas fuera de la búsqueda actual: solo se copian
+                    las visibles, así que se aclara en vez de prometer de más. */}
+                {seleccionadasVisibles !== selected.size && (
+                  <span style={{ color: "oklch(0.6 0 0)" }}>de {selected.size}</span>
+                )}
                 <ChevronDown className="w-3 h-3" />
               </button>
 
@@ -1884,7 +1917,8 @@ export function BuscadorSection() {
               className="inline-flex items-center gap-1.5 px-2.5 rounded-[9px] text-[12px] transition-colors"
               style={{ height: TOOLBAR_H, background: "transparent", border: PANEL_BORDER, color: "oklch(0.55 0 0)", cursor: "pointer" }}
             >
-              <X className="w-3.5 h-3.5" />Quitar selección
+              <X className="w-3.5 h-3.5" />
+              Quitar selección{selected.size > seleccionadasVisibles ? ` (${selected.size})` : ""}
             </button>
           )}
 
@@ -2024,9 +2058,20 @@ export function BuscadorSection() {
                         <input
                           type="checkbox"
                           title="Seleccionar todo"
-                          checked={sorted.length > 0 && selected.size === sorted.length}
+                          checked={sorted.length > 0 && seleccionadasVisibles === sorted.length}
+                          ref={(el) => {
+                            if (el) el.indeterminate = seleccionadasVisibles > 0 && seleccionadasVisibles < sorted.length;
+                          }}
                           onChange={(e) => {
-                            setSelected(e.target.checked ? new Set(sorted.map(rowKey)) : new Set());
+                            // Solo agrega/saca lo VISIBLE: lo tildado en otra
+                            // búsqueda se conserva en vez de perderse acá.
+                            const visibles = sorted.map(rowKey);
+                            setSelected((prev) => {
+                              const s = new Set(prev);
+                              if (e.target.checked) visibles.forEach((k) => s.add(k));
+                              else                  visibles.forEach((k) => s.delete(k));
+                              return s;
+                            });
                           }}
                           style={{ accentColor: "#8B5CF6", cursor: "pointer" }}
                         />
@@ -2290,7 +2335,11 @@ export function BuscadorSection() {
                           return (
                             <td
                               key={c.key}
-                              className={cn(!editando && "truncate", c.num ? "text-right tabular-nums" : "text-left")}
+                              className={cn(
+                                !editando && !editable && "truncate",
+                                editable && !editando && "group/celda",
+                                c.num ? "text-right tabular-nums" : "text-left",
+                              )}
                               style={{
                                 padding: editando ? "2px 6px" : "7px 12px",
                                 borderBottom: bottomBorder,
@@ -2331,6 +2380,22 @@ export function BuscadorSection() {
                                     textAlign: c.num ? "right" : "left",
                                   }}
                                 />
+                              ) : editable ? (
+                                // Lápiz al pasar el mouse: el doble click es el
+                                // único gesto de edición y sin esto no se
+                                // anuncia por ningún lado. Vale sobre todo para
+                                // Zona y Descripción OP, que arrancan vacías.
+                                <span className="flex items-center gap-1.5" style={{ justifyContent: c.num ? "flex-end" : "flex-start" }}>
+                                  <span className="truncate">
+                                    {c.render
+                                      ? c.render(data as unknown as BusquedaRow)
+                                      : c.num ? fmtNum(data[c.key] as number) : ((data[c.key] ?? "") as ReactNode)}
+                                  </span>
+                                  <Pencil
+                                    className="w-3 h-3 shrink-0 opacity-0 group-hover/celda:opacity-100 transition-opacity"
+                                    style={{ color: "oklch(0.5 0 0)" }}
+                                  />
+                                </span>
                               ) : (
                                 c.render
                                   ? c.render(data as unknown as BusquedaRow)
@@ -2348,7 +2413,10 @@ export function BuscadorSection() {
                           return (
                             <td
                               key={c.key}
-                              className={cn(!editando && "truncate")}
+                              className={cn(
+                                !editando && !puedoEditar && "truncate",
+                                puedoEditar && !editando && "group/celda",
+                              )}
                               style={{
                                 padding: editando ? "2px 6px" : "7px 12px",
                                 borderBottom: bottomBorder,
@@ -2395,20 +2463,34 @@ export function BuscadorSection() {
                                     background: "oklch(0.16 0.005 270)", color: "hsl(var(--foreground))",
                                   }}
                                 />
-                              ) : est ? (
-                                <span style={{
-                                  display: "inline-flex", alignItems: "center", gap: 5,
-                                  padding: "3px 9px", borderRadius: 999, whiteSpace: "nowrap",
-                                  background: est.bg, color: est.fg, border: `1px solid ${est.bd}`,
-                                  fontSize: 11, fontWeight: 600, letterSpacing: 0.2,
-                                }}>
-                                  <span style={{ width: 5, height: 5, borderRadius: 3, background: "currentColor" }} />
-                                  {val}
-                                </span>
-                              ) : c.tipo === "fecha" ? (
-                                <span style={{ fontFamily: "ui-monospace, monospace" }}>{fmtFechaISO(val)}</span>
                               ) : (
-                                val || <span style={{ color: "oklch(0.38 0 0)" }}>—</span>
+                                // Mismo lápiz en hover que las columnas del
+                                // índice: anuncia que la celda es editable.
+                                <span className="flex items-center gap-1.5">
+                                  <span className="truncate flex-1">
+                                    {est ? (
+                                      <span style={{
+                                        display: "inline-flex", alignItems: "center", gap: 5,
+                                        padding: "3px 9px", borderRadius: 999, whiteSpace: "nowrap",
+                                        background: est.bg, color: est.fg, border: `1px solid ${est.bd}`,
+                                        fontSize: 11, fontWeight: 600, letterSpacing: 0.2,
+                                      }}>
+                                        <span style={{ width: 5, height: 5, borderRadius: 3, background: "currentColor" }} />
+                                        {val}
+                                      </span>
+                                    ) : c.tipo === "fecha" ? (
+                                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{fmtFechaISO(val)}</span>
+                                    ) : (
+                                      val || <span style={{ color: "oklch(0.38 0 0)" }}>—</span>
+                                    )}
+                                  </span>
+                                  {puedoEditar && (
+                                    <Pencil
+                                      className="w-3 h-3 shrink-0 opacity-0 group-hover/celda:opacity-100 transition-opacity"
+                                      style={{ color: "oklch(0.5 0 0)" }}
+                                    />
+                                  )}
+                                </span>
                               )}
                             </td>
                           );

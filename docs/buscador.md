@@ -220,14 +220,17 @@ pasan por estas funciones.
 
 **Modo índice:**
 - Búsqueda global. Caja vacía = las OP más nuevas primero (`gd_buscar` ordena por `fecha_creacion DESC` cuando `p_q` viene vacío — ver `supabase/busqueda_global.sql`). Antes, con la caja vacía se mostraba un cartel de "escribí algo" y no se pedía nada al índice.
-- Checkboxes para seleccionar filas.
-- Dropdown "Agregar a pestaña" → copia las seleccionadas a la pestaña elegida.
+- Checkboxes para seleccionar filas. La selección **sobrevive a cambiar la búsqueda** (tildar a lo largo de varias búsquedas es un caso legítimo).
+- Dropdown "Agregar a pestaña" → copia las seleccionadas a la pestaña elegida. ⚠ Solo copia las que están **dentro de la búsqueda actual** (`sorted.filter(...)`), así que el botón muestra `seleccionadasVisibles` y, si hay tildadas fuera, aclara «de N». El checkbox de "seleccionar todo" del header opera solo sobre lo visible por el mismo motivo, y conserva lo tildado en otras búsquedas.
+- Las celdas editables muestran un **lápiz al pasar el mouse** — el doble click es el único gesto de edición y sin eso no se anuncia. Importa sobre todo en Zona y Descripción OP, que arrancan vacías.
 
 **Modo pestaña:**
 - Muestra filas copiadas + 4 columnas de seguimiento (estado, responsable, fechaRevision, nota).
 - Agrupa (collapsible) por el criterio elegido: **Matrícula** (default), **SIC** u **OP** — desplegable al lado del toggle "Agrupar".
   - **Tanto el toggle "Agrupar" como el criterio son propios de CADA pestaña** — se guardan en `buscador_tabs.config` (`agrupar`, `agruparPor`), igual que el orden/visibilidad/ancho de columnas. Una pestaña puede estar agrupada por OP mientras otra no agrupa nada, y cada una lo recuerda al volver a abrirla (`buscador.tsx`: `agrupar`/`agruparPor` son valores DERIVADOS de `tabCfg`, no estado propio — ver `patchLayout`).
-  - Cambiar de criterio recalcula los grupos y los colapsa todos de nuevo (los `colapsados` guardados son claves del criterio anterior, no sirven para el nuevo). `colapsados` en sí NO se persiste — es UI efímera, se resetea a "todo cerrado" cada vez que se cargan las filas de la pestaña o cambia el criterio.
+  - **Buscar dentro de una pestaña abre todos los grupos**, y limpiar la búsqueda vuelve a cerrarlos. Sin eso el filtro deja los resultados escondidos adentro de grupos cerrados y la búsqueda parece no encontrar nada.
+  - Cambiar de criterio recalcula los grupos y los colapsa todos de nuevo (los `colapsados` guardados son claves del criterio anterior, no sirven para el nuevo). `colapsados` en sí NO se persiste — es UI efímera.
+  - ⚠ El efecto que pliega los grupos lee `tabFilas` **por ref**, no por deps: `tabFilas` cambia de identidad en cada edición de celda / borrado / reordenamiento, y tenerla en las deps hacía que los grupos se cerraran de golpe cada vez que se tocaba un dato. El disparador de la recarga es `loadingTab`.
   - Helper: `groupKeyOf(data, criterio)` en `buscador.tsx` — misma clave para agrupar, contar y detectar columnas redundantes.
   - Título del encabezado de grupo por criterio: matrícula → código + descripción; SIC → "SIC {n}" + preparador; OP → "OP {n}" + proveedor.
   - **Borrar un grupo entero:** ícono de tacho en el encabezado del grupo (junto al de plegar) — borra de la pestaña TODAS las filas de ese grupo (esa OP, esa matrícula, esa SIC) en un solo paso, con confirmación previa. `GrupoItem.filaIds` junta los ids de sus filas al armar `displayItems`; `handleDeleteGrupo(filaIds, titulo)` hace un solo `deleteFilas(filaIds)` en lote (no uno por fila), optimista con rollback si falla. Gateado por `puedoEditar` — no aparece en una pestaña compartida de solo lectura.
