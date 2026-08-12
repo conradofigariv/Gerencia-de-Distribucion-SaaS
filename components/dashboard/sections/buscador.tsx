@@ -106,13 +106,17 @@ function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
 // El color deja ver de qué tabla sale cada columna, para poder reordenarlas
 // agrupadas por jerarquía en el panel «Columnas».
 
-type ColGroup = "sic" | "op" | "tx" | "cat";
+type ColGroup = "sic" | "op" | "tx" | "cat" | "track";
 
 const GROUP_META: Record<ColGroup, { label: string; color: string }> = {
-  sic: { label: "SIC",          color: "#c4b5fd" },  // violeta — nivel de arriba
-  op:  { label: "OP",           color: "#7dd3fc" },  // celeste — planilla OP
-  tx:  { label: "Movimientos",  color: "#86efac" },  // verde — transacciones reales
-  cat: { label: "Matrícula",    color: "#fcd34d" },  // ámbar — catálogo (transversal)
+  sic:   { label: "SIC",            color: "#c4b5fd" },  // violeta — nivel de arriba
+  op:    { label: "OP",             color: "#7dd3fc" },  // celeste — planilla OP
+  tx:    { label: "Movimientos",    color: "#86efac" },  // verde — transacciones reales
+  cat:   { label: "Matrícula",      color: "#fcd34d" },  // ámbar — catálogo (transversal)
+  // Las únicas que NO salen de ninguna tabla del índice: las escribe el usuario
+  // sobre la fila copiada. Color propio (rosa) para que se lean de un vistazo
+  // como "esto lo puse yo", no como un dato importado.
+  track: { label: "Personalizadas", color: "#f9a8d4" },
 };
 
 // ─── Selector de columnas (mostrar/ocultar + reordenar) ──────────────────────
@@ -149,7 +153,9 @@ function ColumnsMenu({
 
   const byKey = useMemo(() => new Map(cols.map((c) => [c.key, c])), [cols]);
   const orderedCols = order.map((k) => byKey.get(k)).filter((c): c is ColMeta => !!c);
-  const visibleCount = order.length - hidden.size;
+  // Se cuenta sobre `orderedCols`, no sobre `order`: en el índice maestro el
+  // orden persistido incluye las Personalizadas, que acá no se ofrecen.
+  const visibleCount = orderedCols.filter((c) => !hidden.has(c.key)).length;
 
   const handleDrop = (e: DragEvent<HTMLDivElement>, targetKey: string) => {
     e.preventDefault();
@@ -537,8 +543,22 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
 
 const COLUMNS_KEY = "buscador-columns";
 const PINNED_KEY   = "buscador-pinned";
-const DEFAULT_COL_ORDER = COLS.map((c) => c.key as string);
-const COL_META: ColMeta[] = COLS.map((c) => ({ key: c.key as string, label: c.label, group: c.group }));
+// Las de seguimiento entran al orden persistido como cualquier otra: así el
+// selector puede ocultarlas y la elección sobrevive a recargas (`validKeys`
+// sale de acá, y lo que no esté en esta lista se descarta al restaurar).
+const DEFAULT_COL_ORDER = [
+  ...COLS.map((c) => c.key as string),
+  ...TRACK_COLS.map((c) => c.key),
+];
+
+// Dos vistas del mismo catálogo: dentro de una pestaña se ofrecen también las
+// Personalizadas; en el índice maestro no existen, así que no se listan (si se
+// listaran, el contador diría "24/41" con 4 columnas que nunca se renderizan).
+const COL_META_INDICE: ColMeta[] = COLS.map((c) => ({ key: c.key as string, label: c.label, group: c.group }));
+const COL_META: ColMeta[] = [
+  ...COL_META_INDICE,
+  ...TRACK_COLS.map((c) => ({ key: c.key, label: c.label, group: "track" as ColGroup })),
+];
 
 type SortDir = "asc" | "desc";
 
@@ -1138,6 +1158,14 @@ export function BuscadorSection() {
       .map((k) => COLS.find((c) => c.key === k))
       .filter((c): c is ColDef => !!c),
     [effOrder, effHidden]
+  );
+
+  // Las Personalizadas van siempre al final, en su orden fijo — lo único que
+  // se respeta acá es si están ocultas. No entran en `visibleCols` porque no
+  // salen del índice y su celda se edita, no se renderiza como dato.
+  const visibleTrackCols = useMemo(
+    () => TRACK_COLS.filter((c) => !effHidden.has(c.key)),
+    [effHidden]
   );
 
   // Filas fijadas arriba (misma función que en Stock por Zona). Se guarda la
@@ -1854,7 +1882,7 @@ export function BuscadorSection() {
     // En una pestaña se suman las columnas de seguimiento al final.
     const cols: { key: string; label: string }[] = [
       ...visibleCols.map((c) => ({ key: c.key as string, label: c.label })),
-      ...(isTabMode ? TRACK_COLS.map((c) => ({ key: c.key, label: c.label })) : []),
+      ...(isTabMode ? visibleTrackCols.map((c) => ({ key: c.key, label: c.label })) : []),
     ];
     const head = cols.map((c) => c.label).join(";");
     const body = displayRows.map((row) =>
@@ -1989,7 +2017,7 @@ export function BuscadorSection() {
           </div>
 
           <ColumnsMenu
-            cols={COL_META}
+            cols={isTabMode ? COL_META : COL_META_INDICE}
             order={effOrder}
             hidden={effHidden}
             onToggle={toggleColHidden}
@@ -2309,7 +2337,7 @@ export function BuscadorSection() {
                   {visibleCols.map((c) => (
                     <col key={c.key} style={{ width: effWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] }} />
                   ))}
-                  {isTabMode && TRACK_COLS.map((c) => (
+                  {isTabMode && visibleTrackCols.map((c) => (
                     <col key={c.key} style={{ width: c.width }} />
                   ))}
                 </colgroup>
@@ -2388,7 +2416,7 @@ export function BuscadorSection() {
 
                     {/* Columnas de seguimiento: no vienen del índice, las
                         escribe el usuario. Fondo propio para diferenciarlas. */}
-                    {isTabMode && TRACK_COLS.map((c) => {
+                    {isTabMode && visibleTrackCols.map((c) => {
                       const active = sortCol === c.key;
                       const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
                       return (
@@ -2405,7 +2433,7 @@ export function BuscadorSection() {
                             position: "sticky", top: 0, zIndex: 2,
                             background: TRACK_BG,
                             borderBottom: "1px solid hsl(var(--border))",
-                            boxShadow: "inset 0 2.5px 0 0 #c4b5fd",
+                            boxShadow: `inset 0 2.5px 0 0 ${GROUP_META.track.color}`,
                             whiteSpace: "nowrap",
                           }}
                         >
@@ -2426,7 +2454,7 @@ export function BuscadorSection() {
                       return (
                         <tr key={item.key}>
                           <td
-                            colSpan={1 + visibleCols.length + (isTabMode ? TRACK_COLS.length : 0)}
+                            colSpan={1 + visibleCols.length + (isTabMode ? visibleTrackCols.length : 0)}
                             style={{
                               padding: 0,
                               background: "oklch(0.245 0.008 270)",
@@ -2679,7 +2707,7 @@ export function BuscadorSection() {
                         })}
 
                         {/* Columnas de seguimiento */}
-                        {isTabMode && TRACK_COLS.map((c) => {
+                        {isTabMode && visibleTrackCols.map((c) => {
                           const editando = editing?.filaId === filaId && editing?.key === c.key;
                           const val = String(data[c.key] ?? "");
                           const est = c.tipo === "estado" ? ESTADO_STYLE[val] : undefined;
