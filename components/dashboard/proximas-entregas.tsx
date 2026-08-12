@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { CalendarClock, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
@@ -22,7 +22,13 @@ import { fetchTabs, fetchFilasMarcadas, type BuscadorTab, type FilaMarcada } fro
 // y la misma matrícula puede aparecer más de una vez con fechas distintas.
 
 /** Dónde se recuerda qué pestaña alimenta la tarjeta (por usuario). */
-const TAB_PREF_KEY = "transformadores_proximas_entregas_tab";
+/**
+ * Pestaña que alimenta la tarjeta. Se resuelve por NOMBRE y no se ofrece
+ * cambiarla desde acá: esta tarjeta vive en Transformadores y mostrar datos de
+ * otra pestaña sería confuso. Qué filas entran se decide en el Buscador, que es
+ * donde están los datos, con «Enviar a Tarjeta».
+ */
+const TAB_NOMBRE = "transformadores";
 /** Qué secciones quedaron plegadas. Se guardan las CERRADAS, igual que en el
  *  Buscador: una sección nueva nace abierta sin que nadie la agregue a nada. */
 const PLEGADOS_PREF_KEY = "transformadores_proximas_entregas_plegados";
@@ -123,14 +129,11 @@ const GRID_COLS = "66px minmax(0,1.15fr) 50px 38px 40px minmax(0,0.85fr) 46px";
 export function ProximasEntregas() {
   const [userId, setUserId]     = useState<string | null>(null);
   const [tabs, setTabs]         = useState<BuscadorTab[]>([]);
-  const [tabId, setTabId]       = useState<string | null>(null);
   const [filas, setFilas]       = useState<FilaMarcada[]>([]);
   const [cargando, setCargando] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   // «Sin fecha» arranca plegada: son filas a las que les falta el dato, no
   // entregas próximas, y arriba solo estorbarían.
   const [plegados, setPlegados] = useState<Set<HorizonteId>>(new Set(["sinFecha"]));
-  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
@@ -138,21 +141,22 @@ export function ProximasEntregas() {
 
   useEffect(() => {
     if (!userId) return;
-    fetchTabs(userId)
-      .then(async (t) => {
-        setTabs(t);
-        const guardada = await getPreference<string>(userId, TAB_PREF_KEY);
-        // La pestaña guardada puede haberse borrado o dejado de compartir: si ya
-        // no está entre las visibles, se descarta en vez de pedir filas de algo
-        // que no se puede leer.
-        setTabId(guardada && t.some((x) => x.id === guardada) ? guardada : null);
-      })
-      .catch(() => { /* sin pestañas, la tarjeta lo dice sola */ });
+    fetchTabs(userId).then(setTabs).catch(() => { /* sin pestañas, la tarjeta lo dice sola */ });
 
     getPreference<HorizonteId[]>(userId, PLEGADOS_PREF_KEY)
       .then((p) => { if (p) setPlegados(new Set(p)); })
       .catch(() => { /* vale el default: solo «Sin fecha» plegada */ });
   }, [userId]);
+
+  // La pestaña la fija el nombre, no una elección guardada: buscarla por
+  // nombre en vez de guardar su id también sobrevive a que alguien la borre y
+  // recree con el mismo nombre — con un id guardado, esa pestaña habría
+  // quedado huérfana sin aviso.
+  const tabActiva = useMemo(
+    () => tabs.find((t) => t.nombre.trim().toLowerCase() === TAB_NOMBRE) ?? null,
+    [tabs]
+  );
+  const tabId = tabActiva?.id ?? null;
 
   useEffect(() => {
     if (!tabId) { setFilas([]); return; }
@@ -164,19 +168,6 @@ export function ProximasEntregas() {
       .finally(() => { if (vigente) setCargando(false); });
     return () => { vigente = false; };
   }, [tabId]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const h = (e: MouseEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [menuOpen]);
-
-  const elegirTab = useCallback((id: string | null) => {
-    setTabId(id);
-    setMenuOpen(false);
-    if (userId) setPreference(userId, TAB_PREF_KEY, id);
-  }, [userId]);
 
   const grupos = useMemo(() => {
     const vistas: FilaVista[] = filas.map((f) => {
@@ -199,8 +190,6 @@ export function ProximasEntregas() {
   const totalPronto   = (grupos.get("semana")?.length ?? 0) + (grupos.get("mes")?.length ?? 0);
   const totalPend     = filas.reduce((n, f) => n + (f.pendiente ?? 0), 0);
 
-  const tabActiva = tabs.find((t) => t.id === tabId) ?? null;
-
   const togglePlegado = (h: HorizonteId) => setPlegados((prev) => {
     const s = new Set(prev);
     if (s.has(h)) s.delete(h); else s.add(h);
@@ -210,64 +199,23 @@ export function ProximasEntregas() {
 
   return (
     <div className="rounded-[10px] bg-panel border border-hairline overflow-hidden">
-      <div className="flex items-start justify-between gap-3 px-4 py-3 bg-panel-header border-b border-hairline">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <CalendarClock className="w-4 h-4 shrink-0 text-accent-green" />
-            <h3 className="text-sm font-semibold truncate">Próximas Entregas</h3>
-          </div>
-          {/* Resumen de cabecera: la pregunta «¿tengo algo encima?» se contesta
-              acá, sin tener que leer la lista entera. */}
-          {filas.length > 0 && (
-            <p className="mt-0.5 text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
-              {totalVencidas > 0 && (
-                <span className="text-accent-red font-semibold">{totalVencidas} vencida{totalVencidas === 1 ? "" : "s"}</span>
-              )}
-              {totalVencidas > 0 && totalPronto > 0 && <span>·</span>}
-              {totalPronto > 0 && <span>{totalPronto} en 30 días</span>}
-              {totalPend > 0 && <><span>·</span><span>{totalPend.toLocaleString("es-AR")} u pendientes</span></>}
-            </p>
-          )}
+      <div className="px-4 py-3 bg-panel-header border-b border-hairline">
+        <div className="flex items-center gap-2">
+          <CalendarClock className="w-4 h-4 shrink-0 text-accent-green" />
+          <h3 className="text-sm font-semibold truncate">Próximas Entregas</h3>
         </div>
-
-        {/* Selector de pestaña — mismo patrón que el filtro por pestaña del
-            Resumen de Servicios, para que se opere igual en las dos pantallas. */}
-        <div className="relative shrink-0" ref={menuRef}>
-          <button
-            onClick={() => setMenuOpen((v) => !v)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-panel-input px-2.5 py-1 text-xs hover:bg-panel-2 transition-colors max-w-[180px]"
-          >
-            <span className="truncate">{tabActiva ? tabActiva.nombre : "Elegir pestaña…"}</span>
-            <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-60" />
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-[calc(100%+6px)] z-50 min-w-[200px] rounded-md border border-hairline bg-panel-2 p-1 shadow-lg">
-              {tabs.length === 0 && (
-                <p className="px-2 py-1.5 text-xs text-muted-foreground">No tenés pestañas todavía.</p>
-              )}
-              {tabs.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => elegirTab(t.id)}
-                  className={cn(
-                    "block w-full truncate rounded-[5px] px-2 py-1.5 text-left text-xs hover:bg-panel-input transition-colors",
-                    t.id === tabId && "text-accent-green font-medium"
-                  )}
-                >
-                  {t.nombre}
-                </button>
-              ))}
-              {tabId && (
-                <button
-                  onClick={() => elegirTab(null)}
-                  className="mt-1 block w-full rounded-[5px] px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-panel-input transition-colors border-t border-hairline"
-                >
-                  Quitar selección
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+        {/* Resumen de cabecera: la pregunta «¿tengo algo encima?» se contesta
+            acá, sin tener que leer la lista entera. */}
+        {filas.length > 0 && (
+          <p className="mt-0.5 text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+            {totalVencidas > 0 && (
+              <span className="text-accent-red font-semibold">{totalVencidas} vencida{totalVencidas === 1 ? "" : "s"}</span>
+            )}
+            {totalVencidas > 0 && totalPronto > 0 && <span>·</span>}
+            {totalPronto > 0 && <span>{totalPronto} en 30 días</span>}
+            {totalPend > 0 && <><span>·</span><span>{totalPend.toLocaleString("es-AR")} u pendientes</span></>}
+          </p>
+        )}
       </div>
 
       <div className="max-h-[420px] overflow-y-auto">
@@ -277,7 +225,9 @@ export function ProximasEntregas() {
           </div>
         ) : !tabId ? (
           <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-            Elegí una pestaña del Buscador para alimentar esta tarjeta.
+            No hay una pestaña «Transformadores» en el Buscador todavía.
+            <br />
+            <span className="text-xs">Creala ahí con ese nombre para que esta tarjeta tenga de dónde traer filas.</span>
           </p>
         ) : filas.length === 0 ? (
           <p className="px-4 py-10 text-center text-sm text-muted-foreground">
