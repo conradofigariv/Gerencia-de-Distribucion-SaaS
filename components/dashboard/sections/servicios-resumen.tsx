@@ -12,6 +12,7 @@ import {
   Pencil,
   Check,
   RotateCcw,
+  Download,
   Wrench,
   Layers,
   LockOpen,
@@ -32,7 +33,7 @@ import {
 } from "@/lib/columnLabels";
 import { getMatriculasInfo, getFamilies, type ArticuloTipo } from "@/lib/stockFamilies";
 import { normArticulo } from "@/lib/tableroOp";
-import { fetchTabs, fetchTabMatriculas, type BuscadorTab } from "@/lib/buscadorTabs";
+import { fetchTabs, fetchTabMatriculas, enviarMarcadasASeguimiento, type BuscadorTab } from "@/lib/buscadorTabs";
 
 // Scope de las etiquetas editables para esta sección.
 const LABELS_SCOPE = "servicios-resumen";
@@ -132,6 +133,7 @@ export function ServiciosResumenSection() {
   const [universoTab, setUniversoTab]       = useState(false);
   const [tabMatriculas, setTabMatriculas]   = useState<Set<string> | null>(null);
   const [loadingTabMats, setLoadingTabMats] = useState(false);
+  const [sincronizando, setSincronizando]   = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -159,6 +161,38 @@ export function ServiciosResumenSection() {
       .finally(() => { if (!cancelado) setLoadingTabMats(false); });
     return () => { cancelado = true; };
   }, [universoTab, tabActiva]);
+
+  /**
+   * Trae a `seguimiento` lo marcado en la pestaña «Servicios» del Buscador.
+   *
+   * Es una ESCRITURA, no un filtro: el Resumen lee `seguimiento`, así que una
+   * fila marcada en una pestaña no aparecía acá hasta existir en esa tabla.
+   * Solo reemplaza las filas que este mismo camino creó (`origen='buscador'`);
+   * lo cargado a mano o por la masiva de SICs no se toca.
+   */
+  const sincronizarDesdeBuscador = async () => {
+    if (!tabActiva) return;
+    setSincronizando(true);
+    try {
+      const { escritas, errores } = await enviarMarcadasASeguimiento(tabActiva.id);
+      await recargarSeguimiento();
+      if (escritas === 0) {
+        toast.info("No hay filas marcadas en la pestaña «Servicios». Marcalas en el Buscador con «Enviar a Tarjeta».");
+      } else {
+        toast.success(`${escritas} fila${escritas === 1 ? "" : "s"} traída${escritas === 1 ? "" : "s"} al seguimiento.`);
+        setUniversoTab(true);
+      }
+      // Los errores de cruce no abortan el resto: se avisa cuáles quedaron sin
+      // resolver contra planillas_op y se sigue con las que sí cruzaron.
+      if (errores.length) {
+        toast.warning(`${errores.length} fila${errores.length === 1 ? "" : "s"} con problemas de cruce: ${errores.slice(0, 3).join(" · ")}${errores.length > 3 ? "…" : ""}`, { duration: 10000 });
+      }
+    } catch (e) {
+      toast.error(`No se pudo sincronizar: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSincronizando(false);
+    }
+  };
 
   // filtros: null = sin selección
   const [filtroVencer,   setFiltroVencer]   = useState<FiltroVencer>(null);
@@ -368,18 +402,24 @@ export function ServiciosResumenSection() {
     setDeletingSelected(false);
   };
 
+  /** Relee `seguimiento`. Se usa en la carga inicial y después de sincronizar
+   *  desde el Buscador, que inserta filas nuevas en esa tabla. */
+  const recargarSeguimiento = async () => {
+    const PAGE = 1000; const all: SeguimientoRow[] = []; let from = 0;
+    while (true) {
+      const { data, error } = await supabase.from("seguimiento").select("*").range(from, from + PAGE - 1);
+      if (error || !data?.length) break;
+      all.push(...data); if (data.length < PAGE) break; from += PAGE;
+    }
+    setAllRows(all);
+  };
+
   // ── Carga única: filas de seguimiento + clasificación de matrículas ────────
   useEffect(() => {
     (async () => {
       setLoadingData(true);
       try {
-        const PAGE = 1000; const all: SeguimientoRow[] = []; let from = 0;
-        while (true) {
-          const { data, error } = await supabase.from("seguimiento").select("*").range(from, from + PAGE - 1);
-          if (error || !data?.length) break;
-          all.push(...data); if (data.length < PAGE) break; from += PAGE;
-        }
-        setAllRows(all);
+        await recargarSeguimiento();
 
         // Clasificación Material/Servicio: catálogo (matriculas.mat_serv) +
         // override manual (stock_article_families.tipo). El override gana.
@@ -699,6 +739,25 @@ export function ServiciosResumenSection() {
               Marcadas en Servicios
             </button>
           </div>
+
+          {/* Traer lo marcado del Buscador. Es una escritura en `seguimiento`,
+              no un filtro: sin esto, marcar filas en la pestaña no las hace
+              aparecer acá porque esta pantalla no lee el índice del Buscador. */}
+          <button
+            onClick={sincronizarDesdeBuscador}
+            disabled={!tabActiva || sincronizando}
+            title={
+              !tabActiva
+                ? 'No hay una pestaña «Servicios» en el Buscador todavía — creala ahí con ese nombre.'
+                : "Traer al seguimiento las filas marcadas con «Enviar a Tarjeta» en la pestaña Servicios"
+            }
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-accent/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {sincronizando
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <Download className="w-4 h-4" />}
+            Traer del Buscador
+          </button>
 
           <button
             onClick={() => setFiltroAbierto(v => !v)}

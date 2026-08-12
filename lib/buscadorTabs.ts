@@ -307,6 +307,80 @@ export async function marcarEnTarjeta(
   if (fallo?.error) throw errorSupabase(fallo.error);
 }
 
+/**
+ * Manda a `seguimiento` las filas marcadas de una pestaña, para que el Resumen
+ * de Servicios (sus KPIs, su tabla y sus alertas) las vea.
+ *
+ * ⚠ Por qué hay que ESCRIBIR y no alcanza con filtrar: el Resumen no lee el
+ *   índice del Buscador, lee la tabla `seguimiento`, y sus KPIs cuelgan de
+ *   `estado_plazo` / `estado_cantidades` / `saldo_linea`, que no existen en el
+ *   índice — se derivan cruzando contra `planillas_op`. Marcar una fila en una
+ *   pestaña no la hacía aparecer en el Resumen: solo servía para recortar lo
+ *   que ya estuviera cargado en `seguimiento`.
+ *
+ * Idempotente y no destructivo: borra únicamente las filas que este mismo
+ * camino creó (`origen = 'buscador'`) y las vuelve a escribir. Las cargadas a
+ * mano (`manual`) o por la masiva de SICs (`sic`) no se tocan — mismo criterio
+ * que el «reemplazar solo las SICs» que ya existía en Crear seguimiento.
+ *
+ * Devuelve cuántas filas se escribieron y los errores de cruce, para poder
+ * avisar cuáles no se pudieron resolver contra `planillas_op`.
+ */
+export async function enviarMarcadasASeguimiento(
+  tabId: string,
+): Promise<{ escritas: number; errores: string[] }> {
+  const { data, error } = await supabase
+    .from("buscador_tab_filas")
+    .select("id, datos")
+    .eq("tab_id", tabId)
+    .eq(`datos->>${TRACK_KEYS.enTarjeta}`, "true");
+  if (error) throw errorSupabase(error);
+
+  const filas = (data ?? []) as { id: string; datos: Record<string, unknown> }[];
+  if (!filas.length) return { escritas: 0, errores: [] };
+
+  const { loadCrossMaps, buildSeguimientoRow, num, str } = await import("@/lib/seguimientoBuild");
+  const { opMap, matMap } = await loadCrossMaps();
+  const today = new Date();
+
+  const rows: Record<string, unknown>[] = [];
+  const errores: string[] = [];
+  for (const f of filas) {
+    const op = num(f.datos.numero_op);
+    // Sin OP no hay nada que cruzar: el Resumen se organiza por OP y una fila
+    // sin ella (fuente `catalogo`) no tiene lugar ahí.
+    if (!op) {
+      errores.push(`${str(f.datos.articulo) || "fila"}: sin número de OP`);
+      continue;
+    }
+    const { row, errors } = buildSeguimientoRow(
+      {
+        zona:        str(f.datos.zona),
+        op,
+        op_madre:    0,
+        linea:       num(f.datos.linea),
+        matricula:   str(f.datos.articulo),
+        descripcion: str(f.datos.descripcion),
+        // La nota de seguimiento de la pestaña viaja como observación: es el
+        // mismo campo editable que el Resumen ya muestra y deja editar.
+        observacion: str(f.datos[TRACK_KEYS.nota]) || null,
+      },
+      opMap, matMap, today,
+    );
+    errores.push(...errors);
+    rows.push({ ...row, origen: "buscador" });
+  }
+
+  const { error: errDel } = await supabase.from("seguimiento").delete().eq("origen", "buscador");
+  if (errDel) throw errorSupabase(errDel);
+
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error: errIns } = await supabase.from("seguimiento").insert(rows.slice(i, i + 500));
+    if (errIns) throw errorSupabase(errIns);
+  }
+  return { escritas: rows.length, errores };
+}
+
 /** Guarda el `datos` completo de una fila (una celda editada ya viene aplicada). */
 export async function updateFilaDatos(id: string, datos: Record<string, unknown>): Promise<void> {
   const { error } = await supabase

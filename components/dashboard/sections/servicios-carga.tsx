@@ -12,6 +12,10 @@ import {
 import { markUpdated, fetchReminders, upsertConfig } from "@/lib/reminders";
 import { getSicSoler } from "@/lib/sicSoler";
 import { normArticulo } from "@/lib/tableroOp";
+import {
+  opMetrics, opCrossKey, loadCrossMaps, num, str,
+  type OpRow, type MatRow,
+} from "@/lib/seguimientoBuild";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -52,42 +56,8 @@ interface PreviewRow {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const splitCol = (t: string) => t.split(/\r?\n/).map(v => v.trim()).filter(Boolean);
-const num = (v: unknown) => { const n = Number(v); return isNaN(n) ? 0 : n; };
-const str = (v: unknown) => String(v ?? "").trim();
-const isoDate = (d: Date | null) => d ? d.toISOString().split("T")[0] : null;
 
-type OpRow  = { numero: string; linea: string; articulo: string; cantidad: unknown; cantidad_recibida: unknown; fecha_creacion: unknown; fecha_pactada: unknown; proveedor: unknown; estado_cierre: unknown };
-type MatRow = { articulo: string; descripcion: unknown };
 
-// Métricas calculadas de una fila de OP (cantidades, estado, plazos).
-function opMetrics(opRow: OpRow | undefined, today: Date) {
-  const cantidad         = num(opRow?.cantidad);
-  const cantidadRecibida = num(opRow?.cantidad_recibida);
-  const saldoLinea       = cantidad - cantidadRecibida;
-  const fechaCreac = opRow?.fecha_creacion ? new Date(String(opRow.fecha_creacion)) : null;
-  const fechaPact  = opRow?.fecha_pactada  ? new Date(String(opRow.fecha_pactada))  : null;
-  const estadoPlazo      = fechaPact && fechaPact < today ? "VENCIDA" : "OK";
-  const estadoCantidades = Math.round(saldoLinea) === 0   ? "SIN SALDO" : "VIGENTE";
-  const revision         = estadoPlazo === "VENCIDA" || estadoCantidades === "SIN SALDO" ? "CERRAR" : "OK";
-  const dias      = fechaCreac ? Math.floor((today.getTime() - fechaCreac.getTime()) / 86_400_000) : 0;
-  const meses     = dias / 30;
-  const consMes   = meses === 0 ? 0 : cantidadRecibida / meses;
-  const dispMeses = consMes === 0 ? 0 : saldoLinea / consMes;
-  return {
-    cantidad, cantidadRecibida,
-    saldo_linea: parseFloat(saldoLinea.toFixed(4)),
-    fecha_pactada: isoDate(fechaPact),
-    proveedor: String(opRow?.proveedor ?? ""),
-    estado: String(opRow?.estado_cierre ?? ""),
-    estado_plazo: estadoPlazo, estado_cantidades: estadoCantidades, revision,
-    disponibilidad_meses: parseFloat(dispMeses.toFixed(2)),
-  };
-}
-
-// Clave de cruce OP robusta: Número Pedido + Línea normalizados a número (ignora
-// el sufijo .0 y los ceros, que rompen el match por texto). Independiente de la
-// columna `relacion` (que puede venir vacía o con otro formato).
-const opCrossKey = (op: unknown, linea: unknown) => `${num(op)}|${num(linea)}`;
 
 // Construye una fila de preview cruzando OP (cantidades/fecha/proveedor/estado)
 // y matrículas (descripción). Cruce OP por (Número Pedido + Línea) normalizados;
@@ -151,28 +121,6 @@ function opNotFoundRow(zona: string, op: number, linea: number | null): PreviewR
     observacion: null, disponibilidad_meses: 0,
     _errors: [`OP "${op}" no encontrada en planillas_op`],
   };
-}
-
-// Trae TODAS las filas de una tabla paginando de a 1000
-async function fetchAll<T extends Record<string, unknown>>(
-  table: string,
-  columns: string
-): Promise<T[]> {
-  const PAGE = 1000;
-  const result: T[] = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await supabase
-      .from(table)
-      .select(columns)
-      .range(from, from + PAGE - 1);
-    if (error) throw new Error(`Error cargando ${table}: ${error.message}`);
-    if (!data?.length) break;
-    result.push(...(data as unknown as T[]));
-    if (data.length < PAGE) break;
-    from += PAGE;
-  }
-  return result;
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -340,28 +288,6 @@ export function ServiciosCargaSection() {
       setBulk({ zona: "", op: "", op_madre: "", linea: "", matricula: "" });
       toast.success(`${payload.length} fila${payload.length !== 1 ? "s" : ""} agregada${payload.length !== 1 ? "s" : ""}`);
     } finally { setAdding(false); }
-  };
-
-  // Carga las planillas base para el cruce (OP + matrículas) y arma los mapas
-  // con claves robustas (ver opCrossKey / normArticulo).
-  const loadCrossMaps = async () => {
-    const [opData, matData] = await Promise.all([
-      fetchAll<OpRow> ("planillas_op", "numero, linea, articulo, cantidad, cantidad_recibida, fecha_creacion, fecha_pactada, proveedor, estado_cierre"),
-      fetchAll<MatRow>("matriculas",   "articulo, descripcion"),
-    ]);
-    const opMap = new Map<string, OpRow>();
-    for (const r of opData) {
-      const k = opCrossKey(r.numero, r.linea);
-      if (!opMap.has(k)) opMap.set(k, r);   // primer envío de la línea
-    }
-    const matMap = new Map<string, MatRow>();
-    for (const r of matData) {
-      const a = String(r.articulo);
-      matMap.set(a, r);                                   // literal (con .0)
-      const n = normArticulo(a);
-      if (!matMap.has(n)) matMap.set(n, r);               // respaldo sin .0
-    }
-    return { opData, opMap, matMap };
   };
 
   // ── GENERAR (carga manual): se busca SOLO por OP. Línea y matrícula son
