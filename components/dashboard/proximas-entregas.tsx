@@ -108,6 +108,21 @@ function horizonteDe(dias: number | null): HorizonteId {
 
 type FilaVista = FilaMarcada & { dias: number | null; fecha: string | null; esRespaldo: boolean };
 
+/**
+ * Un dato con su rótulo debajo, con la misma forma que la cantidad pendiente.
+ * Se omite entero cuando no hay valor: un rótulo suelto sobre un guión ocupa
+ * lugar para no decir nada.
+ */
+function Campo({ label, valor, crece = false }: { label: string; valor: string | null; crece?: boolean }) {
+  if (!valor) return null;
+  return (
+    <div className={cn("min-w-0", crece ? "flex-1" : "shrink-0")}>
+      <div className="text-[12px] tabular-nums truncate leading-tight" title={valor}>{valor}</div>
+      <div className="text-[10px] text-muted-foreground leading-tight">{label}</div>
+    </div>
+  );
+}
+
 export function ProximasEntregas() {
   const [userId, setUserId]     = useState<string | null>(null);
   const [tabs, setTabs]         = useState<BuscadorTab[]>([]);
@@ -278,16 +293,22 @@ export function ProximasEntregas() {
           // independientes, así que puestas de a pares la tarjeta ocupa la
           // mitad de alto sin perder nada. `items-start` evita que la sección
           // corta se estire para igualar a la larga.
-          <div className="grid grid-cols-1 lg:grid-cols-2 items-start gap-x-px bg-hairline">
+          <div className="grid grid-cols-1 lg:grid-cols-2 items-start gap-3 p-3">
           {HORIZONTES.map((h) => {
             const lista = grupos.get(h.id);
             if (!lista?.length) return null;
             const plegado = plegados.has(h.id);
             return (
-              <div key={h.id} className="bg-panel">
+              // Cada horizonte es una sub-tarjeta con su propio borde: en dos
+              // columnas, sin marco propio no se leería dónde termina una
+              // sección y empieza la otra.
+              <div key={h.id} className="rounded-[8px] border border-hairline bg-panel-2 overflow-hidden">
                 <button
                   onClick={() => togglePlegado(h.id)}
-                  className="w-full flex items-center gap-1.5 px-4 py-1.5 bg-panel-2 border-y border-hairline hover:bg-panel-input transition-colors"
+                  className={cn(
+                    "w-full flex items-center gap-1.5 px-3 py-1.5 bg-panel-header hover:bg-panel-input transition-colors",
+                    !plegado && "border-b border-hairline"
+                  )}
                 >
                   {plegado
                     ? <ChevronRight className="w-3.5 h-3.5 shrink-0 opacity-60" />
@@ -303,42 +324,48 @@ export function ProximasEntregas() {
                     {lista.map((f) => (
                       <li
                         key={f.id}
-                        className="flex items-start gap-3 px-4 py-2.5 hover:bg-panel-2 transition-colors"
+                        className="px-3 py-2.5 hover:bg-panel-input transition-colors"
                         title={f.descripcion ?? undefined}
                       >
-                        {/* Fecha al frente: es el dato que organiza la tarjeta. */}
-                        <div className="w-[74px] shrink-0">
-                          <div className="font-mono text-[12.5px] tabular-nums">
-                            {fmtFecha(f.fecha)}
-                            {/* La fecha no siempre es la pactada — si salió del
-                                respaldo hay que decirlo, o el número miente. */}
-                            {f.esRespaldo && (
-                              <span className="ml-1 text-[9px] text-accent-amber align-top" title="Sin fecha pactada — se usa la F. revisión que cargaste">rev</span>
-                            )}
+                        <div className="flex items-start gap-3">
+                          {/* Fecha al frente: es el dato que organiza la tarjeta. */}
+                          <div className="w-[72px] shrink-0">
+                            <div className="font-mono text-[12.5px] tabular-nums">
+                              {fmtFecha(f.fecha)}
+                              {/* La fecha no siempre es la pactada — si salió
+                                  del respaldo hay que decirlo, o miente. */}
+                              {f.esRespaldo && (
+                                <span className="ml-1 text-[9px] text-accent-amber align-top" title="Sin fecha pactada — se usa la F. revisión que cargaste">rev</span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground">{textoPlazo(f.dias)}</div>
                           </div>
-                          <div className="text-[10px] text-muted-foreground">{textoPlazo(f.dias)}</div>
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[13px] font-medium truncate">
+                          <div className="flex-1 min-w-0 text-[13px] font-medium truncate">
                             {resumenArticulo(f.descripcion, f.articulo)}
                           </div>
-                          <div className="text-[11px] text-muted-foreground truncate">
-                            {f.numeroOp && <>OP {f.numeroOp}</>}
-                            {f.linea && <> · L {f.linea}</>}
-                            {f.envio && <> · env. {f.envio}{f.enviosLinea ? `/${f.enviosLinea}` : ""}</>}
-                            {f.proveedor && <> · {f.proveedor}</>}
-                          </div>
                         </div>
 
-                        {f.pendiente != null && f.pendiente > 0 && (
-                          <div className="shrink-0 text-right">
-                            <div className="text-[12.5px] font-semibold tabular-nums">
-                              {f.pendiente.toLocaleString("es-AR")}
+                        {/* Los datos de la fila, repartidos como campos con
+                            rótulo (igual que la cantidad) en vez de una línea
+                            de texto separada por puntos: ocupan el ancho que ya
+                            estaba libre y cada valor se ubica de un vistazo. */}
+                        <div className="mt-1.5 flex items-end gap-3 pl-[84px]">
+                          <Campo label="OP"        valor={f.numeroOp} />
+                          <Campo label="Línea"     valor={f.linea} />
+                          <Campo
+                            label="Envío"
+                            valor={f.envio ? `${f.envio}${f.enviosLinea ? `/${f.enviosLinea}` : ""}` : null}
+                          />
+                          <Campo label="Proveedor" valor={f.proveedor} crece />
+                          {f.pendiente != null && f.pendiente > 0 && (
+                            <div className="shrink-0 text-right">
+                              <div className="text-[12.5px] font-semibold tabular-nums leading-tight">
+                                {f.pendiente.toLocaleString("es-AR")}
+                              </div>
+                              <div className="text-[10px] text-muted-foreground leading-tight">pend.</div>
                             </div>
-                            <div className="text-[10px] text-muted-foreground">pend.</div>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </li>
                     ))}
                   </ul>
