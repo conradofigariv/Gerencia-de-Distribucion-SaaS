@@ -177,45 +177,6 @@ export async function addFilas(
   return (data ?? []) as TabFila[];
 }
 
-/**
- * Las matrículas distintas de una pestaña, normalizadas.
- *
- * Se usa para filtrar otras secciones por «lo que puse en esta pestaña» — hoy
- * el Resumen de Control de servicios. Trae SOLO las dos claves que hacen falta
- * en vez del `datos` entero: una pestaña de cientos de filas pesa varios MB de
- * jsonb y acá alcanza con la lista de códigos.
- *
- * Es deliberado usar la pestaña como conjunto de matrículas y no como fuente de
- * números: las filas copiadas quedan congeladas al momento de agregarlas, pero
- * un código de matrícula no envejece, así que este cruce no arrastra ese
- * problema.
- */
-/**
- * Matrículas de una pestaña. `soloMarcadas` acota a las filas que el usuario
- * mandó con «Enviar a Tarjeta» (`_en_tarjeta`) en vez de traer la pestaña
- * entera — es lo que usa el filtro de universo de Resumen de Servicios: el
- * usuario decide qué mirar marcando filas puntuales, no llenando una pestaña
- * aparte solo para eso.
- */
-export async function fetchTabMatriculas(tabId: string, soloMarcadas = false): Promise<string[]> {
-  let query = supabase
-    .from("buscador_tab_filas")
-    .select("ak:datos->>articulo_key, a:datos->>articulo")
-    .eq("tab_id", tabId);
-  if (soloMarcadas) query = query.eq(`datos->>${TRACK_KEYS.enTarjeta}`, "true");
-  const { data, error } = await query;
-  if (error) throw errorSupabase(error);
-
-  const out = new Set<string>();
-  for (const r of (data ?? []) as unknown as { ak: string | null; a: string | null }[]) {
-    // articulo_key ya viene normalizado del índice; `articulo` es el crudo del
-    // Excel ("00009411.0") y necesita el mismo trim que gd_norm_articulo().
-    const k = (r.ak ?? r.a ?? "").trim().replace(/\.0+$/, "");
-    if (k) out.add(k);
-  }
-  return [...out];
-}
-
 /** Una fila marcada con «En tarjeta», ya reducida a lo que la tarjeta muestra. */
 export interface FilaMarcada {
   id:            string;

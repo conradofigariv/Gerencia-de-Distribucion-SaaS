@@ -13,14 +13,12 @@ import {
   Check,
   RotateCcw,
   Download,
-  Wrench,
   Layers,
   LockOpen,
   Trash2,
   Pin,
   ChevronRight,
   ChevronDown,
-  Search,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
@@ -31,9 +29,7 @@ import {
   resetAllColumnLabels,
   type ColumnLabelMap,
 } from "@/lib/columnLabels";
-import { getMatriculasInfo, getFamilies, type ArticuloTipo } from "@/lib/stockFamilies";
-import { normArticulo } from "@/lib/tableroOp";
-import { fetchTabs, fetchTabMatriculas, enviarMarcadasASeguimiento, type BuscadorTab } from "@/lib/buscadorTabs";
+import { fetchTabs, enviarMarcadasASeguimiento, type BuscadorTab } from "@/lib/buscadorTabs";
 
 // Scope de las etiquetas editables para esta sección.
 const LABELS_SCOPE = "servicios-resumen";
@@ -112,33 +108,26 @@ export function ServiciosResumenSection() {
   // Carga única de los datos; todo lo demás se deriva en memoria.
   const [allRows,     setAllRows]     = useState<SeguimientoRow[]>([]);
   const [loadingData, setLoadingData] = useState(true);
-  const [tipoMap,     setTipoMap]     = useState<Map<string, ArticuloTipo>>(new Map());
 
-  // Universo: tipo (servicios vs. todas) y estado de la OP (abierto), filtros independientes.
-  const [soloServicios, setSoloServicios] = useState(true);
+  // Único filtro de universo que queda: el estado de la OP. Ya no hay
+  // «Solo servicios» / «Todas» / «Marcadas»: todo lo que hay en `seguimiento`
+  // llega por «Traer del Buscador» desde la pestaña «Servicios», así que el
+  // recorte ya lo hizo el usuario al marcar las filas allá. Filtrar de nuevo
+  // por tipo Material/Servicio acá solo podía esconderle algo que eligió a
+  // propósito (por ejemplo, una matrícula mal clasificada en el catálogo).
   const [filtroAbierto, setFiltroAbierto] = useState(true);
 
-  // ── Universo alternativo: lo marcado en la pestaña "Servicios" del Buscador ─
-  // Reemplaza al filtro material/servicio cuando está activo: el usuario ya
-  // decidió qué mirar marcando filas puntuales con «Enviar a Tarjeta», y
-  // filtrar además por tipo haría desaparecer sin explicación una matrícula
-  // mal clasificada en el catálogo. «Abierto» sigue aplicando aparte.
-  //
-  // La pestaña se resuelve por NOMBRE, fija, sin selector — mismo criterio que
-  // la tarjeta «Próximas Entregas» de Transformadores: buscarla por nombre en
-  // vez de guardar su id sobrevive a que alguien la borre y recree con el
-  // mismo nombre, al costo de que un renombre la deja sin efecto (avisado en
-  // el propio botón cuando no se encuentra).
-  const [tabs, setTabs]                     = useState<BuscadorTab[]>([]);
-  const [universoTab, setUniversoTab]       = useState(false);
-  const [tabMatriculas, setTabMatriculas]   = useState<Set<string> | null>(null);
-  const [loadingTabMats, setLoadingTabMats] = useState(false);
-  const [sincronizando, setSincronizando]   = useState(false);
+  // Pestaña del Buscador que alimenta esta pantalla. Se resuelve por NOMBRE,
+  // fija — mismo criterio que la tarjeta «Próximas Entregas» de
+  // Transformadores: sobrevive a que la borren y recreen con el mismo nombre,
+  // al costo de que un renombre la deja sin efecto (avisado en el botón).
+  const [tabs, setTabs]                   = useState<BuscadorTab[]>([]);
+  const [sincronizando, setSincronizando] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) return;
-      fetchTabs(data.user.id).then(setTabs).catch(() => { /* sin pestañas, el filtro no se ofrece */ });
+      fetchTabs(data.user.id).then(setTabs).catch(() => { /* sin pestañas, el botón queda deshabilitado */ });
     });
   }, []);
 
@@ -146,21 +135,6 @@ export function ServiciosResumenSection() {
     () => tabs.find((t) => t.nombre.trim().toLowerCase() === "servicios") ?? null,
     [tabs]
   );
-
-  useEffect(() => {
-    if (!universoTab || !tabActiva) { setTabMatriculas(null); return; }
-    setLoadingTabMats(true);
-    let cancelado = false;
-    fetchTabMatriculas(tabActiva.id, true)
-      .then((mats) => { if (!cancelado) setTabMatriculas(new Set(mats)); })
-      .catch((e) => {
-        if (cancelado) return;
-        toast.error(`No se pudieron leer las matrículas marcadas: ${e.message}`);
-        setUniversoTab(false);
-      })
-      .finally(() => { if (!cancelado) setLoadingTabMats(false); });
-    return () => { cancelado = true; };
-  }, [universoTab, tabActiva]);
 
   /**
    * Trae a `seguimiento` lo marcado en la pestaña «Servicios» del Buscador.
@@ -180,7 +154,6 @@ export function ServiciosResumenSection() {
         toast.info("No hay filas marcadas en la pestaña «Servicios». Marcalas en el Buscador con «Enviar a Tarjeta».");
       } else {
         toast.success(`${escritas} fila${escritas === 1 ? "" : "s"} traída${escritas === 1 ? "" : "s"} al seguimiento.`);
-        setUniversoTab(true);
       }
       // Los errores de cruce no abortan el resto: se avisa cuáles quedaron sin
       // resolver contra planillas_op y se sigue con las que sí cruzaron.
@@ -419,47 +392,22 @@ export function ServiciosResumenSection() {
     (async () => {
       setLoadingData(true);
       try {
+        // Ya no se carga la clasificación Material/Servicio: se usaba solo para
+        // el filtro «Solo servicios», que se quitó. Lo que llega acá ya viene
+        // elegido desde la pestaña del Buscador.
         await recargarSeguimiento();
-
-        // Clasificación Material/Servicio: catálogo (matriculas.mat_serv) +
-        // override manual (stock_article_families.tipo). El override gana.
-        const [matInfo, fams] = await Promise.all([getMatriculasInfo(), getFamilies()]);
-        const map = new Map<string, ArticuloTipo>();
-        const setTipo = (art: string, tipo: ArticuloTipo) => {
-          if (!art || !tipo) return;
-          map.set(art, tipo);
-          const n = normArticulo(art);
-          if (n !== art && !map.has(n)) map.set(n, tipo);   // fallback normalizado
-        };
-        for (const [art, info] of matInfo) setTipo(art, info.tipo);
-        for (const f of fams) if (f.tipo) setTipo(f.articulo, f.tipo);
-        setTipoMap(map);
       } catch { /* la UI degrada con datos vacíos */ }
       setLoadingData(false);
     })();
   }, []);
 
-  // Tipo efectivo de una matrícula (override > catálogo). "" si no se conoce.
-  const tipoOf = (matricula: unknown): ArticuloTipo => {
-    const raw = String(matricula ?? "");
-    return tipoMap.get(raw) ?? tipoMap.get(normArticulo(raw)) ?? "";
-  };
-
-  // ── Universo base: tipo (servicios/todas) o pestaña, más estado (abierto) ──
+  // ── Universo base: todo el seguimiento, más el estado de la OP ────────────
   // Todo el dashboard cuelga de acá: KPIs, tabla y agrupado por OP derivan de
   // baseRows, así que filtrar en este único punto se propaga solo.
-  const baseRows = useMemo(() => {
-    let rows = allRows;
-    if (tabMatriculas) {
-      // La pestaña manda: reemplaza al filtro material/servicio, no se suma.
-      rows = rows.filter(r => tabMatriculas.has(normArticulo(r.matricula)));
-    } else if (soloServicios && tipoMap.size > 0) {
-      rows = rows.filter(r => tipoOf(r.matricula) === "servicio");
-    }
-    if (filtroAbierto) rows = rows.filter(r => isAbierto(r.estado));
-    return rows;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allRows, soloServicios, filtroAbierto, tipoMap, tabMatriculas]);
+  const baseRows = useMemo(
+    () => (filtroAbierto ? allRows.filter(r => isAbierto(r.estado)) : allRows),
+    [allRows, filtroAbierto]
+  );
 
   // KPIs fijos (Activos / Vencidos) sobre el universo base.
   const { activos, vencidos } = useMemo(() => {
@@ -513,7 +461,7 @@ export function ServiciosResumenSection() {
   }, [baseRows, filtroVencer, filtroConsumo, filtroActivos, filtroVencidos, pinned]);
 
   // Reinicia la paginación cuando cambia el conjunto mostrado.
-  useEffect(() => { setTablePage(0); }, [tableRows.length, soloServicios, filtroAbierto, groupByOp, universoTab]);
+  useEffect(() => { setTablePage(0); }, [tableRows.length, filtroAbierto, groupByOp]);
 
   // Alertas recientes (por vencer / alto consumo) sobre el universo base.
   const alertas = useMemo(() => {
@@ -686,60 +634,10 @@ export function ServiciosResumenSection() {
 
   return (
     <div className="space-y-6">
-      {/* Universo: tipo (servicios/todas) + estado (abierto), filtros independientes */}
+      {/* Origen de los datos: lo que se trajo del Buscador. Único filtro: el
+          estado de la OP. */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="inline-flex items-center rounded-xl border border-border bg-card p-1 gap-1">
-            <button
-              onClick={() => { setSoloServicios(true); setUniversoTab(false); }}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all",
-                soloServicios && !universoTab
-                  ? "bg-accent text-accent-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-              )}
-              title="Solo matrículas de tipo Servicio"
-            >
-              <Wrench className="w-4 h-4" />Solo servicios
-            </button>
-            <button
-              onClick={() => { setSoloServicios(false); setUniversoTab(false); }}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all",
-                !soloServicios && !universoTab
-                  ? "bg-accent text-accent-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-              )}
-              title="Todas las líneas (materiales y servicios)"
-            >
-              <Layers className="w-4 h-4" />Todas
-            </button>
-
-            {/* Tercer universo: lo marcado en la pestaña «Servicios» del
-                Buscador. Fijo, sin selector — a diferencia del filtro viejo,
-                no ofrece elegir otra pestaña. */}
-            <button
-              onClick={() => setUniversoTab(v => !v)}
-              disabled={!tabActiva}
-              title={
-                !tabActiva
-                  ? 'No hay una pestaña «Servicios» en el Buscador todavía — creala ahí con ese nombre.'
-                  : "Filtrar por lo marcado con «Enviar a Tarjeta» en la pestaña Servicios"
-              }
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed",
-                universoTab
-                  ? "bg-accent text-accent-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-              )}
-            >
-              {loadingTabMats
-                ? <Loader2 className="w-4 h-4 animate-spin" />
-                : <Search className="w-4 h-4" />}
-              Marcadas en Servicios
-            </button>
-          </div>
-
           {/* Traer lo marcado del Buscador. Es una escritura en `seguimiento`,
               no un filtro: sin esto, marcar filas en la pestaña no las hace
               aparecer acá porque esta pantalla no lee el índice del Buscador. */}
@@ -773,10 +671,9 @@ export function ServiciosResumenSection() {
           </button>
         </div>
         <p className="text-xs text-muted-foreground">
-          {universoTab && tabActiva
-            ? <>Marcadas en <span className="text-foreground font-medium">{tabActiva.nombre}</span>
-                {tabMatriculas && <> · {tabMatriculas.size.toLocaleString("es-AR")} matrícula{tabMatriculas.size === 1 ? "" : "s"}</>}</>
-            : soloServicios ? "Servicios (Mat/Serv = Servicio)" : "Todas las líneas"}
+          {tabActiva
+            ? <>Desde la pestaña <span className="text-foreground font-medium">{tabActiva.nombre}</span></>
+            : "Sin pestaña «Servicios» en el Buscador"}
           {filtroAbierto && " · OP abierta"}
           {!loadingData && <> · <span className="text-foreground font-medium">{baseRows.length.toLocaleString("es-AR")}</span> líneas</>}
         </p>
