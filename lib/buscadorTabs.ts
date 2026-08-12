@@ -32,6 +32,11 @@ export const TRACK_KEYS = {
   estado:         "_estado",
   responsable:    "_responsable",
   fechaRevision:  "_fecha_revision",
+  // Marca de "mostrar esta fila en la tarjeta Próximas Entregas" del Resumen de
+  // Transformadores. Se guarda como "true" / "" (string) y no como booleano
+  // para no romper las filas ya existentes, cuyo `datos` no tiene la clave: el
+  // resto del código de seguimiento ya trata todo con String(datos[k] ?? "").
+  enTarjeta:      "_en_tarjeta",
 } as const;
 
 export const ESTADOS = ["Pendiente", "En curso", "Resuelto"] as const;
@@ -195,6 +200,57 @@ export async function fetchTabMatriculas(tabId: string): Promise<string[]> {
     if (k) out.add(k);
   }
   return [...out];
+}
+
+/** Una fila marcada con «En tarjeta», ya reducida a lo que la tarjeta muestra. */
+export interface FilaMarcada {
+  id:            string;
+  fechaPactada:  string | null;   // ISO o el crudo de la planilla; puede faltar
+  articulo:      string | null;
+  descripcion:   string | null;
+  numeroOp:      string | null;
+  proveedor:     string | null;
+  zona:          string | null;
+  cantidad:      number | null;
+  pendiente:     number | null;
+  estadoSeg:     string | null;
+  responsable:   string | null;
+}
+
+/**
+ * Filas de una pestaña marcadas con «En tarjeta» (`_en_tarjeta === "true"`).
+ *
+ * El filtro va en el servidor (`datos->>_en_tarjeta`) y no en el cliente: una
+ * pestaña puede tener miles de filas y la tarjeta muestra un puñado, así que
+ * traerlas todas para descartarlas acá sería tirar la mayor parte del payload.
+ * El orden por fecha, en cambio, se hace en el cliente: `fecha_pactada` vive
+ * dentro del jsonb y puede venir en formatos distintos según el import, así que
+ * ordenar en SQL sobre el texto crudo daría un orden equivocado.
+ */
+export async function fetchFilasMarcadas(tabId: string): Promise<FilaMarcada[]> {
+  const { data, error } = await supabase
+    .from("buscador_tab_filas")
+    .select("id, datos")
+    .eq("tab_id", tabId)
+    .eq(`datos->>${TRACK_KEYS.enTarjeta}`, "true");
+  if (error) throw errorSupabase(error);
+
+  const num = (v: unknown) => (v == null || v === "" ? null : Number(v));
+  const str = (v: unknown) => (v == null || v === "" ? null : String(v));
+
+  return ((data ?? []) as { id: string; datos: Record<string, unknown> }[]).map((f) => ({
+    id:           f.id,
+    fechaPactada: str(f.datos.fecha_pactada),
+    articulo:     str(f.datos.articulo),
+    descripcion:  str(f.datos.descripcion),
+    numeroOp:     str(f.datos.numero_op),
+    proveedor:    str(f.datos.proveedor),
+    zona:         str(f.datos.zona),
+    cantidad:     num(f.datos.cantidad),
+    pendiente:    num(f.datos.pendiente),
+    estadoSeg:    str(f.datos[TRACK_KEYS.estado]),
+    responsable:  str(f.datos[TRACK_KEYS.responsable]),
+  }));
 }
 
 /** Guarda el `datos` completo de una fila (una celda editada ya viene aplicada). */

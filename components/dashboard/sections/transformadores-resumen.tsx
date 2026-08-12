@@ -21,6 +21,7 @@ import {
   SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { ProximasEntregas } from "@/components/dashboard/proximas-entregas";
 
 const POT_13 = [5,10,16,25,50,63,80,100,125,160,200,250,315,500,630,800,1000];
 const POT_33 = [25,63,160,250,315,500,630];
@@ -111,8 +112,16 @@ function useOrder(key: string, defaultOrder: string[]) {
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(key) ?? "null") as string[] | null;
-      if (saved && saved.length === defaultOrder.length && defaultOrder.every(id => saved.includes(id))) {
-        setOrderState(saved);
+      if (saved) {
+        // Se conserva el orden que el usuario eligió y se descartan los ids que
+        // ya no existen. Los nuevos se insertan en la posición que tienen por
+        // defecto (no al final): antes esto comparaba largos y, al sumar un
+        // bloque, tiraba el orden guardado entero y lo reseteaba sin aviso.
+        const merged = saved.filter(id => defaultOrder.includes(id));
+        defaultOrder.forEach((id, i) => {
+          if (!merged.includes(id)) merged.splice(Math.min(i, merged.length), 0, id);
+        });
+        setOrderState(merged);
       }
     } catch {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -537,7 +546,7 @@ const DEFAULT_KPI_ORDER = KPI_DEFS.map(k => k.id);
 
 const BLOCK_ORDER_KEY = "transformadores_block_order";
 
-const DEFAULT_BLOCK_ORDER = ["filtros", "stockReserva", "variacion", "evolucion", "distribucion", "stockKva"];
+const DEFAULT_BLOCK_ORDER = ["proximasEntregas", "filtros", "stockReserva", "variacion", "evolucion", "distribucion", "stockKva"];
 
 function SortableBlock({ id, children }: { id: string; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -1075,6 +1084,8 @@ export function TransformadoresResumenSection() {
 
   // ── Reorderable chart blocks ──────────────────────────────────────────────
   const blockContent: Record<string, React.ReactNode> = {
+    proximasEntregas: <ProximasEntregas />,
+
     filtros: (
       <div
         className="px-4 py-6 sm:px-6 overflow-hidden"

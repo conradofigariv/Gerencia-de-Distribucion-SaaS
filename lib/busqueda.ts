@@ -85,6 +85,21 @@ export interface BusquedaRow {
  * que cambia con cada reconstrucción. Esta sale de los datos de negocio, que sí
  * son estables.
  */
+/**
+ * Fecha comparable (ms). Las fechas del índice viven como texto y llegan en dos
+ * formatos según de qué import salieron: ISO (`2026-03-14`) o el `toString()` de
+ * un Date. NaN cuando no hay fecha o no se entiende — quien ordene decide qué
+ * hacer con eso (por convención, al final).
+ */
+export const fechaMs = (v: unknown): number => {
+  if (v == null || v === "") return NaN;
+  const s = String(v);
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (iso) return Date.UTC(+iso[1], +iso[2] - 1, +iso[3]);
+  const t = new Date(s).getTime();
+  return Number.isNaN(t) ? NaN : t;
+};
+
 export const rowKey = (r: BusquedaRow) =>
   `${r.fuente}|${r.articulo_key ?? ""}|${r.numero_op ?? ""}|${r.linea ?? ""}|${r.envio ?? ""}`;
 

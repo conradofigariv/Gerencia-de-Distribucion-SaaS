@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { buscar, reconstruirIndice, estadoIndice, rowKey, type BusquedaRow } from "@/lib/busqueda";
+import { buscar, reconstruirIndice, estadoIndice, rowKey, fechaMs, type BusquedaRow } from "@/lib/busqueda";
 import { getPreference, setPreference } from "@/lib/userPreferences";
 import {
   fetchOpDatos, upsertOpDato, aplicarOpDatos, normOp, OP_MANUAL_COLS, type OpDato,
@@ -60,16 +60,6 @@ const DATE_COLS = new Set<string>([
   "sic_fecha_creacion", "fecha_creacion", "fecha_pactada",
   "tx_primera_fecha", "tx_ultima_fecha", TRACK_KEYS.fechaRevision,
 ]);
-
-/** Fecha comparable (ms). Los dos formatos posibles; NaN → al final del orden. */
-const fechaMs = (v: unknown): number => {
-  if (v == null || v === "") return NaN;
-  const s = String(v);
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
-  if (iso) return Date.UTC(+iso[1], +iso[2] - 1, +iso[3]);
-  const t = new Date(s).getTime();
-  return Number.isNaN(t) ? NaN : t;
-};
 
 /** Comparador de una columna, sabiendo si es fecha, número o texto. */
 const compararValores = (va: unknown, vb: unknown, col: string, dir: number): number => {
@@ -439,9 +429,10 @@ const COLS: ColDef[] = [
 // No salen del índice: las escribe el usuario. Van al final de la tabla, con
 // fondo propio para que se distingan de los datos copiados.
 
-interface TrackColDef { key: string; label: string; tipo: "texto" | "estado" | "fecha"; width: number }
+interface TrackColDef { key: string; label: string; tipo: "texto" | "estado" | "fecha" | "check"; width: number }
 
 const TRACK_COLS: TrackColDef[] = [
+  { key: TRACK_KEYS.enTarjeta,     label: "En tarjeta",   tipo: "check",  width: 100 },
   { key: TRACK_KEYS.estado,        label: "Estado seg.",  tipo: "estado", width: 130 },
   { key: TRACK_KEYS.responsable,   label: "Responsable",  tipo: "texto",  width: 160 },
   { key: TRACK_KEYS.fechaRevision, label: "F. revisión",  tipo: "fecha",  width: 130 },
@@ -2727,14 +2718,30 @@ export function BuscadorSection() {
                                 background: isResaltada ? "oklch(0.32 0.09 85 / 0.22)" : TRACK_BG,
                                 cursor: puedoEditar ? "text" : "default",
                               }}
-                              title={!puedoEditar ? "Solo lectura — pedile al dueño permiso de edición" : c.tipo === "texto" ? val : "Doble click para editar"}
-                              onDoubleClick={puedoEditar ? () => {
+                              title={
+                                !puedoEditar ? "Solo lectura — pedile al dueño permiso de edición"
+                                : c.tipo === "check" ? "Mostrar esta fila en «Próximas Entregas»"
+                                : c.tipo === "texto" ? val
+                                : "Doble click para editar"
+                              }
+                              // El tilde se opera con un click sobre el propio
+                              // checkbox; abrir un editor con doble click no
+                              // tendría nada que editar.
+                              onDoubleClick={puedoEditar && c.tipo !== "check" ? () => {
                                 setEditValue(val);
                                 setEditing({ filaId: filaId!, key: c.key });
                               } : undefined}
                               onContextMenu={(e) => abrirMenuFila(e, { key, filaId, data, colKey: c.key })}
                             >
-                              {editando && c.tipo === "estado" ? (
+                              {c.tipo === "check" ? (
+                                <input
+                                  type="checkbox"
+                                  checked={val === "true"}
+                                  disabled={!puedoEditar}
+                                  onChange={(e) => commitEdit(filaId!, c.key, e.target.checked ? "true" : "")}
+                                  className="w-3.5 h-3.5 cursor-pointer accent-pink-300 disabled:cursor-default"
+                                />
+                              ) : editando && c.tipo === "estado" ? (
                                 <select
                                   autoFocus
                                   value={editValue}
