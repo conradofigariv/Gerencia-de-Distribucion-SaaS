@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { CalendarClock, ChevronDown, Loader2, Package } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { CalendarClock, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { getPreference, setPreference } from "@/lib/userPreferences";
@@ -10,23 +10,36 @@ import { fetchTabs, fetchFilasMarcadas, type BuscadorTab, type FilaMarcada } fro
 
 // ─── Próximas Entregas ───────────────────────────────────────────────────────
 // Tarjeta alimentada por una pestaña del Buscador: muestra las filas que el
-// usuario marcó con «En tarjeta» (`_en_tarjeta`), ordenadas por fecha pactada.
+// usuario mandó con «Enviar a Tarjeta», agrupadas por horizonte temporal.
 //
 // El marcado es por fila y a mano — no hay regla automática de "qué es una
 // próxima entrega". Es deliberado: qué merece seguimiento depende del contexto
 // de cada OP, y una heurística por fecha traería ruido de OPs cerradas o
 // irrelevantes que igual tienen fecha pactada futura.
+//
+// El grano es el ENVÍO, no la OP: una OP no llega junta, llega en cuotas, y
+// «próxima entrega» se refiere a la cuota. Por eso cada línea muestra «env. 1/2»
+// y la misma matrícula puede aparecer más de una vez con fechas distintas.
 
 /** Dónde se recuerda qué pestaña alimenta la tarjeta (por usuario). */
 const TAB_PREF_KEY = "transformadores_proximas_entregas_tab";
-
-/** Umbral de "urgente" en días. Por debajo de 0 ya está vencida. */
-const DIAS_URGENTE = 7;
 
 const HOY_MS = () => {
   const d = new Date();
   return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
 };
+
+/**
+ * Fecha que manda para esta fila. `fecha_pactada` es la comprometida con el
+ * proveedor y es la buena; cuando no está (las fuentes `transaccion` y
+ * `catalogo` no salen de la planilla OP y no la traen) se cae a la F. revisión
+ * que el usuario carga a mano, para que esas filas no queden fuera del radar.
+ */
+function fechaEfectiva(f: FilaMarcada): { valor: string | null; esRespaldo: boolean } {
+  if (!Number.isNaN(fechaMs(f.fechaPactada))) return { valor: f.fechaPactada, esRespaldo: false };
+  if (!Number.isNaN(fechaMs(f.fechaRevision))) return { valor: f.fechaRevision, esRespaldo: true };
+  return { valor: null, esRespaldo: false };
+}
 
 function diasHasta(fecha: string | null): number | null {
   const ms = fechaMs(fecha);
@@ -40,42 +53,74 @@ function fmtFecha(fecha: string | null): string {
   return new Date(ms).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit", timeZone: "UTC" });
 }
 
-/** Etiqueta legible del plazo, que es el dato que más rápido se lee de la fila. */
 function textoPlazo(dias: number | null): string {
-  if (dias == null) return "sin fecha";
-  if (dias < 0)  return `vencida hace ${Math.abs(dias)} d`;
-  if (dias === 0) return "hoy";
-  if (dias === 1) return "mañana";
+  if (dias == null)  return "";
+  if (dias < 0)      return `hace ${Math.abs(dias)} d`;
+  if (dias === 0)    return "hoy";
+  if (dias === 1)    return "mañana";
   return `en ${dias} d`;
 }
 
-function PlazoBadge({ dias }: { dias: number | null }) {
-  const tono =
-    dias == null      ? "text-muted-foreground"
-    : dias < 0        ? "text-accent-red"
-    : dias <= DIAS_URGENTE ? "text-accent-amber"
-    : "text-accent-green";
-  return (
-    <span className={cn("text-[11px] font-semibold whitespace-nowrap tabular-nums", tono)}>
-      {textoPlazo(dias)}
-    </span>
-  );
+/**
+ * Resumen legible de un transformador a partir de su descripción cruda, que es
+ * inusable de largo: «TRAFO DE DISTRIBUCION TRIFASICO/1000KVA/DY11/(13.200/
+ * 400-231V)/AISLACION ACEITE/INTEMPERIE» → «1000 kVA · Trifásico». La completa
+ * sigue disponible en el `title` de la línea.
+ *
+ * Si no se reconoce el patrón se devuelve la descripción tal cual: la tarjeta
+ * puede apuntar a una pestaña que no sea de transformadores, y ahí inventar un
+ * resumen sería peor que mostrar el texto original.
+ */
+function resumenArticulo(descripcion: string | null, articulo: string | null): string {
+  const d = descripcion ?? "";
+  const kva  = /(\d+(?:[.,]\d+)?)\s*KVA/i.exec(d);
+  const fase = /\b(TRIFASICO|MONOFASICO)\b/i.exec(d);
+  if (!kva) return d || articulo || "—";
+  const potencia = `${kva[1].replace(",", ".")} kVA`;
+  if (!fase) return potencia;
+  const f = fase[1].toUpperCase() === "TRIFASICO" ? "Trifásico" : "Monofásico";
+  return `${potencia} · ${f}`;
 }
 
+// ─── Horizontes ──────────────────────────────────────────────────────────────
+// El orden del array ES el orden en que se muestran las secciones.
+
+type HorizonteId = "vencidas" | "semana" | "mes" | "adelante" | "sinFecha";
+
+const HORIZONTES: { id: HorizonteId; titulo: string; tono: string; hasta: number | null }[] = [
+  { id: "vencidas",  titulo: "Vencidas",      tono: "text-accent-red",         hasta: -1   },
+  { id: "semana",    titulo: "Esta semana",   tono: "text-accent-amber",       hasta: 7    },
+  { id: "mes",       titulo: "Este mes",      tono: "text-accent-green",       hasta: 30   },
+  { id: "adelante",  titulo: "Más adelante",  tono: "text-muted-foreground",   hasta: null },
+  { id: "sinFecha",  titulo: "Sin fecha",     tono: "text-muted-foreground",   hasta: null },
+];
+
+function horizonteDe(dias: number | null): HorizonteId {
+  if (dias == null) return "sinFecha";
+  if (dias < 0)     return "vencidas";
+  if (dias <= 7)    return "semana";
+  if (dias <= 30)   return "mes";
+  return "adelante";
+}
+
+type FilaVista = FilaMarcada & { dias: number | null; fecha: string | null; esRespaldo: boolean };
+
 export function ProximasEntregas() {
-  const [userId, setUserId]   = useState<string | null>(null);
-  const [tabs, setTabs]       = useState<BuscadorTab[]>([]);
-  const [tabId, setTabId]     = useState<string | null>(null);
-  const [filas, setFilas]     = useState<FilaMarcada[]>([]);
+  const [userId, setUserId]     = useState<string | null>(null);
+  const [tabs, setTabs]         = useState<BuscadorTab[]>([]);
+  const [tabId, setTabId]       = useState<string | null>(null);
+  const [filas, setFilas]       = useState<FilaMarcada[]>([]);
   const [cargando, setCargando] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // «Sin fecha» arranca plegada: son filas a las que les falta el dato, no
+  // entregas próximas, y arriba solo estorbarían.
+  const [plegados, setPlegados] = useState<Set<HorizonteId>>(new Set(["sinFecha"]));
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
   }, []);
 
-  // Pestañas disponibles + la que quedó elegida la última vez.
   useEffect(() => {
     if (!userId) return;
     fetchTabs(userId)
@@ -95,19 +140,7 @@ export function ProximasEntregas() {
     let vigente = true;
     setCargando(true);
     fetchFilasMarcadas(tabId)
-      .then((f) => {
-        if (!vigente) return;
-        // Sin fecha al final; el resto por fecha pactada ascendente (lo más
-        // vencido primero, que es lo que hay que mirar).
-        setFilas([...f].sort((a, b) => {
-          const ma = fechaMs(a.fechaPactada), mb = fechaMs(b.fechaPactada);
-          const na = Number.isNaN(ma), nb = Number.isNaN(mb);
-          if (na && nb) return 0;
-          if (na) return 1;
-          if (nb) return -1;
-          return ma - mb;
-        }));
-      })
+      .then((f) => { if (vigente) setFilas(f); })
       .catch(() => { if (vigente) setFilas([]); })
       .finally(() => { if (vigente) setCargando(false); });
     return () => { vigente = false; };
@@ -126,19 +159,54 @@ export function ProximasEntregas() {
     if (userId) setPreference(userId, TAB_PREF_KEY, id);
   }, [userId]);
 
+  const grupos = useMemo(() => {
+    const vistas: FilaVista[] = filas.map((f) => {
+      const { valor, esRespaldo } = fechaEfectiva(f);
+      return { ...f, fecha: valor, esRespaldo, dias: diasHasta(valor) };
+    });
+    const porHorizonte = new Map<HorizonteId, FilaVista[]>();
+    for (const v of vistas) {
+      const h = horizonteDe(v.dias);
+      if (!porHorizonte.has(h)) porHorizonte.set(h, []);
+      porHorizonte.get(h)!.push(v);
+    }
+    for (const lista of porHorizonte.values()) {
+      lista.sort((a, b) => (a.dias ?? 0) - (b.dias ?? 0));
+    }
+    return porHorizonte;
+  }, [filas]);
+
+  const totalVencidas = grupos.get("vencidas")?.length ?? 0;
+  const totalPronto   = (grupos.get("semana")?.length ?? 0) + (grupos.get("mes")?.length ?? 0);
+  const totalPend     = filas.reduce((n, f) => n + (f.pendiente ?? 0), 0);
+
   const tabActiva = tabs.find((t) => t.id === tabId) ?? null;
-  const vencidas  = filas.filter((f) => { const d = diasHasta(f.fechaPactada); return d != null && d < 0; }).length;
+
+  const togglePlegado = (h: HorizonteId) => setPlegados((prev) => {
+    const s = new Set(prev);
+    if (s.has(h)) s.delete(h); else s.add(h);
+    return s;
+  });
 
   return (
     <div className="rounded-[10px] bg-panel border border-hairline overflow-hidden">
-      <div className="flex items-center justify-between gap-3 px-4 py-3 bg-panel-header border-b border-hairline">
-        <div className="flex items-center gap-2 min-w-0">
-          <CalendarClock className="w-4 h-4 shrink-0 text-accent-green" />
-          <h3 className="text-sm font-semibold truncate">Próximas Entregas</h3>
-          {vencidas > 0 && (
-            <span className="text-[11px] font-semibold text-accent-red whitespace-nowrap">
-              {vencidas} vencida{vencidas === 1 ? "" : "s"}
-            </span>
+      <div className="flex items-start justify-between gap-3 px-4 py-3 bg-panel-header border-b border-hairline">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <CalendarClock className="w-4 h-4 shrink-0 text-accent-green" />
+            <h3 className="text-sm font-semibold truncate">Próximas Entregas</h3>
+          </div>
+          {/* Resumen de cabecera: la pregunta «¿tengo algo encima?» se contesta
+              acá, sin tener que leer la lista entera. */}
+          {filas.length > 0 && (
+            <p className="mt-0.5 text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+              {totalVencidas > 0 && (
+                <span className="text-accent-red font-semibold">{totalVencidas} vencida{totalVencidas === 1 ? "" : "s"}</span>
+              )}
+              {totalVencidas > 0 && totalPronto > 0 && <span>·</span>}
+              {totalPronto > 0 && <span>{totalPronto} en 30 días</span>}
+              {totalPend > 0 && <><span>·</span><span>{totalPend.toLocaleString("es-AR")} u pendientes</span></>}
+            </p>
           )}
         </div>
 
@@ -182,7 +250,7 @@ export function ProximasEntregas() {
         </div>
       </div>
 
-      <div className="max-h-[340px] overflow-y-auto">
+      <div className="max-h-[420px] overflow-y-auto">
         {cargando ? (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" /> Cargando…
@@ -193,37 +261,78 @@ export function ProximasEntregas() {
           </p>
         ) : filas.length === 0 ? (
           <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-            Ninguna fila de <span className="text-foreground">{tabActiva?.nombre}</span> está marcada.
+            Ninguna fila de <span className="text-foreground">{tabActiva?.nombre}</span> está en la tarjeta.
             <br />
-            <span className="text-xs">Tildá «En tarjeta» en el Buscador para que aparezcan acá.</span>
+            <span className="text-xs">Seleccioná filas en el Buscador y usá «Enviar a Tarjeta».</span>
           </p>
         ) : (
-          <ul className="divide-y divide-hairline">
-            {filas.map((f) => {
-              const dias = diasHasta(f.fechaPactada);
-              return (
-                <li key={f.id} className="px-4 py-2.5 hover:bg-panel-2 transition-colors">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-[13px] font-medium truncate">
-                      {f.descripcion ?? f.articulo ?? "—"}
-                    </span>
-                    <PlazoBadge dias={dias} />
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
-                    <span className="font-mono tabular-nums">{fmtFecha(f.fechaPactada)}</span>
-                    {f.numeroOp && <span>· OP {f.numeroOp}</span>}
-                    {f.zona && <span>· {f.zona}</span>}
-                    {f.pendiente != null && (
-                      <span className="inline-flex items-center gap-1">
-                        · <Package className="w-3 h-3" /> {f.pendiente.toLocaleString("es-AR")} pend.
-                      </span>
-                    )}
-                    {f.responsable && <span>· {f.responsable}</span>}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          HORIZONTES.map((h) => {
+            const lista = grupos.get(h.id);
+            if (!lista?.length) return null;
+            const plegado = plegados.has(h.id);
+            return (
+              <div key={h.id}>
+                <button
+                  onClick={() => togglePlegado(h.id)}
+                  className="w-full flex items-center gap-1.5 px-4 py-1.5 bg-panel-2 border-y border-hairline hover:bg-panel-input transition-colors"
+                >
+                  {plegado
+                    ? <ChevronRight className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                    : <ChevronDown  className="w-3.5 h-3.5 shrink-0 opacity-60" />}
+                  <span className={cn("text-[11px] font-semibold uppercase tracking-wide", h.tono)}>
+                    {h.titulo}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">({lista.length})</span>
+                </button>
+
+                {!plegado && (
+                  <ul className="divide-y divide-hairline">
+                    {lista.map((f) => (
+                      <li
+                        key={f.id}
+                        className="flex items-start gap-3 px-4 py-2.5 hover:bg-panel-2 transition-colors"
+                        title={f.descripcion ?? undefined}
+                      >
+                        {/* Fecha al frente: es el dato que organiza la tarjeta. */}
+                        <div className="w-[74px] shrink-0">
+                          <div className="font-mono text-[12.5px] tabular-nums">
+                            {fmtFecha(f.fecha)}
+                            {/* La fecha no siempre es la pactada — si salió del
+                                respaldo hay que decirlo, o el número miente. */}
+                            {f.esRespaldo && (
+                              <span className="ml-1 text-[9px] text-accent-amber align-top" title="Sin fecha pactada — se usa la F. revisión que cargaste">rev</span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">{textoPlazo(f.dias)}</div>
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[13px] font-medium truncate">
+                            {resumenArticulo(f.descripcion, f.articulo)}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground truncate">
+                            {f.numeroOp && <>OP {f.numeroOp}</>}
+                            {f.linea && <> · L {f.linea}</>}
+                            {f.envio && <> · env. {f.envio}{f.enviosLinea ? `/${f.enviosLinea}` : ""}</>}
+                            {f.proveedor && <> · {f.proveedor}</>}
+                          </div>
+                        </div>
+
+                        {f.pendiente != null && f.pendiente > 0 && (
+                          <div className="shrink-0 text-right">
+                            <div className="text-[12.5px] font-semibold tabular-nums">
+                              {f.pendiente.toLocaleString("es-AR")}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground">pend.</div>
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
     </div>

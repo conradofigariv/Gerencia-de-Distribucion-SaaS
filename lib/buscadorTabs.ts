@@ -206,9 +206,16 @@ export async function fetchTabMatriculas(tabId: string): Promise<string[]> {
 export interface FilaMarcada {
   id:            string;
   fechaPactada:  string | null;   // ISO o el crudo de la planilla; puede faltar
+  // Respaldo cuando la fila no trae fecha pactada (típico de las fuentes
+  // `transaccion` y `catalogo`, que no salen de la planilla OP): la fecha que
+  // el usuario carga a mano en las columnas Personalizadas.
+  fechaRevision: string | null;
   articulo:      string | null;
   descripcion:   string | null;
   numeroOp:      string | null;
+  linea:         string | null;
+  envio:         string | null;
+  enviosLinea:   number | null;   // total de envíos de esa (OP, línea) → «1/2»
   proveedor:     string | null;
   zona:          string | null;
   cantidad:      number | null;
@@ -239,17 +246,21 @@ export async function fetchFilasMarcadas(tabId: string): Promise<FilaMarcada[]> 
   const str = (v: unknown) => (v == null || v === "" ? null : String(v));
 
   return ((data ?? []) as { id: string; datos: Record<string, unknown> }[]).map((f) => ({
-    id:           f.id,
-    fechaPactada: str(f.datos.fecha_pactada),
-    articulo:     str(f.datos.articulo),
-    descripcion:  str(f.datos.descripcion),
-    numeroOp:     str(f.datos.numero_op),
-    proveedor:    str(f.datos.proveedor),
-    zona:         str(f.datos.zona),
-    cantidad:     num(f.datos.cantidad),
-    pendiente:    num(f.datos.pendiente),
-    estadoSeg:    str(f.datos[TRACK_KEYS.estado]),
-    responsable:  str(f.datos[TRACK_KEYS.responsable]),
+    id:            f.id,
+    fechaPactada:  str(f.datos.fecha_pactada),
+    fechaRevision: str(f.datos[TRACK_KEYS.fechaRevision]),
+    articulo:      str(f.datos.articulo),
+    descripcion:   str(f.datos.descripcion),
+    numeroOp:      str(f.datos.numero_op),
+    linea:         str(f.datos.linea),
+    envio:         str(f.datos.envio),
+    enviosLinea:   num(f.datos.envios_linea),
+    proveedor:     str(f.datos.proveedor),
+    zona:          str(f.datos.zona),
+    cantidad:      num(f.datos.cantidad),
+    pendiente:     num(f.datos.pendiente),
+    estadoSeg:     str(f.datos[TRACK_KEYS.estado]),
+    responsable:   str(f.datos[TRACK_KEYS.responsable]),
   }));
 }
 
