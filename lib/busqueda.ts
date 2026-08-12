@@ -86,16 +86,23 @@ export interface BusquedaRow {
  * son estables.
  */
 /**
- * Fecha comparable (ms). Las fechas del índice viven como texto y llegan en dos
- * formatos según de qué import salieron: ISO (`2026-03-14`) o el `toString()` de
- * un Date. NaN cuando no hay fecha o no se entiende — quien ordene decide qué
- * hacer con eso (por convención, al final).
+ * Fecha comparable (ms). Las fechas del índice viven como texto y llegan en tres
+ * formatos según de qué import salieron: ISO (`2026-03-14`), `dd/mm/aaaa` tal
+ * cual lo exporta SIGA, o el `toString()` de un Date. NaN cuando no hay fecha o
+ * no se entiende — quien ordene decide qué hacer con eso (por convención, al
+ * final).
+ *
+ * El caso dd/mm/aaaa se resuelve a mano y ANTES del `new Date()` genérico: JS
+ * parsea "15/04/2026" como Invalid Date (espera mm/dd), así que sin esta rama
+ * esas fechas darían NaN y se irían todas al final al ordenar.
  */
 export const fechaMs = (v: unknown): number => {
   if (v == null || v === "") return NaN;
   const s = String(v);
   const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   if (iso) return Date.UTC(+iso[1], +iso[2] - 1, +iso[3]);
+  const dmy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s);
+  if (dmy) return Date.UTC(+dmy[3], +dmy[2] - 1, +dmy[1]);
   const t = new Date(s).getTime();
   return Number.isNaN(t) ? NaN : t;
 };
