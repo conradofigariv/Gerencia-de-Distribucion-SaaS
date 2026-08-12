@@ -7,7 +7,7 @@ import {
   ChevronDown, ChevronUp, ChevronsUpDown, Wrench, Package,
   Columns3, GripVertical, Eye, EyeOff, Pin, Plus, Trash2, Pencil, ListPlus,
   ChevronRight, Rows3, Tag, FileText, Share2, Users, Lock, UserMinus, UserPlus,
-  Copy, Check,
+  Copy, Check, CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -18,7 +18,7 @@ import {
 } from "@/lib/opDatos";
 import {
   fetchTabs, createTab, renameTab, deleteTab, fetchTabFilas, addFilas,
-  updateFilaDatos, deleteFilas, reorderFilas, updateTabConfig,
+  updateFilaDatos, deleteFilas, reorderFilas, updateTabConfig, marcarEnTarjeta,
   fetchMisPermisos, fetchColaboradores, compartirTab, descompartirTab, fetchEquipo,
   TRACK_KEYS, ESTADOS,
   type BuscadorTab, type TabFila, type TabConfig, type AgruparPor,
@@ -429,10 +429,12 @@ const COLS: ColDef[] = [
 // No salen del índice: las escribe el usuario. Van al final de la tabla, con
 // fondo propio para que se distingan de los datos copiados.
 
-interface TrackColDef { key: string; label: string; tipo: "texto" | "estado" | "fecha" | "check"; width: number }
+interface TrackColDef { key: string; label: string; tipo: "texto" | "estado" | "fecha"; width: number }
 
+// `_en_tarjeta` NO va acá: no es un dato que se lea de la fila sino una marca,
+// y como tal se opera seleccionando filas y usando el menú contextual («Enviar
+// a Tarjeta»), no tildando una celda columna por columna.
 const TRACK_COLS: TrackColDef[] = [
-  { key: TRACK_KEYS.enTarjeta,     label: "En tarjeta",   tipo: "check",  width: 100 },
   { key: TRACK_KEYS.estado,        label: "Estado seg.",  tipo: "estado", width: 130 },
   { key: TRACK_KEYS.responsable,   label: "Responsable",  tipo: "texto",  width: 160 },
   { key: TRACK_KEYS.fechaRevision, label: "F. revisión",  tipo: "fecha",  width: 130 },
@@ -1218,6 +1220,10 @@ export function BuscadorSection() {
 
   // Al cambiar de pestaña se traen sus filas. El índice maestro (null) no carga nada.
   useEffect(() => {
+    // La selección se limpia siempre: dentro de una pestaña sus claves son
+    // filaIds, en el índice son rowKeys, y arrastrar unas al otro contexto
+    // dejaría marcadas filas que no son (o ninguna, en el mejor caso).
+    setSelected(new Set());
     if (!activeTab) { setTabFilas([]); return; }
     setLoadingTab(true);
     fetchTabFilas(activeTab)
@@ -1599,6 +1605,30 @@ export function BuscadorSection() {
    * Recibe la columna sobre la que se hizo click para poder ofrecer «Editar
    * esta columna» y «Copiar valor» de esa celda puntual.
    */
+  /** Marca/desmarca filas para la tarjeta «Próximas Entregas» de Transformadores. */
+  const handleMarcarTarjeta = useCallback(async (filaIds: string[], valor: boolean) => {
+    const ids = new Set(filaIds);
+    const filas = tabFilas.filter((f) => ids.has(f.id));
+    if (!filas.length) return;
+    try {
+      await marcarEnTarjeta(filas.map((f) => ({ id: f.id, datos: f.datos })), valor);
+      setTabFilas((prev) => prev.map((f) =>
+        ids.has(f.id)
+          ? { ...f, datos: { ...f.datos, [TRACK_KEYS.enTarjeta]: valor ? "true" : "" } }
+          : f
+      ));
+      setSelected(new Set());
+      const n = filas.length;
+      toast.success(
+        valor
+          ? `${n} fila${n === 1 ? "" : "s"} enviada${n === 1 ? "" : "s"} a la tarjeta.`
+          : `${n} fila${n === 1 ? "" : "s"} quitada${n === 1 ? "" : "s"} de la tarjeta.`
+      );
+    } catch (e) {
+      toast.error(`No se pudo actualizar la tarjeta: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [tabFilas]);
+
   const abrirMenuFila = useCallback((
     e: React.MouseEvent,
     ctx: { key: string; filaId?: string; data: Record<string, unknown>; colKey?: string }
@@ -1636,6 +1666,36 @@ export function BuscadorSection() {
 
     if (isTabMode) {
       if (items.length) items.push("sep");
+
+      items.push({
+        label: selected.has(ctx.key) ? "Quitar de la selección" : "Seleccionar",
+        icon: selected.has(ctx.key) ? X : Check,
+        onClick: () => setSelected((prev) => {
+          const s = new Set(prev);
+          if (s.has(ctx.key)) s.delete(ctx.key); else s.add(ctx.key);
+          return s;
+        }),
+      });
+
+      // Si la fila del click está dentro de la selección, la acción va sobre
+      // toda la selección; si no, sobre esa sola fila. Es lo que espera
+      // cualquiera que venga de un explorador de archivos, y evita que un click
+      // derecho descuidado sobre otra fila opere sobre la selección entera.
+      const objetivo = selected.has(ctx.key) ? [...selected] : ctx.filaId ? [ctx.filaId] : [];
+      const enTarjeta = (id: string) =>
+        String(tabFilas.find((f) => f.id === id)?.datos[TRACK_KEYS.enTarjeta] ?? "") === "true";
+      // Solo se ofrece "Quitar" cuando TODO el objetivo ya está en la tarjeta:
+      // con una selección mezclada, lo útil es terminar de mandarla entera.
+      const todasEn = objetivo.length > 0 && objetivo.every(enTarjeta);
+      items.push({
+        label: todasEn ? "Quitar de Tarjeta" : "Enviar a Tarjeta",
+        icon: CalendarClock,
+        hint: objetivo.length > 1 ? String(objetivo.length) : undefined,
+        disabled: !puedoEditar || !objetivo.length,
+        onClick: () => handleMarcarTarjeta(objetivo, !todasEn),
+      });
+
+      items.push("sep");
       items.push({
         label: "Quitar de la pestaña",
         icon: Trash2,
@@ -1691,6 +1751,7 @@ export function BuscadorSection() {
   }, [
     isTabMode, puedoEditar, agrupar, agruparPor, tabFilas, pinnedKeys, selected,
     tabs, permisoDe, togglePin, handleDeleteFila, handleDeleteGrupo, handleAddRowToTab,
+    handleMarcarTarjeta,
   ]);
 
   /** Menú contextual de una PESTAÑA (click derecho en la barra de arriba). */
@@ -2102,6 +2163,28 @@ export function BuscadorSection() {
             </div>
           )}
 
+          {/* Enviar a la tarjeta — dentro de una pestaña, con filas tildadas.
+              Misma acción que el menú contextual, a la vista: si no, la única
+              forma de descubrirla sería probando el click derecho. */}
+          {isTabMode && selected.size > 0 && (
+            <button
+              onClick={() => handleMarcarTarjeta([...selected], true)}
+              disabled={!puedoEditar}
+              title="Mostrar estas filas en «Próximas Entregas» de Transformadores"
+              className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                height: TOOLBAR_H,
+                background: "oklch(0.28 0.02 295)",
+                border: "1px solid oklch(0.55 0.20 295 / 0.45)",
+                color: "oklch(0.92 0 0)", cursor: "pointer",
+              }}
+            >
+              <CalendarClock className="w-3.5 h-3.5" />
+              Enviar a Tarjeta
+              <span style={{ color: GROUP_META.track.color }}>{selected.size}</span>
+            </button>
+          )}
+
           {/* Copiar a pestaña — solo en el índice maestro y con filas tildadas. */}
           {!isTabMode && selected.size > 0 && (
             <div className="relative shrink-0">
@@ -2168,14 +2251,17 @@ export function BuscadorSection() {
             </div>
           )}
 
-          {!isTabMode && selected.size > 0 && (
+          {selected.size > 0 && (
             <button
               onClick={() => setSelected(new Set())}
               className="inline-flex items-center gap-1.5 px-2.5 rounded-[9px] text-[12px] transition-colors"
               style={{ height: TOOLBAR_H, background: "transparent", border: PANEL_BORDER, color: "oklch(0.55 0 0)", cursor: "pointer" }}
             >
               <X className="w-3.5 h-3.5" />
-              Quitar selección{selected.size > seleccionadasVisibles ? ` (${selected.size})` : ""}
+              {/* El "(N)" avisa que hay tildadas fuera de la búsqueda actual —
+                  algo que solo pasa en el índice. `seleccionadasVisibles` se
+                  calcula sobre el índice, así que en una pestaña no aplica. */}
+              Quitar selección{!isTabMode && selected.size > seleccionadasVisibles ? ` (${selected.size})` : ""}
             </button>
           )}
 
@@ -2324,7 +2410,7 @@ export function BuscadorSection() {
                   {/* Columna de acciones: fija, no reordenable ni ocultable.
                       En el índice maestro lleva el check de selección y el pin;
                       dentro de una pestaña, el handle de arrastre y el borrar. */}
-                  <col style={{ width: 58 }} />
+                  <col style={{ width: isTabMode ? 78 : 58 }} />
                   {visibleCols.map((c) => (
                     <col key={c.key} style={{ width: effWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] }} />
                   ))}
@@ -2517,7 +2603,7 @@ export function BuscadorSection() {
                     const bottomBorder = isLastPinned
                       ? "2px solid color-mix(in oklab, var(--accent-violet) 50%, transparent)"
                       : isLastRow ? "none" : "1px solid oklch(1 0 0 / 0.05)";
-                    const isSel = !isTabMode && selected.has(key);
+                    const isSel = selected.has(key);
                     const isDragOver = isTabMode && dragOverFilaId === filaId;
                     const isResaltada = filaResaltada === key;
                     // Ámbar a propósito: distinto de la selección (violeta) y
@@ -2564,6 +2650,22 @@ export function BuscadorSection() {
                           <span className="flex items-center justify-center gap-1">
                             {isTabMode ? (
                               <>
+                                {/* En una pestaña `key` ES el filaId, así que la
+                                    selección puede compartir el mismo Set que
+                                    la del índice sin traducir claves. */}
+                                <input
+                                  type="checkbox"
+                                  checked={isSel}
+                                  onChange={(e) => {
+                                    setSelected((prev) => {
+                                      const s = new Set(prev);
+                                      if (e.target.checked) s.add(key); else s.delete(key);
+                                      return s;
+                                    });
+                                  }}
+                                  title="Seleccionar — click derecho para enviar a la tarjeta"
+                                  style={{ accentColor: "#8B5CF6", cursor: "pointer" }}
+                                />
                                 <span
                                   className={cn("grid place-items-center", puedeArrastrar && "cursor-grab active:cursor-grabbing")}
                                   title={puedeArrastrar ? "Arrastrar para reordenar" : "Desactivá el agrupado para reordenar"}
@@ -2571,6 +2673,19 @@ export function BuscadorSection() {
                                 >
                                   <GripVertical className="w-3.5 h-3.5" />
                                 </span>
+                                {/* Indicador de que la fila alimenta la tarjeta
+                                    «Próximas Entregas». Sin esto no habría
+                                    forma de saber qué se mandó: la marca dejó
+                                    de tener columna propia. */}
+                                {String(data[TRACK_KEYS.enTarjeta] ?? "") === "true" && (
+                                  <span
+                                    className="grid place-items-center"
+                                    title="En «Próximas Entregas» — click derecho para quitarla"
+                                    style={{ width: 16, height: 16, color: GROUP_META.track.color }}
+                                  >
+                                    <CalendarClock className="w-3.5 h-3.5" strokeWidth={2.2} />
+                                  </span>
+                                )}
                                 {/* Borrar salió de acá: era una acción
                                     destructiva a un click suelto al lado del
                                     handle de arrastre. Ahora está en el menú
@@ -2718,30 +2833,14 @@ export function BuscadorSection() {
                                 background: isResaltada ? "oklch(0.32 0.09 85 / 0.22)" : TRACK_BG,
                                 cursor: puedoEditar ? "text" : "default",
                               }}
-                              title={
-                                !puedoEditar ? "Solo lectura — pedile al dueño permiso de edición"
-                                : c.tipo === "check" ? "Mostrar esta fila en «Próximas Entregas»"
-                                : c.tipo === "texto" ? val
-                                : "Doble click para editar"
-                              }
-                              // El tilde se opera con un click sobre el propio
-                              // checkbox; abrir un editor con doble click no
-                              // tendría nada que editar.
-                              onDoubleClick={puedoEditar && c.tipo !== "check" ? () => {
+                              title={!puedoEditar ? "Solo lectura — pedile al dueño permiso de edición" : c.tipo === "texto" ? val : "Doble click para editar"}
+                              onDoubleClick={puedoEditar ? () => {
                                 setEditValue(val);
                                 setEditing({ filaId: filaId!, key: c.key });
                               } : undefined}
                               onContextMenu={(e) => abrirMenuFila(e, { key, filaId, data, colKey: c.key })}
                             >
-                              {c.tipo === "check" ? (
-                                <input
-                                  type="checkbox"
-                                  checked={val === "true"}
-                                  disabled={!puedoEditar}
-                                  onChange={(e) => commitEdit(filaId!, c.key, e.target.checked ? "true" : "")}
-                                  className="w-3.5 h-3.5 cursor-pointer accent-pink-300 disabled:cursor-default"
-                                />
-                              ) : editando && c.tipo === "estado" ? (
+                              {editando && c.tipo === "estado" ? (
                                 <select
                                   autoFocus
                                   value={editValue}

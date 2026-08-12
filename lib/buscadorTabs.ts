@@ -253,6 +253,35 @@ export async function fetchFilasMarcadas(tabId: string): Promise<FilaMarcada[]> 
   }));
 }
 
+/**
+ * Marca o desmarca varias filas para la tarjeta «Próximas Entregas».
+ *
+ * Se manda un update por fila en vez de un upsert masivo a propósito: el upsert
+ * sería INSERT ... ON CONFLICT, y eso exige pasar también la policy de INSERT
+ * de `buscador_tab_filas` — más superficie de RLS de la necesaria para lo que
+ * en los hechos es siempre un UPDATE sobre filas que ya existen.
+ *
+ * `datos` se reescribe entero (no hay patch de jsonb desde el cliente), así que
+ * se parte del que ya está en memoria y se le pisa una sola clave.
+ */
+export async function marcarEnTarjeta(
+  filas: { id: string; datos: Record<string, unknown> }[],
+  valor: boolean,
+): Promise<void> {
+  if (!filas.length) return;
+  const ahora = new Date().toISOString();
+  const results = await Promise.all(
+    filas.map((f) =>
+      supabase
+        .from("buscador_tab_filas")
+        .update({ datos: { ...f.datos, [TRACK_KEYS.enTarjeta]: valor ? "true" : "" }, updated_at: ahora })
+        .eq("id", f.id)
+    )
+  );
+  const fallo = results.find((r) => r.error);
+  if (fallo?.error) throw errorSupabase(fallo.error);
+}
+
 /** Guarda el `datos` completo de una fila (una celda editada ya viene aplicada). */
 export async function updateFilaDatos(id: string, datos: Record<string, unknown>): Promise<void> {
   const { error } = await supabase
