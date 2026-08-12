@@ -920,7 +920,6 @@ export function BuscadorSection() {
   // propio criterio igual que ya hace con sus columnas.
   const [agruparMenuOpen, setAgruparMenuOpen] = useState(false);
   const agruparMenuRef = useRef<HTMLDivElement>(null);
-  const [colapsados, setColapsados] = useState<Set<string>>(new Set());
   const dragFilaId = useRef<string | null>(null);
   const [dragOverFilaId, setDragOverFilaId] = useState<string | null>(null);
   // Fila resaltada al hacer click — como en Excel: sirve de referencia al
@@ -963,6 +962,18 @@ export function BuscadorSection() {
   // antes: agrupada por matrícula.
   const agrupar    = tabCfg?.agrupar    ?? true;
   const agruparPor = tabCfg?.agruparPor ?? "articulo";
+  // Qué grupos dejó plegados el usuario — por pestaña, guardado. Antes era
+  // estado suelto del componente: se perdía al recargar y se arrastraba de una
+  // pestaña a otra, plegando grupos que ni existían en la que abrías.
+  //
+  // `undefined` (nunca se tocó) NO es lo mismo que `[]` (se abrieron todos a
+  // propósito): en el primer caso vale el default de "todo cerrado", en el
+  // segundo hay que respetar que los quiso abiertos. Por eso no se colapsa a
+  // un Set vacío acá.
+  const colapsadosGuardados = useMemo(
+    () => (tabCfg?.colapsados ? new Set(tabCfg.colapsados) : null),
+    [tabCfg?.colapsados]
+  );
 
   // ── Permisos de la pestaña activa ──
   // Dueño = edición completa siempre. Compartida = lo que diga `misPermisos`
@@ -1031,6 +1042,7 @@ export function BuscadorSection() {
         widths:     patch.widths     ?? base.widths      ?? s.colWidths,
         agrupar:    patch.agrupar    ?? base.agrupar     ?? true,
         agruparPor: patch.agruparPor ?? base.agruparPor  ?? "articulo",
+        colapsados: patch.colapsados ?? base.colapsados  ?? [],
       };
       setTabLayouts((p) => ({ ...p, [id]: next }));
       clearTimeout(saveTabCfgTimers.current[id]);
@@ -1054,9 +1066,19 @@ export function BuscadorSection() {
     patchLayout({ agrupar: next });
   }, [patchLayout]);
 
-  /** Cambia el criterio de agrupado de la pestaña activa. */
+  /**
+   * Cambia el criterio de agrupado de la pestaña activa.
+   *
+   * Se pliegan todos los grupos del criterio NUEVO: las claves guardadas eran
+   * de otro eje (matrícula ≠ SIC ≠ OP) y no coinciden con ningún grupo nuevo,
+   * así que dejarlas abriría todo de golpe — justo lo contrario de lo que sirve
+   * al cambiar de eje, que es ver el panorama y después abrir lo que interese.
+   */
   const setAgruparPor = useCallback((value: AgruparPor) => {
-    patchLayout({ agruparPor: value });
+    patchLayout({
+      agruparPor: value,
+      colapsados: [...new Set(tabFilasRef.current.map((f) => groupKeyOf(f.datos, value)))],
+    });
   }, [patchLayout]);
 
   useEffect(() => {
@@ -1237,25 +1259,9 @@ export function BuscadorSection() {
   const tabFilasRef = useRef(tabFilas);
   useEffect(() => { tabFilasRef.current = tabFilas; });
 
-  /**
-   * Estado de plegado de los grupos:
-   *   • al abrir una pestaña o cambiar el criterio → todos cerrados, para ver
-   *     de un vistazo qué hay sin scrollear cientos de filas.
-   *   • al escribir en el buscador → todos ABIERTOS. Si no, el filtro deja los
-   *     resultados escondidos adentro de grupos cerrados y la búsqueda parece
-   *     no encontrar nada.
-   *   • al limpiar la búsqueda → vuelven a cerrarse.
-   *
-   * ⚠ `tabFilas` NO va en las deps a propósito: cambia de identidad en CADA
-   *   edición de celda, borrado o reordenamiento, y con ella acá los grupos se
-   *   cerraban de golpe cada vez que se tocaba un dato. Por eso se lee por ref
-   *   y el disparador de la recarga es `loadingTab` (false = terminó de traer).
-   */
-  useEffect(() => {
-    if (!isTabMode) return;
-    if (query.trim()) { setColapsados(new Set()); return; }
-    setColapsados(new Set(tabFilasRef.current.map((f) => groupKeyOf(f.datos, agruparPor))));
-  }, [isTabMode, activeTab, agruparPor, query, loadingTab]);
+  // El plegado ya no se calcula con un efecto que pisaba el estado en cada
+  // carga: se deriva más abajo, junto a `displayRows`, a partir de lo guardado
+  // en la pestaña. Ver `colapsados`.
 
   useEffect(() => {
     if (!agruparMenuOpen) return;
@@ -1835,6 +1841,23 @@ export function BuscadorSection() {
     }));
   }, [isTabMode, tabFilasOrdenadas, sorted]);
 
+  /**
+   * Grupos plegados, ya resueltos para renderizar. Tres reglas, en orden:
+   *
+   *   1. Mientras se busca → todos ABIERTOS, sin tocar lo guardado. Si no, el
+   *      filtro deja los resultados escondidos adentro de grupos cerrados y la
+   *      búsqueda parece no encontrar nada. Al limpiar la búsqueda vuelve a
+   *      verse lo que el usuario había dejado.
+   *   2. Si la pestaña tiene plegado guardado → se respeta tal cual.
+   *   3. Si nunca se tocó → todos cerrados, para ver de un vistazo qué hay sin
+   *      scrollear cientos de filas.
+   */
+  const colapsados = useMemo(() => {
+    if (query.trim()) return new Set<string>();
+    if (colapsadosGuardados) return colapsadosGuardados;
+    return new Set(displayRows.map((r) => groupKeyOf(r.data, agruparPor)));
+  }, [query, colapsadosGuardados, displayRows, agruparPor]);
+
   // ── Agrupado (solo en pestañas) ──
   // Una matrícula tiene una fila por (OP, línea, envío), así que una familia
   // entera desborda la tabla. Agrupando, cada valor del criterio elegido
@@ -1867,12 +1890,10 @@ export function BuscadorSection() {
   const puedeArrastrar = isTabMode && !agrupar && puedoEditar;
 
   const toggleGrupo = useCallback((gk: string) => {
-    setColapsados((prev) => {
-      const s = new Set(prev);
-      if (s.has(gk)) s.delete(gk); else s.add(gk);
-      return s;
-    });
-  }, []);
+    const s = new Set(colapsados);
+    if (s.has(gk)) s.delete(gk); else s.add(gk);
+    patchLayout({ colapsados: [...s] });
+  }, [colapsados, patchLayout]);
 
   /** Menú contextual del encabezado de un GRUPO (dentro de una pestaña). */
   const abrirMenuGrupo = useCallback((
@@ -1890,12 +1911,12 @@ export function BuscadorSection() {
       {
         label: "Abrir todos",
         icon: ChevronDown,
-        onClick: () => setColapsados(new Set()),
+        onClick: () => patchLayout({ colapsados: [] }),
       },
       {
         label: "Cerrar todos",
         icon: ChevronRight,
-        onClick: () => setColapsados(new Set(displayRows.map((r) => groupKeyOf(r.data, agruparPor)))),
+        onClick: () => patchLayout({ colapsados: [...new Set(displayRows.map((r) => groupKeyOf(r.data, agruparPor)))] }),
       },
       {
         label: "Copiar nombre",
@@ -1919,7 +1940,7 @@ export function BuscadorSection() {
       });
     }
     setCtxMenu({ x: e.clientX, y: e.clientY, items });
-  }, [colapsados, displayRows, agruparPor, puedoEditar, toggleGrupo, handleDeleteGrupo]);
+  }, [colapsados, displayRows, agruparPor, puedoEditar, toggleGrupo, handleDeleteGrupo, patchLayout]);
 
   // Cantidad de grupos distintos en la pestaña, según el criterio (para el contador).
   const gruposCount = useMemo(
@@ -2150,9 +2171,11 @@ export function BuscadorSection() {
 
               {agrupar && gruposCount > 0 && (
                 <button
-                  onClick={() => setColapsados((prev) =>
-                    prev.size ? new Set() : new Set(displayRows.map((r) => groupKeyOf(r.data, agruparPor)))
-                  )}
+                  onClick={() => patchLayout({
+                    colapsados: colapsados.size
+                      ? []
+                      : [...new Set(displayRows.map((r) => groupKeyOf(r.data, agruparPor)))],
+                  })}
                   title={colapsados.size ? "Abrir todas" : "Cerrar todas"}
                   className="inline-flex items-center justify-center rounded-[9px] transition-colors"
                   style={{ height: TOOLBAR_H, width: 32, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, color: "oklch(0.6 0 0)", cursor: "pointer" }}

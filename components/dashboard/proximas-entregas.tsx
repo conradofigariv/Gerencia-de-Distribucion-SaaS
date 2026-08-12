@@ -23,6 +23,9 @@ import { fetchTabs, fetchFilasMarcadas, type BuscadorTab, type FilaMarcada } fro
 
 /** Dónde se recuerda qué pestaña alimenta la tarjeta (por usuario). */
 const TAB_PREF_KEY = "transformadores_proximas_entregas_tab";
+/** Qué secciones quedaron plegadas. Se guardan las CERRADAS, igual que en el
+ *  Buscador: una sección nueva nace abierta sin que nadie la agregue a nada. */
+const PLEGADOS_PREF_KEY = "transformadores_proximas_entregas_plegados";
 
 const HOY_MS = () => {
   const d = new Date();
@@ -133,6 +136,10 @@ export function ProximasEntregas() {
         setTabId(guardada && t.some((x) => x.id === guardada) ? guardada : null);
       })
       .catch(() => { /* sin pestañas, la tarjeta lo dice sola */ });
+
+    getPreference<HorizonteId[]>(userId, PLEGADOS_PREF_KEY)
+      .then((p) => { if (p) setPlegados(new Set(p)); })
+      .catch(() => { /* vale el default: solo «Sin fecha» plegada */ });
   }, [userId]);
 
   useEffect(() => {
@@ -185,6 +192,7 @@ export function ProximasEntregas() {
   const togglePlegado = (h: HorizonteId) => setPlegados((prev) => {
     const s = new Set(prev);
     if (s.has(h)) s.delete(h); else s.add(h);
+    if (userId) setPreference(userId, PLEGADOS_PREF_KEY, [...s]);
     return s;
   });
 
@@ -266,12 +274,17 @@ export function ProximasEntregas() {
             <span className="text-xs">Seleccioná filas en el Buscador y usá «Enviar a Tarjeta».</span>
           </p>
         ) : (
-          HORIZONTES.map((h) => {
+          // Dos columnas en pantallas anchas: las secciones son bloques
+          // independientes, así que puestas de a pares la tarjeta ocupa la
+          // mitad de alto sin perder nada. `items-start` evita que la sección
+          // corta se estire para igualar a la larga.
+          <div className="grid grid-cols-1 lg:grid-cols-2 items-start gap-x-px bg-hairline">
+          {HORIZONTES.map((h) => {
             const lista = grupos.get(h.id);
             if (!lista?.length) return null;
             const plegado = plegados.has(h.id);
             return (
-              <div key={h.id}>
+              <div key={h.id} className="bg-panel">
                 <button
                   onClick={() => togglePlegado(h.id)}
                   className="w-full flex items-center gap-1.5 px-4 py-1.5 bg-panel-2 border-y border-hairline hover:bg-panel-input transition-colors"
@@ -332,7 +345,8 @@ export function ProximasEntregas() {
                 )}
               </div>
             );
-          })
+          })}
+          </div>
         )}
       </div>
     </div>

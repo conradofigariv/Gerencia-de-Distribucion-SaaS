@@ -55,6 +55,11 @@ export interface TabConfig {
   // distinto (o sin agrupar), independiente de las demás.
   agrupar?:    boolean;
   agruparPor?: AgruparPor;
+  // Claves de los grupos que quedaron PLEGADOS. Se guarda lo cerrado y no lo
+  // abierto porque los grupos nacen abiertos: así una pestaña recién creada, o
+  // una OP nueva que aparece después, arranca visible sin necesidad de que
+  // alguien la agregue a una lista.
+  colapsados?: string[];
 }
 
 export interface BuscadorTab {
