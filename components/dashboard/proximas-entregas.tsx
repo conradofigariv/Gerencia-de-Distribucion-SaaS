@@ -109,19 +109,15 @@ function horizonteDe(dias: number | null): HorizonteId {
 type FilaVista = FilaMarcada & { dias: number | null; fecha: string | null; esRespaldo: boolean };
 
 /**
- * Un dato con su rótulo debajo, con la misma forma que la cantidad pendiente.
- * Se omite entero cuando no hay valor: un rótulo suelto sobre un guión ocupa
- * lugar para no decir nada.
+ * Grilla compartida por el encabezado y las filas de cada sub-tarjeta. Que sea
+ * la MISMA cadena en los dos lados es lo que mantiene las columnas alineadas;
+ * si se tocan, se tocan juntas.
+ *
+ * El proveedor no tiene columna propia: es el único campo de largo impredecible
+ * y una columna fija para él, o achicaba todo lo demás, o se cortaba siempre.
+ * Va como segunda línea de la celda del artículo, que es donde sobra ancho.
  */
-function Campo({ label, valor, crece = false }: { label: string; valor: string | null; crece?: boolean }) {
-  if (!valor) return null;
-  return (
-    <div className={cn("min-w-0", crece ? "flex-1" : "shrink-0")}>
-      <div className="text-[12px] tabular-nums truncate leading-tight" title={valor}>{valor}</div>
-      <div className="text-[10px] text-muted-foreground leading-tight">{label}</div>
-    </div>
-  );
-}
+const GRID_COLS = "68px minmax(0,1fr) 54px 42px 44px 48px";
 
 export function ProximasEntregas() {
   const [userId, setUserId]     = useState<string | null>(null);
@@ -320,17 +316,32 @@ export function ProximasEntregas() {
                 </button>
 
                 {!plegado && (
-                  <ul className="divide-y divide-hairline">
-                    {lista.map((f) => (
-                      <li
-                        key={f.id}
-                        className="px-3 py-2.5 hover:bg-panel-input transition-colors"
-                        title={f.descripcion ?? undefined}
-                      >
-                        <div className="flex items-start gap-3">
-                          {/* Fecha al frente: es el dato que organiza la tarjeta. */}
-                          <div className="w-[72px] shrink-0">
-                            <div className="font-mono text-[12.5px] tabular-nums">
+                  <>
+                    {/* Rótulos una sola vez, como encabezado de tabla. Repetirlos
+                        en cada fila —como estaban— es ruido: las filas son todas
+                        iguales y el ojo ya sabe qué es cada columna. */}
+                    <div
+                      className="grid gap-x-2 px-3 py-1 text-[9.5px] uppercase tracking-wide text-muted-foreground border-b border-hairline"
+                      style={{ gridTemplateColumns: GRID_COLS }}
+                    >
+                      <span>Fecha</span>
+                      <span>Artículo</span>
+                      <span>OP</span>
+                      <span>Línea</span>
+                      <span>Envío</span>
+                      <span className="text-right">Pend.</span>
+                    </div>
+
+                    <ul className="divide-y divide-hairline">
+                      {lista.map((f) => (
+                        <li
+                          key={f.id}
+                          className="grid gap-x-2 items-start px-3 py-2 hover:bg-panel-input transition-colors"
+                          style={{ gridTemplateColumns: GRID_COLS }}
+                          title={f.descripcion ?? undefined}
+                        >
+                          <div>
+                            <div className="font-mono text-[12px] tabular-nums leading-tight">
                               {fmtFecha(f.fecha)}
                               {/* La fecha no siempre es la pactada — si salió
                                   del respaldo hay que decirlo, o miente. */}
@@ -338,37 +349,32 @@ export function ProximasEntregas() {
                                 <span className="ml-1 text-[9px] text-accent-amber align-top" title="Sin fecha pactada — se usa la F. revisión que cargaste">rev</span>
                               )}
                             </div>
-                            <div className="text-[10px] text-muted-foreground">{textoPlazo(f.dias)}</div>
+                            <div className="text-[10px] text-muted-foreground leading-tight">{textoPlazo(f.dias)}</div>
                           </div>
-                          <div className="flex-1 min-w-0 text-[13px] font-medium truncate">
-                            {resumenArticulo(f.descripcion, f.articulo)}
-                          </div>
-                        </div>
 
-                        {/* Los datos de la fila, repartidos como campos con
-                            rótulo (igual que la cantidad) en vez de una línea
-                            de texto separada por puntos: ocupan el ancho que ya
-                            estaba libre y cada valor se ubica de un vistazo. */}
-                        <div className="mt-1.5 flex items-end gap-3 pl-[84px]">
-                          <Campo label="OP"        valor={f.numeroOp} />
-                          <Campo label="Línea"     valor={f.linea} />
-                          <Campo
-                            label="Envío"
-                            valor={f.envio ? `${f.envio}${f.enviosLinea ? `/${f.enviosLinea}` : ""}` : null}
-                          />
-                          <Campo label="Proveedor" valor={f.proveedor} crece />
-                          {f.pendiente != null && f.pendiente > 0 && (
-                            <div className="shrink-0 text-right">
-                              <div className="text-[12.5px] font-semibold tabular-nums leading-tight">
-                                {f.pendiente.toLocaleString("es-AR")}
-                              </div>
-                              <div className="text-[10px] text-muted-foreground leading-tight">pend.</div>
+                          <div className="min-w-0">
+                            <div className="text-[12.5px] font-medium truncate leading-tight">
+                              {resumenArticulo(f.descripcion, f.articulo)}
                             </div>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                            {f.proveedor && (
+                              <div className="text-[10.5px] text-muted-foreground truncate leading-tight" title={f.proveedor}>
+                                {f.proveedor}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="text-[12px] tabular-nums leading-tight">{f.numeroOp ?? ""}</div>
+                          <div className="text-[12px] tabular-nums leading-tight">{f.linea ?? ""}</div>
+                          <div className="text-[12px] tabular-nums leading-tight">
+                            {f.envio ? `${f.envio}${f.enviosLinea ? `/${f.enviosLinea}` : ""}` : ""}
+                          </div>
+                          <div className="text-[12px] font-semibold tabular-nums leading-tight text-right">
+                            {f.pendiente != null && f.pendiente > 0 ? f.pendiente.toLocaleString("es-AR") : ""}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 )}
               </div>
             );
