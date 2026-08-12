@@ -117,17 +117,21 @@ export function ServiciosResumenSection() {
   const [soloServicios, setSoloServicios] = useState(true);
   const [filtroAbierto, setFiltroAbierto] = useState(true);
 
-  // ── Universo alternativo: una pestaña del Buscador ─────────────────────────
-  // Cuando hay pestaña elegida, su lista de matrículas REEMPLAZA al filtro
-  // material/servicio: el usuario ya decidió qué mirar al armar la pestaña, y
-  // filtrar además por tipo haría desaparecer sin explicación una matrícula mal
-  // clasificada en el catálogo. «Abierto» sigue aplicando aparte.
-  const [tabs, setTabs]                 = useState<BuscadorTab[]>([]);
-  const [filtroTabId, setFiltroTabId]   = useState<string | null>(null);
-  const [tabMatriculas, setTabMatriculas] = useState<Set<string> | null>(null);
+  // ── Universo alternativo: lo marcado en la pestaña "Servicios" del Buscador ─
+  // Reemplaza al filtro material/servicio cuando está activo: el usuario ya
+  // decidió qué mirar marcando filas puntuales con «Enviar a Tarjeta», y
+  // filtrar además por tipo haría desaparecer sin explicación una matrícula
+  // mal clasificada en el catálogo. «Abierto» sigue aplicando aparte.
+  //
+  // La pestaña se resuelve por NOMBRE, fija, sin selector — mismo criterio que
+  // la tarjeta «Próximas Entregas» de Transformadores: buscarla por nombre en
+  // vez de guardar su id sobrevive a que alguien la borre y recree con el
+  // mismo nombre, al costo de que un renombre la deja sin efecto (avisado en
+  // el propio botón cuando no se encuentra).
+  const [tabs, setTabs]                     = useState<BuscadorTab[]>([]);
+  const [universoTab, setUniversoTab]       = useState(false);
+  const [tabMatriculas, setTabMatriculas]   = useState<Set<string> | null>(null);
   const [loadingTabMats, setLoadingTabMats] = useState(false);
-  const [tabMenuOpen, setTabMenuOpen]   = useState(false);
-  const tabMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -136,29 +140,25 @@ export function ServiciosResumenSection() {
     });
   }, []);
 
+  const tabActiva = useMemo(
+    () => tabs.find((t) => t.nombre.trim().toLowerCase() === "servicios") ?? null,
+    [tabs]
+  );
+
   useEffect(() => {
-    if (!filtroTabId) { setTabMatriculas(null); return; }
+    if (!universoTab || !tabActiva) { setTabMatriculas(null); return; }
     setLoadingTabMats(true);
     let cancelado = false;
-    fetchTabMatriculas(filtroTabId)
+    fetchTabMatriculas(tabActiva.id, true)
       .then((mats) => { if (!cancelado) setTabMatriculas(new Set(mats)); })
       .catch((e) => {
         if (cancelado) return;
-        toast.error(`No se pudieron leer las matrículas de la pestaña: ${e.message}`);
-        setFiltroTabId(null);
+        toast.error(`No se pudieron leer las matrículas marcadas: ${e.message}`);
+        setUniversoTab(false);
       })
       .finally(() => { if (!cancelado) setLoadingTabMats(false); });
     return () => { cancelado = true; };
-  }, [filtroTabId]);
-
-  useEffect(() => {
-    if (!tabMenuOpen) return;
-    const h = (e: MouseEvent) => { if (!tabMenuRef.current?.contains(e.target as Node)) setTabMenuOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [tabMenuOpen]);
-
-  const tabActiva = tabs.find((t) => t.id === filtroTabId) ?? null;
+  }, [universoTab, tabActiva]);
 
   // filtros: null = sin selección
   const [filtroVencer,   setFiltroVencer]   = useState<FiltroVencer>(null);
@@ -473,7 +473,7 @@ export function ServiciosResumenSection() {
   }, [baseRows, filtroVencer, filtroConsumo, filtroActivos, filtroVencidos, pinned]);
 
   // Reinicia la paginación cuando cambia el conjunto mostrado.
-  useEffect(() => { setTablePage(0); }, [tableRows.length, soloServicios, filtroAbierto, groupByOp, filtroTabId]);
+  useEffect(() => { setTablePage(0); }, [tableRows.length, soloServicios, filtroAbierto, groupByOp, universoTab]);
 
   // Alertas recientes (por vencer / alto consumo) sobre el universo base.
   const alertas = useMemo(() => {
@@ -651,10 +651,10 @@ export function ServiciosResumenSection() {
         <div className="flex items-center gap-2.5 flex-wrap">
           <div className="inline-flex items-center rounded-xl border border-border bg-card p-1 gap-1">
             <button
-              onClick={() => { setSoloServicios(true); setFiltroTabId(null); }}
+              onClick={() => { setSoloServicios(true); setUniversoTab(false); }}
               className={cn(
                 "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all",
-                soloServicios && !filtroTabId
+                soloServicios && !universoTab
                   ? "bg-accent text-accent-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground hover:bg-secondary"
               )}
@@ -663,10 +663,10 @@ export function ServiciosResumenSection() {
               <Wrench className="w-4 h-4" />Solo servicios
             </button>
             <button
-              onClick={() => { setSoloServicios(false); setFiltroTabId(null); }}
+              onClick={() => { setSoloServicios(false); setUniversoTab(false); }}
               className={cn(
                 "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all",
-                !soloServicios && !filtroTabId
+                !soloServicios && !universoTab
                   ? "bg-accent text-accent-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground hover:bg-secondary"
               )}
@@ -675,60 +675,29 @@ export function ServiciosResumenSection() {
               <Layers className="w-4 h-4" />Todas
             </button>
 
-            {/* Tercer universo: las matrículas de una pestaña del Buscador. */}
-            {tabs.length > 0 && (
-              <div className="relative" ref={tabMenuRef}>
-                <button
-                  onClick={() => setTabMenuOpen(v => !v)}
-                  className={cn(
-                    "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all",
-                    filtroTabId
-                      ? "bg-accent text-accent-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                  )}
-                  title="Filtrar por las matrículas de una pestaña del Buscador"
-                >
-                  {loadingTabMats
-                    ? <Loader2 className="w-4 h-4 animate-spin" />
-                    : <Search className="w-4 h-4" />}
-                  <span className="max-w-[160px] truncate">
-                    {tabActiva ? tabActiva.nombre : "Pestaña…"}
-                  </span>
-                  <ChevronDown className="w-3.5 h-3.5 opacity-60" />
-                </button>
-
-                {tabMenuOpen && (
-                  <div className="absolute left-0 top-full mt-1.5 z-50 min-w-[220px] rounded-xl border border-border bg-card p-1.5 shadow-xl">
-                    <p className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Pestañas del Buscador
-                    </p>
-                    {tabs.map(t => (
-                      <button
-                        key={t.id}
-                        onClick={() => { setFiltroTabId(t.id); setTabMenuOpen(false); }}
-                        className={cn(
-                          "w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm text-left transition-colors",
-                          t.id === filtroTabId
-                            ? "bg-accent/15 text-accent font-medium"
-                            : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                        )}
-                      >
-                        <Search className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate">{t.nombre}</span>
-                      </button>
-                    ))}
-                    {filtroTabId && (
-                      <button
-                        onClick={() => { setFiltroTabId(null); setTabMenuOpen(false); }}
-                        className="mt-1 w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm text-left text-muted-foreground hover:text-foreground hover:bg-secondary border-t border-border pt-2 transition-colors"
-                      >
-                        <XCircle className="w-3.5 h-3.5 shrink-0" />Quitar filtro
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+            {/* Tercer universo: lo marcado en la pestaña «Servicios» del
+                Buscador. Fijo, sin selector — a diferencia del filtro viejo,
+                no ofrece elegir otra pestaña. */}
+            <button
+              onClick={() => setUniversoTab(v => !v)}
+              disabled={!tabActiva}
+              title={
+                !tabActiva
+                  ? 'No hay una pestaña «Servicios» en el Buscador todavía — creala ahí con ese nombre.'
+                  : "Filtrar por lo marcado con «Enviar a Tarjeta» en la pestaña Servicios"
+              }
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed",
+                universoTab
+                  ? "bg-accent text-accent-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+              )}
+            >
+              {loadingTabMats
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Search className="w-4 h-4" />}
+              Marcadas en Servicios
+            </button>
           </div>
 
           <button
@@ -745,8 +714,8 @@ export function ServiciosResumenSection() {
           </button>
         </div>
         <p className="text-xs text-muted-foreground">
-          {tabActiva
-            ? <>Pestaña <span className="text-foreground font-medium">{tabActiva.nombre}</span>
+          {universoTab && tabActiva
+            ? <>Marcadas en <span className="text-foreground font-medium">{tabActiva.nombre}</span>
                 {tabMatriculas && <> · {tabMatriculas.size.toLocaleString("es-AR")} matrícula{tabMatriculas.size === 1 ? "" : "s"}</>}</>
             : soloServicios ? "Servicios (Mat/Serv = Servicio)" : "Todas las líneas"}
           {filtroAbierto && " · OP abierta"}

@@ -190,11 +190,20 @@ export async function addFilas(
  * un código de matrícula no envejece, así que este cruce no arrastra ese
  * problema.
  */
-export async function fetchTabMatriculas(tabId: string): Promise<string[]> {
-  const { data, error } = await supabase
+/**
+ * Matrículas de una pestaña. `soloMarcadas` acota a las filas que el usuario
+ * mandó con «Enviar a Tarjeta» (`_en_tarjeta`) en vez de traer la pestaña
+ * entera — es lo que usa el filtro de universo de Resumen de Servicios: el
+ * usuario decide qué mirar marcando filas puntuales, no llenando una pestaña
+ * aparte solo para eso.
+ */
+export async function fetchTabMatriculas(tabId: string, soloMarcadas = false): Promise<string[]> {
+  let query = supabase
     .from("buscador_tab_filas")
     .select("ak:datos->>articulo_key, a:datos->>articulo")
     .eq("tab_id", tabId);
+  if (soloMarcadas) query = query.eq(`datos->>${TRACK_KEYS.enTarjeta}`, "true");
+  const { data, error } = await query;
   if (error) throw errorSupabase(error);
 
   const out = new Set<string>();
