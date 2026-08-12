@@ -113,11 +113,12 @@ type FilaVista = FilaMarcada & { dias: number | null; fecha: string | null; esRe
  * la MISMA cadena en los dos lados es lo que mantiene las columnas alineadas;
  * si se tocan, se tocan juntas.
  *
- * El proveedor no tiene columna propia: es el único campo de largo impredecible
- * y una columna fija para él, o achicaba todo lo demás, o se cortaba siempre.
- * Va como segunda línea de la celda del artículo, que es donde sobra ancho.
+ * Artículo y proveedor son los dos campos de largo variable, así que son los
+ * dos que reparten el ancho sobrante (`fr`) mientras el resto va fijo. Con la
+ * tarjeta en dos columnas el espacio es justo y los dos se cortan con `truncate`
+ * — el valor completo queda en el `title` de cada celda.
  */
-const GRID_COLS = "68px minmax(0,1fr) 54px 42px 44px 48px";
+const GRID_COLS = "66px minmax(0,1.15fr) 50px 38px 40px minmax(0,0.85fr) 46px";
 
 export function ProximasEntregas() {
   const [userId, setUserId]     = useState<string | null>(null);
@@ -329,6 +330,7 @@ export function ProximasEntregas() {
                       <span>OP</span>
                       <span>Línea</span>
                       <span>Envío</span>
+                      <span>Proveedor</span>
                       <span className="text-right">Pend.</span>
                     </div>
 
@@ -356,9 +358,13 @@ export function ProximasEntregas() {
                             <div className="text-[12.5px] font-medium truncate leading-tight">
                               {resumenArticulo(f.descripcion, f.articulo)}
                             </div>
-                            {f.proveedor && (
-                              <div className="text-[10.5px] text-muted-foreground truncate leading-tight" title={f.proveedor}>
-                                {f.proveedor}
+                            {/* La matrícula acompaña al resumen: el resumen dice
+                                QUÉ es («315 kVA · Trifásico») y la matrícula
+                                CUÁL es exactamente, que es lo que se busca en
+                                el sistema. */}
+                            {f.articulo && (
+                              <div className="font-mono text-[10.5px] text-muted-foreground truncate leading-tight" title={f.articulo}>
+                                {f.articulo}
                               </div>
                             )}
                           </div>
@@ -367,6 +373,9 @@ export function ProximasEntregas() {
                           <div className="text-[12px] tabular-nums leading-tight">{f.linea ?? ""}</div>
                           <div className="text-[12px] tabular-nums leading-tight">
                             {f.envio ? `${f.envio}${f.enviosLinea ? `/${f.enviosLinea}` : ""}` : ""}
+                          </div>
+                          <div className="text-[12px] truncate leading-tight" title={f.proveedor ?? undefined}>
+                            {f.proveedor ?? ""}
                           </div>
                           <div className="text-[12px] font-semibold tabular-nums leading-tight text-right">
                             {f.pendiente != null && f.pendiente > 0 ? f.pendiente.toLocaleString("es-AR") : ""}
