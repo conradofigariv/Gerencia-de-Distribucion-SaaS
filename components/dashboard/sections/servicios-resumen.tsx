@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, Fragment } from "react";
+import { useState, useEffect, useRef, useMemo, Fragment, type ElementType, type MouseEvent as ReactMouseEvent } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
@@ -14,9 +15,8 @@ import {
   RotateCcw,
   Download,
   Layers,
-  LockOpen,
   Trash2,
-  Pin,
+  Copy,
   ChevronRight,
   ChevronDown,
 } from "lucide-react";
@@ -62,15 +62,18 @@ const TABLE_COLS: { db: string; label: string }[] = [
   { db: "matricula",             label: "MATRÍCULA"       },
   { db: "descripcion_matricula", label: "DESCRIPCIÓN"     },
   { db: "cantidad",              label: "CANTIDAD"        },
-  { db: "saldo_linea",           label: "SALDO"           },
+  { db: "saldo_linea",           label: "SALDO RESTANTE"  },
   { db: "fecha_pactada",         label: "FECHA PACTADA"   },
   { db: "dias_vencer",           label: "DÍAS P/ VENCER"  },
   { db: "estado",                label: "ESTADO"          },
   { db: "proveedor",             label: "PROVEEDOR"       },
 ];
 const RAW_COLS_T     = new Set(["op", "op_madre", "linea"]);
-// Columnas editables inline desde el Resumen (mismo mecanismo que Lista de seguimiento).
-const EDITABLE_COLS  = new Set(["zona", "nombre_corto", "observacion"]);
+// Columnas editables inline desde el Resumen (mismo mecanismo que Lista de
+// seguimiento). "zona" NO está: ahora se trae de la pestaña «Servicios» del
+// Buscador en cada sincronización, y un valor editado a mano acá se perdería
+// en el próximo «Traer del Buscador» sin ningún aviso — mejor no ofrecerlo.
+const EDITABLE_COLS  = new Set(["nombre_corto", "observacion"]);
 const PAGE_SIZE      = 50;
 
 const DEFAULT_WIDTHS_R: Record<string, number> = {
@@ -84,8 +87,6 @@ const DEFAULT_WIDTHS_R: Record<string, number> = {
 const COLORDER_KEY = "servicios-resumen-colorder-v3";
 // Agrupar por OP (toggle), persistido por navegador.
 const GROUPBYOP_KEY = "servicios-resumen-groupbyop";
-// Filas fijadas — por navegador (igual patrón que Stock por Zona).
-const PINNED_KEY = "servicios-resumen-pinned";
 
 type SeguimientoRow = Record<string, unknown> & { id: string };
 
@@ -104,18 +105,86 @@ function isAbierto(estado: unknown): boolean {
   return String(estado ?? "").trim().toLowerCase().startsWith("abiert");
 }
 
+// ── Menú contextual de fila (click derecho) ─────────────────────────────────
+// Mismo patrón que el Buscador: reemplaza al botón de fijar (que se sacó) y al
+// ícono de borrar suelto en la fila — las acciones de una fila viven todas acá,
+// y hay lugar para sumar más sin agregar otro ícono a la tabla.
+
+interface CtxItem {
+  label:     string;
+  icon:      ElementType;
+  onClick:   () => void;
+  danger?:   boolean;
+  disabled?: boolean;
+}
+interface CtxState { x: number; y: number; items: (CtxItem | "sep")[] }
+
+function RowContextMenu({ state, onClose }: { state: CtxState; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ x: state.x, y: state.y });
+
+  // Reposiciona si se sale de la ventana: se mide después de pintar, porque el
+  // alto depende de cuántos items tenga este menú en particular.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const { width, height } = el.getBoundingClientRect();
+    setPos({
+      x: state.x + width  > window.innerWidth  - 8 ? Math.max(8, state.x - width)  : state.x,
+      y: state.y + height > window.innerHeight - 8 ? Math.max(8, state.y - height) : state.y,
+    });
+  }, [state.x, state.y]);
+
+  useEffect(() => {
+    const cerrar = () => onClose();
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("mousedown", cerrar);
+    document.addEventListener("scroll", cerrar, true);
+    document.addEventListener("keydown", esc);
+    window.addEventListener("resize", cerrar);
+    return () => {
+      document.removeEventListener("mousedown", cerrar);
+      document.removeEventListener("scroll", cerrar, true);
+      document.removeEventListener("keydown", esc);
+      window.removeEventListener("resize", cerrar);
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      ref={ref}
+      onMouseDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
+      className="fixed z-[200] min-w-[190px] p-1.5 rounded-xl border border-border bg-card shadow-xl animate-in fade-in zoom-in-95 duration-100"
+      style={{ left: pos.x, top: pos.y }}
+    >
+      {state.items.map((it, i) =>
+        it === "sep" ? (
+          <div key={`s${i}`} className="h-px my-1 mx-1.5 bg-border" />
+        ) : (
+          <button
+            key={it.label}
+            disabled={it.disabled}
+            onClick={() => { it.onClick(); onClose(); }}
+            className={cn(
+              "w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left text-sm transition-colors disabled:opacity-35 disabled:cursor-default",
+              it.danger ? "text-destructive hover:bg-destructive/10" : "text-foreground hover:bg-secondary"
+            )}
+          >
+            <it.icon className="w-3.5 h-3.5 shrink-0" />
+            {it.label}
+          </button>
+        )
+      )}
+    </div>,
+    document.body
+  );
+}
+
 export function ServiciosResumenSection() {
   // Carga única de los datos; todo lo demás se deriva en memoria.
   const [allRows,     setAllRows]     = useState<SeguimientoRow[]>([]);
   const [loadingData, setLoadingData] = useState(true);
-
-  // Único filtro de universo que queda: el estado de la OP. Ya no hay
-  // «Solo servicios» / «Todas» / «Marcadas»: todo lo que hay en `seguimiento`
-  // llega por «Traer del Buscador» desde la pestaña «Servicios», así que el
-  // recorte ya lo hizo el usuario al marcar las filas allá. Filtrar de nuevo
-  // por tipo Material/Servicio acá solo podía esconderle algo que eligió a
-  // propósito (por ejemplo, una matrícula mal clasificada en el catálogo).
-  const [filtroAbierto, setFiltroAbierto] = useState(true);
 
   // Pestaña del Buscador que alimenta esta pantalla. Se resuelve por NOMBRE,
   // fija — mismo criterio que la tarjeta «Próximas Entregas» de
@@ -215,29 +284,6 @@ export function ServiciosResumenSection() {
     if (!colOrderLoaded.current) return;
     try { localStorage.setItem(COLORDER_KEY, JSON.stringify(colOrder)); } catch { /* ignorar */ }
   }, [colOrder]);
-
-  // ── Filas fijadas (pin), persistidas por navegador ──────────────────────────
-  const [pinned, setPinned] = useState<Set<string>>(new Set());
-  const pinnedLoaded = useRef(false);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(PINNED_KEY);
-      if (raw) setPinned(new Set(JSON.parse(raw)));
-    } catch { /* ignorar */ }
-    pinnedLoaded.current = true;
-  }, []);
-
-  useEffect(() => {
-    if (!pinnedLoaded.current) return;
-    try { localStorage.setItem(PINNED_KEY, JSON.stringify([...pinned])); } catch { /* ignorar */ }
-  }, [pinned]);
-
-  const togglePin = (id: string) => setPinned(prev => {
-    const n = new Set(prev);
-    n.has(id) ? n.delete(id) : n.add(id);
-    return n;
-  });
 
   // ── Agrupar por OP (toggle) + qué grupos están desplegados ──────────────────
   const [groupByOp, setGroupByOp] = useState(true);
@@ -375,6 +421,34 @@ export function ServiciosResumenSection() {
     setDeletingSelected(false);
   };
 
+  // ── Menú contextual de fila (click derecho) ─────────────────────────────────
+  const [ctxMenu, setCtxMenu] = useState<CtxState | null>(null);
+
+  const abrirMenuFila = (e: ReactMouseEvent, row: SeguimientoRow) => {
+    e.preventDefault();
+    const rowId = String(row.id);
+    const items: (CtxItem | "sep")[] = [
+      {
+        label: "Copiar matrícula",
+        icon: Copy,
+        disabled: !row.matricula,
+        onClick: () => {
+          navigator.clipboard.writeText(String(row.matricula ?? ""))
+            .then(() => toast.success("Copiado."))
+            .catch(() => toast.error("No se pudo copiar."));
+        },
+      },
+      "sep",
+      {
+        label: "Eliminar fila",
+        icon: Trash2,
+        danger: true,
+        onClick: () => handleDeleteRow(rowId),
+      },
+    ];
+    setCtxMenu({ x: e.clientX, y: e.clientY, items });
+  };
+
   /** Relee `seguimiento`. Se usa en la carga inicial y después de sincronizar
    *  desde el Buscador, que inserta filas nuevas en esa tabla. */
   const recargarSeguimiento = async () => {
@@ -404,10 +478,7 @@ export function ServiciosResumenSection() {
   // ── Universo base: todo el seguimiento, más el estado de la OP ────────────
   // Todo el dashboard cuelga de acá: KPIs, tabla y agrupado por OP derivan de
   // baseRows, así que filtrar en este único punto se propaga solo.
-  const baseRows = useMemo(
-    () => (filtroAbierto ? allRows.filter(r => isAbierto(r.estado)) : allRows),
-    [allRows, filtroAbierto]
-  );
+  const baseRows = allRows;
 
   // KPIs fijos (Activos / Vencidos) sobre el universo base.
   const { activos, vencidos } = useMemo(() => {
@@ -451,17 +522,11 @@ export function ServiciosResumenSection() {
       const pct = filtroConsumo / 100;
       res = res.filter(r => { const c = Number(r.cantidad); const s = Number(r.saldo_linea); return c > 0 && s / c <= pct; });
     }
-    // Las filas fijadas van primero (mantienen su orden relativo entre sí).
-    if (pinned.size > 0) {
-      const pin: SeguimientoRow[] = []; const rest: SeguimientoRow[] = [];
-      for (const r of res) (pinned.has(String(r.id)) ? pin : rest).push(r);
-      res = [...pin, ...rest];
-    }
     return res;
-  }, [baseRows, filtroVencer, filtroConsumo, filtroActivos, filtroVencidos, pinned]);
+  }, [baseRows, filtroVencer, filtroConsumo, filtroActivos, filtroVencidos]);
 
   // Reinicia la paginación cuando cambia el conjunto mostrado.
-  useEffect(() => { setTablePage(0); }, [tableRows.length, filtroAbierto, groupByOp]);
+  useEffect(() => { setTablePage(0); }, [tableRows.length, groupByOp]);
 
   // Alertas recientes (por vencer / alto consumo) sobre el universo base.
   const alertas = useMemo(() => {
@@ -542,30 +607,20 @@ export function ServiciosResumenSection() {
   };
 
   // Render de una fila de datos (reutilizado por la vista plana y la agrupada).
-  const renderDataRow = (row: SeguimientoRow, num: number) => {
+  const renderDataRow = (row: SeguimientoRow) => {
     const rowId = String(row.id);
     const isSelected = selected.has(rowId);
-    const isPinned   = pinned.has(rowId);
     return (
       <tr key={rowId}
+        onContextMenu={(e) => abrirMenuFila(e, row)}
         style={{ boxShadow: "inset 0 -1px 0 hsl(var(--border))" }}
         className={cn(
           "transition-colors",
-          isSelected ? "bg-accent/8 hover:bg-accent/12" : isPinned ? "bg-accent/5 hover:bg-accent/10" : "even:bg-secondary/20 hover:bg-secondary/40"
+          isSelected ? "bg-accent/8 hover:bg-accent/12" : "even:bg-secondary/20 hover:bg-secondary/40"
         )}>
         <td className="py-2.5 px-3">
           <input type="checkbox" checked={isSelected} onChange={() => toggleRow(rowId)} className="w-3.5 h-3.5 rounded accent-accent cursor-pointer" />
         </td>
-        <td className="py-2.5 px-1">
-          <button
-            onClick={() => togglePin(rowId)}
-            title={isPinned ? "Quitar de fijadas" : "Fijar arriba"}
-            className={cn("w-5 h-5 flex items-center justify-center rounded transition-colors", isPinned ? "text-accent" : "text-muted-foreground/30 hover:text-muted-foreground")}
-          >
-            <Pin className="w-3.5 h-3.5" strokeWidth={2} fill={isPinned ? "currentColor" : "none"} />
-          </button>
-        </td>
-        <td className="py-2.5 px-3 text-muted-foreground">{num}</td>
         {orderedCols.map(c => {
           if (c.db === "dias_vencer") {
             const dias  = diasParaVencer(row.fecha_pactada, todayRef);
@@ -623,11 +678,6 @@ export function ServiciosResumenSection() {
             </td>
           );
         })}
-        <td className="py-2.5 px-3">
-          <button onClick={() => handleDeleteRow(rowId)} className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all">
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </td>
       </tr>
     );
   };
@@ -657,24 +707,11 @@ export function ServiciosResumenSection() {
             Traer del Buscador
           </button>
 
-          <button
-            onClick={() => setFiltroAbierto(v => !v)}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all",
-              filtroAbierto
-                ? "border-success/40 bg-success/15 text-success shadow-sm"
-                : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-success/30"
-            )}
-            title="Solo líneas con OP abierta"
-          >
-            <LockOpen className="w-4 h-4" />Abierto
-          </button>
         </div>
         <p className="text-xs text-muted-foreground">
           {tabActiva
             ? <>Desde la pestaña <span className="text-foreground font-medium">{tabActiva.nombre}</span></>
             : "Sin pestaña «Servicios» en el Buscador"}
-          {filtroAbierto && " · OP abierta"}
           {!loadingData && <> · <span className="text-foreground font-medium">{baseRows.length.toLocaleString("es-AR")}</span> líneas</>}
         </p>
       </div>
@@ -792,9 +829,6 @@ export function ServiciosResumenSection() {
               <p className="text-xs text-muted-foreground mt-0.5">
                 {tableRows.length} resultado{tableRows.length !== 1 ? "s" : ""}
                 {groupByOp && <> · {groups.length} OP</>}
-                {pinned.size > 0 && (
-                  <> · <Pin className="w-3 h-3 inline -mt-0.5" fill="currentColor" strokeWidth={2} /> {pinned.size} fijada{pinned.size !== 1 ? "s" : ""}</>
-                )}
               </p>
             )}
           </div>
@@ -887,8 +921,6 @@ export function ServiciosResumenSection() {
                         title="Seleccionar todos en esta página"
                       />
                     </th>
-                    <th className="sticky top-0 z-10 bg-panel-header border-b border-border py-2.5 px-1" title="Fijar arriba" />
-                    <th className="sticky top-0 z-10 bg-panel-header border-b border-border py-2.5 px-3 text-left text-muted-foreground font-semibold">#</th>
                     {orderedCols.map(c => (
                       <th
                         key={c.db}
@@ -961,7 +993,6 @@ export function ServiciosResumenSection() {
                         )}
                       </th>
                     ))}
-                    <th className="sticky top-0 z-10 bg-panel-header border-b border-border w-10" />
                   </tr>
                 </thead>
                 <tbody>
@@ -975,7 +1006,7 @@ export function ServiciosResumenSection() {
                               style={{ boxShadow: "inset 0 -1px 0 hsl(var(--border))" }}
                               className="cursor-pointer bg-secondary/40 hover:bg-secondary/60 transition-colors"
                             >
-                              <td colSpan={orderedCols.length + 4} className="py-2 px-3">
+                              <td colSpan={orderedCols.length + 1} className="py-2 px-3">
                                 <div className="flex items-center gap-2">
                                   {isExp ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
                                   <span className="font-semibold text-foreground tabular-nums">OP {g.op}</span>
@@ -988,11 +1019,11 @@ export function ServiciosResumenSection() {
                                 </div>
                               </td>
                             </tr>
-                            {isExp && g.rows.map((r, i) => renderDataRow(r, i + 1))}
+                            {isExp && g.rows.map((r) => renderDataRow(r))}
                           </Fragment>
                         );
                       })
-                    : pagedRows.map((row, idx) => renderDataRow(row, tablePage * PAGE_SIZE + idx + 1))
+                    : pagedRows.map((row) => renderDataRow(row))
                   }
                 </tbody>
               </table>
@@ -1066,6 +1097,8 @@ export function ServiciosResumenSection() {
           )}
         </div>
       </div>
+
+      {ctxMenu && <RowContextMenu state={ctxMenu} onClose={() => setCtxMenu(null)} />}
     </div>
   );
 }
