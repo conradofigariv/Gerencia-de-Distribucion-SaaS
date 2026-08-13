@@ -3,10 +3,10 @@ import { normArticulo } from "@/lib/tableroOp";
 
 // ─── Construcción de filas de `seguimiento` ──────────────────────────────────
 //
-// Estas piezas vivían dentro de `servicios-carga.tsx` (la pantalla «Crear
-// seguimiento»). Se extrajeron acá porque ahora hay un SEGUNDO camino que
-// escribe en `seguimiento`: enviar filas marcadas desde una pestaña del
-// Buscador. Los dos tienen que producir exactamente la misma fila.
+// Estas piezas vivían dentro de la pantalla «Crear seguimiento» (retirada:
+// el único camino para escribir en `seguimiento` es ahora enviar filas
+// marcadas desde una pestaña del Buscador — ver `enviarMarcadasASeguimiento`
+// en `lib/buscadorTabs.ts`).
 //
 // ⚠ Es importante que sea el MISMO cálculo y no una copia parecida: los KPIs y
 //   las alertas del Resumen cuelgan de `estado_plazo`, `estado_cantidades`,

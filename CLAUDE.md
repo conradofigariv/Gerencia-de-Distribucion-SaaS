@@ -66,9 +66,7 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
 | `servicios-planillas` | servicios-planillas.tsx | (raíz) | Carga de planillas Excel: OP, QW, MATRICULAS | — |
 | `matriculas` | matriculas.tsx | Matrículas | Catálogo de matrículas: CRUD manual, orden, export CSV | — |
 | `matriculas-familias` | matriculas-familias.tsx | Matrículas | Familias como entidad: carga masiva por pegado + selección del catálogo | [`docs/matriculas-familias.md`](docs/matriculas-familias.md) |
-| `servicios-resumen` | servicios-resumen.tsx | Control de servicios | Alertas de vencimiento y consumo por OP/zona | — |
-| `servicios-tabla` | servicios-tabla.tsx | Control de servicios | Tabla completa de seguimiento de servicios | — |
-| `servicios-carga` | servicios-carga.tsx | Control de servicios | Creación manual de filas de seguimiento | — |
+| `servicios-resumen` | servicios-resumen.tsx | (raíz, ítem único — ya no es grupo) | KPIs/alertas de vencimiento y consumo, alimentado por lo marcado en la pestaña «Servicios» del Buscador (botón «Traer del Buscador») | — |
 | `stock-zona` | stock-zona.tsx | Control de servicios | Stock de materiales por zona (carga por texto) | [`docs/stock-zona.md`](docs/stock-zona.md) |
 | `transformadores-resumen` | transformadores-resumen.tsx | Stock de Transformadores | KPIs, gráficos, alarmas de stock de transformadores | — |
 | `transformadores-carga` | transformadores-carga.tsx | Stock de Transformadores | Carga de planilla de reserva de transformadores | — |
@@ -85,9 +83,7 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
 | Sección | Tabla(s) |
 |---|---|
 | servicios-planillas | `planillas_op` (planilla «Envíos»), `planillas_qw`, `planillas_matriculas` |
-| servicios-carga | `filas_manuales` (staging de armado) → escribe en `seguimiento` |
-| servicios-tabla | `seguimiento` |
-| servicios-resumen | `seguimiento` (lectura + edición inline), `matriculas` + `stock_article_families` (para el tipo Material/Servicio), `buscador_tabs` + `buscador_tab_filas` (filtro por pestaña) |
+| servicios-resumen | `seguimiento` (lectura + edición inline; se reescribe desde `buscador_tab_filas` con `origen='buscador'` — ver `enviarMarcadasASeguimiento` en `lib/buscadorTabs.ts`) |
 | matriculas | `matriculas` |
 | matriculas-familias | `familias`, `familia_matriculas`, `matricula_tipo`, `matriculas` (lectura del catálogo) — SQL en [`docs/matriculas-familias.md`](docs/matriculas-familias.md) |
 | stock-zona | `stock_uploads`, `familias` + `familia_matriculas` + `matricula_tipo` (lectura para el filtro), `matriculas` (lectura del catálogo) — SQL en [`docs/stock-zona.md`](docs/stock-zona.md) |
@@ -111,7 +107,7 @@ Cada sección de carga de datos puede tener un recordatorio configurable.
 - **Tabla Supabase:** `reminder_config(key, name, user_id, freq_days, time, last_updated_at)`
 - **Lib:** `lib/reminders.ts` — exporta `markUpdated(key, name, userId)`, `fetchReminders(userId)`, `upsertConfig(key, name, userId, freq, time)`
 - **Bell global:** `components/dashboard/reminder-bell.tsx` — lee todas las claves en `ALL_REMINDER_KEYS` y alerta si alguna está vencida. Cada notificación tiene una X para descartarla (sesión actual).
-- **Claves registradas hoy:** `planillas-OP`, `planillas-QW`, `planillas-MATRICULAS`, `servicios-carga`, `transformadores-carga` (ver `ALL_REMINDER_KEYS` en `reminder-bell.tsx` para la lista completa y actualizada).
+- **Claves registradas hoy:** `planillas-OP`, `planillas-QW`, `planillas-MATRICULAS`, `transformadores-carga` (ver `ALL_REMINDER_KEYS` en `reminder-bell.tsx` para la lista completa y actualizada).
 
 ### Patrón para agregar recordatorio a una sección nueva
 1. Importar `createPortal` de `react-dom`, `BellRing` de `lucide-react`, y `markUpdated`, `fetchReminders`, `upsertConfig` de `@/lib/reminders`.

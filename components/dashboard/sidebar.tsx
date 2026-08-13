@@ -89,17 +89,7 @@ const navItems: NavItemDef[] = [
       { id: "matriculas-familias", label: "Familias", icon: Layers },
     ],
   },
-  {
-    kind: "group",
-    id: "servicios",
-    label: "Control de servicios",
-    icon: Server,
-    children: [
-      { id: "servicios-resumen", label: "Resumen de Stock",         icon: LayoutGrid },
-      { id: "servicios-tabla",   label: "Lista de seguimiento", icon: Table2 },
-      { id: "servicios-carga",   label: "Crear seguimiento",    icon: UploadCloud },
-    ],
-  },
+  { kind: "link", id: "servicios-resumen", label: "Control de servicios", icon: Server },
   { kind: "link", id: "stock-zona", label: "Stock por Zona", icon: Package },
   {
     kind: "group",
@@ -165,12 +155,6 @@ export const SIDEBAR_SECTIONS: { id: Section; label: string; group?: string }[] 
   )
   .filter((s) => s.id !== "settings");
 
-const SERVICIOS_SECTIONS: Section[] = [
-  "servicios-resumen",
-  "servicios-tabla",
-  "servicios-carga",
-];
-
 const SIC_SECTIONS: Section[] = ["sic-diagrama"];
 
 const TRANSFORMADORES_SECTIONS: Section[] = [
@@ -229,7 +213,6 @@ export function Sidebar({
       .toUpperCase() || userEmail?.[0]?.toUpperCase() || "U";
   const handleLogout = () => { supabase.auth.signOut(); };
   const initialGroups = [
-    ...(SERVICIOS_SECTIONS.includes(activeSection)      ? ["servicios"]      : []),
     ...(SIC_SECTIONS.includes(activeSection)            ? ["sic"]            : []),
     ...(TRANSFORMADORES_SECTIONS.includes(activeSection)? ["transformadores"] : []),
     ...(INDICE_IDO_SECTIONS.includes(activeSection)     ? ["indice-ido"]      : []),
@@ -263,9 +246,6 @@ export function Sidebar({
 
   // Auto-expand group when a child section becomes active
   useEffect(() => {
-    if (SERVICIOS_SECTIONS.includes(activeSection)) {
-      setExpandedGroups((prev) => prev.includes("servicios") ? prev : [...prev, "servicios"]);
-    }
     if (SIC_SECTIONS.includes(activeSection)) {
       setExpandedGroups((prev) => prev.includes("sic") ? prev : [...prev, "sic"]);
     }

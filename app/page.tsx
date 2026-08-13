@@ -19,8 +19,6 @@ import { ForecastingSection } from "@/components/dashboard/sections/forecasting"
 import { ReportsSection } from "@/components/dashboard/sections/reports";
 import { SettingsSection } from "@/components/dashboard/sections/settings";
 import { ServiciosResumenSection } from "@/components/dashboard/sections/servicios-resumen";
-import { ServiciosTablaSection } from "@/components/dashboard/sections/servicios-tabla";
-import { ServiciosCargaSection } from "@/components/dashboard/sections/servicios-carga";
 import { ServiciosPlanillasSection } from "@/components/dashboard/sections/servicios-planillas";
 import { TransformadoresCargaSection } from "@/components/dashboard/sections/transformadores-carga";
 import { TransformadoresConsumoCargaSection } from "@/components/dashboard/sections/transformadores-consumo-carga";
@@ -48,7 +46,7 @@ const SicDiagramaSection = dynamic(
 export type Section =
   | "overview" | "pipeline" | "deals" | "customers" | "team"
   | "forecasting" | "reports" | "settings"
-  | "servicios-resumen" | "servicios-tabla" | "servicios-carga" | "servicios-planillas"
+  | "servicios-resumen" | "servicios-planillas"
   | "sic-diagrama"
   | "transformadores-carga" | "transformadores-tabla" | "transformadores-resumen"
   | "transformadores-consumo-carga" | "transformadores-consumo"
@@ -182,8 +180,6 @@ export default function Dashboard() {
       case "reports":            return <ReportsSection />;
       case "settings":               return <SettingsSection user={user} onProfileUpdate={p => setHeaderProfile(prev => ({ ...(prev ?? { nombre: "", apellido: "", avatar_url: "" }), ...p }))} />;
       case "servicios-resumen":      return <ServiciosResumenSection />;
-      case "servicios-tabla":        return <ServiciosTablaSection />;
-      case "servicios-carga":        return <ServiciosCargaSection />;
       case "servicios-planillas":    return <ServiciosPlanillasSection />;
       case "sic-diagrama":           return <SicDiagramaSection />;
       case "transformadores-carga":  return <TransformadoresCargaSection />;
