@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { buscar, reconstruirIndice, estadoIndice, rowKey, fechaMs, type BusquedaRow } from "@/lib/busqueda";
+import { buscar, reconstruirIndice, estadoIndice, rowKey, fechaMs, type BusquedaRow, type CampoBusqueda } from "@/lib/busqueda";
 import { getPreference, setPreference } from "@/lib/userPreferences";
 import {
   fetchOpDatos, upsertOpDato, aplicarOpDatos, normOp, OP_MANUAL_COLS, type OpDato,
@@ -460,6 +460,17 @@ const AGRUPAR_OPTIONS: { value: AgruparPor; label: string; icon: ElementType }[]
   { value: "numero_op",  label: "OP",        icon: Package },
 ];
 
+/** Opciones del selector de campo, al lado de la caja de búsqueda. Sin elegir
+ *  ninguna (null) busca en todos los campos, que es el comportamiento de
+ *  siempre — este selector solo AFINA, nunca es obligatorio. */
+const CAMPO_OPTIONS: { value: CampoBusqueda; label: string; icon: ElementType }[] = [
+  { value: "numero_sic",     label: "SIC",         icon: FileText },
+  { value: "sic_preparador", label: "Preparador",  icon: Users },
+  { value: "numero_op",      label: "OP",          icon: Package },
+  { value: "articulo",       label: "Matrícula",   icon: Tag },
+  { value: "descripcion",    label: "Descripción", icon: Rows3 },
+];
+
 const SIN_DATO = "— (sin dato)";
 
 /** Clave de grupo de una fila según el criterio elegido. */
@@ -877,6 +888,11 @@ function ShareDialog({ tabId, tabNombre, ownerId, onClose }: { tabId: string; ta
 
 export function BuscadorSection() {
   const [query, setQuery]     = useState("");
+  // Campo al que se acota la búsqueda (selector al lado de la caja). null =
+  // todos los campos, arranca así siempre — es un afinador, no un requisito.
+  const [campoBusqueda, setCampoBusqueda] = useState<CampoBusqueda | null>(null);
+  const [campoMenuOpen, setCampoMenuOpen] = useState(false);
+  const campoMenuRef = useRef<HTMLDivElement>(null);
   const [rows, setRows]       = useState<BusquedaRow[]>([]);
   // Datos manuales de la OP (descripción + zona real), por OP normalizada. Se
   // superponen a lo que traiga el índice o la copia congelada de la pestaña,
@@ -1278,6 +1294,13 @@ export function BuscadorSection() {
   }, [agruparMenuOpen]);
 
   useEffect(() => {
+    if (!campoMenuOpen) return;
+    const h = (e: MouseEvent) => { if (!campoMenuRef.current?.contains(e.target as Node)) setCampoMenuOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [campoMenuOpen]);
+
+  useEffect(() => {
     if (!indiceMenuOpen) return;
     const h = (e: MouseEvent) => { if (!indiceMenuRef.current?.contains(e.target as Node)) setIndiceMenuOpen(false); };
     document.addEventListener("mousedown", h);
@@ -1469,13 +1492,13 @@ export function BuscadorSection() {
     const q = query.trim();
     setLoading(true);
     const t = setTimeout(() => {
-      buscar(q)
+      buscar(q, undefined, campoBusqueda)
         .then((data) => { setRows(data); setBuscado(true); })
         .catch((e) => toast.error(`Error al buscar: ${e instanceof Error ? e.message : String(e)}`))
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(t);
-  }, [query, activeTab]);
+  }, [query, activeTab, campoBusqueda]);
 
   const handleReconstruir = async () => {
     // Confirmación explícita: son varios minutos y no es algo que haga falta
@@ -1819,10 +1842,19 @@ export function BuscadorSection() {
   const tabFilasFiltradas = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return tabFilasConOp;
+    // Con campo elegido, se mira solo esa clave del dato copiado — misma
+    // lista de campos y mismas claves que usa gd_buscar del lado del índice,
+    // así el selector se comporta igual adentro y afuera de una pestaña.
+    if (campoBusqueda) {
+      return tabFilasConOp.filter((f) => {
+        const v = f.datos[campoBusqueda];
+        return v != null && String(v).toLowerCase().includes(q);
+      });
+    }
     return tabFilasConOp.filter((f) =>
       Object.values(f.datos).some((v) => v != null && String(v).toLowerCase().includes(q))
     );
-  }, [tabFilasConOp, query]);
+  }, [tabFilasConOp, query, campoBusqueda]);
 
   const tabFilasOrdenadas = useMemo(() => {
     if (!sortCol) return tabFilasFiltradas;      // sin sort → orden manual
@@ -2086,13 +2118,81 @@ export function BuscadorSection() {
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="SIC, OP, matrícula, preparador, proveedor, zona…"
+              placeholder={
+                campoBusqueda
+                  ? `Buscar en ${CAMPO_OPTIONS.find((o) => o.value === campoBusqueda)?.label}…`
+                  : "SIC, OP, matrícula, preparador, proveedor, zona…"
+              }
               className="flex-1 bg-transparent border-none outline-none text-[13.5px] text-foreground placeholder:text-muted-foreground/45"
             />
             {query && (
               <button onClick={() => setQuery("")} className="text-muted-foreground hover:text-foreground shrink-0">
                 <X className="w-3.5 h-3.5" />
               </button>
+            )}
+          </div>
+
+          {/* Selector de campo — afina la búsqueda a una sola columna. Sin
+              elegir nada (default) busca en todos los campos, igual que
+              siempre; funciona tanto en el índice maestro como dentro de una
+              pestaña (ver tabFilasFiltradas). */}
+          <div className="relative shrink-0" ref={campoMenuRef}>
+            <button
+              onClick={() => setCampoMenuOpen((v) => !v)}
+              title="Acotar la búsqueda a un solo campo"
+              className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors"
+              style={{
+                height: TOOLBAR_H,
+                background: campoBusqueda ? "oklch(0.28 0.02 295)" : "oklch(0.16 0.005 270)",
+                border: `1px solid ${campoBusqueda ? "oklch(0.55 0.20 295 / 0.45)" : "oklch(1 0 0 / 0.07)"}`,
+                color: campoBusqueda ? "oklch(0.92 0 0)" : "oklch(0.65 0 0)", cursor: "pointer",
+              }}
+            >
+              {(() => {
+                const opt = CAMPO_OPTIONS.find((o) => o.value === campoBusqueda);
+                const Icon = opt?.icon ?? Search;
+                return <><Icon className="w-3.5 h-3.5" />{opt?.label ?? "Todo el índice"}</>;
+              })()}
+              <ChevronDown className="w-3 h-3 opacity-60" />
+            </button>
+
+            {campoMenuOpen && (
+              <div
+                className="absolute left-0 top-[calc(100%+6px)] z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
+                style={{
+                  minWidth: 180, background: "oklch(0.205 0.005 270)", border: PANEL_BORDER,
+                  borderRadius: 10, padding: 6, boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6)",
+                }}
+              >
+                <button
+                  onClick={() => { setCampoBusqueda(null); setCampoMenuOpen(false); }}
+                  className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 rounded-[7px] text-[13px] transition-colors"
+                  style={{ color: campoBusqueda === null ? "oklch(0.92 0 0)" : "oklch(0.75 0 0)", background: campoBusqueda === null ? "oklch(0.28 0.02 295)" : "transparent" }}
+                  onMouseEnter={(e) => { if (campoBusqueda !== null) e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
+                  onMouseLeave={(e) => { if (campoBusqueda !== null) e.currentTarget.style.background = "transparent"; }}
+                >
+                  <Search className="w-3.5 h-3.5 shrink-0" />
+                  Todo el índice
+                </button>
+                <div style={{ height: 1, background: "oklch(1 0 0 / 0.07)", margin: "4px 6px" }} />
+                {CAMPO_OPTIONS.map((o) => {
+                  const Icon = o.icon;
+                  const activo = o.value === campoBusqueda;
+                  return (
+                    <button
+                      key={o.value}
+                      onClick={() => { setCampoBusqueda(o.value); setCampoMenuOpen(false); }}
+                      className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 rounded-[7px] text-[13px] transition-colors"
+                      style={{ color: activo ? "oklch(0.92 0 0)" : "oklch(0.75 0 0)", background: activo ? "oklch(0.28 0.02 295)" : "transparent" }}
+                      onMouseEnter={(e) => { if (!activo) e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
+                      onMouseLeave={(e) => { if (!activo) e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <Icon className="w-3.5 h-3.5 shrink-0" />
+                      {o.label}
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
 

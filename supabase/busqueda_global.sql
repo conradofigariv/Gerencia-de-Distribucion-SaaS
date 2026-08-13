@@ -155,7 +155,12 @@ $$;
 -- se borra primero la función (más abajo se vuelve a crear). Sin esto, correr
 -- el script una segunda vez falla con «cannot drop table busqueda_index
 -- because other objects depend on it».
+--
+-- Se borran las DOS firmas: la vieja de 2 argumentos (previa al selector de
+-- campo) y la de 3 que la reemplaza, para que reejecutar este archivo sea
+-- idempotente y no queden las dos versiones conviviendo como sobrecargas.
 DROP FUNCTION IF EXISTS gd_buscar(text, integer);
+DROP FUNCTION IF EXISTS gd_buscar(text, integer, text);
 DROP TABLE    IF EXISTS busqueda_index;
 
 CREATE TABLE busqueda_index (
@@ -647,10 +652,15 @@ $$;
 ALTER FUNCTION gd_reconstruir_busqueda() SET statement_timeout = '600s';
 
 -- ─── Búsqueda ───────────────────────────────────────────────────────────────
--- Coincidencia por subcadena en cualquier campo. Ordena poniendo primero las
+-- Coincidencia por subcadena en cualquier campo (o en uno solo, si `p_campo`
+-- lo pide — ver selector de campo del Buscador). Ordena poniendo primero las
 -- coincidencias exactas de matrícula o de OP, después el resto.
-
-CREATE OR REPLACE FUNCTION gd_buscar(p_q text, p_limite integer DEFAULT 500)
+--
+-- `p_campo` es un valor de una lista fija (comparado con `=` contra literales,
+-- nunca concatenado a SQL), así que no hay riesgo de inyección por más que
+-- venga de la URL/cliente. Un valor desconocido cae al comportamiento de
+-- siempre (todos los campos) en vez de no devolver nada.
+CREATE OR REPLACE FUNCTION gd_buscar(p_q text, p_limite integer DEFAULT 500, p_campo text DEFAULT NULL)
 RETURNS SETOF busqueda_index
 LANGUAGE sql
 STABLE
@@ -658,7 +668,14 @@ AS $$
   SELECT *
     FROM busqueda_index
    WHERE gd_norm_texto(COALESCE(p_q, '')) = ''
-      OR busqueda LIKE '%' || gd_norm_texto(p_q) || '%'
+      OR CASE p_campo
+           WHEN 'numero_sic'     THEN gd_norm_texto(numero_sic)
+           WHEN 'sic_preparador' THEN gd_norm_texto(sic_preparador)
+           WHEN 'numero_op'      THEN gd_norm_texto(numero_op)
+           WHEN 'articulo'       THEN gd_norm_texto(articulo)
+           WHEN 'descripcion'    THEN gd_norm_texto(descripcion)
+           ELSE busqueda
+         END LIKE '%' || gd_norm_texto(p_q) || '%'
    ORDER BY
      -- Sin búsqueda (pantalla de entrada al Buscador): las OP más nuevas
      -- primero. Es un CASE que solo «pesa» en este modo — con texto buscado
@@ -686,6 +703,6 @@ AS $$
 $$;
 
 GRANT EXECUTE ON FUNCTION gd_reconstruir_busqueda()          TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION gd_buscar(text, integer)           TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION gd_buscar(text, integer, text)     TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION gd_norm_articulo(text)             TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION gd_norm_texto(text)                TO anon, authenticated;

@@ -152,10 +152,18 @@ export async function buscarPorMatriculas(
   return out.slice(0, limite);
 }
 
+/**
+ * Campo único al que puede acotarse la búsqueda (selector al lado de la caja
+ * de texto). `null`/`undefined` = todos los campos, el comportamiento de
+ * siempre. Las claves son las mismas columnas de `BusquedaRow` — no hace
+ * falta traducción entre lo que se muestra y lo que se manda.
+ */
+export type CampoBusqueda = "numero_sic" | "sic_preparador" | "numero_op" | "articulo" | "descripcion";
+
 /** Ejecuta la búsqueda. `q` vacío devuelve las primeras filas del índice. */
-export async function buscar(q: string, limite = 500): Promise<BusquedaRow[]> {
+export async function buscar(q: string, limite = 500, campo?: CampoBusqueda | null): Promise<BusquedaRow[]> {
   const { data, error } = await supabase
-    .rpc("gd_buscar", { p_q: q, p_limite: limite })
+    .rpc("gd_buscar", { p_q: q, p_limite: limite, p_campo: campo ?? null })
     .range(0, Math.max(limite - 1, 0));
   if (error) throw new Error(error.message);
   return (data ?? []) as BusquedaRow[];
