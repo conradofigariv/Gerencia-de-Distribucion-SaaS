@@ -228,3 +228,62 @@ export async function estadoIndice(): Promise<{ filas: number; actualizado: stri
     actualizado: (data as { updated_at: string }[] | null)?.[0]?.updated_at ?? null,
   };
 }
+
+// ─── Detalle de entregas de una línea ────────────────────────────────────────
+// Lo comprometido (envíos de planillas_op) contra lo entregado realmente
+// (movimientos 'Entregar'), para la fila desplegable del Buscador. Ver
+// supabase/buscador_entregas.sql para por qué es una consulta bajo demanda y
+// no columnas precalculadas del índice.
+
+/** Un envío de la línea: cuánto se comprometió y para cuándo. */
+export interface EnvioLinea {
+  envio:         string | null;
+  cantidad:      number | null;
+  /** Texto crudo del Excel — se formatea con `fechaMs`/`toLocaleDateString`. */
+  fecha_pactada: string | null;
+}
+
+/** Un movimiento 'Entregar' concreto. */
+export interface EntregaLinea {
+  fecha:   string;   // ISO YYYY-MM-DD
+  importe: number;
+}
+
+export interface DetalleEntregas {
+  envios:   EnvioLinea[];
+  entregas: EntregaLinea[];
+  totales: {
+    entregado:    number;
+    n_entregas:   number;
+    comprometido: number;
+  };
+}
+
+/**
+ * Trae el detalle de entregas de UNA línea. `desde`/`hasta` son opcionales:
+ * sin ellos devuelve todo el histórico, que es como abre la fila desplegable.
+ *
+ * ⚠ El grano de `entregas` es la LÍNEA, no el envío: las transacciones no
+ *   tienen dimensión de envío. Por eso dos filas del Buscador que solo
+ *   difieran en el envío van a mostrar las mismas entregas.
+ */
+export async function fetchEntregasLinea(
+  numeroOp: string,
+  articulo: string,
+  linea: string | null,
+  desde?: string | null,
+  hasta?: string | null,
+): Promise<DetalleEntregas> {
+  const { data, error } = await supabase.rpc("gd_entregas_linea", {
+    p_numero_op: numeroOp,
+    p_articulo:  articulo,
+    p_linea:     linea ?? "",
+    p_desde:     desde ?? null,
+    p_hasta:     hasta ?? null,
+  });
+  if (error) throw new Error(error.message);
+
+  // La función devuelve una sola fila; si la OP/línea no existe, ninguna.
+  const row = (data as DetalleEntregas[] | null)?.[0];
+  return row ?? { envios: [], entregas: [], totales: { entregado: 0, n_entregas: 0, comprometido: 0 } };
+}
