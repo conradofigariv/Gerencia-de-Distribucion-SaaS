@@ -161,6 +161,7 @@ $$;
 -- idempotente y no queden las dos versiones conviviendo como sobrecargas.
 DROP FUNCTION IF EXISTS gd_buscar(text, integer);
 DROP FUNCTION IF EXISTS gd_buscar(text, integer, text);
+DROP FUNCTION IF EXISTS gd_buscar(text, integer, text, boolean);
 DROP TABLE    IF EXISTS busqueda_index;
 
 CREATE TABLE busqueda_index (
@@ -660,14 +661,18 @@ ALTER FUNCTION gd_reconstruir_busqueda() SET statement_timeout = '600s';
 -- nunca concatenado a SQL), así que no hay riesgo de inyección por más que
 -- venga de la URL/cliente. Un valor desconocido cae al comportamiento de
 -- siempre (todos los campos) en vez de no devolver nada.
-CREATE OR REPLACE FUNCTION gd_buscar(p_q text, p_limite integer DEFAULT 500, p_campo text DEFAULT NULL)
+CREATE OR REPLACE FUNCTION gd_buscar(p_q text, p_limite integer DEFAULT 500, p_campo text DEFAULT NULL, p_solo_sic boolean DEFAULT false)
 RETURNS SETOF busqueda_index
 LANGUAGE sql
 STABLE
 AS $$
   SELECT *
     FROM busqueda_index
-   WHERE gd_norm_texto(COALESCE(p_q, '')) = ''
+   -- Vista «SICs de Soler»: solo las filas que tienen SIC asociada. Va como
+   -- filtro aparte y no como p_campo porque no depende del texto buscado —
+   -- acota el UNIVERSO, y se combina con cualquier búsqueda encima.
+   WHERE (NOT p_solo_sic OR numero_sic IS NOT NULL)
+     AND (gd_norm_texto(COALESCE(p_q, '')) = ''
       OR CASE p_campo
            WHEN 'numero_sic'     THEN gd_norm_texto(numero_sic)
            WHEN 'sic_preparador' THEN gd_norm_texto(sic_preparador)
@@ -675,7 +680,7 @@ AS $$
            WHEN 'articulo'       THEN gd_norm_texto(articulo)
            WHEN 'descripcion'    THEN gd_norm_texto(descripcion)
            ELSE busqueda
-         END LIKE '%' || gd_norm_texto(p_q) || '%'
+         END LIKE '%' || gd_norm_texto(p_q) || '%')
    ORDER BY
      -- Sin búsqueda (pantalla de entrada al Buscador): las OP más nuevas
      -- primero. Es un CASE que solo «pesa» en este modo — con texto buscado
@@ -703,6 +708,6 @@ AS $$
 $$;
 
 GRANT EXECUTE ON FUNCTION gd_reconstruir_busqueda()          TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION gd_buscar(text, integer, text)     TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION gd_buscar(text, integer, text, boolean) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION gd_norm_articulo(text)             TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION gd_norm_texto(text)                TO anon, authenticated;

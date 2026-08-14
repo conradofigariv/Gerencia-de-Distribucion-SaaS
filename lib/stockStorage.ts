@@ -97,3 +97,39 @@ export function parseTSV(text: string): { rows: CompraRow[]; error?: string } {
 
   return { rows };
 }
+
+/**
+ * Stock de una zona como mapa `matrícula normalizada → En Mano`.
+ *
+ * Lo usa el Buscador para mostrar el stock al lado de cada fila. Se cruza por
+ * la matrícula NORMALIZADA (sin el sufijo `.0`) porque los dos lados vienen de
+ * exports distintos: `stock_uploads` guarda el número crudo tal cual lo escupe
+ * SIGA ("00000020.0") y el índice guarda las dos formas. Cruzar por el crudo
+ * fallaría en cuanto un export traiga el sufijo y el otro no.
+ *
+ * `enMano` viene como texto y puede traer coma decimal y puntos de miles
+ * (formato es-AR), así que no alcanza con Number().
+ */
+export async function getStockZonaMap(zona: string): Promise<Map<string, number>> {
+  const { data, error } = await supabase
+    .from("stock_uploads")
+    .select("rows")
+    .eq("zona", zona)
+    .maybeSingle();
+  if (error || !data) return new Map();
+
+  const map = new Map<string, number>();
+  for (const r of ((data.rows ?? []) as CompraRow[])) {
+    const key = String(r.articulo ?? "").trim().replace(/\.0+$/, "");
+    if (!key) continue;
+    let s = String(r.enMano ?? "").trim().replace(/\s/g, "");
+    if (!s) continue;
+    if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+    const n = Number(s);
+    if (!Number.isFinite(n)) continue;
+    // Una matrícula puede repetirse dentro de la misma zona (varios depósitos):
+    // se acumula en vez de pisarse, que es lo que hace el Resumen de stock.
+    map.set(key, (map.get(key) ?? 0) + n);
+  }
+  return map;
+}

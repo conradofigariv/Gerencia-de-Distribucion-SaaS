@@ -27,6 +27,7 @@ import {
   type BuscadorTab, type TabFila, type TabConfig, type AgruparPor,
   type Permiso, type Colaborador, type PerfilBasico,
 } from "@/lib/buscadorTabs";
+import { getStockZonaMap } from "@/lib/stockStorage";
 import { supabase } from "@/lib/supabaseClient";
 
 // ─── Estilos beast pure (alineados con Stock por Zona / Tablero OP) ─────────
@@ -433,6 +434,12 @@ const COLS: ColDef[] = [
   { key: "tx_movimientos",  label: "N° mov.",     group: "tx", num: true },
   { key: "tx_primera_fecha", label: "F. 1er mov.",  group: "tx", mono: true, render: (r) => fmtFechaISO(r.tx_primera_fecha) },
   { key: "tx_ultima_fecha",  label: "F. últ. mov.", group: "tx", mono: true, render: (r) => fmtFechaISO(r.tx_ultima_fecha) },
+
+  // ── Stock (Stock por Zona) ──
+  // Va en el grupo de matrícula y no en el de OP a propósito: es el stock de
+  // la MATRÍCULA en ZA, no de esta OP ni de este envío. Se repite igual en
+  // todas las filas que compartan matrícula — no se puede sumar la columna.
+  { key: "stock_za", label: "Stock ZA", group: "cat", num: true },
 ];
 
 // ─── Columnas de seguimiento (solo dentro de una pestaña) ───────────────────
@@ -553,6 +560,7 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   tx_movimientos:      85,
   tx_primera_fecha:    120,
   tx_ultima_fecha:     120,
+  stock_za:            95,
 };
 
 const COLUMNS_KEY = "buscador-columns";
@@ -986,6 +994,15 @@ export function BuscadorSection() {
   const [campoBusqueda, setCampoBusqueda] = useState<CampoBusqueda | null>(null);
   const [campoMenuOpen, setCampoMenuOpen] = useState(false);
   const campoMenuRef = useRef<HTMLDivElement>(null);
+
+  // Vista fija «SICs de Soler»: acota el índice a las filas que tienen SIC.
+  // No es una pestaña de usuario (no se comparte, no se edita, no se copia):
+  // es el mismo índice maestro con un filtro de universo, así que se actualiza
+  // sola con cada carga de la planilla SIC.
+  const [vistaSic, setVistaSic] = useState(false);
+
+  // Stock de ZA por matrícula, cruzado en el cliente (ver getStockZonaMap).
+  const [stockZA, setStockZA] = useState<Map<string, number>>(new Map());
 
   // ── Detalle de entregas (fila desplegable) ────────────────────────────────
   // Rango de fechas que acota los movimientos 'Entregar' del detalle, como el
@@ -1598,13 +1615,13 @@ export function BuscadorSection() {
     const q = query.trim();
     setLoading(true);
     const t = setTimeout(() => {
-      buscar(q, undefined, campoBusqueda)
+      buscar(q, undefined, campoBusqueda, vistaSic)
         .then((data) => { setRows(data); setBuscado(true); })
         .catch((e) => toast.error(`Error al buscar: ${e instanceof Error ? e.message : String(e)}`))
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(t);
-  }, [query, activeTab, campoBusqueda]);
+  }, [query, activeTab, campoBusqueda, vistaSic]);
 
   /**
    * Abre/cierra el detalle de entregas de una fila. Se consulta bajo demanda
@@ -1631,6 +1648,14 @@ export function BuscadorSection() {
     setDetalles(new Map());
     setFilaAbierta(null);
   }, [entregasDesde, entregasHasta]);
+
+  // El stock se trae una sola vez y se cruza en memoria: son ~5k matrículas en
+  // un único registro jsonb, mucho más barato que pedirlo por fila.
+  useEffect(() => {
+    getStockZonaMap("ZA")
+      .then(setStockZA)
+      .catch(() => { /* sin stock la columna queda vacía, no rompe nada */ });
+  }, []);
 
   const handleReconstruir = async () => {
     // Confirmación explícita: son varios minutos y no es algo que haga falta
@@ -2008,9 +2033,11 @@ export function BuscadorSection() {
     }
     return sorted.map((r) => ({
       key: rowKey(r), filaId: undefined as string | undefined,
-      data: r as unknown as Record<string, unknown>,
+      // El stock no viene del índice: se pega acá, cruzando por la matrícula
+      // normalizada (los dos exports difieren en el sufijo ".0").
+      data: { ...r, stock_za: stockZA.get(r.articulo_key ?? "") ?? null } as unknown as Record<string, unknown>,
     }));
-  }, [isTabMode, tabFilasOrdenadas, sorted]);
+  }, [isTabMode, tabFilasOrdenadas, sorted, stockZA]);
 
   /**
    * Grupos plegados, ya resueltos para renderizar. Tres reglas, en orden:
@@ -2176,6 +2203,24 @@ export function BuscadorSection() {
           >
             <Database className="w-3.5 h-3.5" />
             Índice maestro
+          </button>
+
+          {/* Vista fija: el mismo índice acotado a las filas con SIC. No es una
+              pestaña de usuario — no se comparte ni se edita, y se actualiza
+              sola con cada carga de la planilla SIC. */}
+          <button
+            onClick={() => { setActiveTab(null); setVistaSic((v) => !v); setEditing(null); }}
+            title="Solo las líneas que tienen SIC de Soler asociada"
+            className="inline-flex items-center gap-1.5 px-3 rounded-[8px] text-[12.5px] font-medium transition-colors"
+            style={{
+              height: 30,
+              background: !isTabMode && vistaSic ? "oklch(0.28 0.02 295)" : "transparent",
+              border: `1px solid ${!isTabMode && vistaSic ? "oklch(0.55 0.20 295 / 0.45)" : "transparent"}`,
+              color: !isTabMode && vistaSic ? "oklch(0.92 0 0)" : "oklch(0.6 0 0)", cursor: "pointer",
+            }}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            SICs de Soler
           </button>
 
           {tabs.map((t) => {

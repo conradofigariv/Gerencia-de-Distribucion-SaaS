@@ -76,6 +76,17 @@ export interface BusquedaRow {
   tx_primera_fecha:    string | null;   // ISO YYYY-MM-DD
   tx_ultima_fecha:     string | null;   // ISO YYYY-MM-DD
 
+  // Stock en zona ZA de esa matrícula. NO viene del índice: se cruza en el
+  // cliente contra `stock_uploads` (sección «Stock por Zona»), que guarda una
+  // fila por zona con todo su stock en un jsonb. Se hace así, y no con un JOIN
+  // en la reconstrucción, para que el stock quede fresco sin tener que
+  // reconstruir el índice cada vez que se sube una planilla de stock.
+  //
+  // ⚠ NO es agregable: es el stock de la MATRÍCULA, así que se repite igual en
+  //   todas las filas que la compartan (distintas OP, líneas y envíos). Sumar
+  //   la columna multiplica el stock — misma regla que las columnas tx_*.
+  stock_za?:           number | null;
+
   updated_at:          string;
 }
 
@@ -160,10 +171,19 @@ export async function buscarPorMatriculas(
  */
 export type CampoBusqueda = "numero_sic" | "sic_preparador" | "numero_op" | "articulo" | "descripcion";
 
-/** Ejecuta la búsqueda. `q` vacío devuelve las primeras filas del índice. */
-export async function buscar(q: string, limite = 500, campo?: CampoBusqueda | null): Promise<BusquedaRow[]> {
+/**
+ * Ejecuta la búsqueda. `q` vacío devuelve las primeras filas del índice.
+ * `soloSic` acota el universo a las filas que tienen SIC asociada (vista
+ * «SICs de Soler»); se combina con la búsqueda de texto, no la reemplaza.
+ */
+export async function buscar(
+  q: string,
+  limite = 500,
+  campo?: CampoBusqueda | null,
+  soloSic = false,
+): Promise<BusquedaRow[]> {
   const { data, error } = await supabase
-    .rpc("gd_buscar", { p_q: q, p_limite: limite, p_campo: campo ?? null })
+    .rpc("gd_buscar", { p_q: q, p_limite: limite, p_campo: campo ?? null, p_solo_sic: soloSic })
     .range(0, Math.max(limite - 1, 0));
   if (error) throw new Error(error.message);
   return (data ?? []) as BusquedaRow[];
