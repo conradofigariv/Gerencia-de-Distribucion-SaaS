@@ -2502,13 +2502,22 @@ export function BuscadorSection() {
         )}
 
         {/* Resultados */}
-        <div className="rounded-[10px] overflow-hidden" style={{ background: PANEL_BG, border: PANEL_BORDER }}>
+        {/* `minHeight` (mismo cálculo que el `maxHeight` del scroll de la
+            tabla, más abajo) hace que el panel llegue siempre hasta abajo de
+            la ventana, tenga pocos resultados o ninguno — antes se achicaba
+            al tamaño del contenido y dejaba un vacío gris debajo. Con MUCHOS
+            resultados el `maxHeight` de la tabla sigue cortando ahí: el panel
+            no crece sin límite, scrollea puertas adentro. */}
+        <div
+          className="rounded-[10px] overflow-hidden flex flex-col"
+          style={{ background: PANEL_BG, border: PANEL_BORDER, minHeight: "calc(100vh - 190px)" }}
+        >
           {isTabMode && loadingTab ? (
-            <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+            <div className="flex-1 flex items-center justify-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="w-4 h-4 animate-spin" />Cargando pestaña…
             </div>
           ) : isTabMode && !tabFilas.length ? (
-            <div className="flex flex-col items-center gap-2.5 py-14 text-sm text-muted-foreground">
+            <div className="flex-1 flex flex-col items-center justify-center gap-2.5 text-sm text-muted-foreground">
               <ListPlus className="w-10 h-10 opacity-20" />
               Esta pestaña está vacía.
               <span className="text-[12px]">
@@ -2516,25 +2525,25 @@ export function BuscadorSection() {
               </span>
             </div>
           ) : !isTabMode && loading ? (
-            <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+            <div className="flex-1 flex items-center justify-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="w-4 h-4 animate-spin" />
               {query.trim() ? "Buscando…" : "Cargando las OP más recientes…"}
             </div>
           ) : !isTabMode && !sorted.length ? (
-            <div className="flex flex-col items-center gap-2.5 py-14 text-sm text-muted-foreground">
+            <div className="flex-1 flex flex-col items-center justify-center gap-2.5 text-sm text-muted-foreground">
               <PackageOpen className="w-10 h-10 opacity-20" />
               {query.trim() ? `Sin resultados para «${query.trim()}».` : "El índice no tiene filas todavía."}
               {indice?.filas === 0 && <span className="text-[12px]">El índice está vacío — probá «Reconstruir índice».</span>}
             </div>
           ) : !visibleCols.length ? (
-            <div className="flex flex-col items-center gap-2.5 py-14 text-sm text-muted-foreground">
+            <div className="flex-1 flex flex-col items-center justify-center gap-2.5 text-sm text-muted-foreground">
               <Columns3 className="w-10 h-10 opacity-20" />
               Ocultaste todas las columnas — abrí «Columnas» para mostrar alguna.
             </div>
           ) : (
             // Alto calculado en vez de un % fijo: con la barra compacta la
             // tabla puede ocupar casi toda la ventana.
-            <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 190px)" }}>
+            <div className="flex-1 overflow-auto" style={{ maxHeight: "calc(100vh - 190px)" }}>
               <table style={{ tableLayout: "fixed", width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 13 }}>
                 <colgroup>
                   {/* Columna de acciones: fija, no reordenable ni ocultable.
