@@ -1993,19 +1993,13 @@ export function BuscadorSection() {
   const tabFilasFiltradas = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return tabFilasConOp;
-    // Con campo elegido, se mira solo esa clave del dato copiado — misma
-    // lista de campos y mismas claves que usa gd_buscar del lado del índice,
-    // así el selector se comporta igual adentro y afuera de una pestaña.
-    if (campoBusqueda) {
-      return tabFilasConOp.filter((f) => {
-        const v = f.datos[campoBusqueda];
-        return v != null && String(v).toLowerCase().includes(q);
-      });
-    }
+    // Dentro de una pestaña se busca SIEMPRE en todos los campos: el selector
+    // de campo no se muestra acá, y respetarlo igual dejaría un filtro
+    // invisible aplicándose (el que quedó elegido en el índice maestro).
     return tabFilasConOp.filter((f) =>
       Object.values(f.datos).some((v) => v != null && String(v).toLowerCase().includes(q))
     );
-  }, [tabFilasConOp, query, campoBusqueda]);
+  }, [tabFilasConOp, query]);
 
   const tabFilasOrdenadas = useMemo(() => {
     if (!sortCol) return tabFilasFiltradas;      // sin sort → orden manual
@@ -2286,10 +2280,11 @@ export function BuscadorSection() {
             )}
           </div>
 
-          {/* Selector de campo — afina la búsqueda a una sola columna. Sin
-              elegir nada (default) busca en todos los campos, igual que
-              siempre; funciona tanto en el índice maestro como dentro de una
-              pestaña (ver tabFilasFiltradas). */}
+          {/* Selector de campo — afina la búsqueda a una sola columna. Solo en
+              el índice maestro: dentro de una pestaña el universo ya lo acotó
+              el usuario al elegir qué filas copiar, y son pocas — filtrar por
+              campo ahí no aporta y ocupa lugar en la barra. */}
+          {!isTabMode && (
           <div className="relative shrink-0" ref={campoMenuRef}>
             <button
               onClick={() => setCampoMenuOpen((v) => !v)}
@@ -2350,6 +2345,8 @@ export function BuscadorSection() {
             )}
           </div>
 
+          )}
+
           {/* Rango de fechas del DETALLE de entregas (como el desde/hasta de
               Tablero OP). No toca la búsqueda ni las columnas de la tabla:
               esas salen del índice, que está precalculado sin rango. */}
@@ -2399,75 +2396,72 @@ export function BuscadorSection() {
             locked={isTabMode && !puedoEditar}
           />
 
-          {/* Agrupar — solo dentro de una pestaña. El criterio (matrícula / SIC /
-              OP) se elige en el desplegable de al lado. */}
+          {/* Agrupar — un solo botón: el estado on/off y el criterio son la
+              misma decisión, así que tenerlos separados obligaba a dos clics
+              para algo que es una sola elección. «Nada» es el off. */}
           {isTabMode && (
             <div className="inline-flex items-center gap-1 shrink-0">
-              <button
-                onClick={() => setAgrupar((v) => !v)}
-                disabled={!puedoEditar}
-                title={puedoEditar ? "Agrupar las filas bajo el criterio elegido" : "Solo lectura — el agrupado es la misma vista para todos"}
-                className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors disabled:cursor-default"
-                style={{
-                  height: TOOLBAR_H,
-                  background: agrupar ? "oklch(0.28 0.02 295)" : "oklch(0.16 0.005 270)",
-                  border: `1px solid ${agrupar ? "oklch(0.55 0.20 295 / 0.45)" : "oklch(1 0 0 / 0.07)"}`,
-                  color: agrupar ? "oklch(0.92 0 0)" : "oklch(0.65 0 0)", cursor: puedoEditar ? "pointer" : "default",
-                }}
-              >
-                <Rows3 className="w-3.5 h-3.5" />
-                Agrupar
-              </button>
+              <div className="relative" ref={agruparMenuRef}>
+                <button
+                  onClick={() => puedoEditar && setAgruparMenuOpen((v) => !v)}
+                  disabled={!puedoEditar}
+                  title={puedoEditar ? "Agrupar las filas por un criterio" : "Solo lectura — el agrupado es la misma vista para todos"}
+                  className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors disabled:cursor-default"
+                  style={{
+                    height: TOOLBAR_H,
+                    background: agrupar ? "oklch(0.28 0.02 295)" : "oklch(0.16 0.005 270)",
+                    border: `1px solid ${agrupar ? "oklch(0.55 0.20 295 / 0.45)" : "oklch(1 0 0 / 0.07)"}`,
+                    color: agrupar ? "oklch(0.92 0 0)" : "oklch(0.65 0 0)", cursor: puedoEditar ? "pointer" : "default",
+                  }}
+                >
+                  <Rows3 className="w-3.5 h-3.5" />
+                  {agrupar
+                    ? `Agrupar: ${AGRUPAR_OPTIONS.find((o) => o.value === agruparPor)?.label ?? ""}`
+                    : "Agrupar: Nada"}
+                  {puedoEditar && <ChevronDown className="w-3 h-3 opacity-60" />}
+                </button>
 
-              {agrupar && (
-                <div className="relative" ref={agruparMenuRef}>
-                  <button
-                    onClick={() => puedoEditar && setAgruparMenuOpen((v) => !v)}
-                    disabled={!puedoEditar}
-                    title={puedoEditar ? "Elegir por qué agrupar" : "Solo lectura"}
-                    className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors disabled:cursor-default"
+                {agruparMenuOpen && puedoEditar && (
+                  <div
+                    className="absolute left-0 top-[calc(100%+6px)] z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
                     style={{
-                      height: TOOLBAR_H, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER,
-                      color: "oklch(0.75 0 0)", cursor: puedoEditar ? "pointer" : "default",
+                      minWidth: 170, background: "oklch(0.205 0.005 270)", border: PANEL_BORDER,
+                      borderRadius: 10, padding: 6, boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6)",
                     }}
                   >
-                    {(() => {
-                      const opt = AGRUPAR_OPTIONS.find((o) => o.value === agruparPor)!;
-                      const Icon = opt.icon;
-                      return <><Icon className="w-3.5 h-3.5" />{opt.label}</>;
-                    })()}
-                    {puedoEditar && <ChevronDown className="w-3 h-3 opacity-60" />}
-                  </button>
-
-                  {agruparMenuOpen && puedoEditar && (
-                    <div
-                      className="absolute left-0 top-[calc(100%+6px)] z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
-                      style={{
-                        minWidth: 170, background: "oklch(0.205 0.005 270)", border: PANEL_BORDER,
-                        borderRadius: 10, padding: 6, boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6)",
-                      }}
+                    {/* «Nada» apaga el agrupado sin tocar el criterio guardado:
+                        al volver a elegir uno, la pestaña recuerda cuál era. */}
+                    <button
+                      onClick={() => { setAgrupar(false); setAgruparMenuOpen(false); }}
+                      className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 rounded-[7px] text-[13px] transition-colors"
+                      style={{ color: !agrupar ? "oklch(0.92 0 0)" : "oklch(0.75 0 0)", background: !agrupar ? "oklch(0.28 0.02 295)" : "transparent" }}
+                      onMouseEnter={(e) => { if (agrupar) e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
+                      onMouseLeave={(e) => { if (agrupar) e.currentTarget.style.background = "transparent"; }}
                     >
-                      {AGRUPAR_OPTIONS.map((o) => {
-                        const Icon = o.icon;
-                        const activo = o.value === agruparPor;
-                        return (
-                          <button
-                            key={o.value}
-                            onClick={() => { setAgruparPor(o.value); setAgruparMenuOpen(false); }}
-                            className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 rounded-[7px] text-[13px] transition-colors"
-                            style={{ color: activo ? "oklch(0.92 0 0)" : "oklch(0.75 0 0)", background: activo ? "oklch(0.28 0.02 295)" : "transparent" }}
-                            onMouseEnter={(e) => { if (!activo) e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
-                            onMouseLeave={(e) => { if (!activo) e.currentTarget.style.background = "transparent"; }}
-                          >
-                            <Icon className="w-3.5 h-3.5 shrink-0" />
-                            {o.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+                      <X className="w-3.5 h-3.5 shrink-0" />
+                      Nada
+                    </button>
+                    <div style={{ height: 1, background: "oklch(1 0 0 / 0.07)", margin: "4px 6px" }} />
+                    {AGRUPAR_OPTIONS.map((o) => {
+                      const Icon = o.icon;
+                      const activo = agrupar && o.value === agruparPor;
+                      return (
+                        <button
+                          key={o.value}
+                          onClick={() => { setAgruparPor(o.value); setAgrupar(true); setAgruparMenuOpen(false); }}
+                          className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 rounded-[7px] text-[13px] transition-colors"
+                          style={{ color: activo ? "oklch(0.92 0 0)" : "oklch(0.75 0 0)", background: activo ? "oklch(0.28 0.02 295)" : "transparent" }}
+                          onMouseEnter={(e) => { if (!activo) e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
+                          onMouseLeave={(e) => { if (!activo) e.currentTarget.style.background = "transparent"; }}
+                        >
+                          <Icon className="w-3.5 h-3.5 shrink-0" />
+                          {o.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
               {agrupar && gruposCount > 0 && (
                 <button
@@ -2600,7 +2594,7 @@ export function BuscadorSection() {
           {/* Estado del índice. «Reconstruir» vive adentro de este menú y no
               suelto en la barra: tarda varios minutos y, desde que cada carga
               masiva reconstruye sola, casi nunca hace falta a mano. */}
-          {indice && (
+          {indice && !isTabMode && (
             <div className="relative shrink-0" ref={indiceMenuRef}>
               <button
                 onClick={() => setIndiceMenuOpen((v) => !v)}
