@@ -995,12 +995,6 @@ export function BuscadorSection() {
   const [campoMenuOpen, setCampoMenuOpen] = useState(false);
   const campoMenuRef = useRef<HTMLDivElement>(null);
 
-  // Vista fija «SICs de Soler»: acota el índice a las filas que tienen SIC.
-  // No es una pestaña de usuario (no se comparte, no se edita, no se copia):
-  // es el mismo índice maestro con un filtro de universo, así que se actualiza
-  // sola con cada carga de la planilla SIC.
-  const [vistaSic, setVistaSic] = useState(false);
-
   // Stock de ZA por matrícula, cruzado en el cliente (ver getStockZonaMap).
   const [stockZA, setStockZA] = useState<Map<string, number>>(new Map());
 
@@ -1615,13 +1609,13 @@ export function BuscadorSection() {
     const q = query.trim();
     setLoading(true);
     const t = setTimeout(() => {
-      buscar(q, undefined, campoBusqueda, vistaSic)
+      buscar(q, undefined, campoBusqueda)
         .then((data) => { setRows(data); setBuscado(true); })
         .catch((e) => toast.error(`Error al buscar: ${e instanceof Error ? e.message : String(e)}`))
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(t);
-  }, [query, activeTab, campoBusqueda, vistaSic]);
+  }, [query, activeTab, campoBusqueda]);
 
   /**
    * Abre/cierra el detalle de entregas de una fila. Se consulta bajo demanda
@@ -2205,23 +2199,6 @@ export function BuscadorSection() {
             Índice maestro
           </button>
 
-          {/* Vista fija: el mismo índice acotado a las filas con SIC. No es una
-              pestaña de usuario — no se comparte ni se edita, y se actualiza
-              sola con cada carga de la planilla SIC. */}
-          <button
-            onClick={() => { setActiveTab(null); setVistaSic((v) => !v); setEditing(null); }}
-            title="Solo las líneas que tienen SIC de Soler asociada"
-            className="inline-flex items-center gap-1.5 px-3 rounded-[8px] text-[12.5px] font-medium transition-colors"
-            style={{
-              height: 30,
-              background: !isTabMode && vistaSic ? "oklch(0.28 0.02 295)" : "transparent",
-              border: `1px solid ${!isTabMode && vistaSic ? "oklch(0.55 0.20 295 / 0.45)" : "transparent"}`,
-              color: !isTabMode && vistaSic ? "oklch(0.92 0 0)" : "oklch(0.6 0 0)", cursor: "pointer",
-            }}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            SICs de Soler
-          </button>
 
           {tabs.map((t) => {
             const act = activeTab === t.id;

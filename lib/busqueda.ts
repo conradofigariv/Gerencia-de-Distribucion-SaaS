@@ -173,8 +173,12 @@ export type CampoBusqueda = "numero_sic" | "sic_preparador" | "numero_op" | "art
 
 /**
  * Ejecuta la búsqueda. `q` vacío devuelve las primeras filas del índice.
- * `soloSic` acota el universo a las filas que tienen SIC asociada (vista
- * «SICs de Soler»); se combina con la búsqueda de texto, no la reemplaza.
+ * `soloSic` acota el universo a las filas que tienen SIC asociada. Hoy nadie
+ * lo activa: las SICs de Soler se juntan a mano en una pestaña propia desde el
+ * índice maestro, no con un filtro. Se mantiene el parámetro porque la firma
+ * de `gd_buscar` en la base es la de 4 argumentos (la de 3 se borró al
+ * crearla), y PostgREST resuelve la RPC por argumentos nombrados: dejar de
+ * mandarlo rompería la llamada.
  */
 export async function buscar(
   q: string,
