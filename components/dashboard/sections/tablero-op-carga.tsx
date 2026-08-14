@@ -5,23 +5,25 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   UploadCloud, Loader2, Plus, Trash2, AlertCircle, CheckCircle2,
-  ChevronLeft, ArrowRight, X, Info, ClipboardList, ArrowLeftRight, Package, Database,
+  ChevronLeft, ArrowRight, X, Info, ClipboardList, Package, Database,
 } from "lucide-react";
 import {
   getSeguimiento, upsertSeguimiento, deleteSeguimiento, deleteSeguimientoBulk, clearSeguimiento,
   getTableCount, replaceTable,
-  normArticulo, parseNum, parseEntero, parseFechaArg,
+  normArticulo, parseNum, parseEntero,
 } from "@/lib/tableroOp";
-import type { SeguimientoRow, SeguimientoDbRow, TransaccionRow, StockRow } from "@/lib/tableroOp";
-import { reconstruirIndiceEnSegundoPlano } from "@/lib/busqueda";
+import type { SeguimientoRow, SeguimientoDbRow, StockRow } from "@/lib/tableroOp";
 
 // ─── Pestañas ────────────────────────────────────────────────────────────────
 
-type Tab = "seguimiento" | "transacciones" | "stock";
+// La carga de Transacciones se movió a «Carga de datos» (servicios-planillas.tsx,
+// subida de archivo .xlsx en vez de pegar texto) para que quede un solo camino
+// hacia tablero_op_transaccion — la usan tanto este Tablero como el detalle de
+// entregas del Buscador.
+type Tab = "seguimiento" | "stock";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] = [
   { id: "seguimiento",   label: "SIC a seguir",  icon: ClipboardList,  desc: "Lista de SIC (líneas) a controlar — el import agrega o actualiza, nunca borra." },
-  { id: "transacciones", label: "Transacciones", icon: ArrowLeftRight, desc: "Log de movimientos (Recibir / Aceptar / Entregar / devoluciones) — reemplaza la tabla completa." },
   { id: "stock",         label: "Stock",         icon: Package,        desc: "Saldo actual por artículo y zona — reemplaza la tabla completa." },
 ];
 
@@ -664,9 +666,10 @@ function ImportPanel<T extends Record<string, unknown>>({
       setRaw("");
       setPreview(null);
       await loadCount();
-      // Única de las dos tablas de este panel que alimenta busqueda_index — la
-      // otra (tablero_op_stock) es para Stock por Zona y no participa del Buscador.
-      if (table === "tablero_op_transaccion") reconstruirIndiceEnSegundoPlano("cargar transacciones");
+      // La única tabla que quedaba en este panel (tablero_op_stock, para Stock
+      // por Zona) no participa del Buscador — no hace falta reconstruir nada
+      // acá. La que sí participaba (tablero_op_transaccion) se subió a «Carga
+      // de datos», que reconstruye después de guardar.
     } catch (e) {
       toast.error(`Error al guardar: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -806,70 +809,6 @@ function ImportPanel<T extends Record<string, unknown>>({
   );
 }
 
-// ─── Transacciones ───────────────────────────────────────────────────────────
-
-const TRANSACCION_COLS = ["Tipo", "Importe", "Fecha", "Artículo", "Número Pedido", "Línea", "Proveedor"];
-
-const TIPOS_DEVOLUCION = new Set(["Rechazar", "Devolver a Proveedor", "Devolver a Recepción", "Corregir"]);
-
-const TRANSACCION_SPECS: Spec = {
-  tipo:          (h) => /tipo/i.test(h),
-  importe:       (h) => /importe|cantidad/i.test(h),
-  fecha:         (h) => /fecha/i.test(h),
-  articulo:      (h) => /art[ií]culo/i.test(h),
-  numero_pedido: (h) => /pedido/i.test(h),
-  linea:         (h) => /^l[ií]nea$/i.test(h),
-  proveedor:     (h) => /^proveedor$/i.test(h), // exacto → no choca con "Lote Proveedores"
-};
-const TRANSACCION_DEFAULT_IDX = { tipo: 0, importe: 1, fecha: 2, articulo: 3, numero_pedido: 4, linea: 5, proveedor: 6 };
-
-const parseTransacciones = (text: string): ParsedRow<TransaccionRow>[] =>
-  parseByHeader<TransaccionRow>(
-    text, TRANSACCION_SPECS,
-    ["tipo", "importe", "fecha", "articulo", "numero_pedido"],
-    TRANSACCION_DEFAULT_IDX,
-    (get) => {
-      const tipo          = get("tipo");
-      const importe       = parseNum(get("importe"));
-      const fecha         = parseFechaArg(get("fecha"));
-      const articulo      = normArticulo(get("articulo"));
-      const numeroPedidoRaw = get("numero_pedido");
-      const numero_pedido   = parseEntero(numeroPedidoRaw);
-      const errors: string[] = [];
-      if (!tipo)            errors.push("Tipo vacío");
-      if (importe === null) errors.push("Importe inválido");
-      if (!fecha)           errors.push("Fecha inválida");
-      if (!articulo)        errors.push("Artículo vacío");
-
-      let omitted: string | undefined;
-      if (numero_pedido === null) {
-        if (!numeroPedidoRaw.trim() && errors.length === 0) {
-          // Sin Número Pedido y el resto de la fila es válida → movimiento
-          // interno (transferencia entre zonas, sin OP asociada). No se puede
-          // cruzar con ninguna SIC → se omite a propósito, no es un error.
-          omitted = "Movimiento interno (sin Número Pedido) — se omite";
-        } else {
-          errors.push("Número de pedido inválido");
-        }
-      }
-      const row: TransaccionRow = {
-        tipo,
-        importe: importe ?? 0,
-        fecha: fecha ?? new Date().toISOString(),
-        articulo,
-        numero_pedido: numero_pedido ?? 0,
-        linea: get("linea") || null,
-        proveedor: get("proveedor") || null,
-      };
-      return {
-        row,
-        display: [tipo, importe != null ? String(importe) : "", fecha ?? "", articulo, numeroPedidoRaw || "—", row.linea ?? "", row.proveedor ?? ""],
-        errors,
-        omitted,
-      };
-    }
-  );
-
 // ─── Stock ───────────────────────────────────────────────────────────────────
 
 const STOCK_COLS = ["Organización", "Artículo", "En Mano"];
@@ -1000,28 +939,6 @@ export function TableroOpCargaSection() {
         </p>
 
         {tab === "seguimiento" && <SeguimientoTab />}
-
-        {tab === "transacciones" && (
-          <ImportPanel
-            table="tablero_op_transaccion"
-            notNullCol="id"
-            columns={TRANSACCION_COLS}
-            fileName="transacciones.tsv"
-            countLabel={(n) => `${n.toLocaleString("es-AR")} transacción(es) cargadas`}
-            placeholder={`Ej.:\nRecibir\t100\t15/04/2026 11:59:58\t00013242.0\t900123\t1\tACME S.A.`}
-            parse={parseTransacciones}
-            hint={
-              <span>
-                Pegá la pestaña <strong className="text-foreground/80">Transacciones</strong> del Excel <strong className="text-foreground/80">incluyendo la fila de encabezado</strong> —
-                las columnas se reconocen por su nombre (Tipo Transacción, Importe, Fecha, Artículo, Número Pedido, Línea, Proveedor…), sin importar el
-                orden ni las columnas extra. Tipos relevantes: Recibir, Aceptar, Entregar, y devoluciones (
-                {[...TIPOS_DEVOLUCION].join(", ")}). Fecha en formato <code className="text-foreground/80">dd/mm/aaaa hh:mm:ss</code>.{" "}
-                <strong className="text-foreground/80">Reemplaza la tabla completa</strong> — al ser un log que crece rápido (60k+ filas),
-                subí siempre el export completo y actualizado.
-              </span>
-            }
-          />
-        )}
 
         {tab === "stock" && (
           <ImportPanel

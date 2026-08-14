@@ -12,6 +12,7 @@ import {
 import { markUpdated, fetchReminders, upsertConfig } from "@/lib/reminders";
 import { replaceSicSoler, upsertSicSoler, clearSicSoler, getSicSolerStatus, type SicSolerRow } from "@/lib/sicSoler";
 import { reconstruirIndiceEnSegundoPlano } from "@/lib/busqueda";
+import { normArticulo, parseNum, parseEntero, parseFechaArg } from "@/lib/tableroOp";
 
 // Modo de subida de la planilla de SICs: reemplazar todo o actualizar lo existente.
 type SicUploadMode = "replace" | "update";
@@ -84,7 +85,7 @@ const parseFile = async (
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type PlanillaType = "OP" | "SIC" | "MATRICULAS";
+type PlanillaType = "OP" | "SIC" | "MATRICULAS" | "TRANSACCIONES";
 
 interface PlanillaState {
   count:      number;
@@ -99,6 +100,7 @@ const REMINDER_DEFS = [
   { key: "planillas-OP",         planilla: "OP" as PlanillaType,         label: "OP",         name: "OP — Envíos (órdenes de compra)",      descripcion: "Planilla «Envíos»",      accentClass: "text-blue-400" },
   { key: "planillas-SIC",        planilla: "SIC" as PlanillaType,        label: "SIC",        name: "SICs — Solicitudes internas de compra", descripcion: "Solicitudes internas de compra", accentClass: "text-purple-400" },
   { key: "planillas-MATRICULAS", planilla: "MATRICULAS" as PlanillaType, label: "MATRICULAS", name: "MATRICULAS — Catálogo de materiales",  descripcion: "Catálogo de materiales",  accentClass: "text-emerald-400" },
+  { key: "planillas-TRANSACCIONES", planilla: "TRANSACCIONES" as PlanillaType, label: "TRANSACCIONES", name: "TRANSACCIONES — Log de movimientos", descripcion: "Log de movimientos (Recibir/Aceptar/Entregar/devoluciones)", accentClass: "text-orange-400" },
 ] as const;
 
 // ─── Ayuda: cómo exportar las SICs desde SIEPEC ─────────────────────────────
@@ -292,9 +294,10 @@ function PlanillaCard({
 
 export function ServiciosPlanillasSection() {
   const [states, setStates] = useState<Record<PlanillaType, PlanillaState>>({
-    OP:         { ...INIT },
-    SIC:        { ...INIT },
-    MATRICULAS: { ...INIT },
+    OP:            { ...INIT },
+    SIC:           { ...INIT },
+    MATRICULAS:    { ...INIT },
+    TRANSACCIONES: { ...INIT },
   });
 
   // Archivo de SICs pendiente de confirmar el modo de subida (abre el diálogo).
@@ -313,13 +316,13 @@ export function ServiciosPlanillasSection() {
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [savingConfig,  setSavingConfig]  = useState(false);
   const [reminderFreq, setReminderFreq] = useState<Record<string, number>>({
-    "planillas-OP": 7, "planillas-SIC": 7, "planillas-MATRICULAS": 7,
+    "planillas-OP": 7, "planillas-SIC": 7, "planillas-MATRICULAS": 7, "planillas-TRANSACCIONES": 7,
   });
   const [reminderTime, setReminderTime] = useState<Record<string, string>>({
-    "planillas-OP": "09:00", "planillas-SIC": "09:00", "planillas-MATRICULAS": "09:00",
+    "planillas-OP": "09:00", "planillas-SIC": "09:00", "planillas-MATRICULAS": "09:00", "planillas-TRANSACCIONES": "09:00",
   });
   const [reminderLastUpdate, setReminderLastUpdate] = useState<Record<string, string | null>>({
-    "planillas-OP": null, "planillas-SIC": null, "planillas-MATRICULAS": null,
+    "planillas-OP": null, "planillas-SIC": null, "planillas-MATRICULAS": null, "planillas-TRANSACCIONES": null,
   });
 
   const setS = (tipo: PlanillaType, u: Partial<PlanillaState>) =>
@@ -344,25 +347,32 @@ export function ServiciosPlanillasSection() {
 
   const loadStatus = useCallback(async () => {
     setStates(prev => ({
-      OP:         { ...prev.OP,         loading: true },
-      SIC:        { ...prev.SIC,        loading: true },
-      MATRICULAS: { ...prev.MATRICULAS, loading: true },
+      OP:            { ...prev.OP,            loading: true },
+      SIC:           { ...prev.SIC,           loading: true },
+      MATRICULAS:    { ...prev.MATRICULAS,    loading: true },
+      TRANSACCIONES: { ...prev.TRANSACCIONES, loading: true },
     }));
-    const [opCnt, opTs, sicStatus, matCnt, matTs] = await Promise.all([
+    const [opCnt, opTs, sicStatus, matCnt, matTs, txCnt, txTs] = await Promise.all([
       supabase.from("planillas_op").select("*",        { count: "exact", head: true }),
       supabase.from("planillas_op").select("uploaded_at").order("uploaded_at", { ascending: false }).limit(1),
       getSicSolerStatus().catch(() => ({ count: 0, uploadedAt: null })),
       supabase.from("matriculas").select("*",          { count: "exact", head: true }),
       supabase.from("matriculas").select("updated_at").order("updated_at", { ascending: false }).limit(1),
+      supabase.from("tablero_op_transaccion").select("*",         { count: "exact", head: true }),
+      // Sin uploaded_at propia: se usa created_at, que es lo que ya tiene la
+      // tabla (log de movimientos, no una planilla que se reemplaza como tal).
+      supabase.from("tablero_op_transaccion").select("created_at").order("created_at", { ascending: false }).limit(1),
     ]);
     const isMissing = (msg: string) =>
       msg.includes("Invalid path") || msg.includes("does not exist") || msg.includes("Invalid api key");
     if (opCnt.error  && !isMissing(opCnt.error.message))  toast.error(`Error OP: ${opCnt.error.message}`);
     if (matCnt.error && !isMissing(matCnt.error.message)) toast.error(`Error MATRICULAS: ${matCnt.error.message}`);
+    if (txCnt.error  && !isMissing(txCnt.error.message))  toast.error(`Error TRANSACCIONES: ${txCnt.error.message}`);
     setStates({
-      OP:         { count: opCnt.count  ?? 0, uploadedAt: (opTs.data  as {uploaded_at: string}[]|null)?.[0]?.uploaded_at  ?? null, loading: false, uploading: false },
-      SIC:        { count: sicStatus.count,   uploadedAt: sicStatus.uploadedAt,                                                    loading: false, uploading: false },
-      MATRICULAS: { count: matCnt.count ?? 0, uploadedAt: (matTs.data as {updated_at:  string}[]|null)?.[0]?.updated_at   ?? null, loading: false, uploading: false },
+      OP:            { count: opCnt.count  ?? 0, uploadedAt: (opTs.data  as {uploaded_at: string}[]|null)?.[0]?.uploaded_at  ?? null, loading: false, uploading: false },
+      SIC:           { count: sicStatus.count,   uploadedAt: sicStatus.uploadedAt,                                                    loading: false, uploading: false },
+      MATRICULAS:    { count: matCnt.count ?? 0, uploadedAt: (matTs.data as {updated_at:  string}[]|null)?.[0]?.updated_at   ?? null, loading: false, uploading: false },
+      TRANSACCIONES: { count: txCnt.count  ?? 0, uploadedAt: (txTs.data  as {created_at:  string}[]|null)?.[0]?.created_at   ?? null, loading: false, uploading: false },
     });
   }, []);
 
@@ -374,9 +384,9 @@ export function ServiciosPlanillasSection() {
     setLoadingConfig(true);
     fetchReminders(REMINDER_DEFS.map(d => d.key))
       .then(cfgs => {
-        const freq:  Record<string, number>       = { "planillas-OP": 7,      "planillas-SIC": 7,      "planillas-MATRICULAS": 7 };
-        const time:  Record<string, string>       = { "planillas-OP": "09:00", "planillas-SIC": "09:00", "planillas-MATRICULAS": "09:00" };
-        const lastUp: Record<string, string|null> = { "planillas-OP": null,   "planillas-SIC": null,   "planillas-MATRICULAS": null };
+        const freq:  Record<string, number>       = { "planillas-OP": 7,      "planillas-SIC": 7,      "planillas-MATRICULAS": 7,      "planillas-TRANSACCIONES": 7 };
+        const time:  Record<string, string>       = { "planillas-OP": "09:00", "planillas-SIC": "09:00", "planillas-MATRICULAS": "09:00", "planillas-TRANSACCIONES": "09:00" };
+        const lastUp: Record<string, string|null> = { "planillas-OP": null,   "planillas-SIC": null,   "planillas-MATRICULAS": null,   "planillas-TRANSACCIONES": null };
         for (const cfg of cfgs) {
           freq[cfg.section_id]   = cfg.frequency_days;
           lastUp[cfg.section_id] = cfg.last_updated_at;
@@ -460,6 +470,75 @@ export function ServiciosPlanillasSection() {
       toast.error(`Error OP: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
       setS("OP", { uploading: false });
+      await loadStatus();
+    }
+  };
+
+  // Fecha del Excel → ISO con hora (columna `fecha timestamptz`, no una fecha
+  // suelta): con cellDates:true llega como Date ya en hora local, así que
+  // toISOString() da el instante correcto. Si por lo que sea la celda vino
+  // como texto (columna mal formateada en el export), cae a parseFechaArg,
+  // que entiende "dd/mm/aaaa hh:mm:ss" — el mismo parser que ya usa Tablero
+  // OP para la carga por texto pegado.
+  const fechaHoraISO = (v: unknown): string | null =>
+    v instanceof Date && !Number.isNaN(v.getTime()) ? v.toISOString() : parseFechaArg(v as string);
+
+  const uploadTransacciones = async (file: File) => {
+    setS("TRANSACCIONES", { uploading: true });
+    try {
+      const rows = await parseFile(file, 1, ["Tipo Transacción", "Importe", "Fecha", "Artículo", "Número Pedido"]);
+      if (!rows.length) { toast.error("TRANSACCIONES: sin datos"); return; }
+
+      let sinPedido = 0;
+      let invalidas = 0;
+      const mapped: Record<string, unknown>[] = [];
+      for (const r of rows) {
+        const tipo     = str(r["Tipo Transacción"] ?? r["Tipo"]);
+        const importe  = parseNum(r["Importe"] ?? r["Cantidad"]);
+        const fecha    = fechaHoraISO(r["Fecha"]);
+        const articulo = normArticulo(r["Artículo"] ?? r["Articulo"]);
+        const numeroPedidoRaw = r["Número Pedido"] ?? r["Numero Pedido"];
+        const numero_pedido   = parseEntero(numeroPedidoRaw);
+
+        if (!tipo || importe === null || !fecha || !articulo) { invalidas++; continue; }
+        if (numero_pedido === null) {
+          // Sin Número Pedido y el resto de la fila es válida → movimiento
+          // interno (transferencia entre zonas, sin OP asociada). No se puede
+          // cruzar con ninguna SIC/OP → se omite a propósito, no es un error
+          // (mismo criterio que ya usa Tablero OP para este mismo caso).
+          sinPedido++;
+          continue;
+        }
+        mapped.push({
+          tipo, importe, fecha,
+          articulo,
+          numero_pedido,
+          linea:     str(r["Línea"] ?? r["Linea"]) || null,
+          proveedor: str(r["Proveedor"]) || null,
+        });
+      }
+      if (!mapped.length) { toast.error("TRANSACCIONES: no quedó ninguna fila válida para guardar."); return; }
+
+      const { error: del } = await supabase.from("tablero_op_transaccion").delete().not("id", "is", null);
+      if (del) { toast.error(`Error limpiando TRANSACCIONES: ${del.message}`); return; }
+      for (let i = 0; i < mapped.length; i += BATCH) {
+        const { error } = await supabase.from("tablero_op_transaccion").insert(mapped.slice(i, i + BATCH));
+        if (error) { toast.error(`Error insertando TRANSACCIONES: ${error.message}`); return; }
+      }
+      toast.success(
+        `TRANSACCIONES: ${mapped.length.toLocaleString("es-AR")} filas guardadas` +
+        (sinPedido ? ` · ${sinPedido} movimiento(s) interno(s) omitido(s)` : "") +
+        (invalidas ? ` · ${invalidas} fila(s) inválida(s) descartada(s)` : "")
+      );
+      if (userId) await markUpdated("planillas-TRANSACCIONES", "TRANSACCIONES — Log de movimientos", userId).catch(() => {});
+      // Es la fuente de los campos tx_* del índice del Buscador (Recibido/
+      // Aceptado/Entregado/devoluciones por línea) y del detalle de entregas
+      // — sin reconstruir, quedarían mostrando el histórico anterior.
+      reconstruirIndiceEnSegundoPlano("cargar transacciones");
+    } catch (e) {
+      toast.error(`Error TRANSACCIONES: ${e instanceof Error ? e.message : "Error"}`);
+    } finally {
+      setS("TRANSACCIONES", { uploading: false });
       await loadStatus();
     }
   };
@@ -571,15 +650,22 @@ export function ServiciosPlanillasSection() {
     if (!confirm(`¿Limpiar toda la tabla ${tipo}?`)) return;
     setS(tipo, { loading: true });
     const { error } = await supabase.from(tabla).delete().not("id", "is", null);
-    if (error) toast.error(`Error: ${error.message}`);
-    else toast.success(`${tipo} limpiada`);
+    if (error) {
+      toast.error(`Error: ${error.message}`);
+    } else {
+      toast.success(`${tipo} limpiada`);
+      // Igual que al subir: sin esto el índice del Buscador seguiría
+      // mostrando los tx_* y el detalle de entregas del histórico borrado.
+      if (tabla === "tablero_op_transaccion") reconstruirIndiceEnSegundoPlano("limpiar transacciones");
+    }
     await loadStatus();
   };
 
   const handleUpload = (tipo: PlanillaType, file: File) => {
-    if (tipo === "OP")       uploadOP(file);
-    else if (tipo === "SIC") setSicFile(file);   // abre el diálogo Sobreescribir/Actualizar
-    else                     setMatFile(file);   // abre el diálogo Agregar/Sobrescribir
+    if (tipo === "OP")                  uploadOP(file);
+    else if (tipo === "SIC")            setSicFile(file);   // abre el diálogo Sobreescribir/Actualizar
+    else if (tipo === "TRANSACCIONES")  uploadTransacciones(file);   // siempre reemplaza, sin diálogo — igual que OP
+    else                                setMatFile(file);   // abre el diálogo Agregar/Sobrescribir
   };
 
   // Confirma el modo elegido en el diálogo y sube la planilla de SICs.
@@ -605,12 +691,12 @@ export function ServiciosPlanillasSection() {
       await loadStatus();
       return;
     }
-    const tabla = tipo === "OP" ? "planillas_op" : "matriculas";
+    const tabla = tipo === "OP" ? "planillas_op" : tipo === "TRANSACCIONES" ? "tablero_op_transaccion" : "matriculas";
     clearTable(tipo, tabla);
   };
 
-  const allLoaded = !states.OP.loading && !states.SIC.loading && !states.MATRICULAS.loading;
-  const allReady  = states.OP.count > 0 && states.SIC.count > 0 && states.MATRICULAS.count > 0;
+  const allLoaded = !states.OP.loading && !states.SIC.loading && !states.MATRICULAS.loading && !states.TRANSACCIONES.loading;
+  const allReady  = states.OP.count > 0 && states.SIC.count > 0 && states.MATRICULAS.count > 0 && states.TRANSACCIONES.count > 0;
 
   return (
     <div className="space-y-6">
@@ -634,19 +720,20 @@ export function ServiciosPlanillasSection() {
 
       {allLoaded && allReady && (
         <div className="flex items-center gap-2 text-sm text-success bg-success/10 border border-success/20 rounded-lg px-4 py-3">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />Las 3 planillas están cargadas.
+          <CheckCircle2 className="w-4 h-4 shrink-0" />Las 4 planillas están cargadas.
         </div>
       )}
       {allLoaded && !allReady && (
         <div className="flex items-center gap-2 text-sm text-warning bg-warning/10 border border-warning/20 rounded-lg px-4 py-3">
-          <AlertTriangle className="w-4 h-4 shrink-0" />Subí las 3 planillas para poder generar seguimientos.
+          <AlertTriangle className="w-4 h-4 shrink-0" />Faltan planillas por cargar — el Buscador y el Resumen de Servicios dependen de las 4.
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <PlanillaCard tipo="OP"         label="OP"         descripcion="Planilla «Envíos»"       accentClass="text-blue-400"    state={states.OP}         onUpload={f => handleUpload("OP",         f)} onClear={() => handleClear("OP")}         />
-        <PlanillaCard tipo="SIC"        label="SIC"        descripcion="Solicitudes internas de compra" accentClass="text-purple-400"  state={states.SIC}        onUpload={f => handleUpload("SIC",        f)} onClear={() => handleClear("SIC")}        onHelp={() => setSicHelpOpen(true)} />
-        <PlanillaCard tipo="MATRICULAS" label="MATRICULAS" descripcion="Catálogo de materiales"   accentClass="text-emerald-400" state={states.MATRICULAS} onUpload={f => handleUpload("MATRICULAS", f)} onClear={() => handleClear("MATRICULAS")} />
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+        <PlanillaCard tipo="OP"            label="OP"            descripcion="Planilla «Envíos»"       accentClass="text-blue-400"    state={states.OP}            onUpload={f => handleUpload("OP",            f)} onClear={() => handleClear("OP")}            />
+        <PlanillaCard tipo="SIC"           label="SIC"           descripcion="Solicitudes internas de compra" accentClass="text-purple-400"  state={states.SIC}           onUpload={f => handleUpload("SIC",           f)} onClear={() => handleClear("SIC")}           onHelp={() => setSicHelpOpen(true)} />
+        <PlanillaCard tipo="MATRICULAS"    label="MATRICULAS"    descripcion="Catálogo de materiales"   accentClass="text-emerald-400" state={states.MATRICULAS}    onUpload={f => handleUpload("MATRICULAS",    f)} onClear={() => handleClear("MATRICULAS")}    />
+        <PlanillaCard tipo="TRANSACCIONES" label="TRANSACCIONES" descripcion="Log de movimientos"       accentClass="text-orange-400"  state={states.TRANSACCIONES} onUpload={f => handleUpload("TRANSACCIONES", f)} onClear={() => handleClear("TRANSACCIONES")} />
       </div>
 
       {/* Diálogo Sobreescribir / Actualizar al subir la planilla de SICs */}
