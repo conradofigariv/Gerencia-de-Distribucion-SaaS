@@ -1215,7 +1215,14 @@ export function BuscadorSection() {
    * al cambiar de eje, que es ver el panorama y después abrir lo que interese.
    */
   const setAgruparPor = useCallback((value: AgruparPor) => {
+    // ⚠ UNA sola llamada a patchLayout, con agrupar y agruparPor juntos.
+    //   patchLayout lee `layoutRef.current`, que se refresca en un efecto
+    //   DESPUÉS del render: dos llamadas seguidas en el mismo handler hacen que
+    //   la segunda lea el estado viejo y pise lo que escribió la primera. Eso
+    //   era exactamente el bug de «Agrupar por no hace nada» — se guardaba el
+    //   criterio y el setAgrupar(true) de al lado lo revertía.
     patchLayout({
+      agrupar: true,
       agruparPor: value,
       colapsados: [...new Set(tabFilasRef.current.map((f) => groupKeyOf(f.datos, value)))],
     });
@@ -2448,7 +2455,7 @@ export function BuscadorSection() {
                       return (
                         <button
                           key={o.value}
-                          onClick={() => { setAgruparPor(o.value); setAgrupar(true); setAgruparMenuOpen(false); }}
+                          onClick={() => { setAgruparPor(o.value); setAgruparMenuOpen(false); }}
                           className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 rounded-[7px] text-[13px] transition-colors"
                           style={{ color: activo ? "oklch(0.92 0 0)" : "oklch(0.75 0 0)", background: activo ? "oklch(0.28 0.02 295)" : "transparent" }}
                           onMouseEnter={(e) => { if (!activo) e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
