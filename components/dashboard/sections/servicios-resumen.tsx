@@ -217,10 +217,17 @@ export function ServiciosResumenSection() {
     if (!tabActiva) return;
     setSincronizando(true);
     try {
-      const { escritas, errores } = await enviarMarcadasASeguimiento(tabActiva.id);
+      const { escritas, errores, totalEnPestana } = await enviarMarcadasASeguimiento(tabActiva.id);
       await recargarSeguimiento();
       if (escritas === 0) {
-        toast.info("No hay filas marcadas en la pestaña «Servicios». Marcalas en el Buscador con «Enviar a Tarjeta».");
+        // Diagnóstico temporal: distingue "la pestaña está vacía" de "tiene
+        // filas pero ninguna marcada" — el mensaje genérico de antes daba lo
+        // mismo en los dos casos y no dejaba saber cuál era.
+        toast.info(
+          totalEnPestana === 0
+            ? `La pestaña «${tabActiva.nombre}» está vacía — agregale filas desde el índice maestro.`
+            : `Ninguna de las ${totalEnPestana} fila${totalEnPestana === 1 ? "" : "s"} de «${tabActiva.nombre}» está marcada. Seleccionalas ahí y usá «Enviar a Tarjeta».`
+        );
       } else {
         toast.success(`${escritas} fila${escritas === 1 ? "" : "s"} traída${escritas === 1 ? "" : "s"} al seguimiento.`);
       }

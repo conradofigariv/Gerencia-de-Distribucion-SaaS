@@ -289,16 +289,27 @@ export async function marcarEnTarjeta(
  */
 export async function enviarMarcadasASeguimiento(
   tabId: string,
-): Promise<{ escritas: number; errores: string[] }> {
-  const { data, error } = await supabase
-    .from("buscador_tab_filas")
-    .select("id, datos")
-    .eq("tab_id", tabId)
-    .eq(`datos->>${TRACK_KEYS.enTarjeta}`, "true");
+): Promise<{ escritas: number; errores: string[]; totalEnPestana: number }> {
+  // Diagnóstico: además de las marcadas, se cuenta el total de filas de la
+  // pestaña. Sin esto, un "0 filas" no distingue entre "la pestaña está
+  // vacía", "tiene filas pero ninguna marcada" y "tabId apunta a la pestaña
+  // equivocada" — las tres dan el mismo resultado y son problemas distintos.
+  const [{ data, error }, totalRes] = await Promise.all([
+    supabase
+      .from("buscador_tab_filas")
+      .select("id, datos")
+      .eq("tab_id", tabId)
+      .eq(`datos->>${TRACK_KEYS.enTarjeta}`, "true"),
+    supabase
+      .from("buscador_tab_filas")
+      .select("id", { count: "exact", head: true })
+      .eq("tab_id", tabId),
+  ]);
   if (error) throw errorSupabase(error);
+  const totalEnPestana = totalRes.count ?? 0;
 
   const filas = (data ?? []) as { id: string; datos: Record<string, unknown> }[];
-  if (!filas.length) return { escritas: 0, errores: [] };
+  if (!filas.length) return { escritas: 0, errores: [], totalEnPestana };
 
   const { loadCrossMaps, buildSeguimientoRow, num, str } = await import("@/lib/seguimientoBuild");
   const { opMap, matMap } = await loadCrossMaps();
@@ -339,7 +350,7 @@ export async function enviarMarcadasASeguimiento(
     const { error: errIns } = await supabase.from("seguimiento").insert(rows.slice(i, i + 500));
     if (errIns) throw errorSupabase(errIns);
   }
-  return { escritas: rows.length, errores };
+  return { escritas: rows.length, errores, totalEnPestana };
 }
 
 /** Guarda el `datos` completo de una fila (una celda editada ya viene aplicada). */
