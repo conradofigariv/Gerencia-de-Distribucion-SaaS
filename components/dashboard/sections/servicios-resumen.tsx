@@ -602,8 +602,13 @@ export function ServiciosResumenSection() {
   const totalPages  = Math.max(1, Math.ceil(groups.length / PAGE_SIZE));
   const pagedGroups = groups.slice(tablePage * PAGE_SIZE, (tablePage + 1) * PAGE_SIZE);
 
-  // Filas visibles (grupos desplegados en esta página) — para selección por rango.
-  const visibleRows = pagedGroups.flatMap(g => (expandedOps.has(g.op) ? g.rows : []));
+  // OPs con una sola línea van sueltas (sin agrupar) — agrupar no aporta nada
+  // ahí y era la mayoría de las filas, tapando de entrada las OPs con más de
+  // una línea que sí necesitan desplegarse para comparar.
+  const gruposMulti = useMemo(() => groups.filter(g => g.rows.length > 1), [groups]);
+
+  // Filas visibles (sueltas + grupos multilínea desplegados) — para selección por rango.
+  const visibleRows = pagedGroups.flatMap(g => (g.rows.length === 1 || expandedOps.has(g.op) ? g.rows : []));
 
   // ── Selección de filas: click / ctrl+click / shift+click, estilo Windows ────
   // (sin checkboxes — un click selecciona sola, ctrl suma/saca, shift arma
@@ -889,14 +894,16 @@ export function ServiciosResumenSection() {
           </div>
           <div className="flex items-center gap-2">
             {tableLoading && <Loader2 className="w-4 h-4 text-accent animate-spin" />}
-            <button
-              onClick={() => setExpandedOps(prev => prev.size >= groups.length ? new Set() : new Set(groups.map(g => g.op)))}
-              title="Desplegar o colapsar todos los grupos"
-              className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground border border-hairline hover:bg-panel-2 transition-colors"
-            >
-              {expandedOps.size >= groups.length ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              {expandedOps.size >= groups.length ? "Colapsar" : "Desplegar"} todo
-            </button>
+            {gruposMulti.length > 0 && (
+              <button
+                onClick={() => setExpandedOps(prev => prev.size >= gruposMulti.length ? new Set() : new Set(gruposMulti.map(g => g.op)))}
+                title="Desplegar o colapsar las OPs con más de una línea"
+                className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground border border-hairline hover:bg-panel-2 transition-colors"
+              >
+                {expandedOps.size >= gruposMulti.length ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                {expandedOps.size >= gruposMulti.length ? "Colapsar" : "Desplegar"} OPs con varias líneas
+              </button>
+            )}
             {selected.size > 0 && (
               <button
                 onClick={handleDeleteSelected}
@@ -1041,6 +1048,10 @@ export function ServiciosResumenSection() {
                 </thead>
                 <tbody>
                   {pagedGroups.map(g => {
+                    // OP de una sola línea: va suelta, sin cabecera de grupo —
+                    // agrupar acá no aporta nada y era la mayoría de las filas.
+                    if (g.rows.length === 1) return renderDataRow(g.rows[0]);
+
                     const isExp = expandedOps.has(g.op);
                     return (
                       <Fragment key={g.op}>
