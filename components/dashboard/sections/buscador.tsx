@@ -499,7 +499,10 @@ function grupoTitulo(gk: string, primera: Record<string, unknown>, criterio: Agr
     return { titulo: String(primera.articulo ?? gk), subtitulo: String(primera.descripcion ?? "") };
   }
   if (criterio === "numero_sic") {
-    return { titulo: gk === SIN_DATO ? gk : `SIC ${gk}`, subtitulo: String(primera.sic_preparador ?? "") };
+    // Descripción de la matrícula, no el preparador: agrupado por SIC lo que
+    // importa de un vistazo es QUÉ se pidió, no quién la cargó — el preparador
+    // ya tiene su propia columna en la tabla si hace falta mirarlo.
+    return { titulo: gk === SIN_DATO ? gk : `SIC ${gk}`, subtitulo: String(primera.descripcion ?? "") };
   }
   return { titulo: gk === SIN_DATO ? gk : `OP ${gk}`, subtitulo: String(primera.proveedor ?? "") };
 }
