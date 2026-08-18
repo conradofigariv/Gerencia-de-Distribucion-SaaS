@@ -910,13 +910,21 @@ export function ServiciosResumenSection() {
         ) : (
           <>
             <div className={cn("overflow-auto max-h-[62vh]", isResizing && "select-none cursor-col-resize")}>
-              <table className="text-xs" style={{ tableLayout: "fixed", borderCollapse: "separate", borderSpacing: 0, width: 32 + 32 + 40 + 40 + orderedCols.reduce((s, c) => s + (colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100), 0) }}>
+              <table className="text-xs" style={{ tableLayout: "fixed", borderCollapse: "separate", borderSpacing: 0, width: 32 + orderedCols.reduce((s, c) => s + (colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100), 0) }}>
+                {/*
+                  ⚠ El <colgroup> tiene que tener EXACTAMENTE un <col> por
+                  columna real (1 checkbox + orderedCols). Antes declaraba 3
+                  <col> de más (32/40 al principio, 40 al final) que quedaron
+                  de cuando esta tabla tenía pin/#/borrar como columnas propias
+                  — se les sacó el <th>/<td> en su momento pero no el <col>.
+                  El navegador asigna cada <col> por POSICIÓN, no por
+                  contenido, así que esos <col> sobrantes corrían el ancho de
+                  cada columna real un lugar (o tres) a la derecha: todo se
+                  veía desalineado aunque los datos en sí estuvieran bien.
+                */}
                 <colgroup>
                   <col style={{ width: 32 }} />
-                  <col style={{ width: 32 }} />
-                  <col style={{ width: 40 }} />
                   {orderedCols.map(c => <col key={c.db} style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 }} />)}
-                  <col style={{ width: 40 }} />
                 </colgroup>
                 <thead>
                   <tr>
