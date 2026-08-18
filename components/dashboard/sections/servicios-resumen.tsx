@@ -14,7 +14,6 @@ import {
   Check,
   RotateCcw,
   Download,
-  Layers,
   Trash2,
   Copy,
   ChevronRight,
@@ -87,8 +86,6 @@ const DEFAULT_WIDTHS_R: Record<string, number> = {
 // Orden de columnas persistido (drag & drop) — por navegador.
 // v3: se agregó Línea y se reubicó Observaciones (reset del orden guardado viejo).
 const COLORDER_KEY = "servicios-resumen-colorder-v3";
-// Agrupar por OP (toggle), persistido por navegador.
-const GROUPBYOP_KEY = "servicios-resumen-groupbyop";
 
 type SeguimientoRow = Record<string, unknown> & { id: string };
 
@@ -294,22 +291,9 @@ export function ServiciosResumenSection() {
     try { localStorage.setItem(COLORDER_KEY, JSON.stringify(colOrder)); } catch { /* ignorar */ }
   }, [colOrder]);
 
-  // ── Agrupar por OP (toggle) + qué grupos están desplegados ──────────────────
-  const [groupByOp, setGroupByOp] = useState(true);
+  // ── Agrupado por OP: siempre activo — es como se controla el estado de
+  //    cada servicio, no tiene sentido ofrecer una vista plana sin OP. ──────
   const [expandedOps, setExpandedOps] = useState<Set<string>>(new Set());
-  const groupLoaded = useRef(false);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(GROUPBYOP_KEY);
-      if (raw !== null) setGroupByOp(raw === "1");
-    } catch { /* ignorar */ }
-    groupLoaded.current = true;
-  }, []);
-  useEffect(() => {
-    if (!groupLoaded.current) return;
-    try { localStorage.setItem(GROUPBYOP_KEY, groupByOp ? "1" : "0"); } catch { /* ignorar */ }
-  }, [groupByOp]);
 
   const toggleOp = (op: string) => setExpandedOps(prev => {
     const n = new Set(prev);
@@ -556,7 +540,7 @@ export function ServiciosResumenSection() {
   }, [baseRows, filtroVencer, filtroConsumo, filtroActivos, filtroVencidos]);
 
   // Reinicia la paginación cuando cambia el conjunto mostrado.
-  useEffect(() => { setTablePage(0); }, [tableRows.length, groupByOp]);
+  useEffect(() => { setTablePage(0); }, [tableRows.length]);
 
   // Alertas recientes (por vencer / alto consumo) sobre el universo base.
   const alertas = useMemo(() => {
@@ -614,29 +598,40 @@ export function ServiciosResumenSection() {
     }));
   }, [tableRows]);
 
-  // Paginación: por grupo si está agrupado, por fila si no.
-  const totalPages = groupByOp
-    ? Math.max(1, Math.ceil(groups.length / PAGE_SIZE))
-    : Math.max(1, Math.ceil(tableRows.length / PAGE_SIZE));
-  const pagedRows   = tableRows.slice(tablePage * PAGE_SIZE, (tablePage + 1) * PAGE_SIZE);
+  // Paginación por grupo (OP).
+  const totalPages  = Math.max(1, Math.ceil(groups.length / PAGE_SIZE));
   const pagedGroups = groups.slice(tablePage * PAGE_SIZE, (tablePage + 1) * PAGE_SIZE);
 
-  // Filas visibles (para la selección "todos en la página").
-  const visibleRows = groupByOp
-    ? pagedGroups.flatMap(g => (expandedOps.has(g.op) ? g.rows : []))
-    : pagedRows;
+  // Filas visibles (grupos desplegados en esta página) — para selección por rango.
+  const visibleRows = pagedGroups.flatMap(g => (expandedOps.has(g.op) ? g.rows : []));
 
-  // ── Selección de filas (checkbox por página) ────────────────────────────────
-  const pagedIds    = visibleRows.map(r => String(r.id));
-  const allPageSel  = pagedIds.length > 0 && pagedIds.every(id => selected.has(id));
-  const somePageSel = pagedIds.some(id => selected.has(id));
-  const toggleRow = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const toggleAllPage = () => {
-    if (allPageSel) setSelected(prev => { const n = new Set(prev); pagedIds.forEach(id => n.delete(id)); return n; });
-    else            setSelected(prev => { const n = new Set(prev); pagedIds.forEach(id => n.add(id));    return n; });
+  // ── Selección de filas: click / ctrl+click / shift+click, estilo Windows ────
+  // (sin checkboxes — un click selecciona sola, ctrl suma/saca, shift arma
+  // el rango contra la última fila clickeada, tomando el orden visible).
+  const lastClicked = useRef<string | null>(null);
+
+  const handleRowClick = (e: ReactMouseEvent, row: SeguimientoRow) => {
+    const rowId = String(row.id);
+    if (e.shiftKey && lastClicked.current) {
+      const ids = visibleRows.map(r => String(r.id));
+      const a = ids.indexOf(lastClicked.current);
+      const b = ids.indexOf(rowId);
+      if (a !== -1 && b !== -1) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        const range = ids.slice(lo, hi + 1);
+        setSelected(prev => { const n = new Set(prev); range.forEach(id => n.add(id)); return n; });
+        return;
+      }
+    }
+    if (e.ctrlKey || e.metaKey) {
+      setSelected(prev => { const n = new Set(prev); n.has(rowId) ? n.delete(rowId) : n.add(rowId); return n; });
+    } else {
+      setSelected(new Set([rowId]));
+    }
+    lastClicked.current = rowId;
   };
 
-  // Render de una fila de datos (reutilizado por la vista plana y la agrupada).
+  // Render de una fila de datos (reutilizado por cada grupo de OP).
   const renderDataRow = (row: SeguimientoRow) => {
     const rowId = String(row.id);
     const isSelected = selected.has(rowId);
@@ -644,11 +639,12 @@ export function ServiciosResumenSection() {
     return (
       <Fragment key={rowId}>
       <tr
+        onClick={(e) => handleRowClick(e, row)}
         onContextMenu={(e) => abrirMenuFila(e, row)}
         style={{ boxShadow: "inset 0 -1px 0 hsl(var(--border))" }}
         className={cn(
-          "transition-colors",
-          isSelected ? "bg-accent/8 hover:bg-accent/12" : "even:bg-panel-2/20 hover:bg-panel-2/40"
+          "cursor-pointer transition-colors",
+          isSelected ? "bg-accent/15 hover:bg-accent/20" : "even:bg-panel-2/20 hover:bg-panel-2/40"
         )}>
         <td className="py-2.5 px-3">
           <div className="flex items-center gap-1">
@@ -664,7 +660,6 @@ export function ServiciosResumenSection() {
                 {detalleAbierto ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
               </button>
             )}
-            <input type="checkbox" checked={isSelected} onChange={() => toggleRow(rowId)} className="w-3.5 h-3.5 rounded accent-accent cursor-pointer" />
           </div>
         </td>
         {orderedCols.map(c => {
@@ -888,34 +883,20 @@ export function ServiciosResumenSection() {
             </p>
             {!tableLoading && (
               <p className="text-xs text-muted-foreground mt-0.5">
-                {tableRows.length} resultado{tableRows.length !== 1 ? "s" : ""}
-                {groupByOp && <> · {groups.length} OP</>}
+                {tableRows.length} resultado{tableRows.length !== 1 ? "s" : ""} · {groups.length} OP
               </p>
             )}
           </div>
           <div className="flex items-center gap-2">
             {tableLoading && <Loader2 className="w-4 h-4 text-accent animate-spin" />}
             <button
-              onClick={() => setGroupByOp(v => !v)}
-              title={groupByOp ? "Ver lista plana (sin agrupar)" : "Agrupar filas por OP"}
-              className={cn(
-                "flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs border transition-colors",
-                groupByOp ? "bg-accent/15 text-accent border-accent/40" : "text-muted-foreground hover:text-foreground border-hairline hover:bg-panel-2"
-              )}
+              onClick={() => setExpandedOps(prev => prev.size >= groups.length ? new Set() : new Set(groups.map(g => g.op)))}
+              title="Desplegar o colapsar todos los grupos"
+              className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground border border-hairline hover:bg-panel-2 transition-colors"
             >
-              <Layers className="w-3.5 h-3.5" />
-              {groupByOp ? "Agrupado por OP" : "Agrupar por OP"}
+              {expandedOps.size >= groups.length ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              {expandedOps.size >= groups.length ? "Colapsar" : "Desplegar"} todo
             </button>
-            {groupByOp && (
-              <button
-                onClick={() => setExpandedOps(prev => prev.size >= groups.length ? new Set() : new Set(groups.map(g => g.op)))}
-                title="Desplegar o colapsar todos los grupos"
-                className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground border border-hairline hover:bg-panel-2 transition-colors"
-              >
-                {expandedOps.size >= groups.length ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                {expandedOps.size >= groups.length ? "Colapsar" : "Desplegar"} todo
-              </button>
-            )}
             {selected.size > 0 && (
               <button
                 onClick={handleDeleteSelected}
@@ -982,14 +963,8 @@ export function ServiciosResumenSection() {
                 </colgroup>
                 <thead>
                   <tr>
-                    <th className="sticky top-0 z-10 bg-panel-header border-b border-hairline py-2.5 px-3">
-                      <input type="checkbox" checked={allPageSel}
-                        ref={el => { if (el) el.indeterminate = somePageSel && !allPageSel; }}
-                        onChange={toggleAllPage}
-                        className="w-3.5 h-3.5 rounded accent-accent cursor-pointer"
-                        title="Seleccionar todos en esta página"
-                      />
-                    </th>
+                    <th className="sticky top-0 z-10 bg-panel-header border-b border-hairline py-2.5 px-3" />
+
                     {orderedCols.map(c => (
                       <th
                         key={c.db}
@@ -1065,35 +1040,32 @@ export function ServiciosResumenSection() {
                   </tr>
                 </thead>
                 <tbody>
-                  {groupByOp
-                    ? pagedGroups.map(g => {
-                        const isExp = expandedOps.has(g.op);
-                        return (
-                          <Fragment key={g.op}>
-                            <tr
-                              onClick={() => toggleOp(g.op)}
-                              style={{ boxShadow: "inset 0 -1px 0 hsl(var(--border))" }}
-                              className="cursor-pointer bg-panel-2/40 hover:bg-panel-2/60 transition-colors"
-                            >
-                              <td colSpan={orderedCols.length + 1} className="py-2 px-3">
-                                <div className="flex items-center gap-2">
-                                  {isExp ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
-                                  <span className="font-semibold text-foreground tabular-nums">OP {g.op}</span>
-                                  <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-accent/15 text-accent">
-                                    {g.rows.length} línea{g.rows.length !== 1 ? "s" : ""}
-                                  </span>
-                                  <span className="ml-auto text-xs text-muted-foreground">
-                                    Saldo total: <span className="text-foreground font-medium tabular-nums">{fmt(g.saldo)}</span>
-                                  </span>
-                                </div>
-                              </td>
-                            </tr>
-                            {isExp && g.rows.map((r) => renderDataRow(r))}
-                          </Fragment>
-                        );
-                      })
-                    : pagedRows.map((row) => renderDataRow(row))
-                  }
+                  {pagedGroups.map(g => {
+                    const isExp = expandedOps.has(g.op);
+                    return (
+                      <Fragment key={g.op}>
+                        <tr
+                          onClick={() => toggleOp(g.op)}
+                          style={{ boxShadow: "inset 0 -1px 0 hsl(var(--border))" }}
+                          className="cursor-pointer bg-panel-2/40 hover:bg-panel-2/60 transition-colors"
+                        >
+                          <td colSpan={orderedCols.length + 1} className="py-2 px-3">
+                            <div className="flex items-center gap-2">
+                              {isExp ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
+                              <span className="font-semibold text-foreground tabular-nums">OP {g.op}</span>
+                              <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-accent/15 text-accent">
+                                {g.rows.length} línea{g.rows.length !== 1 ? "s" : ""}
+                              </span>
+                              <span className="ml-auto text-xs text-muted-foreground">
+                                Saldo total: <span className="text-foreground font-medium tabular-nums">{fmt(g.saldo)}</span>
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                        {isExp && g.rows.map((r) => renderDataRow(r))}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
