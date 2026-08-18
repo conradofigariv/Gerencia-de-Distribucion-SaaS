@@ -311,3 +311,25 @@ export async function fetchEntregasLinea(
   const row = (data as DetalleEntregas[] | null)?.[0];
   return row ?? { envios: [], entregas: [], totales: { entregado: 0, n_entregas: 0, comprometido: 0 } };
 }
+
+/**
+ * Normaliza fechas a dd/mm/aa. Maneja los tres formatos que pueden venir de la
+ * DB, según de qué import salió cada fila:
+ *   • ISO "YYYY-MM-DD[...]"   → parse manual (evita corrimiento UTC de new Date)
+ *   • "dd/mm/aaaa[ hh:mm]"    → tal cual lo exporta SIGA
+ *   • Date.toString "Tue Jul 23 2024 ..." → new Date() + toLocaleDateString
+ * El caso dd/mm/aaaa va ANTES del new Date() genérico a propósito: JS parsea
+ * "15/04/2026" como Invalid Date (espera mm/dd), así que sin esta rama una
+ * fecha en formato SIGA caería al fallback y se mostraría cruda.
+ */
+export const fmtFechaISO = (v: string | null | undefined) => {
+  if (!v) return "";
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1].slice(2)}`;
+  const dmy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(v);
+  if (dmy) return `${dmy[1].padStart(2, "0")}/${dmy[2].padStart(2, "0")}/${dmy[3].slice(2)}`;
+  const d = new Date(v);
+  if (!Number.isNaN(d.getTime()))
+    return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  return v;
+};

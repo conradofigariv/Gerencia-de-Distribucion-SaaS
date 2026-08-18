@@ -30,6 +30,8 @@ import {
   type ColumnLabelMap,
 } from "@/lib/columnLabels";
 import { fetchTabs, enviarMarcadasASeguimiento, type BuscadorTab } from "@/lib/buscadorTabs";
+import { fetchEntregasLinea, type DetalleEntregas } from "@/lib/busqueda";
+import { DetalleEntregasFila } from "@/components/dashboard/entregas-detalle";
 
 // Scope de las etiquetas editables para esta sección.
 const LABELS_SCOPE = "servicios-resumen";
@@ -155,12 +157,12 @@ function RowContextMenu({ state, onClose }: { state: CtxState; onClose: () => vo
       ref={ref}
       onMouseDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
-      className="fixed z-[200] min-w-[190px] p-1.5 rounded-xl border border-border bg-card shadow-xl animate-in fade-in zoom-in-95 duration-100"
+      className="fixed z-[200] min-w-[190px] p-1.5 rounded-xl border border-hairline bg-panel shadow-xl animate-in fade-in zoom-in-95 duration-100"
       style={{ left: pos.x, top: pos.y }}
     >
       {state.items.map((it, i) =>
         it === "sep" ? (
-          <div key={`s${i}`} className="h-px my-1 mx-1.5 bg-border" />
+          <div key={`s${i}`} className="h-px my-1 mx-1.5 bg-hairline" />
         ) : (
           <button
             key={it.label}
@@ -168,7 +170,7 @@ function RowContextMenu({ state, onClose }: { state: CtxState; onClose: () => vo
             onClick={() => { it.onClick(); onClose(); }}
             className={cn(
               "w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left text-sm transition-colors disabled:opacity-35 disabled:cursor-default",
-              it.danger ? "text-destructive hover:bg-destructive/10" : "text-foreground hover:bg-secondary"
+              it.danger ? "text-accent-red hover:bg-accent-red/10" : "text-foreground hover:bg-panel-2"
             )}
           >
             <it.icon className="w-3.5 h-3.5 shrink-0" />
@@ -456,6 +458,27 @@ export function ServiciosResumenSection() {
     setCtxMenu({ x: e.clientX, y: e.clientY, items });
   };
 
+  // ── Detalle de entregas (fila desplegable) ────────────────────────────────
+  // Mismo mecanismo que el Buscador: comprometido (envíos de la OP) vs.
+  // entregado (movimientos reales), consultado bajo demanda por fila y
+  // cacheado por id para no repetir la consulta al plegar/desplegar.
+  const [filaAbierta, setFilaAbierta] = useState<string | null>(null);
+  const [detallesEntregas, setDetallesEntregas] = useState<Map<string, DetalleEntregas>>(new Map());
+  const [cargandoDetalle, setCargandoDetalle] = useState<string | null>(null);
+
+  const toggleDetalle = (row: SeguimientoRow) => {
+    const rowId = String(row.id);
+    if (filaAbierta === rowId) { setFilaAbierta(null); return; }
+    setFilaAbierta(rowId);
+    if (detallesEntregas.has(rowId)) return;
+
+    setCargandoDetalle(rowId);
+    fetchEntregasLinea(String(row.op ?? ""), String(row.matricula ?? ""), row.linea != null ? String(row.linea) : null)
+      .then((d) => setDetallesEntregas((prev) => new Map(prev).set(rowId, d)))
+      .catch((e) => toast.error(`No se pudo traer el detalle: ${e instanceof Error ? e.message : String(e)}`))
+      .finally(() => setCargandoDetalle((c) => (c === rowId ? null : c)));
+  };
+
   /** Relee `seguimiento`. Se usa en la carga inicial y después de sincronizar
    *  desde el Buscador, que inserta filas nuevas en esa tabla. */
   const recargarSeguimiento = async () => {
@@ -617,16 +640,32 @@ export function ServiciosResumenSection() {
   const renderDataRow = (row: SeguimientoRow) => {
     const rowId = String(row.id);
     const isSelected = selected.has(rowId);
+    const detalleAbierto = filaAbierta === rowId;
     return (
-      <tr key={rowId}
+      <Fragment key={rowId}>
+      <tr
         onContextMenu={(e) => abrirMenuFila(e, row)}
         style={{ boxShadow: "inset 0 -1px 0 hsl(var(--border))" }}
         className={cn(
           "transition-colors",
-          isSelected ? "bg-accent/8 hover:bg-accent/12" : "even:bg-secondary/20 hover:bg-secondary/40"
+          isSelected ? "bg-accent/8 hover:bg-accent/12" : "even:bg-panel-2/20 hover:bg-panel-2/40"
         )}>
         <td className="py-2.5 px-3">
-          <input type="checkbox" checked={isSelected} onChange={() => toggleRow(rowId)} className="w-3.5 h-3.5 rounded accent-accent cursor-pointer" />
+          <div className="flex items-center gap-1">
+            {/* Desplegar el detalle de entregas — solo con OP, una fila sin
+                ella no tiene movimientos que cruzar. */}
+            {!!row.op && (
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleDetalle(row); }}
+                title="Ver entregas de esta línea"
+                className="grid place-items-center shrink-0"
+                style={{ width: 14, height: 14, color: detalleAbierto ? "var(--accent-green)" : "hsl(var(--muted-foreground) / 0.5)" }}
+              >
+                {detalleAbierto ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+              </button>
+            )}
+            <input type="checkbox" checked={isSelected} onChange={() => toggleRow(rowId)} className="w-3.5 h-3.5 rounded accent-accent cursor-pointer" />
+          </div>
         </td>
         {orderedCols.map(c => {
           if (c.db === "dias_vencer") {
@@ -636,10 +675,10 @@ export function ServiciosResumenSection() {
             if (dias !== null) {
               if (dias < 0) {
                 content = saldo > 0
-                  ? <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-destructive/15 text-destructive">Vencido {Math.abs(dias)} d</span>
-                  : <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-secondary text-muted-foreground">Vencido</span>;
+                  ? <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-accent-red/15 text-accent-red">Vencido {Math.abs(dias)} d</span>
+                  : <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-panel-2 text-muted-foreground">Vencido</span>;
               } else {
-                const tone = dias <= 90 ? "bg-destructive/15 text-destructive" : dias <= 120 ? "bg-warning/15 text-warning" : "bg-success/15 text-success";
+                const tone = dias <= 90 ? "bg-accent-red/15 text-accent-red" : dias <= 120 ? "bg-accent-amber/15 text-accent-amber" : "bg-accent-green/15 text-accent-green";
                 content = <span className={cn("px-1.5 py-0.5 rounded text-[11px] font-medium", tone)}>{dias} d</span>;
               }
             }
@@ -652,7 +691,7 @@ export function ServiciosResumenSection() {
           if (c.db === "estado") {
             return (
               <td key={c.db} className="py-2.5 px-3 whitespace-nowrap overflow-hidden" title={display}>
-                <span className={cn("px-1.5 py-0.5 rounded text-[11px] font-medium", isAbierto(val) ? "bg-success/15 text-success" : "bg-secondary text-muted-foreground")}>{display || "—"}</span>
+                <span className={cn("px-1.5 py-0.5 rounded text-[11px] font-medium", isAbierto(val) ? "bg-accent-green/15 text-accent-green" : "bg-panel-2 text-muted-foreground")}>{display || "—"}</span>
               </td>
             );
           }
@@ -667,7 +706,7 @@ export function ServiciosResumenSection() {
                     onChange={e => setEditingValue(e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); saveEdit(); } if (e.key === "Escape") { setEditingCell(null); } }}
                     onBlur={saveEdit}
-                    className="w-full min-w-[80px] bg-secondary border border-accent rounded px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full min-w-[80px] bg-panel-2 border border-accent rounded px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 ) : (
                   <div className="flex items-center justify-between gap-1.5 cursor-pointer" onClick={() => startEdit(rowId, c.db, val)}>
@@ -686,6 +725,21 @@ export function ServiciosResumenSection() {
           );
         })}
       </tr>
+
+      {detalleAbierto && (
+        <tr>
+          <td colSpan={orderedCols.length + 1} style={{ padding: 0 }}>
+            {cargandoDetalle === rowId ? (
+              <div className="flex items-center gap-2 text-[12px] text-muted-foreground" style={{ padding: "14px 16px 14px 62px", background: "oklch(0.185 0.005 270)" }}>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />Cargando entregas…
+              </div>
+            ) : detallesEntregas.has(rowId) ? (
+              <DetalleEntregasFila detalle={detallesEntregas.get(rowId)!} />
+            ) : null}
+          </td>
+        </tr>
+      )}
+      </Fragment>
     );
   };
 
@@ -706,7 +760,7 @@ export function ServiciosResumenSection() {
                 ? 'No hay una pestaña «Servicios» en el Buscador todavía — creala ahí con ese nombre.'
                 : "Traer al seguimiento las filas marcadas con «Enviar a Tarjeta» en la pestaña Servicios"
             }
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-accent/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-hairline bg-panel text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-accent/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {sincronizando
               ? <Loader2 className="w-4 h-4 animate-spin" />
@@ -730,21 +784,21 @@ export function ServiciosResumenSection() {
         <button
           onClick={() => setFiltroActivos(v => !v)}
           className={cn(
-            "bg-card rounded-xl p-5 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
+            "bg-panel rounded-xl p-5 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
             filtroActivos
-              ? "border-2 border-success shadow-[0_0_0_1px_oklch(0.55_0.18_145/0.3)]"
-              : "border border-border hover:border-success/40"
+              ? "border-2 border-accent-green shadow-[0_0_0_1px_oklch(0.55_0.18_145/0.3)]"
+              : "border border-hairline hover:border-accent-green/40"
           )}
           style={{ animationFillMode: "both" }}
         >
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm text-muted-foreground">Activos</span>
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-success/10">
-              <CheckCircle2 className="w-5 h-5 text-success" />
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-accent-green/10">
+              <CheckCircle2 className="w-5 h-5 text-accent-green" />
             </div>
           </div>
           <p className="text-2xl font-bold text-foreground">{fmt(activos)}</p>
-          <p className={cn("text-xs mt-1.5 font-medium", filtroActivos ? "text-success" : "text-muted-foreground/50")}>
+          <p className={cn("text-xs mt-1.5 font-medium", filtroActivos ? "text-accent-green" : "text-muted-foreground/50")}>
             {filtroActivos ? "Filtro activo" : "Sin selección"}
           </p>
         </button>
@@ -753,21 +807,21 @@ export function ServiciosResumenSection() {
         <button
           onClick={cycleVencer}
           className={cn(
-            "bg-card rounded-xl p-5 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
+            "bg-panel rounded-xl p-5 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
             filtroVencer !== null
-              ? "border-2 border-warning shadow-[0_0_0_1px_oklch(0.75_0.18_80/0.3)]"
-              : "border border-border hover:border-warning/40"
+              ? "border-2 border-accent-amber shadow-[0_0_0_1px_oklch(0.75_0.18_80/0.3)]"
+              : "border border-hairline hover:border-accent-amber/40"
           )}
           style={{ animationDelay: "75ms", animationFillMode: "both" }}
         >
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm text-muted-foreground">Por vencer</span>
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-warning/10">
-              <CalendarClock className="w-5 h-5 text-warning" />
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-accent-amber/10">
+              <CalendarClock className="w-5 h-5 text-accent-amber" />
             </div>
           </div>
           <p className="text-2xl font-bold text-foreground">{fmt(porVencer)}</p>
-          <p className={cn("text-xs mt-1.5 font-medium", filtroVencer !== null ? "text-warning" : "text-muted-foreground/50")}>
+          <p className={cn("text-xs mt-1.5 font-medium", filtroVencer !== null ? "text-accent-amber" : "text-muted-foreground/50")}>
             {filtroVencer !== null ? `Próximos ${filtroVencer} meses · clic para cambiar` : "Sin selección · clic para activar"}
           </p>
         </button>
@@ -776,10 +830,10 @@ export function ServiciosResumenSection() {
         <button
           onClick={cycleConsumo}
           className={cn(
-            "bg-card rounded-xl p-5 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
+            "bg-panel rounded-xl p-5 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
             filtroConsumo !== null
               ? "border-2 border-orange-400 shadow-[0_0_0_1px_oklch(0.75_0.18_50/0.3)]"
-              : "border border-border hover:border-orange-400/40"
+              : "border border-hairline hover:border-orange-400/40"
           )}
           style={{ animationDelay: "150ms", animationFillMode: "both" }}
         >
@@ -799,21 +853,21 @@ export function ServiciosResumenSection() {
         <button
           onClick={() => setFiltroVencidos(v => !v)}
           className={cn(
-            "bg-card rounded-xl p-5 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
+            "bg-panel rounded-xl p-5 text-left transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 duration-500",
             filtroVencidos
-              ? "border-2 border-destructive shadow-[0_0_0_1px_oklch(0.55_0.22_25/0.3)]"
-              : "border border-border hover:border-destructive/40"
+              ? "border-2 border-accent-red shadow-[0_0_0_1px_oklch(0.55_0.22_25/0.3)]"
+              : "border border-hairline hover:border-accent-red/40"
           )}
           style={{ animationDelay: "225ms", animationFillMode: "both" }}
         >
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm text-muted-foreground">Vencidos</span>
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-destructive/10">
-              <XCircle className="w-5 h-5 text-destructive" />
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-accent-red/10">
+              <XCircle className="w-5 h-5 text-accent-red" />
             </div>
           </div>
           <p className="text-2xl font-bold text-foreground">{fmt(vencidos)}</p>
-          <p className={cn("text-xs mt-1.5 font-medium", filtroVencidos ? "text-destructive" : "text-muted-foreground/50")}>
+          <p className={cn("text-xs mt-1.5 font-medium", filtroVencidos ? "text-accent-red" : "text-muted-foreground/50")}>
             {filtroVencidos ? "Filtro activo" : "Sin selección"}
           </p>
         </button>
@@ -821,8 +875,8 @@ export function ServiciosResumenSection() {
       </div>
 
       {/* Tabla filtrada */}
-      <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-secondary/30">
+      <div className="bg-panel border border-hairline rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-hairline bg-panel-2/30">
           <div>
             <p className="text-sm font-semibold text-foreground">
               {[
@@ -846,7 +900,7 @@ export function ServiciosResumenSection() {
               title={groupByOp ? "Ver lista plana (sin agrupar)" : "Agrupar filas por OP"}
               className={cn(
                 "flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs border transition-colors",
-                groupByOp ? "bg-accent/15 text-accent border-accent/40" : "text-muted-foreground hover:text-foreground border-border hover:bg-secondary"
+                groupByOp ? "bg-accent/15 text-accent border-accent/40" : "text-muted-foreground hover:text-foreground border-hairline hover:bg-panel-2"
               )}
             >
               <Layers className="w-3.5 h-3.5" />
@@ -856,7 +910,7 @@ export function ServiciosResumenSection() {
               <button
                 onClick={() => setExpandedOps(prev => prev.size >= groups.length ? new Set() : new Set(groups.map(g => g.op)))}
                 title="Desplegar o colapsar todos los grupos"
-                className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground border border-border hover:bg-secondary transition-colors"
+                className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground border border-hairline hover:bg-panel-2 transition-colors"
               >
                 {expandedOps.size >= groups.length ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 {expandedOps.size >= groups.length ? "Colapsar" : "Desplegar"} todo
@@ -866,7 +920,7 @@ export function ServiciosResumenSection() {
               <button
                 onClick={handleDeleteSelected}
                 disabled={deletingSelected}
-                className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs text-destructive bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs text-accent-red bg-accent-red/10 hover:bg-accent-red/20 border border-accent-red/30 transition-colors disabled:opacity-50"
               >
                 {deletingSelected ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                 Eliminar seleccionadas ({selected.size})
@@ -877,7 +931,7 @@ export function ServiciosResumenSection() {
                 onClick={restoreLabels}
                 disabled={savingLabels}
                 title="Restaurar los nombres por defecto"
-                className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground border border-border hover:bg-secondary transition-colors disabled:opacity-40"
+                className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground border border-hairline hover:bg-panel-2 transition-colors disabled:opacity-40"
               >
                 {savingLabels ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
                 Restaurar
@@ -890,7 +944,7 @@ export function ServiciosResumenSection() {
                 "flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs border transition-colors",
                 editingHeaders
                   ? "bg-accent/15 text-accent border-accent/40"
-                  : "text-muted-foreground hover:text-foreground border-border hover:bg-secondary"
+                  : "text-muted-foreground hover:text-foreground border-hairline hover:bg-panel-2"
               )}
             >
               {editingHeaders ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
@@ -928,7 +982,7 @@ export function ServiciosResumenSection() {
                 </colgroup>
                 <thead>
                   <tr>
-                    <th className="sticky top-0 z-10 bg-panel-header border-b border-border py-2.5 px-3">
+                    <th className="sticky top-0 z-10 bg-panel-header border-b border-hairline py-2.5 px-3">
                       <input type="checkbox" checked={allPageSel}
                         ref={el => { if (el) el.indeterminate = somePageSel && !allPageSel; }}
                         onChange={toggleAllPage}
@@ -941,7 +995,7 @@ export function ServiciosResumenSection() {
                         key={c.db}
                         style={{ width: colWidths[c.db] ?? DEFAULT_WIDTHS_R[c.db] ?? 100 }}
                         className={cn(
-                          "sticky top-0 z-10 bg-panel-header border-b border-border group/th py-2.5 pl-3 pr-4 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider transition-opacity",
+                          "sticky top-0 z-10 bg-panel-header border-b border-hairline group/th py-2.5 pl-3 pr-4 text-left text-muted-foreground font-semibold whitespace-nowrap uppercase tracking-wider transition-opacity",
                           dragCol === c.db && "opacity-40",
                           dragOverCol === c.db && dragCol !== c.db && "bg-accent/10 ring-1 ring-inset ring-accent/40"
                         )}
@@ -975,7 +1029,7 @@ export function ServiciosResumenSection() {
                               }}
                               onBlur={e => commitLabel(c.db, c.label, e.target.value)}
                               placeholder={c.label}
-                              className="w-full bg-secondary border border-accent rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-foreground focus:outline-none focus:ring-1 focus:ring-accent normal-case"
+                              className="w-full bg-panel-2 border border-accent rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-foreground focus:outline-none focus:ring-1 focus:ring-accent normal-case"
                               style={{ textTransform: "none" }}
                             />
                           ) : (
@@ -1003,7 +1057,7 @@ export function ServiciosResumenSection() {
                               setIsResizing(false);
                             }}
                           >
-                            <div className="w-px h-4 bg-border group-hover/handle:bg-accent transition-colors" />
+                            <div className="w-px h-4 bg-hairline group-hover/handle:bg-accent transition-colors" />
                           </div>
                         )}
                       </th>
@@ -1019,7 +1073,7 @@ export function ServiciosResumenSection() {
                             <tr
                               onClick={() => toggleOp(g.op)}
                               style={{ boxShadow: "inset 0 -1px 0 hsl(var(--border))" }}
-                              className="cursor-pointer bg-secondary/40 hover:bg-secondary/60 transition-colors"
+                              className="cursor-pointer bg-panel-2/40 hover:bg-panel-2/60 transition-colors"
                             >
                               <td colSpan={orderedCols.length + 1} className="py-2 px-3">
                                 <div className="flex items-center gap-2">
@@ -1045,20 +1099,20 @@ export function ServiciosResumenSection() {
             </div>
 
             {totalPages > 1 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-secondary/30">
+              <div className="flex items-center justify-between px-4 py-3 border-t border-hairline bg-panel-2/30">
                 <span className="text-xs text-muted-foreground">
                   {tableRows.length} resultado{tableRows.length !== 1 ? "s" : ""}
                 </span>
                 <div className="flex items-center gap-2">
                   <button onClick={() => setTablePage(p => p - 1)} disabled={tablePage === 0}
-                    className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                    className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-panel-2 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                     Anterior
                   </button>
                   <span className="px-3 py-1.5 rounded-lg text-xs bg-accent text-accent-foreground font-medium">
                     {tablePage + 1} / {totalPages}
                   </span>
                   <button onClick={() => setTablePage(p => p + 1)} disabled={tablePage >= totalPages - 1}
-                    className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                    className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-panel-2 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                     Siguiente
                   </button>
                 </div>
@@ -1069,13 +1123,13 @@ export function ServiciosResumenSection() {
       </div>
 
       {/* Alertas recientes */}
-      <div className="bg-card border border-border rounded-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-400">
-        <div className="flex items-center justify-between p-5 border-b border-border">
+      <div className="bg-panel border border-hairline rounded-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-400">
+        <div className="flex items-center justify-between p-5 border-b border-hairline">
           <div>
             <h3 className="text-base font-semibold text-foreground">Alertas recientes</h3>
             <p className="text-sm text-muted-foreground mt-0.5">Servicios por vencer o con alto consumo</p>
           </div>
-          <span className="flex items-center gap-1.5 text-xs text-destructive font-medium bg-destructive/10 px-2.5 py-1 rounded-full">
+          <span className="flex items-center gap-1.5 text-xs text-accent-red font-medium bg-accent-red/10 px-2.5 py-1 rounded-full">
             <AlertTriangle className="w-3 h-3" />
             {alertas.filter((a) => a.severity === "high").length} críticas
           </span>
@@ -1089,11 +1143,11 @@ export function ServiciosResumenSection() {
             alertas.map((alerta, i) => (
               <div
                 key={alerta.id}
-                className="flex items-center justify-between px-5 py-3.5 hover:bg-secondary/30 transition-colors duration-150 animate-in fade-in slide-in-from-left-2"
+                className="flex items-center justify-between px-5 py-3.5 hover:bg-panel-2/30 transition-colors duration-150 animate-in fade-in slide-in-from-left-2"
                 style={{ animationDelay: `${i * 40}ms`, animationFillMode: "both" }}
               >
                 <div className="flex items-center gap-3">
-                  <div className={cn("w-2 h-2 rounded-full shrink-0 mt-0.5", alerta.severity === "high" ? "bg-destructive" : "bg-warning")} />
+                  <div className={cn("w-2 h-2 rounded-full shrink-0 mt-0.5", alerta.severity === "high" ? "bg-accent-red" : "bg-accent-amber")} />
                   <div>
                     <p className="text-sm text-foreground truncate max-w-[700px]">
                       <span className="font-bold">OP {alerta.op}</span>

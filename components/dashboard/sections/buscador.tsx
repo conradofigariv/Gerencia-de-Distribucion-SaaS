@@ -12,9 +12,10 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
-  buscar, reconstruirIndice, estadoIndice, rowKey, fechaMs, fetchEntregasLinea,
+  buscar, reconstruirIndice, estadoIndice, rowKey, fechaMs, fetchEntregasLinea, fmtFechaISO,
   type BusquedaRow, type CampoBusqueda, type DetalleEntregas,
 } from "@/lib/busqueda";
+import { DetalleEntregasFila } from "@/components/dashboard/entregas-detalle";
 import { getPreference, setPreference } from "@/lib/userPreferences";
 import {
   fetchOpDatos, upsertOpDato, aplicarOpDatos, normOp, OP_MANUAL_COLS, type OpDato,
@@ -42,26 +43,6 @@ const TOOLBAR_H = 34;
 
 const fmtNum = (n: number | null | undefined) =>
   n == null ? "" : Number(n).toLocaleString("es-AR", { maximumFractionDigits: 2 });
-
-// Normaliza fechas a dd/mm/aa. Maneja los tres formatos que pueden venir de la
-// DB, según de qué import salió cada fila:
-//   • ISO "YYYY-MM-DD[...]"   → parse manual (evita corrimiento UTC de new Date)
-//   • "dd/mm/aaaa[ hh:mm]"    → tal cual lo exporta SIGA
-//   • Date.toString "Tue Jul 23 2024 ..." → new Date() + toLocaleDateString
-// El caso dd/mm/aaaa va ANTES del new Date() genérico a propósito: JS parsea
-// "15/04/2026" como Invalid Date (espera mm/dd), así que sin esta rama una
-// fecha en formato SIGA caería al fallback y se mostraría cruda.
-const fmtFechaISO = (v: string | null | undefined) => {
-  if (!v) return "";
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
-  if (iso) return `${iso[3]}/${iso[2]}/${iso[1].slice(2)}`;
-  const dmy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(v);
-  if (dmy) return `${dmy[1].padStart(2, "0")}/${dmy[2].padStart(2, "0")}/${dmy[3].slice(2)}`;
-  const d = new Date(v);
-  if (!Number.isNaN(d.getTime()))
-    return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" });
-  return v;
-};
 
 // Columnas que guardan una FECHA como texto. Ordenarlas comparando el string
 // da mal por el mismo motivo que en SQL (ver gd_parse_fecha): conviven el
@@ -607,96 +588,6 @@ interface CtxState {
   x: number;
   y: number;
   items: (CtxItem | "sep")[];
-}
-
-// ─── Detalle de entregas (contenido de la fila desplegada) ──────────────────
-// Dos listas enfrentadas: lo COMPROMETIDO (envíos de la planilla OP, cada uno
-// con su fecha pactada) contra lo ENTREGADO realmente (movimientos 'Entregar').
-//
-// ⚠ El grano no es el mismo de los dos lados y es a propósito: los envíos se
-//   abren uno por uno, pero las transacciones no tienen dimensión de envío, así
-//   que las entregas son de la LÍNEA completa. Por eso no se intenta parear
-//   cada entrega con su envío — eso sería inventar una correspondencia que el
-//   dato no tiene. Se comparan los totales, que es lo que sí es cierto.
-
-function DetalleEntregasFila({ detalle }: { detalle: DetalleEntregas }) {
-  const { envios, entregas, totales } = detalle;
-  const falta = totales.comprometido - totales.entregado;
-
-  // Semáforo sobre el total de la línea: completo / parcial / sin entregas.
-  const tono =
-    totales.comprometido > 0 && totales.entregado >= totales.comprometido ? "#86efac"
-    : totales.entregado > 0                                              ? "#fcd34d"
-    : "#fca5a5";
-
-  const num = (n: number) => n.toLocaleString("es-AR", { maximumFractionDigits: 2 });
-
-  return (
-    <div style={{ padding: "12px 16px 14px 62px", background: "oklch(0.185 0.005 270)" }}>
-      {/* Resumen arriba: la comparación que da sentido a todo lo de abajo. */}
-      <div className="flex items-center gap-4 flex-wrap mb-3 text-[12px]">
-        <span style={{ color: "oklch(0.6 0 0)" }}>
-          Entregado <span style={{ color: tono, fontWeight: 600 }}>{num(totales.entregado)}</span>
-          {totales.comprometido > 0 && <> de <span style={{ color: "oklch(0.85 0 0)" }}>{num(totales.comprometido)}</span></>}
-        </span>
-        {falta > 0 && totales.comprometido > 0 && (
-          <span style={{ color: "#fcd34d" }}>Faltan {num(falta)}</span>
-        )}
-        <span style={{ color: "oklch(0.5 0 0)" }}>
-          {totales.n_entregas} entrega{totales.n_entregas === 1 ? "" : "s"}
-        </span>
-      </div>
-
-      <div className="grid gap-5" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
-        {/* Comprometido */}
-        <div>
-          <p className="text-[10.5px] uppercase tracking-wide mb-1.5" style={{ color: "oklch(0.5 0 0)" }}>
-            Comprometido — envíos de la OP
-          </p>
-          {envios.length === 0 ? (
-            <p className="text-[12px]" style={{ color: "oklch(0.42 0 0)" }}>Sin envíos en la planilla.</p>
-          ) : (
-            <ul className="space-y-1">
-              {envios.map((e, i) => (
-                <li key={`${e.envio}-${i}`} className="flex items-center gap-2 text-[12px]">
-                  <span style={{ color: "oklch(0.5 0 0)", minWidth: 52 }}>Envío {e.envio ?? "—"}</span>
-                  <span style={{ color: "oklch(0.85 0 0)", fontVariantNumeric: "tabular-nums" }}>
-                    {e.cantidad != null ? num(Number(e.cantidad)) : "—"}
-                  </span>
-                  <span style={{ color: "oklch(0.55 0 0)", fontFamily: "ui-monospace, monospace" }}>
-                    {fmtFechaISO(e.fecha_pactada)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* Entregado */}
-        <div>
-          <p className="text-[10.5px] uppercase tracking-wide mb-1.5" style={{ color: "oklch(0.5 0 0)" }}>
-            Entregado — movimientos reales
-          </p>
-          {entregas.length === 0 ? (
-            <p className="text-[12px]" style={{ color: "oklch(0.42 0 0)" }}>Sin entregas registradas.</p>
-          ) : (
-            <ul className="space-y-1">
-              {entregas.map((e, i) => (
-                <li key={`${e.fecha}-${i}`} className="flex items-center gap-2 text-[12px]">
-                  <span style={{ color: "oklch(0.55 0 0)", fontFamily: "ui-monospace, monospace", minWidth: 78 }}>
-                    {fmtFechaISO(e.fecha)}
-                  </span>
-                  <span style={{ color: "#86efac", fontVariantNumeric: "tabular-nums" }}>
-                    {num(Number(e.importe))}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function RowContextMenu({ state, onClose }: { state: CtxState; onClose: () => void }) {
