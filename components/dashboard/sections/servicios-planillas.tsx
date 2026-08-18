@@ -24,15 +24,25 @@ type MatUploadMode = "append" | "overwrite";
 
 const str   = (v: unknown): string => String(v ?? "").trim();
 
-// Fecha de Excel → "YYYY-MM-DD". XLSX se lee con cellDates:true, así que las
-// celdas con formato de fecha llegan como Date; con String() quedarían como
-// "Fri Jul 03 2026 13:24:37 GMT-0300 (…)", ilegible y atado a la zona horaria
-// del navegador que hizo la carga. Se arma a partir de los componentes locales
-// (no toISOString) para que no se corra un día por UTC.
+// Fecha de Excel → "YYYY-MM-DD". XLSX se lee con cellDates:true, que convierte
+// a Date las celdas que el Excel tiene formateadas COMO fecha. Pero si la
+// celda es un número sin ese formato (frecuente en exports viejos: la columna
+// "queda" con formato General), cellDates no la toca y llega el número crudo
+// de serie de Excel (ej. 45658) — antes se guardaba tal cual con String(), y
+// más tarde `new Date("45658")` lo interpretaba como el AÑO 45658 en vez de
+// una fecha de 2024, lo que rompía cualquier insert que la usara («time zone
+// displacement out of range»). Se convierte acá también, con el mismo epoch
+// de Excel (30/12/1899) que usa lib/seguimientoBuild.ts del otro lado.
 const fechaStr = (v: unknown): string => {
+  const p = (n: number) => String(n).padStart(2, "0");
   if (v instanceof Date && !Number.isNaN(v.getTime())) {
-    const p = (n: number) => String(n).padStart(2, "0");
     return `${v.getFullYear()}-${p(v.getMonth() + 1)}-${p(v.getDate())}`;
+  }
+  if (typeof v === "number" && Number.isFinite(v)) {
+    const d = new Date(Date.UTC(1899, 11, 30) + v * 86_400_000);
+    if (!Number.isNaN(d.getTime())) {
+      return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+    }
   }
   return str(v);
 };

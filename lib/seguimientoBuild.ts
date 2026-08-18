@@ -19,6 +19,46 @@ export const num = (v: unknown) => { const n = Number(v); return isNaN(n) ? 0 : 
 export const str = (v: unknown) => String(v ?? "").trim();
 const isoDate = (d: Date | null) => d ? d.toISOString().split("T")[0] : null;
 
+/**
+ * Texto crudo de `planillas_op.fecha_pactada`/`fecha_creacion` → Date, o null.
+ *
+ * Convive con TRES formatos posibles en esa columna (es texto libre, cargado
+ * por distintas versiones del import de «Carga de datos»):
+ *   • ISO            "2024-07-23"
+ *   • Date.toString  "Tue Jul 23 2024 00:00:48 GMT-03"
+ *   • Serie de Excel "45658" — cuando la celda del Excel NO estaba formateada
+ *     como fecha (solo un número), el import viejo la guardaba tal cual en
+ *     vez de convertirla (ver fechaStr en servicios-planillas.tsx). `new
+ *     Date("45658")` no tira NaN: V8 la interpreta como el año 45658, que
+ *     `toISOString()` serializa como "+045658-01-01" — un string que Postgres
+ *     rechaza al insertar («time zone displacement out of range», 22009) y
+ *     que sin este chequeo tumbaba «Traer del Buscador» entero por una sola
+ *     fila con una fecha vieja mal cargada.
+ *
+ * Se detecta reconociendo el patrón numérico ANTES de intentar `new Date()`
+ * genérico (que lo aceptaría como año) y se convierte con el epoch de Excel
+ * (30/12/1899). Cualquier resultado con año fuera de un rango plausible
+ * (1990–2100) se descarta como null en vez de propagar un Date corrupto.
+ */
+function parseFechaOP(raw: unknown): Date | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const serial = Number(s);
+    // Epoch de Excel: 30/12/1899. (Se ignora a propósito el bug histórico del
+    // 29/02/1900 inexistente que arrastra Excel — un día de diferencia no
+    // importa acá, es una fecha de referencia, no un cálculo financiero.)
+    const d = new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getUTCFullYear();
+  return y >= 1990 && y <= 2100 ? d : null;
+}
+
 export type OpRow  = {
   numero: string; linea: string; articulo: string;
   cantidad: unknown; cantidad_recibida: unknown;
@@ -54,8 +94,8 @@ export function opMetrics(opRow: OpRow | undefined, today: Date) {
   const cantidad         = num(opRow?.cantidad);
   const cantidadRecibida = num(opRow?.cantidad_recibida);
   const saldoLinea       = cantidad - cantidadRecibida;
-  const fechaCreac = opRow?.fecha_creacion ? new Date(String(opRow.fecha_creacion)) : null;
-  const fechaPact  = opRow?.fecha_pactada  ? new Date(String(opRow.fecha_pactada))  : null;
+  const fechaCreac = parseFechaOP(opRow?.fecha_creacion);
+  const fechaPact  = parseFechaOP(opRow?.fecha_pactada);
   const estadoPlazo      = fechaPact && fechaPact < today ? "VENCIDA" : "OK";
   const estadoCantidades = Math.round(saldoLinea) === 0   ? "SIN SALDO" : "VIGENTE";
   const revision         = estadoPlazo === "VENCIDA" || estadoCantidades === "SIN SALDO" ? "CERRAR" : "OK";
