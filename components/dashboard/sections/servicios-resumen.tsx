@@ -29,8 +29,6 @@ import {
   type ColumnLabelMap,
 } from "@/lib/columnLabels";
 import { fetchTabs, enviarMarcadasASeguimiento, type BuscadorTab } from "@/lib/buscadorTabs";
-import { fetchEntregasLinea, type DetalleEntregas } from "@/lib/busqueda";
-import { DetalleEntregasFila } from "@/components/dashboard/entregas-detalle";
 
 // Scope de las etiquetas editables para esta sección.
 const LABELS_SCOPE = "servicios-resumen";
@@ -442,27 +440,6 @@ export function ServiciosResumenSection() {
     setCtxMenu({ x: e.clientX, y: e.clientY, items });
   };
 
-  // ── Detalle de entregas (fila desplegable) ────────────────────────────────
-  // Mismo mecanismo que el Buscador: comprometido (envíos de la OP) vs.
-  // entregado (movimientos reales), consultado bajo demanda por fila y
-  // cacheado por id para no repetir la consulta al plegar/desplegar.
-  const [filaAbierta, setFilaAbierta] = useState<string | null>(null);
-  const [detallesEntregas, setDetallesEntregas] = useState<Map<string, DetalleEntregas>>(new Map());
-  const [cargandoDetalle, setCargandoDetalle] = useState<string | null>(null);
-
-  const toggleDetalle = (row: SeguimientoRow) => {
-    const rowId = String(row.id);
-    if (filaAbierta === rowId) { setFilaAbierta(null); return; }
-    setFilaAbierta(rowId);
-    if (detallesEntregas.has(rowId)) return;
-
-    setCargandoDetalle(rowId);
-    fetchEntregasLinea(String(row.op ?? ""), String(row.matricula ?? ""), row.linea != null ? String(row.linea) : null)
-      .then((d) => setDetallesEntregas((prev) => new Map(prev).set(rowId, d)))
-      .catch((e) => toast.error(`No se pudo traer el detalle: ${e instanceof Error ? e.message : String(e)}`))
-      .finally(() => setCargandoDetalle((c) => (c === rowId ? null : c)));
-  };
-
   /** Relee `seguimiento`. Se usa en la carga inicial y después de sincronizar
    *  desde el Buscador, que inserta filas nuevas en esa tabla. */
   const recargarSeguimiento = async () => {
@@ -640,7 +617,6 @@ export function ServiciosResumenSection() {
   const renderDataRow = (row: SeguimientoRow) => {
     const rowId = String(row.id);
     const isSelected = selected.has(rowId);
-    const detalleAbierto = filaAbierta === rowId;
     return (
       <Fragment key={rowId}>
       <tr
@@ -651,22 +627,7 @@ export function ServiciosResumenSection() {
           "cursor-pointer transition-colors",
           isSelected ? "bg-accent/15 hover:bg-accent/20" : "even:bg-panel-2/20 hover:bg-panel-2/40"
         )}>
-        <td className="py-2.5 px-3">
-          <div className="flex items-center gap-1">
-            {/* Desplegar el detalle de entregas — solo con OP, una fila sin
-                ella no tiene movimientos que cruzar. */}
-            {!!row.op && (
-              <button
-                onClick={(e) => { e.stopPropagation(); toggleDetalle(row); }}
-                title="Ver entregas de esta línea"
-                className="grid place-items-center shrink-0"
-                style={{ width: 14, height: 14, color: detalleAbierto ? "var(--accent-green)" : "hsl(var(--muted-foreground) / 0.5)" }}
-              >
-                {detalleAbierto ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-              </button>
-            )}
-          </div>
-        </td>
+        <td className="py-2.5 px-3" />
         {orderedCols.map(c => {
           if (c.db === "dias_vencer") {
             const dias  = diasParaVencer(row.fecha_pactada, todayRef);
@@ -725,20 +686,6 @@ export function ServiciosResumenSection() {
           );
         })}
       </tr>
-
-      {detalleAbierto && (
-        <tr>
-          <td colSpan={orderedCols.length + 1} style={{ padding: 0 }}>
-            {cargandoDetalle === rowId ? (
-              <div className="flex items-center gap-2 text-[12px] text-muted-foreground" style={{ padding: "14px 16px 14px 62px", background: "oklch(0.185 0.005 270)" }}>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />Cargando entregas…
-              </div>
-            ) : detallesEntregas.has(rowId) ? (
-              <DetalleEntregasFila detalle={detallesEntregas.get(rowId)!} />
-            ) : null}
-          </td>
-        </tr>
-      )}
       </Fragment>
     );
   };
