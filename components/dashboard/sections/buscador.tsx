@@ -13,8 +13,8 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
   buscar, reconstruirIndice, estadoIndice, rowKey, fechaMs, fetchEntregasLinea, fmtFechaISO,
-  ORDENABLES_SERVIDOR,
-  type BusquedaRow, type CampoBusqueda, type DetalleEntregas,
+  ORDENABLES_SERVIDOR, CAMPOS_FECHA, CAMPOS_FECHA_TX,
+  type BusquedaRow, type CampoBusqueda, type CampoFecha, type DetalleEntregas,
 } from "@/lib/busqueda";
 import { DetalleEntregasFila } from "@/components/dashboard/entregas-detalle";
 import { getPreference, setPreference } from "@/lib/userPreferences";
@@ -893,13 +893,28 @@ export function BuscadorSection() {
   // Stock de ZA por matrícula, cruzado en el cliente (ver getStockZonaMap).
   const [stockZA, setStockZA] = useState<Map<string, number>>(new Map());
 
-  // ── Detalle de entregas (fila desplegable) ────────────────────────────────
-  // Rango de fechas que acota los movimientos 'Entregar' del detalle, como el
-  // desde/hasta de Tablero OP. Vacío = todo el histórico. Solo afecta al
-  // detalle desplegado, nunca a la búsqueda ni a las columnas de la tabla:
-  // esas salen del índice, que está precalculado sin rango.
-  const [entregasDesde, setEntregasDesde] = useState("");
-  const [entregasHasta, setEntregasHasta] = useState("");
+  // ── Filtro por rango de fechas ────────────────────────────────────────────
+  // Acota la BÚSQUEDA a un rango sobre la fecha elegida (creación de la SIC,
+  // creación o pactada de la OP, primer/último movimiento). El filtro se
+  // aplica en el servidor: filtrarlo acá abajo filtraría las 500 filas que ya
+  // vinieron, no el índice — el mismo error que tenía el orden.
+  //
+  // `aplicado` es lo que está filtrando de verdad; los inputs escriben en el
+  // borrador y recién pasan acá al apretar «Buscar». Sin esa separación, una
+  // fecha a medio tipear dispararía una consulta por tecla.
+  const [fechaCampo,  setFechaCampo]  = useState<CampoFecha>("fecha_pactada");
+  const [fechaDesde,  setFechaDesde]  = useState("");
+  const [fechaHasta,  setFechaHasta]  = useState("");
+  const [fechaAplicada, setFechaAplicada] =
+    useState<{ campo: CampoFecha; desde: string; hasta: string } | null>(null);
+
+  // El mismo rango acota el detalle de entregas, pero SOLO si la fecha elegida
+  // es de transacciones: con «creación de la SIC» el rango no habla de los
+  // movimientos y recortarlos por ahí mostraría un detalle incompleto sin que
+  // nada lo explique.
+  const rangoTx = fechaAplicada && CAMPOS_FECHA_TX.has(fechaAplicada.campo) ? fechaAplicada : null;
+  const entregasDesde = rangoTx?.desde ?? "";
+  const entregasHasta = rangoTx?.hasta ?? "";
   // Fila abierta (rowKey) y su detalle, cacheado por clave para no volver a
   // consultar al plegar y desplegar la misma fila.
   const [filaAbierta, setFilaAbierta] = useState<string | null>(null);
@@ -1519,13 +1534,13 @@ export function BuscadorSection() {
     const q = query.trim();
     setLoading(true);
     const t = setTimeout(() => {
-      buscar(q, undefined, campoBusqueda, false, ordenServidor, sortDir)
+      buscar(q, undefined, campoBusqueda, false, ordenServidor, sortDir, fechaAplicada)
         .then((data) => { setRows(data); setBuscado(true); })
         .catch((e) => toast.error(`Error al buscar: ${e instanceof Error ? e.message : String(e)}`))
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(t);
-  }, [query, activeTab, campoBusqueda, ordenServidor, sortDir]);
+  }, [query, activeTab, campoBusqueda, ordenServidor, sortDir, fechaAplicada]);
 
   /**
    * Abre/cierra el detalle de entregas de una fila. Se consulta bajo demanda
@@ -1911,17 +1926,36 @@ export function BuscadorSection() {
     );
   }, [tabFilasConOp, query]);
 
+  // El mismo filtro de fechas que en el maestro, pero acá SÍ va del lado del
+  // cliente y es correcto: la pestaña tiene todas sus filas cargadas, no un
+  // recorte de 500. Sin esto el control quedaría visible dentro de una pestaña
+  // sin hacer nada.
+  const tabFilasEnRango = useMemo(() => {
+    if (!fechaAplicada) return tabFilasFiltradas;
+    const desde = fechaAplicada.desde ? fechaMs(fechaAplicada.desde) : null;
+    const hasta = fechaAplicada.hasta ? fechaMs(fechaAplicada.hasta) : null;
+    return tabFilasFiltradas.filter((f) => {
+      const ms = fechaMs(f.datos[fechaAplicada.campo]);
+      // Sin fecha en ese campo queda afuera: «las de tal período» no incluye
+      // «las que no tienen fecha». Mismo criterio que el filtro del servidor.
+      if (Number.isNaN(ms)) return false;
+      if (desde != null && !Number.isNaN(desde) && ms < desde) return false;
+      if (hasta != null && !Number.isNaN(hasta) && ms > hasta) return false;
+      return true;
+    });
+  }, [tabFilasFiltradas, fechaAplicada]);
+
   const tabFilasOrdenadas = useMemo(() => {
-    if (!sortCol) return tabFilasFiltradas;      // sin sort → orden manual
+    if (!sortCol) return tabFilasEnRango;        // sin sort → orden manual
     const dir = sortDir === "asc" ? 1 : -1;
-    return [...tabFilasFiltradas].sort((a, b) => {
+    return [...tabFilasEnRango].sort((a, b) => {
       const va = a.datos[sortCol];
       const vb = b.datos[sortCol];
       if (va == null || va === "") return 1;
       if (vb == null || vb === "") return -1;
       return compararValores(va, vb, sortCol, dir);
     });
-  }, [tabFilasFiltradas, sortCol, sortDir]);
+  }, [tabFilasEnRango, sortCol, sortDir]);
 
   const displayRows = useMemo(() => {
     if (isTabMode) {
@@ -2257,38 +2291,68 @@ export function BuscadorSection() {
 
           )}
 
-          {/* Rango de fechas del DETALLE de entregas (como el desde/hasta de
-              Tablero OP). No toca la búsqueda ni las columnas de la tabla:
-              esas salen del índice, que está precalculado sin rango. */}
+          {/* Filtro por rango de fechas. El desplegable elige CUÁL fecha se
+              filtra: sin eso el rango es ambiguo (¿cuándo se pidió?, ¿para
+              cuándo se comprometió?, ¿cuándo se movió?). Se aplica con
+              «Buscar» y no al tipear: una fecha a medio escribir dispararía
+              una consulta por tecla. */}
           <div
             className="flex items-center gap-1.5 px-2.5 shrink-0"
             style={{
               height: TOOLBAR_H, borderRadius: 9,
               background: "oklch(0.16 0.005 270)",
-              border: `1px solid ${entregasDesde || entregasHasta ? "oklch(0.55 0.20 295 / 0.45)" : "oklch(1 0 0 / 0.07)"}`,
+              border: `1px solid ${fechaAplicada ? "oklch(0.55 0.20 295 / 0.45)" : "oklch(1 0 0 / 0.07)"}`,
             }}
-            title="Acota las entregas del detalle desplegable a un rango de fechas"
           >
             <CalendarClock className="w-3.5 h-3.5 shrink-0" style={{ color: "oklch(0.5 0 0)" }} />
+            <select
+              value={fechaCampo}
+              onChange={(e) => setFechaCampo(e.target.value as CampoFecha)}
+              title="Sobre qué fecha se aplica el rango"
+              className="bg-transparent border-none outline-none text-[12px] cursor-pointer"
+              style={{ colorScheme: "dark", color: "oklch(0.78 0 0)", maxWidth: 168 }}
+            >
+              {CAMPOS_FECHA.map((f) => (
+                <option key={f.key} value={f.key} style={{ background: "oklch(0.16 0.005 270)" }}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+            <span style={{ color: "oklch(0.28 0 0)" }}>|</span>
             <input
               type="date"
-              value={entregasDesde}
-              onChange={(e) => setEntregasDesde(e.target.value)}
+              value={fechaDesde}
+              onChange={(e) => setFechaDesde(e.target.value)}
               className="bg-transparent border-none outline-none text-[12px]"
-              style={{ colorScheme: "dark", color: entregasDesde ? "oklch(0.88 0 0)" : "oklch(0.45 0 0)", width: 104 }}
+              style={{ colorScheme: "dark", color: fechaDesde ? "oklch(0.88 0 0)" : "oklch(0.45 0 0)", width: 104 }}
             />
             <span style={{ color: "oklch(0.35 0 0)" }}>→</span>
             <input
               type="date"
-              value={entregasHasta}
-              onChange={(e) => setEntregasHasta(e.target.value)}
+              value={fechaHasta}
+              onChange={(e) => setFechaHasta(e.target.value)}
               className="bg-transparent border-none outline-none text-[12px]"
-              style={{ colorScheme: "dark", color: entregasHasta ? "oklch(0.88 0 0)" : "oklch(0.45 0 0)", width: 104 }}
+              style={{ colorScheme: "dark", color: fechaHasta ? "oklch(0.88 0 0)" : "oklch(0.45 0 0)", width: 104 }}
             />
-            {(entregasDesde || entregasHasta) && (
+            <button
+              onClick={() => setFechaAplicada(
+                fechaDesde || fechaHasta ? { campo: fechaCampo, desde: fechaDesde, hasta: fechaHasta } : null
+              )}
+              disabled={!fechaDesde && !fechaHasta}
+              title="Aplicar el filtro de fechas"
+              className="shrink-0 px-2 h-[22px] rounded-md text-[11px] font-semibold transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
+              style={{
+                background: "oklch(0.55 0.20 295 / 0.18)",
+                border: "1px solid oklch(0.55 0.20 295 / 0.45)",
+                color: "oklch(0.85 0.08 295)",
+              }}
+            >
+              Buscar
+            </button>
+            {(fechaAplicada || fechaDesde || fechaHasta) && (
               <button
-                onClick={() => { setEntregasDesde(""); setEntregasHasta(""); }}
-                title="Quitar el rango (todo el histórico)"
+                onClick={() => { setFechaDesde(""); setFechaHasta(""); setFechaAplicada(null); }}
+                title="Quitar el filtro de fechas"
                 className="text-muted-foreground hover:text-foreground shrink-0"
               >
                 <X className="w-3.5 h-3.5" />
@@ -2564,8 +2628,8 @@ export function BuscadorSection() {
         {/* Contador — en una pestaña cuenta sus filas, no resultados del índice. */}
         {isTabMode && !loadingTab && tabFilas.length > 0 && (
           <p className="text-[12px] px-0.5" style={{ color: "oklch(0.55 0 0)", margin: 0 }}>
-            <span className="text-foreground font-medium">{tabFilasFiltradas.length.toLocaleString("es-AR")}</span>
-            {query.trim() ? ` de ${tabFilas.length} fila(s)` : " fila(s)"}
+            <span className="text-foreground font-medium">{tabFilasEnRango.length.toLocaleString("es-AR")}</span>
+            {query.trim() || fechaAplicada ? ` de ${tabFilas.length} fila(s)` : " fila(s)"}
             {agrupar && gruposCount > 0 && (() => {
               const nombre = agruparPor === "articulo" ? "matrícula" : agruparPor === "numero_sic" ? "SIC" : "OP";
               return ` en ${gruposCount.toLocaleString("es-AR")} ${nombre}${gruposCount === 1 || agruparPor !== "articulo" ? "" : "s"}`;

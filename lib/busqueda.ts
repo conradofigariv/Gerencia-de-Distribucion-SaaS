@@ -174,6 +174,34 @@ export type CampoBusqueda = "numero_sic" | "sic_preparador" | "numero_op" | "art
 export type SortDir = "asc" | "desc";
 
 /**
+ * Fecha del índice sobre la que aplica el filtro de rango. Son las únicas
+ * fechas que el índice tiene por fila, y cada una responde una pregunta
+ * distinta ("cuándo se pidió" vs "para cuándo se comprometió" vs "cuándo se
+ * movió de verdad"), por eso el rango no sirve sin elegir cuál.
+ *
+ * Espejo de la whitelist de `gd_buscar` — ver supabase/gd_buscar_orden.sql.
+ */
+export type CampoFecha =
+  | "sic_fecha_creacion"
+  | "fecha_creacion"
+  | "fecha_pactada"
+  | "tx_primera_fecha"
+  | "tx_ultima_fecha";
+
+export const CAMPOS_FECHA: { key: CampoFecha; label: string }[] = [
+  { key: "sic_fecha_creacion", label: "Creación de la SIC" },
+  { key: "fecha_creacion",     label: "Creación de la OP" },
+  { key: "fecha_pactada",      label: "Fecha pactada de la OP" },
+  { key: "tx_primera_fecha",   label: "1er movimiento (transacc.)" },
+  { key: "tx_ultima_fecha",    label: "Últ. movimiento (transacc.)" },
+];
+
+/** Fechas del filtro que salen de `tablero_op_transaccion`. Solo con una de
+ *  estas elegida tiene sentido acotar también el detalle de entregas: las
+ *  otras son fechas de la SIC o de la OP, no de los movimientos. */
+export const CAMPOS_FECHA_TX = new Set<string>(["tx_primera_fecha", "tx_ultima_fecha"]);
+
+/**
  * Columnas que `gd_buscar` sabe ordenar del lado del servidor (whitelist
  * espejo de la del SQL — ver supabase/gd_buscar_orden.sql).
  *
@@ -220,11 +248,15 @@ export async function buscar(
   soloSic = false,
   orden?: string | null,
   dir: SortDir = "asc",
+  fecha?: { campo: CampoFecha; desde: string | null; hasta: string | null } | null,
 ): Promise<BusquedaRow[]> {
   const { data, error } = await supabase
     .rpc("gd_buscar", {
       p_q: q, p_limite: limite, p_campo: campo ?? null, p_solo_sic: soloSic,
       p_orden: orden ?? null, p_dir: dir,
+      p_fecha_campo: fecha?.campo ?? null,
+      p_fecha_desde: fecha?.desde || null,
+      p_fecha_hasta: fecha?.hasta || null,
     })
     .range(0, Math.max(limite - 1, 0));
   if (error) throw new Error(error.message);

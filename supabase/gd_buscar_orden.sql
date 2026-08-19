@@ -1,5 +1,6 @@
 -- ============================================================================
--- gd_buscar — ordenamiento del lado del SERVIDOR (p_orden / p_dir)
+-- gd_buscar — orden (p_orden / p_dir) y filtro por rango de fechas
+-- (p_fecha_campo / p_fecha_desde / p_fecha_hasta) del lado del SERVIDOR
 --
 -- Migración chica y autocontenida: solo redefine la función de búsqueda. NO
 -- toca `busqueda_index` ni obliga a reconstruir el índice.
@@ -39,6 +40,17 @@
 -- comparador del cliente (las filas sin dato van al final, se ordene como se
 -- ordene), y así el resultado no cambia de criterio según la dirección.
 --
+-- ── Filtro por rango de fechas ──────────────────────────────────────────────
+-- `p_fecha_campo` elige CUÁL de las fechas del índice se filtra: la creación
+-- de la SIC, la creación o la fecha pactada de la OP, o el primer/último
+-- movimiento de transacciones. Whitelist estricta, igual que el orden.
+--
+-- Va acá y no en el cliente por el mismo motivo que el ORDER BY: la consulta
+-- devuelve como mucho `p_limite` filas, así que filtrar después de traerlas
+-- filtraría ese recorte y no el índice. Los dos extremos son opcionales
+-- (NULL = sin límite por ese lado), así se puede pedir «de tal fecha en
+-- adelante» sin inventar un tope.
+--
 -- ── Números guardados como texto ────────────────────────────────────────────
 -- `numero_sic`, `numero_op`, `linea`, `envio`, `sic_linea`, `relacion` y
 -- `articulo` son text en el índice. Ordenarlos como texto da mal ('1000' antes
@@ -60,14 +72,18 @@ DROP FUNCTION IF EXISTS gd_buscar(text, integer);
 DROP FUNCTION IF EXISTS gd_buscar(text, integer, text);
 DROP FUNCTION IF EXISTS gd_buscar(text, integer, text, boolean);
 DROP FUNCTION IF EXISTS gd_buscar(text, integer, text, boolean, text, text);
+DROP FUNCTION IF EXISTS gd_buscar(text, integer, text, boolean, text, text, text, date, date);
 
 CREATE FUNCTION gd_buscar(
-  p_q        text,
-  p_limite   integer DEFAULT 500,
-  p_campo    text    DEFAULT NULL,
-  p_solo_sic boolean DEFAULT false,
-  p_orden    text    DEFAULT NULL,
-  p_dir      text    DEFAULT 'asc'
+  p_q           text,
+  p_limite      integer DEFAULT 500,
+  p_campo       text    DEFAULT NULL,
+  p_solo_sic    boolean DEFAULT false,
+  p_orden       text    DEFAULT NULL,
+  p_dir         text    DEFAULT 'asc',
+  p_fecha_campo text    DEFAULT NULL,
+  p_fecha_desde date    DEFAULT NULL,
+  p_fecha_hasta date    DEFAULT NULL
 )
 RETURNS SETOF busqueda_index
 LANGUAGE plpgsql
@@ -77,6 +93,7 @@ DECLARE
   q         text := gd_norm_texto(COALESCE(p_q, ''));
   col       text;
   filtro    text;
+  fecha_col text;
   orden_col text;
   dir       text;
   order_by  text;
@@ -100,6 +117,33 @@ BEGIN
   -- por OP más nueva (pantalla de entrada del Buscador).
   IF q <> '' THEN
     filtro := filtro || ' AND ' || col || ' LIKE ''%'' || $1 || ''%''';
+  END IF;
+
+  -- Rango de fechas. Whitelist estricta: si el campo no está acá, no se filtra
+  -- por fecha (mejor devolver de más que devolver mal en silencio).
+  --
+  -- Las fechas que en el índice son TEXTO se comparan por su versión `date`,
+  -- nunca por el texto crudo: conviven dos formatos (ISO y el Date.toString()
+  -- de los imports viejos) y comparar el texto daría cualquier cosa.
+  fecha_col := CASE p_fecha_campo
+                 WHEN 'sic_fecha_creacion' THEN 'gd_parse_fecha(sic_fecha_creacion)'
+                 WHEN 'fecha_creacion'     THEN 'fecha_creacion_d'
+                 WHEN 'fecha_pactada'      THEN 'fecha_pactada_d'
+                 WHEN 'tx_primera_fecha'   THEN 'tx_primera_fecha'
+                 WHEN 'tx_ultima_fecha'    THEN 'tx_ultima_fecha'
+                 ELSE NULL
+               END;
+
+  IF fecha_col IS NOT NULL THEN
+    -- Cada extremo es opcional: NULL = sin límite por ese lado. Las filas sin
+    -- fecha en ese campo quedan afuera apenas se pide un rango, que es lo
+    -- esperable ("las de tal período" no incluye "las que no tienen fecha").
+    IF p_fecha_desde IS NOT NULL THEN
+      filtro := filtro || ' AND ' || fecha_col || ' >= $5';
+    END IF;
+    IF p_fecha_hasta IS NOT NULL THEN
+      filtro := filtro || ' AND ' || fecha_col || ' <= $6';
+    END IF;
   END IF;
 
   -- Columna por la que ordenar. Whitelist estricta, misma idea que `col`.
@@ -199,11 +243,11 @@ BEGIN
 
   RETURN QUERY EXECUTE
     'SELECT * FROM busqueda_index WHERE ' || filtro || ' ORDER BY ' || order_by || ' LIMIT $2'
-    USING q, COALESCE(p_limite, 500), p_solo_sic, p_q;
+    USING q, COALESCE(p_limite, 500), p_solo_sic, p_q, p_fecha_desde, p_fecha_hasta;
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION gd_buscar(text, integer, text, boolean, text, text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION gd_buscar(text, integer, text, boolean, text, text, text, date, date) TO anon, authenticated;
 
 -- PostgREST cachea la lista de funciones. Sin esto puede seguir respondiendo
 -- «not found in the schema cache» aunque la función ya exista.
