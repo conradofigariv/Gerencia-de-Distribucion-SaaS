@@ -2624,7 +2624,12 @@ export function BuscadorSection() {
           ) : !isTabMode && loading ? (
             <div className="flex-1 flex items-center justify-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="w-4 h-4 animate-spin" />
-              {query.trim() ? "Buscando…" : "Cargando las OP más recientes…"}
+              {/* Ordenar re-consulta al servidor (el orden va en la query, no
+                  después — ver el efecto de búsqueda), así que el cartel tiene
+                  que decir eso y no "cargando las OP más recientes", que era el
+                  texto fijo de antes y confundía: aparecía igual al ordenar por
+                  SIC. */}
+              {ordenServidor ? "Ordenando…" : query.trim() ? "Buscando…" : "Cargando las OP más recientes…"}
             </div>
           ) : !isTabMode && !sorted.length ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-2.5 text-sm text-muted-foreground">
