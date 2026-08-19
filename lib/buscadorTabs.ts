@@ -312,7 +312,8 @@ export async function enviarMarcadasASeguimiento(
   if (!filas.length) return { escritas: 0, errores: [], totalEnPestana };
 
   const { loadCrossMaps, buildSeguimientoRow, num, str } = await import("@/lib/seguimientoBuild");
-  const { opMap, matMap } = await loadCrossMaps();
+  const { fetchOpDatos, normOp } = await import("@/lib/opDatos");
+  const [{ opMap, matMap }, opDatos] = await Promise.all([loadCrossMaps(), fetchOpDatos()]);
   const today = new Date();
 
   const rows: Record<string, unknown>[] = [];
@@ -325,9 +326,15 @@ export async function enviarMarcadasASeguimiento(
       errores.push(`${str(f.datos.articulo) || "fila"}: sin número de OP`);
       continue;
     }
+    // La zona real vive en `op_datos` (compartida, editable desde el índice
+    // maestro o cualquier pestaña) — la que trae `f.datos.zona` es una COPIA
+    // congelada de cuando se agregó la fila a esta pestaña, así que si se
+    // cargó/corrigió la zona después, esta copia queda vieja. Se prioriza
+    // `op_datos`, con la copia de la fila como respaldo si nunca se cargó.
+    const zonaManual = opDatos.get(normOp(f.datos.numero_op))?.zona;
     const { row, errors } = buildSeguimientoRow(
       {
-        zona:        str(f.datos.zona),
+        zona:        (zonaManual && zonaManual.trim()) || str(f.datos.zona),
         op,
         op_madre:    0,
         linea:       num(f.datos.linea),
