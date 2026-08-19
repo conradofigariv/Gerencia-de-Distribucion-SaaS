@@ -928,7 +928,7 @@ export function ServiciosResumenSection() {
                           dragCol === c.db && "opacity-40",
                           dragOverCol === c.db && dragCol !== c.db && "bg-accent/10 ring-1 ring-inset ring-accent/40"
                         )}
-                        onDragOver={e => { e.preventDefault(); if (dragCol && dragCol !== c.db) setDragOverCol(c.db); }}
+                        onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragCol && dragCol !== c.db) setDragOverCol(c.db); }}
                         onDragLeave={() => setDragOverCol(prev => (prev === c.db ? null : prev))}
                         onDrop={e => { e.preventDefault(); handleColDrop(c.db); }}
                         onPointerMove={e => {
@@ -937,7 +937,15 @@ export function ServiciosResumenSection() {
                           setColWidths(prev => ({ ...prev, [resizing.current!.col]: newW }));
                         }}
                         onPointerUp={e => {
-                          e.currentTarget.releasePointerCapture(e.pointerId);
+                          // Solo soltar la captura si este <th> la tomó. La captura
+                          // se pide en el handle de resize, no acá: en un click común
+                          // sobre el header el pointerId no está capturado y
+                          // releasePointerCapture tira NotFoundError, que rompía el
+                          // handler justo al tocar el header (y con él, el arrastre).
+                          if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                            e.currentTarget.releasePointerCapture(e.pointerId);
+                          }
+                          if (!resizing.current) return;
                           resizing.current = null;
                           setIsResizing(false);
                         }}
@@ -945,7 +953,17 @@ export function ServiciosResumenSection() {
                         <div
                           className={cn("flex items-center gap-1 w-full", !editingHeaders && "cursor-grab active:cursor-grabbing")}
                           draggable={!editingHeaders}
-                          onDragStart={() => setDragCol(c.db)}
+                          onDragStart={e => {
+                            setDragCol(c.db);
+                            // dataTransfer.setData es obligatorio para que el drag
+                            // arranque en Firefox — sin esto, dragstart dispara pero
+                            // dragover/drop nunca llegan y el arrastre queda muerto
+                            // (Chrome lo tolera, por eso pasaba desapercibido).
+                            // Mismo bug que ya se arregló en el panel «Columnas» del
+                            // Buscador (commit 0a4b9ac).
+                            e.dataTransfer.setData("text/plain", c.db);
+                            e.dataTransfer.effectAllowed = "move";
+                          }}
                           onDragEnd={() => { setDragCol(null); setDragOverCol(null); }}
                         >
                           {editingHeaders ? (
@@ -981,7 +999,9 @@ export function ServiciosResumenSection() {
                               setColWidths(prev => ({ ...prev, [resizing.current!.col]: newW }));
                             }}
                             onPointerUp={e => {
-                              e.currentTarget.releasePointerCapture(e.pointerId);
+                              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                                e.currentTarget.releasePointerCapture(e.pointerId);
+                              }
                               resizing.current = null;
                               setIsResizing(false);
                             }}
