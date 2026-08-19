@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
   buscar, reconstruirIndice, estadoIndice, rowKey, fechaMs, fetchEntregasLinea, fmtFechaISO,
+  ORDENABLES_SERVIDOR,
   type BusquedaRow, type CampoBusqueda, type DetalleEntregas,
 } from "@/lib/busqueda";
 import { DetalleEntregasFila } from "@/components/dashboard/entregas-detalle";
@@ -1505,18 +1506,26 @@ export function BuscadorSection() {
   // "escribí algo" y no se veía nada): `gd_buscar` con `p_q` vacío devuelve
   // todo el índice ordenado por `fecha_creacion` DESC, así que el Buscador
   // abre mostrando las OP más nuevas en vez de una pantalla en blanco.
+  //
+  // El ORDEN va en la consulta, no después: la búsqueda devuelve como mucho
+  // `limite` filas de las 112k+ del índice, así que ordenar del lado del
+  // cliente ordenaba ese recorte y no el índice — tocar «F. pactada» daba la
+  // más vieja de las 500 traídas, no la más vieja que hay. Por eso el sort
+  // está entre las dependencias: cambiarlo re-consulta.
+  const ordenServidor = sortCol && ORDENABLES_SERVIDOR.has(sortCol) ? sortCol : null;
+
   useEffect(() => {
     if (activeTab) { setLoading(false); return; }
     const q = query.trim();
     setLoading(true);
     const t = setTimeout(() => {
-      buscar(q, undefined, campoBusqueda)
+      buscar(q, undefined, campoBusqueda, false, ordenServidor, sortDir)
         .then((data) => { setRows(data); setBuscado(true); })
         .catch((e) => toast.error(`Error al buscar: ${e instanceof Error ? e.message : String(e)}`))
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(t);
-  }, [query, activeTab, campoBusqueda]);
+  }, [query, activeTab, campoBusqueda, ordenServidor, sortDir]);
 
   /**
    * Abre/cierra el detalle de entregas de una fila. Se consulta bajo demanda

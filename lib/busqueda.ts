@@ -171,23 +171,61 @@ export async function buscarPorMatriculas(
  */
 export type CampoBusqueda = "numero_sic" | "sic_preparador" | "numero_op" | "articulo" | "descripcion";
 
+export type SortDir = "asc" | "desc";
+
+/**
+ * Columnas que `gd_buscar` sabe ordenar del lado del servidor (whitelist
+ * espejo de la del SQL — ver supabase/gd_buscar_orden.sql).
+ *
+ * ⚠ Ordenar en el servidor no es un lujo, es lo único correcto acá: la
+ *   búsqueda devuelve como mucho `limite` filas de las 112k+ del índice, así
+ *   que si el ORDER BY no viaja con la consulta, el LIMIT recorta ANTES de
+ *   ordenar y lo que se ve es el orden de un recorte arbitrario, no el del
+ *   índice.
+ *
+ * `stock_za` queda afuera a propósito: no es una columna del índice, se cruza
+ * en el cliente después de traer las filas. Se sigue ordenando del lado del
+ * cliente (sobre lo cargado), que es la limitación que esa columna ya tenía.
+ * Las columnas de seguimiento tampoco están: viven en la pestaña, no en el
+ * índice, y ahí el orden del cliente sí es correcto porque están todas.
+ */
+export const ORDENABLES_SERVIDOR = new Set<string>([
+  "articulo", "descripcion", "tipo", "mat_serv", "estado_matricula", "unidad_medida",
+  "numero_sic", "sic_linea", "sic_cantidad", "sic_udm", "sic_preparador", "sic_fecha_creacion",
+  "relacion", "numero_op", "linea", "envio", "proveedor", "op_descripcion", "zona",
+  "cantidad", "cantidad_recibida", "ctd_aceptada", "pendiente",
+  "cantidad_vencida", "cantidad_rechazada", "cantidad_facturada", "cantidad_cancelada",
+  "fecha_creacion", "fecha_pactada", "estado_autorizacion", "estado_cierre",
+  "tx_recibido", "tx_aceptado", "tx_entregado", "tx_devoluciones", "tx_movimientos",
+  "tx_primera_fecha", "tx_ultima_fecha",
+]);
+
 /**
  * Ejecuta la búsqueda. `q` vacío devuelve las primeras filas del índice.
  * `soloSic` acota el universo a las filas que tienen SIC asociada. Hoy nadie
  * lo activa: las SICs de Soler se juntan a mano en una pestaña propia desde el
  * índice maestro, no con un filtro. Se mantiene el parámetro porque la firma
- * de `gd_buscar` en la base es la de 4 argumentos (la de 3 se borró al
- * crearla), y PostgREST resuelve la RPC por argumentos nombrados: dejar de
- * mandarlo rompería la llamada.
+ * de `gd_buscar` en la base es la de 6 argumentos (las anteriores se borraron
+ * al crearla), y PostgREST resuelve la RPC por argumentos nombrados: dejar de
+ * mandar cualquiera rompería la llamada.
+ *
+ * `orden`/`dir` ordenan del lado del SERVIDOR — imprescindible, porque el
+ * LIMIT recorta el índice y sin el ORDER BY en la consulta se estaría
+ * ordenando un recorte arbitrario (ver ORDENABLES_SERVIDOR arriba).
  */
 export async function buscar(
   q: string,
   limite = 500,
   campo?: CampoBusqueda | null,
   soloSic = false,
+  orden?: string | null,
+  dir: SortDir = "asc",
 ): Promise<BusquedaRow[]> {
   const { data, error } = await supabase
-    .rpc("gd_buscar", { p_q: q, p_limite: limite, p_campo: campo ?? null, p_solo_sic: soloSic })
+    .rpc("gd_buscar", {
+      p_q: q, p_limite: limite, p_campo: campo ?? null, p_solo_sic: soloSic,
+      p_orden: orden ?? null, p_dir: dir,
+    })
     .range(0, Math.max(limite - 1, 0));
   if (error) throw new Error(error.message);
   return (data ?? []) as BusquedaRow[];
