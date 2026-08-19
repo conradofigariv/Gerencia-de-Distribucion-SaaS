@@ -39,6 +39,12 @@
 -- comparador del cliente (las filas sin dato van al final, se ordene como se
 -- ordene), y así el resultado no cambia de criterio según la dirección.
 --
+-- ── Números guardados como texto ────────────────────────────────────────────
+-- `numero_sic`, `numero_op`, `linea`, `envio`, `sic_linea`, `relacion` y
+-- `articulo` son text en el índice. Ordenarlos como texto da mal ('1000' antes
+-- que '875'), así que se ordenan casteados a numeric. Ver el comentario largo
+-- en el cuerpo de la función.
+--
 -- ⚠ `stock_za` NO se puede ordenar acá: no es una columna del índice, se cruza
 --   en el cliente contra stock_uploads después de traer las filas. El frontend
 --   no manda p_orden para esa columna y la sigue ordenando del lado del
@@ -146,6 +152,25 @@ BEGIN
                END;
 
   dir := CASE WHEN lower(COALESCE(p_dir, 'asc')) = 'desc' THEN 'DESC' ELSE 'ASC' END;
+
+  -- ⚠ Columnas que son NÚMEROS guardados como TEXTO. Ordenarlas como texto da
+  --   mal: '1000' va antes que '875' porque compara '1' contra '8'. Medido
+  --   sobre el indice real, min(numero_sic) como texto daba 1000 y el minimo
+  --   de verdad era 875.
+  --
+  --   Se ordena por el valor casteado a numeric, con un CASE que solo castea
+  --   lo que es puramente numerico: cualquier valor con letras o guiones
+  --   (relacion es "OP-linea", por ejemplo) da NULL ahi, cae al desempate por
+  --   texto de la linea de abajo y no revienta el cast.
+  --
+  --   Esto ademas alinea el orden del servidor con el del cliente, que usa
+  --   localeCompare({numeric:true}) — o sea, numerico. Si los dos criterios no
+  --   coinciden, el servidor elige un top-N y el cliente lo reordena con otra
+  --   regla, y lo que se ve no es ni una cosa ni la otra.
+  IF p_orden IN ('articulo','numero_sic','sic_linea','relacion','numero_op','linea','envio') THEN
+    orden_col := 'CASE WHEN ' || orden_col || ' ~ ''^[0-9]+(\.[0-9]+)?$'' THEN ('
+                 || orden_col || ')::numeric END ' || dir || ' NULLS LAST, ' || orden_col;
+  END IF;
 
   IF orden_col IS NULL THEN
     -- Sin columna elegida (o una desconocida): el orden de siempre.
