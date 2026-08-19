@@ -17,6 +17,13 @@ import {
   type BusquedaRow, type CampoBusqueda, type CampoFecha, type DetalleEntregas,
 } from "@/lib/busqueda";
 import { DetalleEntregasFila } from "@/components/dashboard/entregas-detalle";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { getPreference, setPreference } from "@/lib/userPreferences";
 import {
   fetchOpDatos, upsertOpDato, aplicarOpDatos, normOp, OP_MANUAL_COLS, type OpDato,
@@ -81,6 +88,60 @@ function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
     >
       <div className="absolute right-0 top-1/4 h-1/2 w-px bg-border group-hover/rh:bg-accent/60 transition-colors" />
     </div>
+  );
+}
+
+// ─── Selector de fecha (Popover + Calendar de shadcn) ───────────────────────
+// Reemplaza al <input type="date"> nativo, que abre el calendario del sistema
+// operativo: sin animación, sin tema oscuro y distinto en cada navegador. Este
+// hereda el tema y las animaciones de entrada/salida del Popover.
+//
+// El valor sigue siendo el string ISO "YYYY-MM-DD" que espera la RPC. Se
+// convierte a Date sólo para pintar el calendario, y se arma a mano con las
+// partes locales al volver: `toISOString()` pasa por UTC y en Argentina (UTC-3)
+// devuelve el día ANTERIOR para cualquier fecha elegida.
+function DatePicker({
+  valor, onChange, placeholder,
+}: { valor: string; onChange: (v: string) => void; placeholder: string }) {
+  const [abierto, setAbierto] = useState(false);
+  const fecha = valor ? new Date(`${valor}T00:00:00`) : undefined;
+
+  return (
+    <Popover open={abierto} onOpenChange={setAbierto}>
+      <PopoverTrigger asChild>
+        <button
+          className="text-[12px] text-left px-1 rounded transition-colors hover:bg-white/5 outline-none"
+          style={{ color: valor ? "oklch(0.88 0 0)" : "oklch(0.45 0 0)", width: 92 }}
+        >
+          {valor ? fmtFechaISO(valor) : placeholder}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-0 bg-panel border-hairline">
+        <Calendar
+          mode="single"
+          selected={fecha}
+          defaultMonth={fecha}
+          captionLayout="dropdown"
+          onSelect={(d) => {
+            if (!d) { onChange(""); return; }
+            const mm = String(d.getMonth() + 1).padStart(2, "0");
+            const dd = String(d.getDate()).padStart(2, "0");
+            onChange(`${d.getFullYear()}-${mm}-${dd}`);
+            setAbierto(false);
+          }}
+        />
+        {valor && (
+          <div className="p-2 pt-0">
+            <button
+              onClick={() => { onChange(""); setAbierto(false); }}
+              className="w-full text-[12px] py-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-panel-2 transition-colors"
+            >
+              Limpiar
+            </button>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -888,7 +949,6 @@ export function BuscadorSection() {
   // todos los campos, arranca así siempre — es un afinador, no un requisito.
   const [campoBusqueda, setCampoBusqueda] = useState<CampoBusqueda | null>(null);
   const [campoMenuOpen, setCampoMenuOpen] = useState(false);
-  const campoMenuRef = useRef<HTMLDivElement>(null);
 
   // Stock de ZA por matrícula, cruzado en el cliente (ver getStockZonaMap).
   const [stockZA, setStockZA] = useState<Map<string, number>>(new Map());
@@ -1327,12 +1387,8 @@ export function BuscadorSection() {
     return () => document.removeEventListener("mousedown", h);
   }, [agruparMenuOpen]);
 
-  useEffect(() => {
-    if (!campoMenuOpen) return;
-    const h = (e: MouseEvent) => { if (!campoMenuRef.current?.contains(e.target as Node)) setCampoMenuOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [campoMenuOpen]);
+  // (El click-afuera del selector de campo lo maneja ahora el DropdownMenu de
+  // Radix, así que el listener a mano que había acá se borró.)
 
   useEffect(() => {
     if (!indiceMenuOpen) return;
@@ -2229,64 +2285,58 @@ export function BuscadorSection() {
               el usuario al elegir qué filas copiar, y son pocas — filtrar por
               campo ahí no aporta y ocupa lugar en la barra. */}
           {!isTabMode && (
-          <div className="relative shrink-0" ref={campoMenuRef}>
-            <button
-              onClick={() => setCampoMenuOpen((v) => !v)}
-              title="Acotar la búsqueda a un solo campo"
-              className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors"
-              style={{
-                height: TOOLBAR_H,
-                background: campoBusqueda ? "oklch(0.28 0.02 295)" : "oklch(0.16 0.005 270)",
-                border: `1px solid ${campoBusqueda ? "oklch(0.55 0.20 295 / 0.45)" : "oklch(1 0 0 / 0.07)"}`,
-                color: campoBusqueda ? "oklch(0.92 0 0)" : "oklch(0.65 0 0)", cursor: "pointer",
-              }}
-            >
-              {(() => {
-                const opt = CAMPO_OPTIONS.find((o) => o.value === campoBusqueda);
-                const Icon = opt?.icon ?? Search;
-                return <><Icon className="w-3.5 h-3.5" />{opt?.label ?? "Todo el índice"}</>;
-              })()}
-              <ChevronDown className="w-3 h-3 opacity-60" />
-            </button>
-
-            {campoMenuOpen && (
-              <div
-                className="absolute left-0 top-[calc(100%+6px)] z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
-                style={{
-                  minWidth: 180, background: "oklch(0.205 0.005 270)", border: PANEL_BORDER,
-                  borderRadius: 10, padding: 6, boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6)",
-                }}
-              >
+          <div className="relative shrink-0">
+            {/* DropdownMenu de shadcn (Radix) en vez del panel a mano que había
+                antes: trae la animación de entrada Y SALIDA, el click-afuera,
+                el foco y la navegación con teclado sin mantener nada de eso
+                acá. El de antes sólo animaba al abrir y desaparecía de golpe. */}
+            <DropdownMenu open={campoMenuOpen} onOpenChange={setCampoMenuOpen}>
+              <DropdownMenuTrigger asChild>
                 <button
-                  onClick={() => { setCampoBusqueda(null); setCampoMenuOpen(false); }}
-                  className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 rounded-[7px] text-[13px] transition-colors"
-                  style={{ color: campoBusqueda === null ? "oklch(0.92 0 0)" : "oklch(0.75 0 0)", background: campoBusqueda === null ? "oklch(0.28 0.02 295)" : "transparent" }}
-                  onMouseEnter={(e) => { if (campoBusqueda !== null) e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
-                  onMouseLeave={(e) => { if (campoBusqueda !== null) e.currentTarget.style.background = "transparent"; }}
+                  title="Acotar la búsqueda a un solo campo"
+                  className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors outline-none"
+                  style={{
+                    height: TOOLBAR_H,
+                    background: campoBusqueda ? "oklch(0.28 0.02 295)" : "oklch(0.16 0.005 270)",
+                    border: `1px solid ${campoBusqueda ? "oklch(0.55 0.20 295 / 0.45)" : "oklch(1 0 0 / 0.07)"}`,
+                    color: campoBusqueda ? "oklch(0.92 0 0)" : "oklch(0.65 0 0)", cursor: "pointer",
+                  }}
+                >
+                  {(() => {
+                    const opt = CAMPO_OPTIONS.find((o) => o.value === campoBusqueda);
+                    const Icon = opt?.icon ?? Search;
+                    return <><Icon className="w-3.5 h-3.5" />{opt?.label ?? "Todo el índice"}</>;
+                  })()}
+                  <ChevronDown
+                    className="w-3 h-3 opacity-60 transition-transform duration-200"
+                    style={{ transform: campoMenuOpen ? "rotate(180deg)" : undefined }}
+                  />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" sideOffset={6} className="min-w-[180px] bg-panel border-hairline">
+                <DropdownMenuItem
+                  onSelect={() => setCampoBusqueda(null)}
+                  className={cn("gap-2 text-[13px]", campoBusqueda === null && "bg-accent/15 text-foreground")}
                 >
                   <Search className="w-3.5 h-3.5 shrink-0" />
                   Todo el índice
-                </button>
-                <div style={{ height: 1, background: "oklch(1 0 0 / 0.07)", margin: "4px 6px" }} />
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-hairline" />
                 {CAMPO_OPTIONS.map((o) => {
                   const Icon = o.icon;
-                  const activo = o.value === campoBusqueda;
                   return (
-                    <button
+                    <DropdownMenuItem
                       key={o.value}
-                      onClick={() => { setCampoBusqueda(o.value); setCampoMenuOpen(false); }}
-                      className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 rounded-[7px] text-[13px] transition-colors"
-                      style={{ color: activo ? "oklch(0.92 0 0)" : "oklch(0.75 0 0)", background: activo ? "oklch(0.28 0.02 295)" : "transparent" }}
-                      onMouseEnter={(e) => { if (!activo) e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
-                      onMouseLeave={(e) => { if (!activo) e.currentTarget.style.background = "transparent"; }}
+                      onSelect={() => setCampoBusqueda(o.value)}
+                      className={cn("gap-2 text-[13px]", o.value === campoBusqueda && "bg-accent/15 text-foreground")}
                     >
                       <Icon className="w-3.5 h-3.5 shrink-0" />
                       {o.label}
-                    </button>
+                    </DropdownMenuItem>
                   );
                 })}
-              </div>
-            )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           )}
@@ -2305,35 +2355,30 @@ export function BuscadorSection() {
             }}
           >
             <CalendarClock className="w-3.5 h-3.5 shrink-0" style={{ color: "oklch(0.5 0 0)" }} />
-            <select
-              value={fechaCampo}
-              onChange={(e) => setFechaCampo(e.target.value as CampoFecha)}
-              title="Sobre qué fecha se aplica el rango"
-              className="bg-transparent border-none outline-none text-[12px] cursor-pointer"
-              style={{ colorScheme: "dark", color: "oklch(0.78 0 0)", maxWidth: 168 }}
-            >
-              {CAMPOS_FECHA.map((f) => (
-                <option key={f.key} value={f.key} style={{ background: "oklch(0.16 0.005 270)" }}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
+            {/* Select de shadcn en vez del <select> nativo: el nativo abre un
+                menú del sistema operativo, sin animación ni forma de estilarlo
+                (se veía blanco en Windows aunque el resto sea oscuro). */}
+            <Select value={fechaCampo} onValueChange={(v) => setFechaCampo(v as CampoFecha)}>
+              <SelectTrigger
+                size="sm"
+                title="Sobre qué fecha se aplica el rango"
+                className="h-[22px] border-none bg-transparent px-1 text-[12px] shadow-none focus-visible:ring-0"
+                style={{ color: "oklch(0.78 0 0)", maxWidth: 176 }}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-panel border-hairline">
+                {CAMPOS_FECHA.map((f) => (
+                  <SelectItem key={f.key} value={f.key} className="text-[13px]">
+                    {f.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <span style={{ color: "oklch(0.28 0 0)" }}>|</span>
-            <input
-              type="date"
-              value={fechaDesde}
-              onChange={(e) => setFechaDesde(e.target.value)}
-              className="bg-transparent border-none outline-none text-[12px]"
-              style={{ colorScheme: "dark", color: fechaDesde ? "oklch(0.88 0 0)" : "oklch(0.45 0 0)", width: 104 }}
-            />
+            <DatePicker valor={fechaDesde} onChange={setFechaDesde} placeholder="Desde" />
             <span style={{ color: "oklch(0.35 0 0)" }}>→</span>
-            <input
-              type="date"
-              value={fechaHasta}
-              onChange={(e) => setFechaHasta(e.target.value)}
-              className="bg-transparent border-none outline-none text-[12px]"
-              style={{ colorScheme: "dark", color: fechaHasta ? "oklch(0.88 0 0)" : "oklch(0.45 0 0)", width: 104 }}
-            />
+            <DatePicker valor={fechaHasta} onChange={setFechaHasta} placeholder="Hasta" />
             <button
               onClick={() => setFechaAplicada(
                 fechaDesde || fechaHasta ? { campo: fechaCampo, desde: fechaDesde, hasta: fechaHasta } : null
