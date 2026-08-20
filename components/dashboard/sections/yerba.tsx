@@ -177,11 +177,11 @@ export function YerbaSection() {
         ) : (
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
-              <Avatar className="size-20 border-2 border-accent-green/40">
+              <Avatar className="size-40 border-2 border-accent-green/40">
                 <AvatarImage src={avatarPorUserId.get(proximo.participante.user_id ?? "") ?? undefined} />
                 {/* Sin foto (participante manual, o registrado sin avatar cargado):
                     la inicial del nombre sobre el mismo verde del turno. */}
-                <AvatarFallback className="bg-accent-green/15 text-accent-green font-semibold text-2xl">
+                <AvatarFallback className="bg-accent-green/15 text-accent-green font-semibold text-5xl">
                   {proximo.participante.nombre.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
