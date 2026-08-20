@@ -2369,7 +2369,17 @@ export function BuscadorSection() {
               </SelectTrigger>
               <SelectContent className="bg-panel border-hairline">
                 {CAMPOS_FECHA.map((f) => (
-                  <SelectItem key={f.key} value={f.key} className="text-[13px]">
+                  // ⚠ Se pisa el `focus:bg-accent` que trae SelectItem. Radix
+                  //   enfoca solo el ítem seleccionado al abrir el Select, así
+                  //   que ese estilo pintaba una barra verde a full apenas se
+                  //   abría — nada que ver con el DropdownMenu de al lado, que
+                  //   no enfoca nada al abrir. Acá el resaltado es suave y el
+                  //   elegido lleva el mismo tinte que el ítem activo de aquel.
+                  <SelectItem
+                    key={f.key}
+                    value={f.key}
+                    className="text-[13px] focus:bg-panel-2 focus:text-foreground data-[state=checked]:bg-accent/15 data-[state=checked]:text-foreground"
+                  >
                     {f.label}
                   </SelectItem>
                 ))}
