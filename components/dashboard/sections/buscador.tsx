@@ -1002,7 +1002,13 @@ export function BuscadorSection() {
   // (o viceversa) porque quedaban desincronizados entre sí.
   // `col` es string (no keyof BusquedaRow) porque dentro de una pestaña también
   // se puede ordenar por las columnas de seguimiento, que no vienen del índice.
-  const [sort, setSort] = useState<{ col: string | null; dir: SortDir }>({ col: null, dir: "asc" });
+  //
+  // El maestro abre ordenado por SIC descendente: lo primero que se quiere ver
+  // al entrar es lo último que se pidió. Antes abría con el orden por defecto
+  // del servidor (OP más nueva), que dejaba arriba filas viejas de OP y las
+  // SIC recientes sin OP —que son la mayoría— quedaban enterradas.
+  // Al entrar a una pestaña se resetea a null (orden manual de la pestaña).
+  const [sort, setSort] = useState<{ col: string | null; dir: SortDir }>({ col: "numero_sic", dir: "desc" });
   const sortCol = sort.col;
   const sortDir = sort.dir;
 
@@ -2180,7 +2186,10 @@ export function BuscadorSection() {
             demás son listas de seguimiento propias del usuario. */}
         <div className="flex items-center gap-1 flex-wrap" style={{ borderBottom: PANEL_BORDER, paddingBottom: 6 }}>
           <button
-            onClick={() => { setActiveTab(null); setEditing(null); }}
+            // Vuelve al orden con el que abre el maestro (SIC más recientes),
+            // no al que hubiera quedado de la pestaña: son dos vistas con
+            // criterios distintos y la pestaña resetea el sort a manual.
+            onClick={() => { setActiveTab(null); setEditing(null); setSort({ col: "numero_sic", dir: "desc" }); }}
             className="inline-flex items-center gap-1.5 px-3 rounded-[8px] text-[12.5px] font-medium transition-colors"
             style={{
               height: 30,

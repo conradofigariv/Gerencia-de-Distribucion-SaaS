@@ -8,7 +8,6 @@ import {
   Coffee, Plus, Trash2, Loader2, X, Check, GripVertical,
   ShoppingCart, UserPlus, History, Pause, Play,
 } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
 import {
   fetchParticipantes, fetchCompras, fetchMarcasUsadas, construirTurnos,
   agregarParticipante, borrarParticipante, setActivo, guardarOrden,
@@ -67,16 +66,26 @@ export function YerbaSection() {
   useEffect(() => { recargar(); }, [recargar]);
 
   // Usuarios registrados, para sumarlos sin tipear el nombre.
+  //
+  // Se pide a /api/team y no a `profiles` directo porque el email vive en
+  // auth.users, no en profiles: sin él, todo usuario que todavía no completó
+  // su perfil aparecía como «(sin nombre)» y el desplegable no servía para
+  // distinguirlos. Es el mismo endpoint que ya usa el picker de compartir.
   useEffect(() => {
-    supabase.from("profiles").select("id, nombre, apellido").order("nombre")
-      .then(({ data, error }) => {
-        if (error) return;   // sin esto igual se puede cargar a mano; no vale un toast
-        const rows = (data ?? []) as { id: string; nombre: string | null; apellido: string | null }[];
-        setPerfiles(rows.map((r) => ({
-          id: r.id,
-          nombre: [r.nombre, r.apellido].filter(Boolean).join(" ").trim() || "(sin nombre)",
-        })));
-      });
+    fetch("/api/team")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then(({ equipo }: { equipo: { id: string; email: string; nombre: string; apellido: string }[] }) => {
+        setPerfiles(
+          equipo
+            .map((u) => ({
+              id: u.id,
+              nombre: [u.nombre, u.apellido].filter(Boolean).join(" ").trim() || u.email || "(sin nombre)",
+            }))
+            .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
+        );
+      })
+      // Se puede seguir cargando gente a mano, así que esto no merece un toast.
+      .catch(() => { /* sin lista de registrados, queda el modo «Nombre suelto» */ });
   }, []);
 
   const filas    = useMemo(() => construirTurnos(participantes, compras), [participantes, compras]);
@@ -368,7 +377,11 @@ function DialogSumar({
                 <SelectTrigger className="w-full bg-panel-2 border-hairline">
                   <SelectValue placeholder="Elegí un usuario…" />
                 </SelectTrigger>
-                <SelectContent className="bg-panel border-hairline">
+                {/* ⚠ z-index explícito: el SelectContent de shadcn se portea a
+                    <body> con z-50, y este diálogo —que también vive en body,
+                    por createPortal— está en z-200. Sin subirlo, el desplegable
+                    se abre DETRÁS del diálogo y se ve la lista de fondo. */}
+                <SelectContent className="bg-panel border-hairline z-[300]">
                   {disponibles.map((p) => (
                     <SelectItem key={p.id} value={p.id} className={ITEM_SELECT}>{p.nombre}</SelectItem>
                   ))}
