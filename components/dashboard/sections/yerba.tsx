@@ -101,14 +101,30 @@ export function YerbaSection() {
   const proximo  = filas.find((f) => f.esProximo) ?? null;
   const activos  = filas.filter((f) => f.participante.activo).length;
 
-  // Foto por usuario registrado (los manuales no tienen user_id → sin foto,
-  // se les muestra la inicial). El avatar sale de /api/team, no de
-  // `participantes` — la tabla de yerba no guarda esa columna, solo el
-  // user_id de referencia.
-  const avatarPorUserId = useMemo(
-    () => new Map(perfiles.map((p) => [p.id, p.avatarUrl])),
+  const perfilPorUserId = useMemo(
+    () => new Map(perfiles.map((p) => [p.id, p])),
     [perfiles]
   );
+
+  /**
+   * Nombre y foto a MOSTRAR de un participante.
+   *
+   * ⚠ `yerba_participantes.nombre` es una COPIA congelada del nombre que tenía
+   *   el perfil cuando se lo sumó a la ronda — si en ese momento el perfil
+   *   estaba vacío, quedó guardado el email, y completarlo después no
+   *   actualizaba nada acá. Por eso, para los registrados manda siempre el
+   *   nombre actual de /api/team y la copia queda solo de respaldo (perfil
+   *   borrado, o lista de equipo que no cargó).
+   *
+   *   Los participantes manuales no tienen user_id: ahí la copia ES el dato.
+   */
+  const datosDe = useCallback((p: Participante) => {
+    const perfil = p.user_id ? perfilPorUserId.get(p.user_id) : undefined;
+    return {
+      nombre: perfil?.nombre || p.nombre,
+      avatarUrl: perfil?.avatarUrl ?? null,
+    };
+  }, [perfilPorUserId]);
 
   // ── Reordenar ──
   const soltarEn = async (targetId: string) => {
@@ -163,46 +179,71 @@ export function YerbaSection() {
         </div>
       </div>
 
-      {/* ── A quién le toca ── */}
-      <div className="bg-panel border border-hairline rounded-xl p-5">
-        <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">Le toca comprar</p>
-        {cargando ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
-            <Loader2 className="w-4 h-4 animate-spin" /> Cargando…
-          </div>
-        ) : !proximo ? (
-          <p className="text-sm text-muted-foreground py-2">
-            No hay nadie en la ronda todavía. Sumá gente con «Sumar a la ronda».
-          </p>
-        ) : (
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-3">
-              <Avatar className="size-40 border-2 border-accent-green/40">
-                <AvatarImage src={avatarPorUserId.get(proximo.participante.user_id ?? "") ?? undefined} />
-                {/* Sin foto (participante manual, o registrado sin avatar cargado):
-                    la inicial del nombre sobre el mismo verde del turno. */}
-                <AvatarFallback className="bg-accent-green/15 text-accent-green font-semibold text-5xl">
-                  {proximo.participante.nombre.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <span className="text-2xl font-bold text-accent-green">{proximo.participante.nombre}</span>
-              {proximo.ultima ? (
-                <span className="text-xs text-muted-foreground">
-                  última vez el {fmtFecha(proximo.ultima.fecha)}
-                  {(() => { const d = diasDesde(proximo.ultima.fecha); return d != null ? ` · hace ${d} d` : ""; })()}
-                </span>
-              ) : (
-                <span className="text-xs text-muted-foreground">nunca compró</span>
-              )}
+      {/* ── A quién le toca ──
+          Es la pregunta que trae a alguien a esta pantalla, así que se lleva
+          el espacio: foto grande, nombre grande y el resto como apoyo. El
+          resplandor verde detrás de la foto separa el bloque del panel sin
+          necesidad de otro borde. */}
+      <div className="relative bg-panel border border-hairline rounded-xl p-6 overflow-hidden">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -left-16 -top-16 w-72 h-72 rounded-full blur-3xl"
+          style={{ background: "color-mix(in oklab, var(--accent-green) 12%, transparent)" }}
+        />
+        <div className="relative">
+          <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-4">Le toca comprar</p>
+          {cargando ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-6">
+              <Loader2 className="w-4 h-4 animate-spin" /> Cargando…
             </div>
-            <button
-              onClick={() => setCompraOpen(proximo)}
-              className="flex items-center gap-1.5 h-9 px-4 rounded-lg text-xs font-semibold text-accent-green bg-accent-green/10 hover:bg-accent-green/20 border border-accent-green/30 transition-colors"
-            >
-              <ShoppingCart className="w-3.5 h-3.5" /> Registrar compra
-            </button>
-          </div>
-        )}
+          ) : !proximo ? (
+            <p className="text-sm text-muted-foreground py-6">
+              No hay nadie en la ronda todavía. Sumá gente con «Sumar a la ronda».
+            </p>
+          ) : (() => {
+            const { nombre, avatarUrl } = datosDe(proximo.participante);
+            const dias = proximo.ultima ? diasDesde(proximo.ultima.fecha) : null;
+            return (
+              <div className="flex items-center gap-6 flex-wrap">
+                <Avatar className="size-40 shrink-0 ring-4 ring-accent-green/25">
+                  <AvatarImage src={avatarUrl ?? undefined} />
+                  {/* Sin foto (participante manual, o registrado sin avatar
+                      cargado): la inicial sobre el mismo verde del turno. */}
+                  <AvatarFallback className="bg-accent-green/15 text-accent-green font-semibold text-5xl">
+                    {nombre.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+
+                <div className="min-w-0 flex-1 space-y-3">
+                  <p className="text-4xl font-bold text-accent-green leading-tight break-words">{nombre}</p>
+                  <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                    {proximo.ultima ? (
+                      <>
+                        <span className="px-2 py-1 rounded-md bg-panel-2">
+                          Última compra: <span className="text-foreground">{fmtFecha(proximo.ultima.fecha)}</span>
+                        </span>
+                        {dias != null && (
+                          <span className="px-2 py-1 rounded-md bg-panel-2">hace {dias} d</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="px-2 py-1 rounded-md bg-panel-2">Nunca compró</span>
+                    )}
+                    <span className="px-2 py-1 rounded-md bg-panel-2">
+                      {proximo.compras} compra{proximo.compras === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setCompraOpen(proximo)}
+                    className="flex items-center gap-2 h-10 px-5 rounded-lg text-sm font-semibold text-accent-green bg-accent-green/10 hover:bg-accent-green/20 border border-accent-green/30 transition-colors"
+                  >
+                    <ShoppingCart className="w-4 h-4" /> Registrar compra
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
       </div>
 
       {/* ── La ronda ── */}
@@ -220,6 +261,7 @@ export function YerbaSection() {
           <ul>
             {filas.map((f, i) => {
               const p = f.participante;
+              const { nombre, avatarUrl } = datosDe(p);
               return (
                 <li
                   key={p.id}
@@ -240,15 +282,15 @@ export function YerbaSection() {
                   <GripVertical className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />
                   <span className="text-xs text-muted-foreground tabular-nums w-5 shrink-0">{i + 1}</span>
                   <Avatar className="size-7 shrink-0">
-                    <AvatarImage src={avatarPorUserId.get(p.user_id ?? "") ?? undefined} />
+                    <AvatarImage src={avatarUrl ?? undefined} />
                     <AvatarFallback className="bg-panel-2 text-muted-foreground text-[11px]">
-                      {p.nombre.charAt(0).toUpperCase()}
+                      {nombre.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
 
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm text-foreground font-medium truncate">{p.nombre}</span>
+                      <span className="text-sm text-foreground font-medium truncate">{nombre}</span>
                       {f.esProximo && p.activo && (
                         <span className="px-1.5 py-0.5 rounded text-[10.5px] font-semibold bg-accent-green/20 text-accent-green">
                           LE TOCA
@@ -288,7 +330,7 @@ export function YerbaSection() {
                   </button>
                   <button
                     onClick={async () => {
-                      if (!confirm(`¿Sacar a ${p.nombre} de la ronda? Se borran también sus compras del historial.`)) return;
+                      if (!confirm(`¿Sacar a ${nombre} de la ronda? Se borran también sus compras del historial.`)) return;
                       try { await borrarParticipante(p.id); recargar(); }
                       catch (e) { toast.error(e instanceof Error ? e.message : String(e)); }
                     }}
@@ -319,6 +361,7 @@ export function YerbaSection() {
       {compraOpen && (
         <DialogCompra
           fila={compraOpen}
+          nombre={datosDe(compraOpen.participante).nombre}
           marcasUsadas={marcasUsadas}
           onClose={() => setCompraOpen(null)}
           onHecho={() => { setCompraOpen(null); recargar(); }}
@@ -328,7 +371,10 @@ export function YerbaSection() {
       {histOpen && (
         <DialogHistorial
           compras={compras}
-          participantes={participantes}
+          // El nombre resuelto, no la copia congelada de la tabla — si no, el
+          // historial seguiría mostrando el email de quien completó su perfil
+          // después de sumarse a la ronda.
+          nombrePorParticipante={new Map(participantes.map((p) => [p.id, datosDe(p).nombre]))}
           onClose={() => setHistOpen(false)}
           onBorrada={recargar}
         />
@@ -470,9 +516,9 @@ function DialogSumar({
 // calculado y no se puede escribir un valor que la contradiga.
 
 function DialogCompra({
-  fila, marcasUsadas, onClose, onHecho,
+  fila, nombre, marcasUsadas, onClose, onHecho,
 }: {
-  fila: FilaTurno; marcasUsadas: string[]; onClose: () => void; onHecho: () => void;
+  fila: FilaTurno; nombre: string; marcasUsadas: string[]; onClose: () => void; onHecho: () => void;
 }) {
   const [totalKg, setTotalKg] = useState<number>(1);
   const [dos,    setDos]    = useState(false);
@@ -504,7 +550,7 @@ function DialogCompra({
         <div className="flex items-center justify-between px-5 py-4 border-b border-hairline">
           <div>
             <p className="text-sm font-semibold text-foreground">Registrar compra</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">{fila.participante.nombre}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{nombre}</p>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
         </div>
@@ -619,16 +665,11 @@ function MarcaInput({
 // ─── Historial ──────────────────────────────────────────────────────────────
 
 function DialogHistorial({
-  compras, participantes, onClose, onBorrada,
+  compras, nombrePorParticipante: nombreDe, onClose, onBorrada,
 }: {
-  compras: Compra[]; participantes: Participante[];
+  compras: Compra[]; nombrePorParticipante: Map<string, string>;
   onClose: () => void; onBorrada: () => void;
 }) {
-  const nombreDe = useMemo(
-    () => new Map(participantes.map((p) => [p.id, p.nombre])),
-    [participantes]
-  );
-
   return createPortal(
     <div className="fixed inset-0 z-[200] grid place-items-center p-4 bg-black/65" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full max-w-lg max-h-[80vh] flex flex-col rounded-2xl border border-hairline bg-panel overflow-hidden animate-in fade-in zoom-in-95 duration-150" onMouseDown={(e) => e.stopPropagation()}>
