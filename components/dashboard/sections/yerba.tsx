@@ -177,11 +177,11 @@ export function YerbaSection() {
         ) : (
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
-              <Avatar className="size-10 border-2 border-accent-green/40">
+              <Avatar className="size-20 border-2 border-accent-green/40">
                 <AvatarImage src={avatarPorUserId.get(proximo.participante.user_id ?? "") ?? undefined} />
                 {/* Sin foto (participante manual, o registrado sin avatar cargado):
                     la inicial del nombre sobre el mismo verde del turno. */}
-                <AvatarFallback className="bg-accent-green/15 text-accent-green font-semibold">
+                <AvatarFallback className="bg-accent-green/15 text-accent-green font-semibold text-2xl">
                   {proximo.participante.nombre.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
@@ -203,10 +203,6 @@ export function YerbaSection() {
             </button>
           </div>
         )}
-        <p className="text-[11px] text-muted-foreground mt-3 pt-3 border-t border-hairline">
-          Se compra <strong className="text-foreground">1 kg de una marca</strong> ó{" "}
-          <strong className="text-foreground">½ kg de dos marcas</strong> para comparar.
-        </p>
       </div>
 
       {/* ── La ronda ── */}

@@ -10,8 +10,11 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import {
   User as UserIcon, Shield, RefreshCw, Check, LogOut, Eye, EyeOff,
-  Lock, Loader2, Upload, Users, Trash2, Plus, ListChecks, ChevronDown,
+  Lock, Loader2, Upload, Users, Trash2, Plus, ListChecks, ChevronDown, Pencil,
 } from "lucide-react";
 import { SIDEBAR_SECTIONS } from "@/components/dashboard/sidebar";
 
@@ -35,6 +38,11 @@ interface AdminUser {
   email:                string;
   nombre:               string;
   apellido:             string;
+  empresa:              string;
+  cargo:                string;
+  telefono:             string;
+  cumpleanos:           string;
+  avatar_url:           string;
   nivel_acceso:         NivelAcceso;
   // null = sin restricción, ve todo (default). Ver lib/sectionAccess.ts.
   secciones_permitidas: string[] | null;
@@ -162,6 +170,165 @@ function SeccionesPicker({
   );
 }
 
+// ─── Editar usuario (admin) ──────────────────────────────────────────────────
+// A diferencia del resto de la lista (nivel de acceso, secciones), esto edita
+// los mismos campos que "Perfil" pero DE OTRO usuario — algo que la UPDATE
+// policy de `profiles` no deja hacer desde el cliente (cada uno solo puede
+// tocar su propia fila). Por eso viaja como multipart a /api/admin/users, que
+// escribe con la service role key. Ver el comentario de CAMPOS_PERFIL_EDITABLES
+// en esa ruta.
+
+function EditUserDialog({
+  usuario, open, onOpenChange, onSaved,
+}: {
+  usuario: AdminUser;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSaved: (patch: Partial<AdminUser>) => void;
+}) {
+  const [nombre,     setNombre]     = useState(usuario.nombre);
+  const [apellido,   setApellido]   = useState(usuario.apellido);
+  const [empresa,    setEmpresa]    = useState(usuario.empresa);
+  const [cargo,      setCargo]      = useState(usuario.cargo);
+  const [telefono,   setTelefono]   = useState(usuario.telefono);
+  const [cumpleanos, setCumpleanos] = useState(usuario.cumpleanos);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [saving,     setSaving]     = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Cada apertura vuelve a partir del usuario actual — sin esto, editar a
+  // Juan y después a María mostraría los campos de Juan a medio tipear.
+  useEffect(() => {
+    if (!open) return;
+    setNombre(usuario.nombre); setApellido(usuario.apellido);
+    setEmpresa(usuario.empresa); setCargo(usuario.cargo);
+    setTelefono(usuario.telefono); setCumpleanos(usuario.cumpleanos);
+    setAvatarFile(null); setAvatarPreview(null);
+  }, [open, usuario]);
+
+  const initials = [nombre, apellido].map((s) => s.trim()[0] ?? "").join("").toUpperCase() || usuario.email[0]?.toUpperCase() || "U";
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { toast.error("Solo se permiten imágenes"); return; }
+    if (file.size > 2 * 1024 * 1024) { toast.error("La imagen no puede superar 2 MB"); return; }
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  };
+
+  const handleGuardar = async () => {
+    setSaving(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const form = new FormData();
+      form.set("userId", usuario.id);
+      form.set("nombre", nombre);
+      form.set("apellido", apellido);
+      form.set("empresa", empresa);
+      form.set("cargo", cargo);
+      form.set("telefono", telefono);
+      form.set("cumpleanos", cumpleanos);
+      if (avatarFile) form.set("avatar", avatarFile);
+
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+        body: form,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? "Error al guardar");
+
+      onSaved({
+        nombre, apellido, empresa, cargo, telefono, cumpleanos,
+        ...(json.avatar_url ? { avatar_url: json.avatar_url as string } : {}),
+      });
+      toast.success("Usuario actualizado");
+      onOpenChange(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error al guardar");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Editar usuario</DialogTitle>
+          <DialogDescription>{usuario.email}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          <div className="flex items-center gap-5">
+            <div className="relative shrink-0">
+              <Avatar className="w-16 h-16 rounded-lg">
+                {(avatarPreview || usuario.avatar_url) && (
+                  <AvatarImage src={avatarPreview || usuario.avatar_url} alt={initials} className="rounded-lg" />
+                )}
+                <AvatarFallback className="rounded-lg bg-gradient-to-br from-accent/80 to-chart-1 text-accent-foreground text-xl font-semibold">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+            </div>
+            <div className="space-y-2">
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+              <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                <Upload className="w-4 h-4 mr-2" />
+                {avatarFile ? "Cambiar imagen elegida" : "Subir foto"}
+              </Button>
+              <p className="text-xs text-muted-foreground">JPG, PNG o GIF · máx. 2 MB</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Nombre</Label>
+              <input value={nombre} onChange={(e) => setNombre(e.target.value)}
+                className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Apellido</Label>
+              <input value={apellido} onChange={(e) => setApellido(e.target.value)}
+                className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Empresa</Label>
+              <input value={empresa} onChange={(e) => setEmpresa(e.target.value)}
+                className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Cargo</Label>
+              <input value={cargo} onChange={(e) => setCargo(e.target.value)}
+                className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Teléfono</Label>
+              <input value={telefono} onChange={(e) => setTelefono(e.target.value)}
+                className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Cumpleaños</Label>
+              <input type="date" value={cumpleanos} onChange={(e) => setCumpleanos(e.target.value)}
+                className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all" />
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancelar</Button>
+          <Button variant="accent" onClick={handleGuardar} loading={saving}>
+            {!saving && <Check className="w-4 h-4 mr-2" />}
+            Guardar cambios
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface SettingsSectionProps {
@@ -193,6 +360,7 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
   const [newUserPass, setNewUserPass]   = useState("");
   const [newUserNivel, setNewUserNivel] = useState<NivelAcceso>("visualizador");
   const [creatingUser, setCreatingUser] = useState(false);
+  const [editingUser, setEditingUser]   = useState<AdminUser | null>(null);
 
   // Load profile
   useEffect(() => {
@@ -761,9 +929,12 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
                       return (
                         <div key={u.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/40 border border-border">
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent/60 to-chart-1 flex items-center justify-center text-xs font-semibold text-accent-foreground shrink-0">
-                              {(u.nombre?.[0] ?? u.email[0] ?? "?").toUpperCase()}
-                            </div>
+                            <Avatar className="w-8 h-8 shrink-0">
+                              {u.avatar_url && <AvatarImage src={u.avatar_url} alt={u.nombre || u.email} />}
+                              <AvatarFallback className="bg-gradient-to-br from-accent/60 to-chart-1 text-xs font-semibold text-accent-foreground">
+                                {(u.nombre?.[0] ?? u.email[0] ?? "?").toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-foreground truncate">
                                 {u.nombre && u.apellido ? `${u.nombre} ${u.apellido}` : u.email}
@@ -794,6 +965,13 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
                                 onSave={(secciones) => handleChangeSecciones(u.id, secciones)}
                               />
                             )}
+                            <button
+                              onClick={() => setEditingUser(u)}
+                              title="Editar datos y foto"
+                              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
                             {u.id !== user.id && (
                               <button
                                 onClick={() => handleDeleteUser(u.id)}
@@ -813,6 +991,28 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
           </TabsContent>
         )}
       </Tabs>
+
+      {editingUser && (
+        <EditUserDialog
+          usuario={editingUser}
+          open={!!editingUser}
+          onOpenChange={(v) => { if (!v) setEditingUser(null); }}
+          onSaved={(patch) => {
+            setAdminUsers((us) => us.map((u) => (u.id === editingUser.id ? { ...u, ...patch } : u)));
+            // El usuario editado puede ser uno mismo (un admin editándose desde
+            // acá en vez de la pestaña "Perfil") — sin este aviso, el header y
+            // la pestaña Perfil seguirían mostrando el nombre/foto viejos hasta
+            // recargar la página.
+            if (editingUser.id === user.id) {
+              onProfileUpdate?.({
+                nombre: patch.nombre ?? editingUser.nombre,
+                apellido: patch.apellido ?? editingUser.apellido,
+                avatar_url: patch.avatar_url ?? editingUser.avatar_url,
+              });
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
