@@ -22,10 +22,15 @@
 -- cliente a partir de estas dos tablas; ver `proximoTurno()` en lib/yerba.ts.
 --
 -- ── La regla del kilo ───────────────────────────────────────────────────────
--- Cada compra es 1 kg de UNA marca, o 1/2 kg de DOS marcas (para poder
--- comparar). Eso son 1 o 2 filas en `yerba_compra_marca` por compra, y el
--- CHECK de `kilos` deja pasar solo esos dos valores. La cantidad de marcas se
--- valida en el cliente al cargar.
+-- Cada compra trae 1 ó 2 kg EN TOTAL, repartidos en una o dos marcas (dos
+-- marcas es para poder comparar). Eso son 1 o 2 filas en `yerba_compra_marca`
+-- por compra, con los kilos de CADA marca = total / cantidad de marcas — nunca
+-- un valor suelto. Ver `kilosPorMarca()` en lib/yerba.ts.
+--
+--   1 kg · 1 marca  → 1 kg      2 kg · 1 marca  → 2 kg
+--   1 kg · 2 marcas → ½ kg c/u  2 kg · 2 marcas → 1 kg c/u
+--
+-- El CHECK de `kilos` deja pasar solo esos valores posibles.
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS yerba_participantes (
@@ -69,7 +74,7 @@ CREATE TABLE IF NOT EXISTS yerba_compra_marca (
   marca      text NOT NULL,
   -- Solo 1 kg (una marca) o 0.5 kg (dos marcas). Cualquier otro valor rompe la
   -- regla de la oficina, así que no debería poder guardarse.
-  kilos      numeric NOT NULL CHECK (kilos IN (0.5, 1)),
+  kilos      numeric NOT NULL CHECK (kilos IN (0.5, 1, 2)),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 

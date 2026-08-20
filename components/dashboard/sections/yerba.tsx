@@ -11,7 +11,7 @@ import {
 import {
   fetchParticipantes, fetchCompras, fetchMarcasUsadas, construirTurnos,
   agregarParticipante, borrarParticipante, setActivo, guardarOrden,
-  registrarCompra, borrarCompra, KILOS_POR_MARCAS,
+  registrarCompra, borrarCompra, kilosPorMarca, TOTALES_KG,
   type Participante, type Compra, type FilaTurno,
 } from "@/lib/yerba";
 import { fetchEquipo } from "@/lib/buscadorTabs";
@@ -453,6 +453,7 @@ function DialogCompra({
 }: {
   fila: FilaTurno; marcasUsadas: string[]; onClose: () => void; onHecho: () => void;
 }) {
+  const [totalKg, setTotalKg] = useState<number>(1);
   const [dos,    setDos]    = useState(false);
   const [marcaA, setMarcaA] = useState("");
   const [marcaB, setMarcaB] = useState("");
@@ -461,12 +462,12 @@ function DialogCompra({
   const [guardando, setGuardando] = useState(false);
 
   const marcas = dos ? [marcaA, marcaB] : [marcaA];
-  const kilos  = KILOS_POR_MARCAS[marcas.filter((m) => m.trim()).length] ?? null;
+  const kilos  = kilosPorMarca(totalKg, marcas.filter((m) => m.trim()).length);
 
   const guardar = async () => {
     setGuardando(true);
     try {
-      await registrarCompra(fila.participante.id, fecha, marcas, nota || null);
+      await registrarCompra(fila.participante.id, fecha, totalKg, marcas, nota || null);
       toast.success("Compra registrada.");
       onHecho();
     } catch (e) {
@@ -488,21 +489,43 @@ function DialogCompra({
         </div>
 
         <div className="p-5 space-y-4">
-          <div className="flex gap-2">
-            <button
-              onClick={() => setDos(false)}
-              className={cn("flex-1 h-9 rounded-lg text-xs font-medium border transition-colors",
-                !dos ? "bg-accent/15 text-foreground border-accent/40" : "text-muted-foreground border-hairline hover:bg-panel-2")}
-            >
-              1 kg · una marca
-            </button>
-            <button
-              onClick={() => setDos(true)}
-              className={cn("flex-1 h-9 rounded-lg text-xs font-medium border transition-colors",
-                dos ? "bg-accent/15 text-foreground border-accent/40" : "text-muted-foreground border-hairline hover:bg-panel-2")}
-            >
-              ½ kg · dos marcas
-            </button>
+          {/* Dos toggles independientes: cuánto en total y en cuántas marcas
+              se reparte. Los kilos por marca salen de dividir uno por otro
+              (kilosPorMarca), nunca se eligen sueltos. */}
+          <div>
+            <p className="text-[11px] text-muted-foreground mb-1.5">Total</p>
+            <div className="flex gap-2">
+              {TOTALES_KG.map((kg) => (
+                <button
+                  key={kg}
+                  onClick={() => setTotalKg(kg)}
+                  className={cn("flex-1 h-9 rounded-lg text-xs font-medium border transition-colors",
+                    totalKg === kg ? "bg-accent/15 text-foreground border-accent/40" : "text-muted-foreground border-hairline hover:bg-panel-2")}
+                >
+                  {kg} kg
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[11px] text-muted-foreground mb-1.5">Marcas</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDos(false)}
+                className={cn("flex-1 h-9 rounded-lg text-xs font-medium border transition-colors",
+                  !dos ? "bg-accent/15 text-foreground border-accent/40" : "text-muted-foreground border-hairline hover:bg-panel-2")}
+              >
+                Una marca
+              </button>
+              <button
+                onClick={() => setDos(true)}
+                className={cn("flex-1 h-9 rounded-lg text-xs font-medium border transition-colors",
+                  dos ? "bg-accent/15 text-foreground border-accent/40" : "text-muted-foreground border-hairline hover:bg-panel-2")}
+              >
+                Dos marcas (para comparar)
+              </button>
+            </div>
           </div>
 
           <div className="space-y-2">

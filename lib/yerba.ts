@@ -3,10 +3,23 @@ import { supabase } from "@/lib/supabaseClient";
 // ─── Control de Yerba ───────────────────────────────────────────────────────
 // De quién es el turno de comprar. Ver supabase/yerba.sql para el modelo.
 //
-// La regla de la oficina: cada compra es 1 kg de UNA marca, o 1/2 kg de DOS
-// marcas (para poder comparar). `KILOS_POR_MARCAS` la deja en un solo lugar.
+// La regla de la oficina: se define CUÁNTO se trae en total (1 o 2 kg) y en
+// cuántas marcas se reparte (1, o 2 para poder comparar). Los kilos por marca
+// salen de dividir, no se eligen a mano — así no puede quedar una compra que
+// contradiga el total.
+//
+//   1 kg · 1 marca  → 1 kg      2 kg · 1 marca  → 2 kg
+//   1 kg · 2 marcas → ½ kg c/u  2 kg · 2 marcas → 1 kg c/u
 
-export const KILOS_POR_MARCAS: Record<number, number> = { 1: 1, 2: 0.5 };
+export const TOTALES_KG = [1, 2] as const;
+export type TotalKg = (typeof TOTALES_KG)[number];
+
+/** Kilos de CADA marca. `null` si la combinación no es válida. */
+export function kilosPorMarca(total: number, cantMarcas: number): number | null {
+  if (!TOTALES_KG.includes(total as TotalKg)) return null;
+  if (cantMarcas !== 1 && cantMarcas !== 2) return null;
+  return total / cantMarcas;
+}
 
 export interface Participante {
   id:      string;
@@ -168,12 +181,13 @@ export async function guardarOrden(ids: string[]): Promise<void> {
 export async function registrarCompra(
   participanteId: string,
   fecha: string,
+  totalKg: number,
   marcas: string[],
   nota: string | null,
 ): Promise<void> {
   const limpias = marcas.map((m) => m.trim()).filter(Boolean);
-  const kilos = KILOS_POR_MARCAS[limpias.length];
-  if (!kilos) throw new Error("Tiene que ser 1 kg de una marca, o ½ kg de dos marcas.");
+  const kilos = kilosPorMarca(totalKg, limpias.length);
+  if (!kilos) throw new Error("Elegí 1 o 2 kg en total, con una marca o dos.");
 
   const { data, error } = await supabase
     .from("yerba_compras")
