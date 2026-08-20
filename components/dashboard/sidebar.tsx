@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   X,
   Settings,
+  Coffee,
   Server,
   LayoutGrid,
   Table2,
@@ -134,6 +135,7 @@ const navItems: NavItemDef[] = [
       { id: "tablero-op-carga",   label: "Carga de datos", icon: UploadCloud },
     ],
   },
+  { kind: "link", id: "yerba", label: "Control de Yerba", icon: Coffee },
   { kind: "link", id: "settings", label: "Configuración", icon: Settings },
 ];
 

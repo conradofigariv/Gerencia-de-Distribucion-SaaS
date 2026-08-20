@@ -34,6 +34,7 @@ import { IndiceIdoCargaSection } from "@/components/dashboard/sections/indice-id
 import { TableroOpResumenSection } from "@/components/dashboard/sections/tablero-op-resumen";
 import { TableroOpCargaSection } from "@/components/dashboard/sections/tablero-op-carga";
 import { BuscadorSection } from "@/components/dashboard/sections/buscador";
+import { YerbaSection } from "@/components/dashboard/sections/yerba";
 import { LoginPage } from "@/components/auth/login";
 import { Loader2 } from "lucide-react";
 
@@ -55,7 +56,8 @@ export type Section =
   | "informe-tecnico"
   | "indice-ido-resumen" | "indice-ido-carga"
   | "tablero-op-resumen" | "tablero-op-carga"
-  | "buscador";
+  | "buscador"
+  | "yerba";
 
 export interface HeaderProfile {
   nombre:     string;
@@ -196,6 +198,7 @@ export default function Dashboard() {
       case "tablero-op-resumen":      return <TableroOpResumenSection />;
       case "tablero-op-carga":        return <TableroOpCargaSection />;
       case "buscador":                return <BuscadorSection />;
+      case "yerba":                   return <YerbaSection />;
       default:                       return <OverviewSection />;
     }
   };

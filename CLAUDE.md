@@ -76,6 +76,7 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
 | `sic-diagrama` | sic-diagrama.tsx | Proceso SIC - SIGA | Diagrama de flujo neon + seguimiento de SICs | [`docs/sic-diagrama.md`](docs/sic-diagrama.md) |
 | `informe-tecnico` | informe-tecnico.tsx | Licitaciones | Análisis de ofertas y adjudicación por renglón | [`docs/informe-tecnico.md`](docs/informe-tecnico.md) |
 | `buscador` | buscador.tsx | Herramientas | Búsqueda global + pestañas de seguimiento por usuario | [`docs/buscador.md`](docs/buscador.md) |
+| `yerba` | yerba.tsx | (raíz) | Control de Yerba: de quién es el turno de comprar (rotación en orden fijo) | — |
 | `settings` | settings.tsx | (raíz) | Gestión de usuarios, perfiles, nivel de acceso | — |
 
 ### Tablas Supabase por sección
@@ -95,6 +96,7 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
 | sic-diagrama | `sic_diagrama_layout`, `sic_diagrama_active` — SQL en [`docs/sic-diagrama.md`](docs/sic-diagrama.md) |
 | informe-tecnico | `licitaciones`, `licitacion_renglones`, `licitacion_items`, `licitacion_oferentes`, `licitacion_ofertas`, `licitacion_evaluaciones_tecnicas`, `licitacion_adjudicaciones`, `matriculas` — SQL en [`docs/informe-tecnico.md`](docs/informe-tecnico.md) |
 | buscador | `busqueda_index` (lectura), `op_datos` (descripción y zona de la OP, cargadas a mano), `buscador_tabs`, `buscador_tab_filas`, `buscador_tab_shares` (compartir), `profiles` (lectura, para elegir con quién compartir) — SQL en `supabase/buscador_tabs.sql` + `supabase/buscador_tab_shares.sql` y doc completo en [`docs/buscador.md`](docs/buscador.md) |
+| yerba | `yerba_participantes`, `yerba_compras`, `yerba_compra_marca`, `profiles` (lectura, para sumar usuarios registrados) — SQL en `supabase/yerba.sql` |
 | settings | `profiles` (incluye `nivel_acceso` y `secciones_permitidas`) |
 | recordatorios | `reminder_config` |
 
