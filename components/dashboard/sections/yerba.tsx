@@ -16,6 +16,7 @@ import {
 } from "@/lib/yerba";
 import { fetchEquipo } from "@/lib/buscadorTabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const ITEM_SELECT = "text-[13px] focus:bg-panel-2 focus:text-foreground data-[state=checked]:bg-accent/15 data-[state=checked]:text-foreground";
 
@@ -36,7 +37,7 @@ const diasDesde = (iso: string) => {
   return Math.floor((Date.now() - d.getTime()) / 86_400_000);
 };
 
-interface PerfilSimple { id: string; nombre: string }
+interface PerfilSimple { id: string; nombre: string; avatarUrl: string | null }
 
 export function YerbaSection() {
   const [participantes, setParticipantes] = useState<Participante[]>([]);
@@ -87,6 +88,7 @@ export function YerbaSection() {
             .map((u) => ({
               id: u.id,
               nombre: [u.nombre, u.apellido].filter(Boolean).join(" ").trim() || u.email || "(sin nombre)",
+              avatarUrl: u.avatar_url,
             }))
             .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
         );
@@ -98,6 +100,15 @@ export function YerbaSection() {
   const filas    = useMemo(() => construirTurnos(participantes, compras), [participantes, compras]);
   const proximo  = filas.find((f) => f.esProximo) ?? null;
   const activos  = filas.filter((f) => f.participante.activo).length;
+
+  // Foto por usuario registrado (los manuales no tienen user_id → sin foto,
+  // se les muestra la inicial). El avatar sale de /api/team, no de
+  // `participantes` — la tabla de yerba no guarda esa columna, solo el
+  // user_id de referencia.
+  const avatarPorUserId = useMemo(
+    () => new Map(perfiles.map((p) => [p.id, p.avatarUrl])),
+    [perfiles]
+  );
 
   // ── Reordenar ──
   const soltarEn = async (targetId: string) => {
@@ -166,6 +177,14 @@ export function YerbaSection() {
         ) : (
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
+              <Avatar className="size-10 border-2 border-accent-green/40">
+                <AvatarImage src={avatarPorUserId.get(proximo.participante.user_id ?? "") ?? undefined} />
+                {/* Sin foto (participante manual, o registrado sin avatar cargado):
+                    la inicial del nombre sobre el mismo verde del turno. */}
+                <AvatarFallback className="bg-accent-green/15 text-accent-green font-semibold">
+                  {proximo.participante.nombre.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
               <span className="text-2xl font-bold text-accent-green">{proximo.participante.nombre}</span>
               {proximo.ultima ? (
                 <span className="text-xs text-muted-foreground">
@@ -224,6 +243,12 @@ export function YerbaSection() {
                 >
                   <GripVertical className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />
                   <span className="text-xs text-muted-foreground tabular-nums w-5 shrink-0">{i + 1}</span>
+                  <Avatar className="size-7 shrink-0">
+                    <AvatarImage src={avatarPorUserId.get(p.user_id ?? "") ?? undefined} />
+                    <AvatarFallback className="bg-panel-2 text-muted-foreground text-[11px]">
+                      {p.nombre.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
 
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
