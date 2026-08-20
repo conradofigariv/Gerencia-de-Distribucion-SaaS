@@ -14,6 +14,7 @@ import {
   registrarCompra, borrarCompra, KILOS_POR_MARCAS,
   type Participante, type Compra, type FilaTurno,
 } from "@/lib/yerba";
+import { fetchEquipo } from "@/lib/buscadorTabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const ITEM_SELECT = "text-[13px] focus:bg-panel-2 focus:text-foreground data-[state=checked]:bg-accent/15 data-[state=checked]:text-foreground";
@@ -43,6 +44,11 @@ export function YerbaSection() {
   const [marcasUsadas,  setMarcasUsadas]  = useState<string[]>([]);
   const [perfiles,      setPerfiles]      = useState<PerfilSimple[]>([]);
   const [cargando,      setCargando]      = useState(true);
+  // Estado propio del listado de usuarios registrados: si falla, el diálogo
+  // tiene que poder decir «no se pudo cargar» en vez de «ya están todos», que
+  // es lo que se veía cuando la lista quedaba vacía por un error.
+  const [cargandoEquipo, setCargandoEquipo] = useState(true);
+  const [errorEquipo,    setErrorEquipo]    = useState<string | null>(null);
 
   const [addOpen,    setAddOpen]    = useState(false);
   const [compraOpen, setCompraOpen] = useState<FilaTurno | null>(null);
@@ -67,14 +73,15 @@ export function YerbaSection() {
 
   // Usuarios registrados, para sumarlos sin tipear el nombre.
   //
-  // Se pide a /api/team y no a `profiles` directo porque el email vive en
-  // auth.users, no en profiles: sin él, todo usuario que todavía no completó
-  // su perfil aparecía como «(sin nombre)» y el desplegable no servía para
-  // distinguirlos. Es el mismo endpoint que ya usa el picker de compartir.
+  // Vía `fetchEquipo()` (la misma que usa el picker de compartir pestañas) y
+  // no con un fetch propio: /api/team exige el header Authorization con el
+  // token de la sesión, y sin él responde 401 — que era justamente lo que
+  // dejaba la lista vacía. Tampoco se lee `profiles` directo, porque el email
+  // vive en auth.users y sin él todo usuario sin perfil completo aparecía como
+  // «(sin nombre)».
   useEffect(() => {
-    fetch("/api/team")
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then(({ equipo }: { equipo: { id: string; email: string; nombre: string; apellido: string }[] }) => {
+    fetchEquipo()
+      .then((equipo) => {
         setPerfiles(
           equipo
             .map((u) => ({
@@ -84,8 +91,8 @@ export function YerbaSection() {
             .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
         );
       })
-      // Se puede seguir cargando gente a mano, así que esto no merece un toast.
-      .catch(() => { /* sin lista de registrados, queda el modo «Nombre suelto» */ });
+      .catch((e) => setErrorEquipo(e instanceof Error ? e.message : String(e)))
+      .finally(() => setCargandoEquipo(false));
   }, []);
 
   const filas    = useMemo(() => construirTurnos(participantes, compras), [participantes, compras]);
@@ -279,6 +286,8 @@ export function YerbaSection() {
       {addOpen && (
         <DialogSumar
           perfiles={perfiles}
+          cargandoEquipo={cargandoEquipo}
+          errorEquipo={errorEquipo}
           yaEn={new Set(participantes.map((p) => p.user_id).filter(Boolean) as string[])}
           ordenFinal={participantes.length}
           onClose={() => setAddOpen(false)}
@@ -313,9 +322,10 @@ export function YerbaSection() {
 // en la app, y pedirles que se registren para entrar en la ronda sería absurdo.
 
 function DialogSumar({
-  perfiles, yaEn, ordenFinal, onClose, onHecho,
+  perfiles, cargandoEquipo, errorEquipo, yaEn, ordenFinal, onClose, onHecho,
 }: {
-  perfiles: PerfilSimple[]; yaEn: Set<string>; ordenFinal: number;
+  perfiles: PerfilSimple[]; cargandoEquipo: boolean; errorEquipo: string | null;
+  yaEn: Set<string>; ordenFinal: number;
   onClose: () => void; onHecho: () => void;
 }) {
   const [modo,     setModo]     = useState<"usuario" | "manual">("usuario");
@@ -368,9 +378,24 @@ function DialogSumar({
           </div>
 
           {modo === "usuario" ? (
-            disponibles.length === 0 ? (
+            // Los tres motivos por los que puede no haber lista son distintos y
+            // el mensaje tiene que decir cuál es: antes un error de carga se
+            // veía igual que «ya están todos», y no había forma de darse cuenta.
+            cargandoEquipo ? (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando usuarios…
+              </p>
+            ) : errorEquipo ? (
+              <p className="text-xs text-accent-red py-2">
+                No se pudo cargar la lista de usuarios ({errorEquipo}). Podés sumarlo con «Nombre suelto».
+              </p>
+            ) : perfiles.length === 0 ? (
               <p className="text-xs text-muted-foreground py-2">
-                No queda ningún usuario registrado sin sumar. Usá «Nombre suelto».
+                No hay usuarios registrados en la app. Usá «Nombre suelto».
+              </p>
+            ) : disponibles.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-2">
+                Todos los usuarios registrados ya están en la ronda. Usá «Nombre suelto».
               </p>
             ) : (
               <Select value={userId} onValueChange={setUserId}>
