@@ -17,6 +17,7 @@ import {
   Lock, Loader2, Upload, Users, Trash2, Plus, ListChecks, ChevronDown, Pencil,
 } from "lucide-react";
 import { SIDEBAR_SECTIONS } from "@/components/dashboard/sidebar";
+import { AvatarCropDialog } from "@/components/dashboard/avatar-crop-dialog";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -196,6 +197,9 @@ function EditUserDialog({
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [saving,     setSaving]     = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Recorte antes de subir: mismo diálogo que usa la propia pestaña "Perfil".
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [cropOpen, setCropOpen] = useState(false);
 
   // Cada apertura vuelve a partir del usuario actual — sin esto, editar a
   // Juan y después a María mostraría los campos de Juan a medio tipear.
@@ -211,9 +215,15 @@ function EditUserDialog({
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) { toast.error("Solo se permiten imágenes"); return; }
-    if (file.size > 2 * 1024 * 1024) { toast.error("La imagen no puede superar 2 MB"); return; }
+    if (file.size > 8 * 1024 * 1024) { toast.error("La imagen no puede superar 8 MB"); return; }
+    setCropFile(file);
+    setCropOpen(true);
+  };
+
+  const handleCropped = (file: File) => {
     setAvatarFile(file);
     setAvatarPreview(URL.createObjectURL(file));
   };
@@ -279,9 +289,11 @@ function EditUserDialog({
                 <Upload className="w-4 h-4 mr-2" />
                 {avatarFile ? "Cambiar imagen elegida" : "Subir foto"}
               </Button>
-              <p className="text-xs text-muted-foreground">JPG, PNG o GIF · máx. 2 MB</p>
+              <p className="text-xs text-muted-foreground">JPG, PNG o GIF · se recorta antes de subir</p>
             </div>
           </div>
+
+          <AvatarCropDialog file={cropFile} open={cropOpen} onOpenChange={setCropOpen} onCropped={handleCropped} />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -421,16 +433,26 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
     setSavingProfile(false);
   };
 
-  // ── Upload avatar
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ── Elegir archivo → recortar → subir. El input ya no sube directo: abre el
+  // diálogo de encuadre y `handleAvatarUpload` recibe el PNG ya recortado, no
+  // el archivo crudo — así lo que se guarda es exactamente lo que se vio en
+  // el círculo guía, no lo que object-cover decida centrar solo.
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [cropOpen, setCropOpen] = useState(false);
+
+  const handleFileElegido = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) { toast.error("Solo se permiten imágenes"); return; }
-    if (file.size > 2 * 1024 * 1024) { toast.error("La imagen no puede superar 2 MB"); return; }
+    if (file.size > 8 * 1024 * 1024) { toast.error("La imagen no puede superar 8 MB"); return; }
+    setCropFile(file);
+    setCropOpen(true);
+  };
 
+  const handleAvatarUpload = async (file: File) => {
     setUploadingAvatar(true);
-    const ext  = file.name.split(".").pop() ?? "jpg";
-    const path = `${user.id}/avatar.${ext}`;
+    const path = `${user.id}/avatar.png`;
 
     const { error: upError } = await supabase.storage
       .from("avatars")
@@ -442,7 +464,6 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
         : `Error al subir: ${upError.message}`;
       toast.error(msg);
       setUploadingAvatar(false);
-      e.target.value = "";
       return;
     }
 
@@ -462,7 +483,6 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
     }
 
     setUploadingAvatar(false);
-    e.target.value = "";
   };
 
   // ── Change password (verifies current password first)
@@ -658,7 +678,7 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={handleAvatarUpload}
+                        onChange={handleFileElegido}
                       />
                       <Button
                         type="button"
@@ -670,7 +690,7 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
                         <Upload className="w-4 h-4 mr-2" />
                         {uploadingAvatar ? "Subiendo..." : "Cambiar foto"}
                       </Button>
-                      <p className="text-xs text-muted-foreground">JPG, PNG o GIF · máx. 2 MB</p>
+                      <p className="text-xs text-muted-foreground">JPG, PNG o GIF · se recorta antes de subir</p>
                     </div>
                   </div>
 
@@ -991,6 +1011,13 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
           </TabsContent>
         )}
       </Tabs>
+
+      <AvatarCropDialog
+        file={cropFile}
+        open={cropOpen}
+        onOpenChange={setCropOpen}
+        onCropped={handleAvatarUpload}
+      />
 
       {editingUser && (
         <EditUserDialog
