@@ -34,12 +34,12 @@ export async function GET(req: NextRequest) {
 
   const { data: profiles } = await supabaseAdmin
     .from("profiles")
-    .select("id, nombre, apellido, empresa, cargo, telefono, cumpleanos, avatar_url, nivel_acceso, secciones_permitidas, plantilla_acceso_id");
+    .select("id, nombre, apellido, empresa, cargo, telefono, cumpleanos, avatar_url, nivel_acceso, secciones_permitidas");
 
   type ProfileRow = {
     id: string; nombre: string; apellido: string; empresa: string | null; cargo: string | null;
     telefono: string | null; cumpleanos: string | null; avatar_url: string | null;
-    nivel_acceso: string; secciones_permitidas: string[] | null; plantilla_acceso_id: string | null;
+    nivel_acceso: string; secciones_permitidas: string[] | null;
   };
   const profileMap = Object.fromEntries((profiles ?? [] as ProfileRow[]).map((p: ProfileRow) => [p.id, p]));
 
@@ -55,7 +55,6 @@ export async function GET(req: NextRequest) {
     avatar_url:           profileMap[u.id]?.avatar_url ?? "",
     nivel_acceso:         profileMap[u.id]?.nivel_acceso ?? "visualizador",
     secciones_permitidas: profileMap[u.id]?.secciones_permitidas ?? null,
-    plantilla_acceso_id:  profileMap[u.id]?.plantilla_acceso_id ?? null,
     created_at:           u.created_at,
   }));
 
@@ -159,23 +158,13 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const { userId, nivel_acceso } = body;
   const tocaSecciones = "secciones_permitidas" in body;
-  // `null` es un valor válido: significa "sin plantilla".
-  const tocaPlantilla = "plantilla_acceso_id" in body;
-  if (!userId || (!nivel_acceso && !tocaSecciones && !tocaPlantilla)) {
-    return NextResponse.json({ error: "userId y (nivel_acceso, secciones_permitidas o plantilla_acceso_id) requeridos" }, { status: 400 });
+  if (!userId || (!nivel_acceso && !tocaSecciones)) {
+    return NextResponse.json({ error: "userId y (nivel_acceso o secciones_permitidas) requeridos" }, { status: 400 });
   }
 
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (nivel_acceso) update.nivel_acceso = nivel_acceso;
   if (tocaSecciones) update.secciones_permitidas = body.secciones_permitidas;
-  if (tocaPlantilla) {
-    update.plantilla_acceso_id = body.plantilla_acceso_id;
-    // Asignar una plantilla limpia la allowlist propia: si quedara guardada,
-    // sacarle después la plantilla lo devolvería en silencio a unos permisos
-    // viejos que nadie recuerda haber puesto. Sin plantilla, el acceso pasa a
-    // ser "sin restricción" salvo que se cargue una allowlist a propósito.
-    if (body.plantilla_acceso_id) update.secciones_permitidas = null;
-  }
 
   const { error } = await supabaseAdmin
     .from("profiles")

@@ -6,7 +6,7 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { Sidebar, SIDEBAR_SECTIONS } from "@/components/dashboard/sidebar";
-import { puedeVerSeccion, resolverSecciones, type PlantillaAcceso } from "@/lib/sectionAccess";
+import { puedeVerSeccion } from "@/lib/sectionAccess";
 import { Header } from "@/components/dashboard/header";
 import { CanvasBackground } from "@/components/canvas-background";
 import type { BgEffect } from "@/components/canvas-background";
@@ -97,10 +97,7 @@ export default function Dashboard() {
     if (!user) { setHeaderProfile(null); setAccessInfo(null); return; }
     supabase
       .from("profiles")
-      // El join trae la plantilla asignada (si tiene). PostgREST la devuelve
-      // como objeto anidado por la FK plantilla_acceso_id — ver
-      // supabase/acceso_plantillas.sql.
-      .select("nombre, apellido, avatar_url, nivel_acceso, secciones_permitidas, acceso_plantillas(id, nombre, secciones)")
+      .select("nombre, apellido, avatar_url, nivel_acceso, secciones_permitidas")
       .eq("id", user.id)
       .single()
       .then(({ data, error }) => {
@@ -118,13 +115,9 @@ export default function Dashboard() {
           apellido: data?.apellido ?? "",
           avatar_url: data?.avatar_url ?? "",
         });
-        // PostgREST devuelve la relación como objeto o como array de uno
-        // según cómo infiera la cardinalidad; se normaliza a objeto.
-        const rel = (data as unknown as { acceso_plantillas?: PlantillaAcceso | PlantillaAcceso[] | null })?.acceso_plantillas;
-        const plantilla = Array.isArray(rel) ? rel[0] ?? null : rel ?? null;
         setAccessInfo({
           nivelAcceso: data?.nivel_acceso ?? null,
-          secciones:   resolverSecciones(plantilla, data?.secciones_permitidas),
+          secciones:   data?.secciones_permitidas ?? null,
         });
       });
   }, [user]);

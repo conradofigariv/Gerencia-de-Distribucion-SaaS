@@ -49,9 +49,6 @@ interface AdminUser {
   nivel_acceso:         NivelAcceso;
   // null = sin restricción, ve todo (default). Ver lib/sectionAccess.ts.
   secciones_permitidas: string[] | null;
-  // Plantilla asignada. Si está, PISA a secciones_permitidas — ver
-  // resolverSecciones() en lib/sectionAccess.ts.
-  plantilla_acceso_id:  string | null;
   created_at:           string;
 }
 
@@ -65,26 +62,20 @@ const NIVEL_BADGE: Record<NivelAcceso, { label: string; cls: string }> = {
   visualizador:  { label: "Visualizador",  cls: "bg-muted text-muted-foreground border-border" },
 };
 
-// ─── Plantillas de acceso ───────────────────────────────────────────────────
-// Antes esto era un desplegable con 18 checkboxes por usuario, y había que
-// repetirlo para cada persona con el mismo rol. Ahora el conjunto de secciones
-// se define UNA vez como plantilla con nombre y se asigna de un click; editar
-// la plantilla actualiza a todos los que la tienen (es una referencia viva,
-// no una copia — ver supabase/acceso_plantillas.sql).
-
-interface Plantilla { id: string; nombre: string; secciones: string[] }
+// ─── Acceso por secciones ───────────────────────────────────────────────────
+// Tres niveles (administrador / editor / visualizador) y, para los que no son
+// administradores, la lista de secciones del sidebar que tienen permitidas.
+// El administrador ve todo siempre — ver puedeVerSeccion() en
+// lib/sectionAccess.ts.
 
 /** Texto corto del acceso de un usuario, para la fila de la lista. */
-function resumenAcceso(u: AdminUser, plantillas?: Plantilla[]): string {
+function resumenAcceso(u: AdminUser): string {
   if (u.nivel_acceso === "administrador") return "Ve todo";
-  if (u.plantilla_acceso_id) {
-    return plantillas?.find((p) => p.id === u.plantilla_acceso_id)?.nombre ?? "Plantilla";
-  }
-  if (u.secciones_permitidas == null) return "Sin restricción";
-  return `${u.secciones_permitidas.length} secciones`;
+  if (u.secciones_permitidas == null) return "Todas las secciones";
+  return `${u.secciones_permitidas.length} de ${SIDEBAR_SECTIONS.length} secciones`;
 }
 
-/** Checkboxes agrupados por grupo del sidebar. Se usa al crear/editar plantillas. */
+/** Checkboxes de secciones, agrupados igual que el sidebar. */
 function SeccionesCheckboxes({
   value, onChange,
 }: { value: string[]; onChange: (v: string[]) => void }) {
@@ -153,16 +144,14 @@ function SeccionesCheckboxes({
 // en esa ruta.
 
 function EditUserDialog({
-  usuario, plantillas, esYo, open, onOpenChange, onSaved, onGestionarPlantillas,
+  usuario, esYo, open, onOpenChange, onSaved,
 }: {
   usuario: AdminUser;
-  plantillas: Plantilla[];
   /** El admin no puede bajarse el propio nivel y quedarse afuera. */
   esYo: boolean;
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onSaved: (patch: Partial<AdminUser>) => void;
-  onGestionarPlantillas: () => void;
 }) {
   const [nombre,     setNombre]     = useState(usuario.nombre);
   const [apellido,   setApellido]   = useState(usuario.apellido);
@@ -177,9 +166,13 @@ function EditUserDialog({
   // Recorte antes de subir: mismo diálogo que usa la propia pestaña "Perfil".
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [cropOpen, setCropOpen] = useState(false);
-  // Acceso: nivel + plantilla. "" = sin plantilla (sin restricción).
+  // Acceso: nivel + qué secciones ve. `secciones` arranca de la allowlist
+  // guardada; si es null (sin restricción) se muestran todas marcadas, que es
+  // lo mismo que ve el usuario hoy.
   const [nivel, setNivel] = useState<NivelAcceso>(usuario.nivel_acceso);
-  const [plantillaId, setPlantillaId] = useState<string>(usuario.plantilla_acceso_id ?? "");
+  const [secciones, setSecciones] = useState<string[]>(
+    usuario.secciones_permitidas ?? SIDEBAR_SECTIONS.map((s) => s.id)
+  );
 
   // Cada apertura vuelve a partir del usuario actual — sin esto, editar a
   // Juan y después a María mostraría los campos de Juan a medio tipear.
@@ -190,7 +183,7 @@ function EditUserDialog({
     setTelefono(usuario.telefono); setCumpleanos(usuario.cumpleanos);
     setAvatarFile(null); setAvatarPreview(null);
     setNivel(usuario.nivel_acceso);
-    setPlantillaId(usuario.plantilla_acceso_id ?? "");
+    setSecciones(usuario.secciones_permitidas ?? SIDEBAR_SECTIONS.map((s) => s.id));
   }, [open, usuario]);
 
   const initials = [nombre, apellido].map((s) => s.trim()[0] ?? "").join("").toUpperCase() || usuario.email[0]?.toUpperCase() || "U";
@@ -232,32 +225,32 @@ function EditUserDialog({
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error ?? "Error al guardar");
 
-      // El acceso (nivel + plantilla) va en una segunda llamada, en JSON: el
+      // El acceso (nivel + secciones) va en una segunda llamada, en JSON: el
       // PATCH multipart de arriba solo toca campos de perfil, y no se mezclan
       // a propósito — así el camino de permisos queda separado del de datos.
-      const cambioAcceso = nivel !== usuario.nivel_acceso
-        || (plantillaId || null) !== usuario.plantilla_acceso_id;
-      if (cambioAcceso) {
-        const res2 = await fetch("/api/admin/users", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
-          body: JSON.stringify({
-            userId: usuario.id,
-            nivel_acceso: nivel,
-            plantilla_acceso_id: plantillaId || null,
-          }),
-        });
-        const json2 = await res2.json().catch(() => ({}));
-        if (!res2.ok) throw new Error(json2.error ?? "Error al guardar el acceso");
-      }
+      //
+      // Con todas las secciones marcadas se guarda `null` (sin restricción) en
+      // vez de la lista completa: así el usuario no queda "congelado" a las
+      // secciones que existían hoy y ve automáticamente las que se agreguen
+      // más adelante, que es lo que se espera de «ve todo».
+      const todasMarcadas = secciones.length === SIDEBAR_SECTIONS.length;
+      const seccionesFinal = todasMarcadas ? null : secciones;
+      const res2 = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({
+          userId: usuario.id,
+          nivel_acceso: nivel,
+          secciones_permitidas: seccionesFinal,
+        }),
+      });
+      const json2 = await res2.json().catch(() => ({}));
+      if (!res2.ok) throw new Error(json2.error ?? "Error al guardar el acceso");
 
       onSaved({
         nombre, apellido, empresa, cargo, telefono, cumpleanos,
         nivel_acceso: nivel,
-        plantilla_acceso_id: plantillaId || null,
-        // El backend limpia secciones_permitidas al asignar una plantilla; se
-        // refleja acá para que la fila no muestre un resumen que ya no aplica.
-        ...(plantillaId ? { secciones_permitidas: null } : {}),
+        secciones_permitidas: seccionesFinal,
         ...(json.avatar_url ? { avatar_url: json.avatar_url as string } : {}),
       });
       toast.success("Usuario actualizado");
@@ -337,60 +330,44 @@ function EditUserDialog({
           <Separator className="bg-border" />
 
           {/* ── Acceso ──
-              Dos decisiones y nada más: qué puede HACER (nivel) y qué SECCIONES
-              ve (plantilla). Antes había que tildar 18 checkboxes acá mismo. */}
+              Nivel (qué puede hacer) y, si no es administrador, qué secciones
+              del sidebar ve. Los administradores ven todo siempre, así que
+              ahí la lista no tiene sentido y se oculta. */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">Acceso</Label>
-              <button
-                type="button"
-                onClick={onGestionarPlantillas}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+            <Label className="text-sm font-medium">Acceso</Label>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Nivel</Label>
+              <select
+                value={nivel}
+                onChange={(e) => setNivel(e.target.value as NivelAcceso)}
+                disabled={esYo}
+                title={esYo ? "No podés cambiarte el nivel a vos mismo" : undefined}
+                className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Gestionar plantillas
-              </button>
+                <option value="visualizador">Visualizador</option>
+                <option value="editor">Editor</option>
+                <option value="administrador">Administrador</option>
+              </select>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Nivel</Label>
-                <select
-                  value={nivel}
-                  onChange={(e) => setNivel(e.target.value as NivelAcceso)}
-                  disabled={esYo}
-                  title={esYo ? "No podés cambiarte el nivel a vos mismo" : undefined}
-                  className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <option value="visualizador">Visualizador</option>
-                  <option value="editor">Editor</option>
-                  <option value="administrador">Administrador</option>
-                </select>
+            {nivel === "administrador" ? (
+              <p className="text-xs text-muted-foreground">
+                Los administradores ven todas las secciones.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">Secciones que puede ver</Label>
+                  <span className="text-xs text-muted-foreground">
+                    {secciones.length} de {SIDEBAR_SECTIONS.length}
+                  </span>
+                </div>
+                <div className="rounded-lg border border-border bg-secondary/40 p-3">
+                  <SeccionesCheckboxes value={secciones} onChange={setSecciones} />
+                </div>
               </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Plantilla de secciones</Label>
-                <select
-                  value={plantillaId}
-                  onChange={(e) => setPlantillaId(e.target.value)}
-                  disabled={nivel === "administrador"}
-                  title={nivel === "administrador" ? "Los administradores ven todas las secciones" : undefined}
-                  className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <option value="">Sin restricción (ve todo)</option>
-                  {plantillas.map((pl) => (
-                    <option key={pl.id} value={pl.id}>{pl.nombre}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <p className="text-xs text-muted-foreground">
-              {nivel === "administrador"
-                ? "Los administradores ven todas las secciones, sin importar la plantilla."
-                : plantillaId
-                  ? `Ve ${plantillas.find((pl) => pl.id === plantillaId)?.secciones.length ?? 0} secciones. Si editás la plantilla, cambia para todos los que la tienen.`
-                  : "Sin plantilla ve todas las secciones. Elegí una para restringirlo."}
-            </p>
+            )}
           </div>
         </div>
 
@@ -406,147 +383,6 @@ function EditUserDialog({
   );
 }
 
-
-// ─── Gestión de plantillas (admin) ──────────────────────────────────────────
-// Crear, renombrar, cambiar qué secciones incluye y borrar. Todo pasa por
-// /api/admin/plantillas: la tabla es de solo lectura para el cliente.
-
-function PlantillasDialog({
-  open, onOpenChange, plantillas, onCambio,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  plantillas: Plantilla[];
-  onCambio: () => void;
-}) {
-  const [editando, setEditando] = useState<Plantilla | null>(null);
-  const [nombre, setNombre] = useState("");
-  const [secciones, setSecciones] = useState<string[]>([]);
-  const [guardando, setGuardando] = useState(false);
-
-  const limpiar = () => { setEditando(null); setNombre(""); setSecciones([]); };
-  useEffect(() => { if (!open) limpiar(); }, [open]);
-
-  const auth = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    return { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` };
-  };
-
-  const guardar = async () => {
-    if (!nombre.trim()) { toast.error("Poné un nombre."); return; }
-    setGuardando(true);
-    try {
-      const headers = await auth();
-      const res = await fetch("/api/admin/plantillas", {
-        method: editando ? "PATCH" : "POST",
-        headers,
-        body: JSON.stringify(editando
-          ? { id: editando.id, nombre, secciones }
-          : { nombre, secciones }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error ?? "Error al guardar");
-      toast.success(editando ? "Plantilla actualizada" : "Plantilla creada");
-      limpiar();
-      onCambio();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error al guardar");
-    } finally {
-      setGuardando(false);
-    }
-  };
-
-  const borrar = async (pl: Plantilla) => {
-    if (!confirm(`¿Borrar la plantilla «${pl.nombre}»? Los usuarios que la tengan quedan sin restricción.`)) return;
-    try {
-      const headers = await auth();
-      const res = await fetch(`/api/admin/plantillas?id=${pl.id}`, { method: "DELETE", headers });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Error al borrar");
-      toast.success("Plantilla borrada");
-      if (editando?.id === pl.id) limpiar();
-      onCambio();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error al borrar");
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Plantillas de acceso</DialogTitle>
-          <DialogDescription>
-            Definí una vez qué secciones incluye cada plantilla y asignala a los usuarios.
-            Editarla actualiza a todos los que la tienen.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 py-2">
-          {/* Lista */}
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Plantillas</Label>
-            {plantillas.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">Todavía no hay ninguna.</p>
-            ) : (
-              <div className="space-y-1.5 max-h-[340px] overflow-y-auto pr-1">
-                {plantillas.map((pl) => (
-                  <div
-                    key={pl.id}
-                    className={cn(
-                      "flex items-center justify-between gap-2 p-2.5 rounded-lg border transition-colors",
-                      editando?.id === pl.id ? "border-accent/50 bg-accent/10" : "border-border bg-secondary/40"
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => { setEditando(pl); setNombre(pl.nombre); setSecciones(pl.secciones); }}
-                      className="min-w-0 text-left flex-1"
-                    >
-                      <p className="text-sm font-medium text-foreground truncate">{pl.nombre}</p>
-                      <p className="text-xs text-muted-foreground">{pl.secciones.length} secciones</p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => borrar(pl)}
-                      className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {editando && (
-              <Button type="button" variant="outline" size="sm" className="w-full" onClick={limpiar}>
-                <Plus className="w-3.5 h-3.5 mr-1.5" />Crear una nueva
-              </Button>
-            )}
-          </div>
-
-          {/* Editor */}
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">
-                {editando ? "Editando plantilla" : "Nueva plantilla"}
-              </Label>
-              <input
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                placeholder="Nombre de la plantilla"
-                className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all"
-              />
-            </div>
-            <SeccionesCheckboxes value={secciones} onChange={setSecciones} />
-            <Button variant="accent" className="w-full" onClick={guardar} loading={guardando}>
-              {!guardando && <Check className="w-4 h-4 mr-2" />}
-              {editando ? "Guardar cambios" : "Crear plantilla"}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -580,8 +416,6 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
   const [newUserNivel, setNewUserNivel] = useState<NivelAcceso>("visualizador");
   const [creatingUser, setCreatingUser] = useState(false);
   const [editingUser, setEditingUser]   = useState<AdminUser | null>(null);
-  const [plantillas, setPlantillas]     = useState<Plantilla[]>([]);
-  const [plantillasOpen, setPlantillasOpen] = useState(false);
 
   // Load profile
   useEffect(() => {
@@ -616,16 +450,6 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
       toast.error("No se pudieron cargar los usuarios");
     }
     setLoadingUsers(false);
-  }, []);
-
-  // Las plantillas se usan tanto en el resumen de cada fila como en el
-  // desplegable del diálogo, así que se cargan junto con los usuarios.
-  const loadPlantillas = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const res = await fetch("/api/admin/plantillas", {
-      headers: { Authorization: `Bearer ${session?.access_token}` },
-    });
-    if (res.ok) setPlantillas((await res.json()).plantillas ?? []);
   }, []);
 
   const initials = [profile.nombre, profile.apellido]
@@ -815,7 +639,7 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
             <TabsTrigger
               value="usuarios"
               className="data-[state=active]:bg-card data-[state=active]:text-foreground"
-              onClick={() => { if (adminUsers.length === 0) { loadAdminUsers(); loadPlantillas(); } }}
+              onClick={() => { if (adminUsers.length === 0) loadAdminUsers(); }}
             >
               <Users className="w-4 h-4 mr-2" />Usuarios
             </TabsTrigger>
@@ -1104,7 +928,7 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
                   <CardTitle className="text-base font-medium">Usuarios del sistema</CardTitle>
                   <CardDescription>Gestioná los accesos del equipo</CardDescription>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => { loadAdminUsers(); loadPlantillas(); }} disabled={loadingUsers}>
+                <Button variant="outline" size="sm" onClick={loadAdminUsers} disabled={loadingUsers}>
                   {loadingUsers
                     ? <Loader2 className="w-4 h-4 animate-spin" />
                     : <RefreshCw className="w-4 h-4" />}
@@ -1139,7 +963,7 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
                           </div>
                           <div className="flex items-center gap-2 shrink-0 ml-2">
                             {/* Solo lectura: el nivel se cambia en el diálogo,
-                                junto con la plantilla — son la misma decisión. */}
+                                junto con las secciones — son la misma decisión. */}
                             <span className={`h-7 px-2.5 rounded border text-xs font-medium inline-flex items-center ${nb.cls}`}>
                               {nb.label}
                             </span>
@@ -1152,7 +976,7 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
                               className="h-7 px-2.5 rounded border border-border text-xs font-medium text-muted-foreground inline-flex items-center gap-1.5 max-w-[180px]"
                             >
                               <ListChecks className="w-3.5 h-3.5 shrink-0" />
-                              <span className="truncate">{resumenAcceso(u, plantillas)}</span>
+                              <span className="truncate">{resumenAcceso(u)}</span>
                             </span>
                             <button
                               onClick={() => setEditingUser(u)}
@@ -1191,11 +1015,9 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
       {editingUser && (
         <EditUserDialog
           usuario={editingUser}
-          plantillas={plantillas}
           esYo={editingUser.id === user.id}
           open={!!editingUser}
           onOpenChange={(v) => { if (!v) setEditingUser(null); }}
-          onGestionarPlantillas={() => setPlantillasOpen(true)}
           onSaved={(patch) => {
             setAdminUsers((us) => us.map((u) => (u.id === editingUser.id ? { ...u, ...patch } : u)));
             // El usuario editado puede ser uno mismo (un admin editándose desde
@@ -1213,15 +1035,6 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
         />
       )}
 
-      <PlantillasDialog
-        open={plantillasOpen}
-        onOpenChange={setPlantillasOpen}
-        plantillas={plantillas}
-        // Al cambiar una plantilla se recargan también los usuarios: el
-        // resumen de cada fila sale del nombre de la plantilla, y borrar una
-        // deja a sus usuarios sin plantilla (ON DELETE SET NULL).
-        onCambio={() => { loadPlantillas(); loadAdminUsers(); }}
-      />
     </div>
   );
 }
