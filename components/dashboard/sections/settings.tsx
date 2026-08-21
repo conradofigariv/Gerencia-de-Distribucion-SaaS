@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -624,11 +625,12 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
 
       <Tabs defaultValue="perfil" className="space-y-6">
         <TabsList className="bg-secondary border border-border p-1">
+          {/* "Seguridad" ya no es una pestaña propia: tenía una sola tarjeta
+              (cambiar contraseña) y obligaba a cambiar de vista para algo que
+              es parte de la misma cuenta. Ahora convive con el perfil en la
+              columna de la derecha. */}
           <TabsTrigger value="perfil" className="data-[state=active]:bg-card data-[state=active]:text-foreground">
-            <UserIcon className="w-4 h-4 mr-2" />Perfil
-          </TabsTrigger>
-          <TabsTrigger value="seguridad" className="data-[state=active]:bg-card data-[state=active]:text-foreground">
-            <Shield className="w-4 h-4 mr-2" />Seguridad
+            <UserIcon className="w-4 h-4 mr-2" />Mi cuenta
           </TabsTrigger>
           {isAdmin && (
             <TabsTrigger
@@ -641,228 +643,222 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
           )}
         </TabsList>
 
-        {/* ── PERFIL ─────────────────────────────────────────────── */}
-        <TabsContent value="perfil" className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <Card className="border-border bg-card">
-            <CardHeader>
-              <CardTitle className="text-base font-medium">Información personal</CardTitle>
-              <CardDescription>Tus datos de perfil guardados en la base de datos</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {loadingProfile ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="w-4 h-4 animate-spin" />Cargando perfil...
-                </div>
-              ) : (
-                <>
-                  {/* Avatar */}
-                  <div className="flex items-center gap-5">
-                    <div className="relative shrink-0">
-                      <Avatar className="w-16 h-16 rounded-lg">
-                        {profile.avatar_url && (
-                          <AvatarImage src={profile.avatar_url} alt={initials} className="rounded-lg" />
-                        )}
-                        <AvatarFallback className="rounded-lg bg-gradient-to-br from-accent/80 to-chart-1 text-accent-foreground text-xl font-semibold">
-                          {initials}
-                        </AvatarFallback>
-                      </Avatar>
-                      {uploadingAvatar && (
-                        <div className="absolute inset-0 rounded-lg bg-black/40 flex items-center justify-center">
-                          <Loader2 className="w-5 h-5 text-white animate-spin" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleFileElegido}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={uploadingAvatar}
-                        onClick={() => fileInputRef.current?.click()}
-                      >
-                        <Upload className="w-4 h-4 mr-2" />
-                        {uploadingAvatar ? "Subiendo..." : "Cambiar foto"}
-                      </Button>
-                      <p className="text-xs text-muted-foreground">JPG, PNG o GIF · se recorta antes de subir</p>
-                    </div>
-                  </div>
+        {/* ── MI CUENTA (perfil + seguridad) ──────────────────────
+            Dos columnas en pantallas grandes: los datos personales, que es lo
+            que más se toca, y a la derecha lo de la cuenta en sí (contraseña y
+            cerrar sesión). Antes "Seguridad" era una pestaña aparte con una
+            sola tarjeta, y había que cambiar de vista para algo que pertenece
+            al mismo lugar. */}
+        <TabsContent value="perfil" className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
 
-                  {/* Email + Nivel de acceso */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">Email (no editable)</Label>
-                      <input
-                        type="email"
-                        value={user.email ?? ""}
-                        disabled
-                        className="w-full h-10 px-3 rounded-lg bg-secondary/50 border border-border text-sm text-muted-foreground cursor-not-allowed"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">Nivel de acceso</Label>
-                      <div className={`inline-flex items-center h-10 px-3 rounded-lg border text-sm font-medium ${badge.cls}`}>
-                        {badge.label}
+            {/* ── Datos personales ── */}
+            <Card className="border-border bg-card lg:col-span-2">
+              <CardContent className="p-5 space-y-5">
+                {loadingProfile ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-6">
+                    <Loader2 className="w-4 h-4 animate-spin" />Cargando perfil...
+                  </div>
+                ) : (
+                  <>
+                    {/* Identidad: foto grande + quién sos + nivel. Redondo, no
+                        cuadrado, porque el recorte que se sube ya es un círculo
+                        y así coincide con cómo se ve el avatar en el resto de
+                        la app (header, Yerba, lista de usuarios). */}
+                    <div className="flex items-center gap-5">
+                      <div className="relative shrink-0">
+                        <Avatar className="w-28 h-28 ring-4 ring-accent/15">
+                          {profile.avatar_url && (
+                            <AvatarImage src={profile.avatar_url} alt={initials} />
+                          )}
+                          <AvatarFallback className="bg-gradient-to-br from-accent/80 to-chart-1 text-accent-foreground text-3xl font-semibold">
+                            {initials}
+                          </AvatarFallback>
+                        </Avatar>
+                        {uploadingAvatar && (
+                          <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center">
+                            <Loader2 className="w-6 h-6 text-white animate-spin" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="min-w-0 space-y-2">
+                        <div className="min-w-0">
+                          <p className="text-lg font-semibold text-foreground truncate">
+                            {[profile.nombre, profile.apellido].filter(Boolean).join(" ") || "Sin nombre"}
+                          </p>
+                          <p className="text-sm text-muted-foreground truncate">{user.email}</p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`inline-flex items-center h-7 px-2.5 rounded-md border text-xs font-medium ${badge.cls}`}>
+                            {badge.label}
+                          </span>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleFileElegido}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7"
+                            disabled={uploadingAvatar}
+                            onClick={() => fileInputRef.current?.click()}
+                          >
+                            <Upload className="w-3.5 h-3.5 mr-1.5" />
+                            {uploadingAvatar ? "Subiendo..." : "Cambiar foto"}
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Campos editables */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>Nombre</Label>
-                      {field("nombre")}
+                    <Separator className="bg-border" />
+
+                    {/* Campos. gap-y chico: son pares label+input cortos y con
+                        el espaciado anterior la tarjeta quedaba larguísima con
+                        aire muerto entre filas. */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Nombre</Label>
+                        {field("nombre")}
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Apellido</Label>
+                        {field("apellido")}
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Empresa / Organización</Label>
+                        {field("empresa")}
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Puesto</Label>
+                        {field("cargo")}
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Teléfono</Label>
+                        {field("telefono")}
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Cumpleaños</Label>
+                        <input
+                          type="date"
+                          value={profile.cumpleanos}
+                          onChange={e => setProfile(p => ({ ...p, cumpleanos: e.target.value }))}
+                          style={{ colorScheme: "dark" }}
+                          className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all"
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label>Apellido</Label>
-                      {field("apellido")}
+
+                    {/* Guardar dentro de la tarjeta: antes flotaba suelto
+                        debajo y no se leía a qué bloque pertenecía. */}
+                    <div className="flex justify-end pt-1">
+                      <Button variant="accent" onClick={handleSaveProfile} loading={savingProfile}>
+                        {savingProfile ? "Guardando..." : <><Check className="w-4 h-4 mr-2" />Guardar cambios</>}
+                      </Button>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label>Empresa / Organización</Label>
-                      {field("empresa")}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Puesto</Label>
-                      {field("cargo")}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Teléfono</Label>
-                      {field("telefono")}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Cumpleaños</Label>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* ── Cuenta: contraseña + cerrar sesión ── */}
+            <div className="space-y-5">
+              <Card className="border-border bg-card">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base font-medium flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-muted-foreground" />Contraseña
+                  </CardTitle>
+                  <CardDescription>Actualizá la clave de acceso a tu cuenta</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Contraseña actual</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                       <input
-                        type="date"
-                        value={profile.cumpleanos}
-                        onChange={e => setProfile(p => ({ ...p, cumpleanos: e.target.value }))}
-                        style={{ colorScheme: "dark" }}
-                        className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all"
+                        type={showCurrentPass ? "text" : "password"}
+                        value={currentPass}
+                        onChange={e => setCurrentPass(e.target.value)}
+                        placeholder="Tu contraseña actual"
+                        className="w-full h-10 pl-10 pr-10 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all"
                       />
+                      <button type="button" onClick={() => setShowCurrentPass(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                        {showCurrentPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
                   </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
 
-          <div className="flex justify-end">
-            <Button
-              variant="accent"
-              onClick={handleSaveProfile}
-              loading={savingProfile}
-              disabled={loadingProfile}
-            >
-              {savingProfile
-                ? "Guardando..."
-                : <><Check className="w-4 h-4 mr-2" />Guardar cambios</>}
-            </Button>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Nueva contraseña</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <input
+                        type={showNewPass ? "text" : "password"}
+                        value={newPass}
+                        onChange={e => setNewPass(e.target.value)}
+                        placeholder="Mínimo 6 caracteres"
+                        className="w-full h-10 pl-10 pr-10 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all"
+                      />
+                      <button type="button" onClick={() => setShowNewPass(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                        {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Confirmar contraseña</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <input
+                        type={showConfirm ? "text" : "password"}
+                        value={confirmPass}
+                        onChange={e => setConfirmPass(e.target.value)}
+                        placeholder="Repetí la contraseña"
+                        className="w-full h-10 pl-10 pr-10 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all"
+                      />
+                      <button type="button" onClick={() => setShowConfirm(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                        {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <Button onClick={handleChangePassword} disabled={savingPass} variant="outline" className="w-full">
+                    {savingPass
+                      ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Actualizando...</>
+                      : <><Check className="w-4 h-4 mr-2" />Actualizar contraseña</>}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card className="border-destructive/30 bg-card">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-9 h-9 rounded-lg bg-destructive/15 flex items-center justify-center shrink-0">
+                      <LogOut className="w-4 h-4 text-destructive" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">Cerrar sesión</p>
+                      <p className="text-xs text-muted-foreground">Salís de tu cuenta en este dispositivo</p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={handleLogout}
+                    className="w-full border-destructive/40 text-destructive hover:bg-destructive hover:text-white transition-all"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />Cerrar sesión
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
           </div>
-
-          {/* Cerrar sesión */}
-          <Card className="border-destructive/30 bg-card">
-            <CardHeader>
-              <CardTitle className="text-base font-medium text-destructive">Zona de peligro</CardTitle>
-              <CardDescription>Acciones que afectan tu sesión activa</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between p-4 rounded-lg bg-destructive/5 border border-destructive/20">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-destructive/15 flex items-center justify-center">
-                    <LogOut className="w-5 h-5 text-destructive" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">Cerrar sesión</p>
-                    <p className="text-sm text-muted-foreground">Salís de tu cuenta en este dispositivo</p>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={handleLogout}
-                  className="border-destructive/40 text-destructive hover:bg-destructive hover:text-white transition-all"
-                >
-                  <LogOut className="w-4 h-4 mr-2" />Cerrar sesión
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ── SEGURIDAD ──────────────────────────────────────────── */}
-        <TabsContent value="seguridad" className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <Card className="border-border bg-card">
-            <CardHeader>
-              <CardTitle className="text-base font-medium">Cambiar contraseña</CardTitle>
-              <CardDescription>Actualizá la contraseña de acceso a tu cuenta</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-
-              <div className="space-y-1.5 max-w-md">
-                <Label>Contraseña actual</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <input
-                    type={showCurrentPass ? "text" : "password"}
-                    value={currentPass}
-                    onChange={e => setCurrentPass(e.target.value)}
-                    placeholder="Tu contraseña actual"
-                    className="w-full h-10 pl-10 pr-10 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all"
-                  />
-                  <button type="button" onClick={() => setShowCurrentPass(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                    {showCurrentPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-1.5 max-w-md">
-                <Label>Nueva contraseña</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <input
-                    type={showNewPass ? "text" : "password"}
-                    value={newPass}
-                    onChange={e => setNewPass(e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
-                    className="w-full h-10 pl-10 pr-10 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all"
-                  />
-                  <button type="button" onClick={() => setShowNewPass(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                    {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-1.5 max-w-md">
-                <Label>Confirmar contraseña</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <input
-                    type={showConfirm ? "text" : "password"}
-                    value={confirmPass}
-                    onChange={e => setConfirmPass(e.target.value)}
-                    placeholder="Repetí la contraseña"
-                    className="w-full h-10 pl-10 pr-10 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all"
-                  />
-                  <button type="button" onClick={() => setShowConfirm(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                    {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <Button onClick={handleChangePassword} disabled={savingPass} variant="outline" className="mt-1">
-                {savingPass
-                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Actualizando...</>
-                  : <><Check className="w-4 h-4 mr-2" />Actualizar contraseña</>}
-              </Button>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         {/* ── USUARIOS (admin only) ──────────────────────────────── */}
