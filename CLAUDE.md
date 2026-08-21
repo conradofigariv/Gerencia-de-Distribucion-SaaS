@@ -97,7 +97,7 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
 | informe-tecnico | `licitaciones`, `licitacion_renglones`, `licitacion_items`, `licitacion_oferentes`, `licitacion_ofertas`, `licitacion_evaluaciones_tecnicas`, `licitacion_adjudicaciones`, `matriculas` — SQL en [`docs/informe-tecnico.md`](docs/informe-tecnico.md) |
 | buscador | `busqueda_index` (lectura), `op_datos` (descripción y zona de la OP, cargadas a mano), `buscador_tabs`, `buscador_tab_filas`, `buscador_tab_shares` (compartir), `profiles` (lectura, para elegir con quién compartir) — SQL en `supabase/buscador_tabs.sql` + `supabase/buscador_tab_shares.sql` y doc completo en [`docs/buscador.md`](docs/buscador.md) |
 | yerba | `yerba_participantes`, `yerba_compras`, `yerba_compra_marca`, `profiles` (lectura, para sumar usuarios registrados) — SQL en `supabase/yerba.sql` |
-| settings | `profiles` (incluye `nivel_acceso` y `secciones_permitidas`) |
+| settings | `profiles` (incluye `nivel_acceso`, `secciones_permitidas` y `plantilla_acceso_id`), `acceso_plantillas` — SQL en `supabase/acceso_plantillas.sql` |
 | recordatorios | `reminder_config` |
 
 ---
@@ -130,6 +130,13 @@ Cada usuario puede tener restringidas las secciones del sidebar que ve. Se
 gestiona desde **Configuración → Usuarios** (solo administradores), con un
 picker de checkboxes por usuario.
 
+- **Plantillas de acceso (recomendado):** en vez de tildar secciones una por
+  una, se definen **plantillas con nombre** (`acceso_plantillas`) y se asignan
+  al usuario con `profiles.plantilla_acceso_id`. Es una **referencia viva**:
+  editar la plantilla actualiza a todos los que la tienen. La plantilla **pisa**
+  a `secciones_permitidas` — ver `resolverSecciones()` en `lib/sectionAccess.ts`.
+  Se gestionan desde **Configuración → Usuarios → (lápiz) → Gestionar plantillas**.
+  SQL en `supabase/acceso_plantillas.sql`; CRUD por `/api/admin/plantillas`.
 - **Columna:** `profiles.secciones_permitidas` (`text[]`, nullable). `null` =
   sin restricción, ve todo (default — así ningún usuario existente se rompe al
   agregar la columna). Un array (incluso vacío) es una allowlist explícita.

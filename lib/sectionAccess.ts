@@ -17,6 +17,34 @@
 /** Nunca se restringe: hace falta para el perfil propio y cambiar contraseña. */
 export const SECCION_SIEMPRE_VISIBLE = "settings";
 
+export interface PlantillaAcceso {
+  id:        string;
+  nombre:    string;
+  secciones: string[];
+}
+
+/**
+ * Qué secciones ve un usuario, resolviendo plantilla vs. allowlist propia.
+ * `null` = sin restricción (ve todo). Ver supabase/acceso_plantillas.sql.
+ *
+ * Precedencia — la plantilla PISA a `secciones_permitidas`:
+ *   1. Tiene plantilla  → mandan sus secciones (aunque sea un array vacío).
+ *   2. Sin plantilla    → la allowlist propia, que es como funcionaba antes.
+ *   3. Ninguna de las dos → sin restricción.
+ *
+ * Que la plantilla gane es lo que hace que asignarla sea un acto único y
+ * predecible: si `secciones_permitidas` pudiera sumarse por encima, dos
+ * usuarios con la misma plantilla podrían terminar viendo cosas distintas y
+ * no habría forma de saberlo mirando la lista.
+ */
+export function resolverSecciones(
+  plantilla: PlantillaAcceso | null | undefined,
+  seccionesPropias: string[] | null | undefined,
+): string[] | null {
+  if (plantilla) return plantilla.secciones;
+  return seccionesPropias ?? null;
+}
+
 export function puedeVerSeccion(
   nivelAcceso: string | null | undefined,
   seccionesPermitidas: string[] | null | undefined,
