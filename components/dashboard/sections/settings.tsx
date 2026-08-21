@@ -98,7 +98,7 @@ function SeccionesCheckboxes({
     onChange(todos ? value.filter((x) => !ids.includes(x)) : [...new Set([...value, ...ids])]);
 
   return (
-    <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+    <div className="space-y-3">
       <div className="flex gap-2">
         <Button type="button" size="sm" variant="outline" className="h-7 text-xs"
           onClick={() => onChange(SIDEBAR_SECTIONS.map((s) => s.id))}>
@@ -109,28 +109,36 @@ function SeccionesCheckboxes({
           Ninguna
         </Button>
       </div>
-      {grupos.map(([grupo, items]) => {
-        const ids = items.map((i) => i.id);
-        const todos = ids.every((id) => value.includes(id));
-        return (
-          <div key={grupo || "_top"}>
-            {grupo ? (
-              <label className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground mb-1 cursor-pointer">
-                <input type="checkbox" checked={todos} onChange={() => toggleGrupo(ids, todos)} className="accent-accent" />
-                {grupo}
-              </label>
-            ) : null}
-            <div className={cn("space-y-1", grupo && "pl-5")}>
-              {items.map((it) => (
-                <label key={it.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input type="checkbox" checked={value.includes(it.id)} onChange={() => toggle(it.id)} className="accent-accent" />
-                  {it.label}
+
+      {/* Dos columnas con CSS columns: las 18 secciones entran de una sin
+          scroll propio. `break-inside-avoid` evita que un grupo se parta al
+          medio entre las dos columnas, que era lo que dejaba títulos huérfanos.
+          El scroll lo maneja el cuerpo del diálogo, no esta lista — anidar dos
+          scrolls hacía imposible llegar al final. */}
+      <div className="columns-1 sm:columns-2 gap-x-6">
+        {grupos.map(([grupo, items]) => {
+          const ids = items.map((i) => i.id);
+          const todos = ids.every((id) => value.includes(id));
+          return (
+            <div key={grupo || "_top"} className="break-inside-avoid mb-3">
+              {grupo ? (
+                <label className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5 cursor-pointer hover:text-foreground transition-colors">
+                  <input type="checkbox" checked={todos} onChange={() => toggleGrupo(ids, todos)} className="accent-accent" />
+                  {grupo}
                 </label>
-              ))}
+              ) : null}
+              <div className={cn("space-y-1.5", grupo && "pl-5")}>
+                {items.map((it) => (
+                  <label key={it.id} className="flex items-center gap-2 text-sm cursor-pointer hover:text-foreground transition-colors">
+                    <input type="checkbox" checked={value.includes(it.id)} onChange={() => toggle(it.id)} className="accent-accent shrink-0" />
+                    <span className="truncate">{it.label}</span>
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -264,13 +272,18 @@ function EditUserDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      {/* ⚠ DialogContent no trae tope de alto: con las 18 secciones el diálogo
+          crecía más que la pantalla y quedaba cortado arriba y abajo, sin forma
+          de llegar a los botones. Se acota a 90vh y se define la grilla en tres
+          filas para que scrollee SOLO el cuerpo (minmax(0,1fr)) y el encabezado
+          y el pie queden siempre visibles. */}
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto]">
         <DialogHeader>
           <DialogTitle>Editar usuario</DialogTitle>
           <DialogDescription>{usuario.email}</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5 py-2">
+        <div className="space-y-5 py-2 overflow-y-auto pr-1">
           <div className="flex items-center gap-5">
             <div className="relative shrink-0">
               <Avatar className="w-16 h-16 rounded-lg">
@@ -336,7 +349,7 @@ function EditUserDialog({
           <div className="space-y-3">
             <Label className="text-sm font-medium">Acceso</Label>
 
-            <div className="space-y-1">
+            <div className="space-y-1 max-w-xs">
               <Label className="text-xs text-muted-foreground">Nivel</Label>
               <select
                 value={nivel}
