@@ -31,7 +31,7 @@ const sectionTitles: Record<Section, string> = {
   team: "Team Performance",
   forecasting: "Forecasting",
   reports: "Reports",
-  settings: "Settings",
+  settings: "Configuraciones",
   "buscador":                 "Buscador",
   "servicios-resumen":        "Control de servicios",
   "servicios-planillas":      "Carga de datos",

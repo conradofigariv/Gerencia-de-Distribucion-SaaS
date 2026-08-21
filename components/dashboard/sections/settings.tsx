@@ -634,11 +634,6 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold text-foreground">Configuración</h2>
-        <p className="text-sm text-muted-foreground mt-1">Gestioná tu cuenta y preferencias</p>
-      </div>
-
       <Tabs defaultValue="perfil" className="space-y-6">
         <TabsList className="bg-secondary border border-border p-1">
           {/* "Seguridad" ya no es una pestaña propia: tenía una sola tarjeta
@@ -729,6 +724,18 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
                           </Button>
                         </div>
                       </div>
+
+                      {/* Guardar a la altura de la foto, no al pie de la
+                          tarjeta: acá queda a la vista sin scrollear y no se
+                          confunde con los botones de la columna de al lado. */}
+                      <Button
+                        variant="accent"
+                        className="ml-auto self-center shrink-0"
+                        onClick={handleSaveProfile}
+                        loading={savingProfile}
+                      >
+                        {savingProfile ? "Guardando..." : <><Check className="w-4 h-4 mr-2" />Guardar cambios</>}
+                      </Button>
                     </div>
 
                     <Separator className="bg-border" />
@@ -767,14 +774,6 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
                           className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all"
                         />
                       </div>
-                    </div>
-
-                    {/* Guardar dentro de la tarjeta: antes flotaba suelto
-                        debajo y no se leía a qué bloque pertenecía. */}
-                    <div className="flex justify-end pt-1">
-                      <Button variant="accent" onClick={handleSaveProfile} loading={savingProfile}>
-                        {savingProfile ? "Guardando..." : <><Check className="w-4 h-4 mr-2" />Guardar cambios</>}
-                      </Button>
                     </div>
                   </>
                 )}
@@ -853,17 +852,17 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
                 </CardContent>
               </Card>
 
+              {/* Misma estructura CardHeader + CardContent que la tarjeta de
+                  contraseña: con un `p-4` suelto el inset horizontal era
+                  distinto y el contenido no alineaba con el de arriba. */}
               <Card className="border-destructive/30 bg-card">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-9 h-9 rounded-lg bg-destructive/15 flex items-center justify-center shrink-0">
-                      <LogOut className="w-4 h-4 text-destructive" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground">Cerrar sesión</p>
-                      <p className="text-xs text-muted-foreground">Salís de tu cuenta en este dispositivo</p>
-                    </div>
-                  </div>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base font-medium flex items-center gap-2 text-destructive">
+                    <LogOut className="w-4 h-4" />Cerrar sesión
+                  </CardTitle>
+                  <CardDescription>Salís de tu cuenta en este dispositivo</CardDescription>
+                </CardHeader>
+                <CardContent>
                   <Button
                     variant="outline"
                     onClick={handleLogout}
