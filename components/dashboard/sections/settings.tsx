@@ -182,6 +182,45 @@ function EditUserDialog({
     usuario.secciones_permitidas ?? SIDEBAR_SECTIONS.map((s) => s.id)
   );
 
+  // Restablecer contraseña: acción aparte, no viaja junto con "Guardar
+  // cambios". Mezclarla ahí haría que tocar sin querer el campo (o guardar
+  // otro cambio con algo tipeado a medias) cambiara la contraseña de alguien
+  // sin que ese fuera el propósito del click.
+  const [nuevaPass, setNuevaPass] = useState("");
+  const [showNuevaPass, setShowNuevaPass] = useState(false);
+  const [reseteandoPass, setReseteandoPass] = useState(false);
+
+  const generarPass = () => {
+    // Alfabeto sin caracteres que se confunden a simple vista (0/O, 1/l/I):
+    // esta contraseña hay que poder LEÉRSELA a alguien por teléfono o chat.
+    const alfabeto = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+    const pass = Array.from({ length: 12 }, () => alfabeto[Math.floor(Math.random() * alfabeto.length)]).join("");
+    setNuevaPass(pass);
+    setShowNuevaPass(true);
+  };
+
+  const handleResetPass = async () => {
+    if (nuevaPass.length < 6) { toast.error("La contraseña tiene que tener al menos 6 caracteres."); return; }
+    if (!confirm(`¿Restablecer la contraseña de ${usuario.email}? La contraseña anterior deja de funcionar.`)) return;
+    setReseteandoPass(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ userId: usuario.id, password: nuevaPass }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? "Error al restablecer la contraseña");
+      toast.success("Contraseña restablecida. Pasásela a la persona por un canal seguro.");
+      setNuevaPass(""); setShowNuevaPass(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error al restablecer la contraseña");
+    } finally {
+      setReseteandoPass(false);
+    }
+  };
+
   // Cada apertura vuelve a partir del usuario actual — sin esto, editar a
   // Juan y después a María mostraría los campos de Juan a medio tipear.
   useEffect(() => {
@@ -192,6 +231,7 @@ function EditUserDialog({
     setAvatarFile(null); setAvatarPreview(null);
     setNivel(usuario.nivel_acceso);
     setSecciones(usuario.secciones_permitidas ?? SIDEBAR_SECTIONS.map((s) => s.id));
+    setNuevaPass(""); setShowNuevaPass(false);
   }, [open, usuario]);
 
   const initials = [nombre, apellido].map((s) => s.trim()[0] ?? "").join("").toUpperCase() || usuario.email[0]?.toUpperCase() || "U";
@@ -381,6 +421,48 @@ function EditUserDialog({
                 </div>
               </div>
             )}
+          </div>
+
+          <Separator className="bg-border" />
+
+          {/* ── Restablecer contraseña ──
+              Acción separada de "Guardar cambios" a propósito — ver el
+              comentario de nuevaPass más arriba. No pide la contraseña
+              actual: es el admin fijando una nueva para otra persona, no el
+              dueño de la cuenta cambiando la suya (eso vive en "Mi cuenta"). */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Restablecer contraseña</Label>
+            <p className="text-xs text-muted-foreground">
+              Generá o escribí una nueva. La contraseña anterior deja de funcionar apenas la restablecés.
+            </p>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type={showNuevaPass ? "text" : "password"}
+                  value={nuevaPass}
+                  onChange={(e) => setNuevaPass(e.target.value)}
+                  placeholder="Nueva contraseña (mín. 6 caracteres)"
+                  className="w-full h-10 pl-10 pr-10 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all"
+                />
+                <button type="button" onClick={() => setShowNuevaPass((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                  {showNuevaPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <Button type="button" variant="outline" size="sm" className="h-10 shrink-0" onClick={generarPass}>
+                Generar
+              </Button>
+              <Button
+                type="button" variant="outline" size="sm" className="h-10 shrink-0"
+                onClick={handleResetPass}
+                disabled={!nuevaPass || reseteandoPass}
+                loading={reseteandoPass}
+              >
+                {!reseteandoPass && <RefreshCw className="w-3.5 h-3.5 mr-1.5" />}
+                Restablecer
+              </Button>
+            </div>
           </div>
         </div>
 

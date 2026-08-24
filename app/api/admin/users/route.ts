@@ -151,14 +151,33 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true, avatar_url: update.avatar_url ?? null });
   }
 
+  const body = await req.json();
+  const { userId } = body;
+  if (!userId) return NextResponse.json({ error: "userId requerido" }, { status: 400 });
+
+  // ── Restablecer contraseña (botón "Restablecer contraseña" del diálogo) ──
+  // `auth.admin.updateUserById` es la única forma de cambiarle la contraseña
+  // a OTRO usuario: `auth.updateUser` (lo que usa la pestaña "Mi cuenta")
+  // solo puede tocar la sesión propia. No pide la contraseña actual —es el
+  // admin fijando una nueva, no el dueño de la cuenta cambiándola— así que
+  // esta acción se banca en que el nivel de acceso ya se validó arriba.
+  if ("password" in body) {
+    const { password } = body;
+    if (typeof password !== "string" || password.length < 6) {
+      return NextResponse.json({ error: "La contraseña tiene que tener al menos 6 caracteres" }, { status: 400 });
+    }
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, { password });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
   // ── Nivel de acceso / secciones permitidas (selects sueltos de la lista) ──
   // secciones_permitidas es opcional y puede venir explícitamente `null`
   // (para "sin restricción, ve todo") — por eso se distingue con `in` en vez
   // de solo chequear verdad/falsedad, que trataría `null` como "no vino".
-  const body = await req.json();
-  const { userId, nivel_acceso } = body;
+  const { nivel_acceso } = body;
   const tocaSecciones = "secciones_permitidas" in body;
-  if (!userId || (!nivel_acceso && !tocaSecciones)) {
+  if (!nivel_acceso && !tocaSecciones) {
     return NextResponse.json({ error: "userId y (nivel_acceso o secciones_permitidas) requeridos" }, { status: 400 });
   }
 
