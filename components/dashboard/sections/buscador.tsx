@@ -1645,8 +1645,11 @@ export function BuscadorSection() {
    * `tablero_op_transaccion`, que tiene 60k+ filas, y pedirlo para las 500 de
    * la búsqueda sería tirar el 99% del trabajo.
    */
-  const toggleDetalle = useCallback((r: BusquedaRow) => {
-    const k = rowKey(r);
+  // `k` es la clave de fila del render (id del índice, o filaId en una
+  // pestaña) — se recibe en vez de derivarla acá: en una pestaña la fila es
+  // una copia y no tiene `id` del índice, y en el índice rowKey puede
+  // repetirse entre filas, que es justo lo que se está evitando.
+  const toggleDetalle = useCallback((k: string, r: BusquedaRow) => {
     if (filaAbierta === k) { setFilaAbierta(null); return; }
     setFilaAbierta(k);
     if (detalles.has(k)) return;   // ya cacheado
@@ -1749,7 +1752,7 @@ export function BuscadorSection() {
    * (`sorted.filter(...)`). Sin esta cuenta el botón prometía 12 y agregaba 3.
    */
   const seleccionadasVisibles = useMemo(
-    () => sorted.reduce((n, r) => n + (selected.has(rowKey(r)) ? 1 : 0), 0),
+    () => sorted.reduce((n, r) => n + (selected.has(String(r.id)) ? 1 : 0), 0),
     [sorted, selected]
   );
 
@@ -1762,7 +1765,7 @@ export function BuscadorSection() {
   // Copia las filas tildadas del índice a una pestaña. Las que ya están (mismo
   // row_key) se saltean para no duplicar.
   const handleAddSelected = useCallback(async (tabId: string) => {
-    const elegidas = sorted.filter((r) => selected.has(rowKey(r)));
+    const elegidas = sorted.filter((r) => selected.has(String(r.id)));
     if (!elegidas.length) return;
     setAddMenuOpen(false);
     try {
@@ -1937,11 +1940,15 @@ export function BuscadorSection() {
       }
     } else {
       if (items.length) items.push("sep");
-      const fijada = pinnedKeys.includes(ctx.key);
+      // Fijar sigue trabajando con rowKey y no con ctx.key: los fijados se
+      // guardan en localStorage y se resuelven contra el índice por rowKey, así
+      // que usar el id nuevo dejaría huérfano todo lo ya fijado.
+      const claveFijado = rowKey(ctx.data as unknown as BusquedaRow);
+      const fijada = pinnedKeys.includes(claveFijado);
       items.push({
         label: fijada ? "Quitar de fijadas" : "Fijar arriba",
         icon: Pin,
-        onClick: () => togglePin(ctx.key),
+        onClick: () => togglePin(claveFijado),
       });
       items.push({
         label: selected.has(ctx.key) ? "Quitar de la selección" : "Seleccionar",
@@ -2071,7 +2078,16 @@ export function BuscadorSection() {
       }));
     }
     return sorted.map((r) => ({
-      key: rowKey(r), filaId: undefined as string | undefined,
+      // ⚠ El id de `busqueda_index`, NO rowKey: rowKey se arma con
+      // (fuente, artículo, OP, línea, envío) y si el índice trae dos filas con
+      // esos cinco valores iguales, las dos comparten clave — y como los datos
+      // también son iguales, el orden las deja pegadas. Seleccionar una
+      // marcaba las dos («se selecciona la de abajo también»). El id es único
+      // por construcción.
+      //
+      // rowKey NO se toca: se persiste en buscador_tab_filas.row_key y en los
+      // fijados de localStorage, así que sigue usándose para esas dos cosas.
+      key: String(r.id), filaId: undefined as string | undefined,
       // El stock no viene del índice: se pega acá, cruzando por la matrícula
       // normalizada (los dos exports difieren en el sufijo ".0").
       data: { ...r, stock_za: stockZA.get(r.articulo_key ?? "") ?? null } as unknown as Record<string, unknown>,
@@ -2891,7 +2907,7 @@ export function BuscadorSection() {
                           onClick={() => {
                             // Solo agrega/saca lo VISIBLE: lo seleccionado en
                             // otra búsqueda se conserva en vez de perderse acá.
-                            const visibles = sorted.map(rowKey);
+                            const visibles = sorted.map((r) => String(r.id));
                             setSelected((prev) => {
                               const s = new Set(prev);
                               if (seleccionadasVisibles === sorted.length) visibles.forEach((k) => s.delete(k));
@@ -3114,7 +3130,7 @@ export function BuscadorSection() {
                                 mostrar. */}
                             {!!data.numero_op && (
                               <button
-                                onClick={(e) => { e.stopPropagation(); toggleDetalle(data as unknown as BusquedaRow); }}
+                                onClick={(e) => { e.stopPropagation(); toggleDetalle(key, data as unknown as BusquedaRow); }}
                                 title="Ver entregas de esta línea"
                                 className="grid place-items-center shrink-0"
                                 style={{ width: 16, height: 16, color: filaAbierta === key ? "#86efac" : "oklch(0.42 0 0)", cursor: "pointer" }}
