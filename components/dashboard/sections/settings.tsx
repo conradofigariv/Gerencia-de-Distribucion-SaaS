@@ -743,10 +743,15 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
             sola tarjeta, y había que cambiar de vista para algo que pertenece
             al mismo lugar. */}
         <TabsContent value="perfil" className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+          {/* items-stretch (el default, sin items-start): las dos columnas
+              quedan de la misma altura. Con items-start la de la izquierda
+              (un solo bloque) terminaba antes que la derecha (dos tarjetas
+              apiladas) y dejaba un hueco vacío colgando al pie del primer
+              pantallazo, fuera de cualquier tarjeta. */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
             {/* ── Datos personales ── */}
-            <Card className="border-border bg-card lg:col-span-2">
+            <Card className="border-border bg-card lg:col-span-2 h-full">
               <CardContent className="p-5 space-y-5">
                 {loadingProfile ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground py-6">

@@ -196,7 +196,17 @@ function ColumnsMenu({
   }, [open]);
 
   const byKey = useMemo(() => new Map(cols.map((c) => [c.key, c])), [cols]);
-  const orderedCols = order.map((k) => byKey.get(k)).filter((c): c is ColMeta => !!c);
+  // Las visibles primero, las ocultas al fondo — mismo criterio que aplica
+  // toggleColHidden sobre el `order` real al ocultar una columna. Queda acá
+  // TAMBIÉN por las «Personalizadas»: esas nunca pasan por toggleColHidden
+  // (no están en `cols` del índice maestro), así que si alguna quedara oculta
+  // en el medio del orden persistido, este sort igual la manda al fondo acá.
+  const orderedCols = order
+    .map((k) => byKey.get(k))
+    .filter((c): c is ColMeta => !!c)
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => Number(hidden.has(a.c.key)) - Number(hidden.has(b.c.key)) || a.i - b.i)
+    .map(({ c }) => c);
   // Se cuenta sobre `orderedCols`, no sobre `order`: en el índice maestro el
   // orden persistido incluye las Personalizadas, que acá no se ofrecen.
   const visibleCount = orderedCols.filter((c) => !hidden.has(c.key)).length;
@@ -1261,8 +1271,24 @@ export function BuscadorSection() {
     const s = layoutRef.current;
     const actual = (s.activeTab ? s.tabLayouts[s.activeTab]?.hidden : null) ?? [...s.hiddenCols];
     const next = new Set(actual);
-    if (next.has(key)) next.delete(key); else next.add(key);
-    patchLayout({ hidden: [...next] });
+    const ocultando = !next.has(key);
+    if (ocultando) next.add(key); else next.delete(key);
+
+    // Al ocultar, la columna se manda al fondo del orden — así en el panel
+    // «Columnas» (y en la tabla, si se vuelve a mostrar) las visibles quedan
+    // siempre arriba, sin ocultas salteadas en el medio de la lista.
+    //
+    // ⚠ Los dos cambios (hidden + order) van en UN solo patchLayout, no en dos
+    // llamadas seguidas: patchLayout lee `layoutRef.current`, que recién se
+    // actualiza en un efecto DESPUÉS del render — dos llamadas sucesivas leen
+    // el mismo estado viejo y la segunda pisa a la primera (mismo bug que ya
+    // se arregló para «Agrupar por no hace nada», ver commit 6d01929).
+    const patch: TabConfig = { hidden: [...next] };
+    if (ocultando) {
+      const ordenActual = (s.activeTab ? s.tabLayouts[s.activeTab]?.order : null) ?? s.colOrder;
+      patch.order = [...ordenActual.filter((k) => k !== key), key];
+    }
+    patchLayout(patch);
   }, [patchLayout]);
 
   const resetColumnas = useCallback(() => {
