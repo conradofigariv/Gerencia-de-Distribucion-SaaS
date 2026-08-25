@@ -1063,11 +1063,6 @@ export function BuscadorSection() {
   const dragFilaId = useRef<string | null>(null);
   const [dragOverFilaId, setDragOverFilaId] = useState<string | null>(null);
   // Fila resaltada al hacer click — como en Excel: sirve de referencia al
-  // desplazarse horizontalmente por columnas que quedan lejos de las
-  // primeras, para no perder de vista a qué fila corresponden. Un solo click
-  // más la marca/desmarca; no es selección ni fijado, es puramente visual.
-  const [filaResaltada, setFilaResaltada] = useState<string | null>(null);
-
   const [userId, setUserId] = useState<string | null>(null);
   const saveWidthsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveColsTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1848,6 +1843,16 @@ export function BuscadorSection() {
     ctx: { key: string; filaId?: string; data: Record<string, unknown>; colKey?: string }
   ) => {
     e.preventDefault();
+
+    // Click derecho sobre una fila que NO está seleccionada: pasa a ser la
+    // selección. Es lo que hace cualquier explorador de archivos, y evita el
+    // error de creer que la acción del menú va a aplicarse a lo que estaba
+    // seleccionado antes cuando en realidad aplica a otra fila.
+    if (!selected.has(ctx.key)) {
+      setSelected(new Set([ctx.key]));
+      ultimaClickeada.current = ctx.key;
+    }
+
     const items: (CtxItem | "sep")[] = [];
 
     const colKey    = ctx.colKey;
@@ -2120,6 +2125,44 @@ export function BuscadorSection() {
   }, [displayRows, isTabMode, agrupar, agruparPor, colapsados]);
 
   const puedeArrastrar = isTabMode && !agrupar && puedoEditar;
+
+  // ── Selección por click, estilo explorador de archivos ────────────────────
+  // Reemplaza a los checkboxes por fila: click selecciona sola, ctrl (o ⌘)
+  // suma/saca, shift arma el rango contra la última fila clickeada. El menú
+  // contextual actúa sobre esta selección.
+  //
+  // El rango se arma sobre las filas COMO SE VEN (displayItems ya viene
+  // ordenado y agrupado), no sobre el array de datos: shift+click tiene que
+  // seleccionar lo que hay visualmente entre las dos filas, que con el
+  // agrupado activo no es lo mismo que el orden de origen.
+  const keysVisibles = useMemo(
+    () => displayItems.filter((it) => it.tipo === "fila").map((it) => it.key),
+    [displayItems]
+  );
+  const ultimaClickeada = useRef<string | null>(null);
+
+  const handleRowClick = useCallback((e: React.MouseEvent, key: string) => {
+    if (e.shiftKey && ultimaClickeada.current) {
+      const a = keysVisibles.indexOf(ultimaClickeada.current);
+      const b = keysVisibles.indexOf(key);
+      if (a !== -1 && b !== -1) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        const rango = keysVisibles.slice(lo, hi + 1);
+        setSelected((prev) => new Set([...prev, ...rango]));
+        return;
+      }
+    }
+    if (e.ctrlKey || e.metaKey) {
+      setSelected((prev) => {
+        const s = new Set(prev);
+        if (s.has(key)) s.delete(key); else s.add(key);
+        return s;
+      });
+    } else {
+      setSelected(new Set([key]));
+    }
+    ultimaClickeada.current = key;
+  }, [keysVisibles]);
 
   const toggleGrupo = useCallback((gk: string) => {
     const s = new Set(colapsados);
@@ -2738,7 +2781,7 @@ export function BuscadorSection() {
               const nombre = agruparPor === "articulo" ? "matrícula" : agruparPor === "numero_sic" ? "SIC" : "OP";
               return ` en ${gruposCount.toLocaleString("es-AR")} ${nombre}${gruposCount === 1 || agruparPor !== "articulo" ? "" : "s"}`;
             })()}
-            {" · doble click para editar · click derecho para más acciones"}
+            {" · ctrl+click para elegir varias · doble click para editar · click derecho para más acciones"}
             {puedeArrastrar && " · arrastrá para reordenar"}
           </p>
         )}
@@ -2752,7 +2795,7 @@ export function BuscadorSection() {
               {soloMov > 0 && <> · {soloMov.toLocaleString("es-AR")} solo con movimientos (OP fuera de la planilla)</>}
               {soloCat > 0 && <> · {soloCat.toLocaleString("es-AR")} solo en catálogo</>}
               {sorted.length >= 500 && <> · mostrando los primeros 500, afiná la búsqueda</>}
-              {" · click derecho en una fila para más acciones"}
+              {" · ctrl+click para elegir varias · click derecho para más acciones"}
             </span>
             {pinnedRows.length > 0 && (
               <span className="inline-flex items-center gap-1">
@@ -2838,28 +2881,37 @@ export function BuscadorSection() {
                         textAlign: "center",
                       }}
                     >
-                      {/* Tildar / destildar todo lo que está a la vista. */}
-                      {!isTabMode && (
-                        <input
-                          type="checkbox"
-                          title="Seleccionar todo"
-                          checked={sorted.length > 0 && seleccionadasVisibles === sorted.length}
-                          ref={(el) => {
-                            if (el) el.indeterminate = seleccionadasVisibles > 0 && seleccionadasVisibles < sorted.length;
-                          }}
-                          onChange={(e) => {
-                            // Solo agrega/saca lo VISIBLE: lo tildado en otra
-                            // búsqueda se conserva en vez de perderse acá.
+                      {/* Seleccionar / limpiar todo lo que está a la vista.
+                          Dejó de ser un checkbox junto con los de cada fila:
+                          ahora la selección se hace con click (ctrl/shift), y
+                          este botón es el atajo para "todo". */}
+                      {!isTabMode && sorted.length > 0 && (
+                        <button
+                          title={seleccionadasVisibles === sorted.length ? "Limpiar selección" : "Seleccionar todo lo visible"}
+                          onClick={() => {
+                            // Solo agrega/saca lo VISIBLE: lo seleccionado en
+                            // otra búsqueda se conserva en vez de perderse acá.
                             const visibles = sorted.map(rowKey);
                             setSelected((prev) => {
                               const s = new Set(prev);
-                              if (e.target.checked) visibles.forEach((k) => s.add(k));
-                              else                  visibles.forEach((k) => s.delete(k));
+                              if (seleccionadasVisibles === sorted.length) visibles.forEach((k) => s.delete(k));
+                              else visibles.forEach((k) => s.add(k));
                               return s;
                             });
                           }}
-                          style={{ accentColor: "#8B5CF6", cursor: "pointer" }}
-                        />
+                          className="grid place-items-center mx-auto"
+                          style={{
+                            width: 16, height: 16, borderRadius: 4, cursor: "pointer",
+                            border: `1px solid ${seleccionadasVisibles > 0 ? "#8B5CF6" : "oklch(1 0 0 / 0.18)"}`,
+                            background: seleccionadasVisibles === sorted.length ? "#8B5CF6" : "transparent",
+                          }}
+                        >
+                          {seleccionadasVisibles > 0 && (
+                            seleccionadasVisibles === sorted.length
+                              ? <Check className="w-3 h-3" style={{ color: "#fff" }} strokeWidth={3} />
+                              : <span style={{ width: 7, height: 2, borderRadius: 1, background: "#8B5CF6" }} />
+                          )}
+                        </button>
                       )}
                     </th>
                     {visibleCols.map((c) => {
@@ -3014,12 +3066,12 @@ export function BuscadorSection() {
                       : isLastRow ? "none" : "1px solid oklch(1 0 0 / 0.05)";
                     const isSel = selected.has(key);
                     const isDragOver = isTabMode && dragOverFilaId === filaId;
-                    const isResaltada = filaResaltada === key;
-                    // Ámbar a propósito: distinto de la selección (violeta) y
-                    // de fijado (violeta tenue), para que no se confundan.
+                    // El resaltado ámbar de "fila en la que estoy" se retiró:
+                    // lo hacía un click suelto, que ahora selecciona. La fila
+                    // seleccionada (violeta) cumple la misma función de no
+                    // perderla de vista al scrollear en horizontal.
                     const rowBg = isDragOver
                       ? "oklch(0.27 0.005 270)"
-                      : isResaltada ? "oklch(0.32 0.09 85 / 0.22)"
                       : isSel ? "color-mix(in oklab, var(--accent-violet) 12%, transparent)"
                       : isPinned ? pinnedBg : undefined;
                     // Dentro de una pestaña la fila es una copia editable, no
@@ -3030,7 +3082,7 @@ export function BuscadorSection() {
                       <Fragment key={key}>
                       <tr
                         className="transition-colors"
-                        onClick={() => setFilaResaltada((prev) => (prev === key ? null : key))}
+                        onClick={(e) => handleRowClick(e, key)}
                         // Con el agrupado activo el arrastre se desactiva: mover
                         // una fila entre matrículas no tiene sentido y el regrupado
                         // la devolvería a su grupo igual.
@@ -3074,22 +3126,6 @@ export function BuscadorSection() {
                             )}
                             {isTabMode ? (
                               <>
-                                {/* En una pestaña `key` ES el filaId, así que la
-                                    selección puede compartir el mismo Set que
-                                    la del índice sin traducir claves. */}
-                                <input
-                                  type="checkbox"
-                                  checked={isSel}
-                                  onChange={(e) => {
-                                    setSelected((prev) => {
-                                      const s = new Set(prev);
-                                      if (e.target.checked) s.add(key); else s.delete(key);
-                                      return s;
-                                    });
-                                  }}
-                                  title="Seleccionar — click derecho para enviar a la tarjeta"
-                                  style={{ accentColor: "#8B5CF6", cursor: "pointer" }}
-                                />
                                 <span
                                   className={cn("grid place-items-center", puedeArrastrar && "cursor-grab active:cursor-grabbing")}
                                   title={puedeArrastrar ? "Arrastrar para reordenar" : "Desactivá el agrupado para reordenar"}
@@ -3117,19 +3153,6 @@ export function BuscadorSection() {
                               </>
                             ) : (
                               <>
-                                <input
-                                  type="checkbox"
-                                  checked={isSel}
-                                  onChange={(e) => {
-                                    setSelected((prev) => {
-                                      const s = new Set(prev);
-                                      if (e.target.checked) s.add(key); else s.delete(key);
-                                      return s;
-                                    });
-                                  }}
-                                  title="Seleccionar para copiar a una pestaña"
-                                  style={{ accentColor: "#8B5CF6", cursor: "pointer" }}
-                                />
                                 {/* Fijar salió de acá: se hace con click
                                     derecho. Igual la fila fijada se reconoce
                                     sola — va arriba de todo, con fondo violeta
@@ -3195,6 +3218,7 @@ export function BuscadorSection() {
                               {editando ? (
                                 <input
                                   autoFocus
+                                  onClick={(e) => e.stopPropagation()}
                                   value={editValue}
                                   onChange={(e) => setEditValue(e.target.value)}
                                   onBlur={() => commitEdit(isTabMode ? filaId ?? null : null, c.key, editValue, numeroOp)}
@@ -3254,7 +3278,7 @@ export function BuscadorSection() {
                                 // Estas columnas pintan su propio fondo (para
                                 // distinguirse como "de seguimiento") y si no
                                 // se mezcla acá, tapan el resaltado de fila.
-                                background: isResaltada ? "oklch(0.32 0.09 85 / 0.22)" : TRACK_BG,
+                                background: isSel ? "color-mix(in oklab, var(--accent-violet) 12%, transparent)" : TRACK_BG,
                                 cursor: puedoEditar ? "text" : "default",
                               }}
                               title={!puedoEditar ? "Solo lectura — pedile al dueño permiso de edición" : c.tipo === "texto" ? val : "Doble click para editar"}
@@ -3267,6 +3291,7 @@ export function BuscadorSection() {
                               {editando && c.tipo === "estado" ? (
                                 <select
                                   autoFocus
+                                  onClick={(e) => e.stopPropagation()}
                                   value={editValue}
                                   onChange={(e) => { setEditValue(e.target.value); commitEdit(filaId!, c.key, e.target.value); }}
                                   onBlur={() => setEditing(null)}
@@ -3283,6 +3308,7 @@ export function BuscadorSection() {
                               ) : editando ? (
                                 <input
                                   autoFocus
+                                  onClick={(e) => e.stopPropagation()}
                                   type={c.tipo === "fecha" ? "date" : "text"}
                                   value={editValue}
                                   onChange={(e) => setEditValue(e.target.value)}
