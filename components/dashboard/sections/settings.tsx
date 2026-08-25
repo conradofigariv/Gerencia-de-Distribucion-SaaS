@@ -939,26 +939,17 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
                 </CardContent>
               </Card>
 
-              {/* Misma estructura CardHeader + CardContent que la tarjeta de
-                  contraseña: con un `p-4` suelto el inset horizontal era
-                  distinto y el contenido no alineaba con el de arriba. */}
-              <Card className="border-destructive/30 bg-card">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base font-medium flex items-center gap-2 text-destructive">
-                    <LogOut className="w-4 h-4" />Cerrar sesión
-                  </CardTitle>
-                  <CardDescription>Salís de tu cuenta en este dispositivo</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button
-                    variant="outline"
-                    onClick={handleLogout}
-                    className="w-full border-destructive/40 text-destructive hover:bg-destructive hover:text-white transition-all"
-                  >
-                    <LogOut className="w-4 h-4 mr-2" />Cerrar sesión
-                  </Button>
-                </CardContent>
-              </Card>
+              {/* Cerrar sesión: botón suelto, sin tarjeta.
+                  Envolverlo en un Card con título y descripción sumaba ~90px
+                  a esta columna y era lo que empujaba el contenido abajo del
+                  primer pantallazo. El botón ya dice qué hace. */}
+              <Button
+                variant="outline"
+                onClick={handleLogout}
+                className="w-full border-destructive/40 text-destructive hover:bg-destructive hover:text-white transition-all"
+              >
+                <LogOut className="w-4 h-4 mr-2" />Cerrar sesión
+              </Button>
             </div>
           </div>
         </TabsContent>

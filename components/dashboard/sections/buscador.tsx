@@ -279,10 +279,23 @@ function ColumnsMenu({
               </span>
             ))}
           </div>
-          {orderedCols.map((c) => {
+          {orderedCols.map((c, idx) => {
             const isHidden = hidden.has(c.key);
             const isDragOver = dragOverKey === c.key;
+            // Encabezado «Ocultas» delante de la primera oculta: sin un corte
+            // visible, la lista ordenada parecía simplemente desordenada y no
+            // se entendía por qué una columna se había movido de lugar.
+            const abreOcultas = isHidden && (idx === 0 || !hidden.has(orderedCols[idx - 1].key));
             return (
+              <Fragment key={`w-${c.key}`}>
+              {abreOcultas && (
+                <div
+                  className="text-[11px] uppercase tracking-wide px-2 pt-2 pb-1 mt-1"
+                  style={{ color: "oklch(0.5 0 0)", borderTop: "1px solid oklch(1 0 0 / 0.06)" }}
+                >
+                  Ocultas
+                </div>
+              )}
               <div
                 key={c.key}
                 draggable={!locked}
@@ -324,6 +337,7 @@ function ColumnsMenu({
                   {c.label}
                 </span>
               </div>
+              </Fragment>
             );
           })}
         </div>
