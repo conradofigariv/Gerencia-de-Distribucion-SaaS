@@ -569,13 +569,17 @@ export function ServiciosPlanillasSection() {
       };
 
       const mapped: SicSolerRow[] = rows.map(r => {
-        const cant = pick(r, ["Cantidad", "Ctd", "Cant"]);
+        const cant    = pick(r, ["Cantidad", "Ctd", "Cant"]);
+        const precio  = pick(r, ["Precio", "Precio Unitario", "Precio Unit"]);
+        const importe = pick(r, ["Importe", "Monto"]);
         return {
           numero_sic:     str(pick(r, ["Número", "Numero", "N° SIC", "Nro SIC", "SIC", "Número SIC", "Numero SIC"])),
           linea:          str(pick(r, ["Línea", "Linea"])),
           articulo:       str(pick(r, ["Artículo", "Articulo", "Artículo Código", "Articulo Codigo"])),
           descripcion:    str(pick(r, ["Descripción", "Descripcion", "Descripción Artículo", "Descripcion Articulo"])),
-          cantidad:       cant != null && cant !== "" ? Number(cant) : null,
+          cantidad:       cant    != null && cant    !== "" ? Number(cant)    : null,
+          precio:         precio  != null && precio  !== "" ? Number(precio)  : null,
+          importe:        importe != null && importe !== "" ? Number(importe) : null,
           udm:            str(pick(r, ["UDM", "UdM", "Unidad Medida", "Unidad de Medida", "Unidad Medida Primaria"])),
           preparador:     str(pick(r, ["Preparador", "Preparador Nombre", "SC Preparador Nombre"])),
           numero_op:      str(pick(r, ["Número Pedido", "Numero Pedido", "Nro Pedido", "Número OP", "Numero OP", "OP", "Pedido"])),

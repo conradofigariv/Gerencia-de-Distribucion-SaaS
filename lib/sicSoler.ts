@@ -13,6 +13,8 @@ export interface SicSolerRow {
   articulo:       string;
   descripcion:    string;
   cantidad:       number | null;
+  precio:         number | null;
+  importe:        number | null;
   udm:            string;
   preparador:     string;
   numero_op:      string;

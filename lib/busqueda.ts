@@ -31,6 +31,8 @@ export interface BusquedaRow {
   numero_sic:          string | null;
   sic_linea:           string | null;
   sic_cantidad:        number | null;
+  sic_precio:          number | null;
+  sic_importe:         number | null;
   sic_udm:             string | null;
   sic_preparador:      string | null;
   sic_fecha_creacion:  string | null;
@@ -219,7 +221,7 @@ export const CAMPOS_FECHA_TX = new Set<string>(["tx_primera_fecha", "tx_ultima_f
  */
 export const ORDENABLES_SERVIDOR = new Set<string>([
   "articulo", "descripcion", "tipo", "mat_serv", "estado_matricula", "unidad_medida",
-  "numero_sic", "sic_linea", "sic_cantidad", "sic_udm", "sic_preparador", "sic_fecha_creacion",
+  "numero_sic", "sic_linea", "sic_cantidad", "sic_precio", "sic_importe", "sic_udm", "sic_preparador", "sic_fecha_creacion",
   "relacion", "numero_op", "linea", "envio", "proveedor", "op_descripcion", "zona",
   "cantidad", "cantidad_recibida", "ctd_aceptada", "pendiente",
   "cantidad_vencida", "cantidad_rechazada", "cantidad_facturada", "cantidad_cancelada",

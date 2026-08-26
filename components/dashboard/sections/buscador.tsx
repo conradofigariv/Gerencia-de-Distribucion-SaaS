@@ -413,6 +413,8 @@ const COLS: ColDef[] = [
   { key: "numero_sic",         label: "SIC",          group: "sic", mono: true },
   { key: "sic_linea",          label: "Línea SIC",    group: "sic", mono: true },
   { key: "sic_cantidad",       label: "Cant. SIC",    group: "sic", num: true },
+  { key: "sic_precio",         label: "Precio SIC",   group: "sic", num: true },
+  { key: "sic_importe",        label: "Importe SIC",  group: "sic", num: true },
   { key: "sic_udm",            label: "UDM SIC",      group: "sic" },
   { key: "sic_preparador",     label: "Preparador",   group: "sic" },
   {
@@ -601,6 +603,8 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   numero_sic:          85,
   sic_linea:           85,
   sic_cantidad:        90,
+  sic_precio:          95,
+  sic_importe:         100,
   sic_udm:             85,
   sic_preparador:      150,
   sic_fecha_creacion:  135,
