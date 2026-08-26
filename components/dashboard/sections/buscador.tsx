@@ -1841,174 +1841,6 @@ export function BuscadorSection() {
     }
   }, [tabFilas]);
 
-  const abrirMenuFila = useCallback((
-    e: React.MouseEvent,
-    ctx: { key: string; filaId?: string; data: Record<string, unknown>; colKey?: string }
-  ) => {
-    e.preventDefault();
-
-    // Click derecho sobre una fila que NO está seleccionada: pasa a ser la
-    // selección. Es lo que hace cualquier explorador de archivos, y evita el
-    // error de creer que la acción del menú va a aplicarse a lo que estaba
-    // seleccionado antes cuando en realidad aplica a otra fila.
-    if (!selected.has(ctx.key)) {
-      setSelected(new Set([ctx.key]));
-      ultimaClickeada.current = ctx.key;
-    }
-
-    const items: (CtxItem | "sep")[] = [];
-
-    const colKey    = ctx.colKey;
-    const label     = colKey ? LABEL_POR_COL[colKey] ?? colKey : "";
-    const esManual  = !!colKey && OP_MANUAL_COLS.has(colKey);
-    const numeroOp  = String(ctx.data.numero_op ?? "");
-    const editable  = !!colKey && (esManual ? (puedoEditar && !!numeroOp) : (isTabMode && puedoEditar));
-    const editKey   = isTabMode ? ctx.filaId : ctx.key;
-    const valor     = colKey ? String(ctx.data[colKey] ?? "") : "";
-
-    if (colKey) {
-      items.push({
-        label: `Editar «${label}»`,
-        icon: Pencil,
-        disabled: !editable,
-        hint: esManual && editable ? "toda la OP" : undefined,
-        onClick: () => { setEditValue(valor); setEditing({ filaId: editKey!, key: colKey }); },
-      });
-      items.push({
-        label: "Copiar valor",
-        icon: Copy,
-        disabled: !valor,
-        onClick: () => {
-          navigator.clipboard.writeText(valor)
-            .then(() => toast.success("Copiado."))
-            .catch(() => toast.error("No se pudo copiar."));
-        },
-      });
-    }
-
-    if (isTabMode) {
-      if (items.length) items.push("sep");
-
-      items.push({
-        label: selected.has(ctx.key) ? "Quitar de la selección" : "Seleccionar",
-        icon: selected.has(ctx.key) ? X : Check,
-        onClick: () => setSelected((prev) => {
-          const s = new Set(prev);
-          if (s.has(ctx.key)) s.delete(ctx.key); else s.add(ctx.key);
-          return s;
-        }),
-      });
-
-      // Si la fila del click está dentro de la selección, la acción va sobre
-      // toda la selección; si no, sobre esa sola fila. Es lo que espera
-      // cualquiera que venga de un explorador de archivos, y evita que un click
-      // derecho descuidado sobre otra fila opere sobre la selección entera.
-      const objetivo = selected.has(ctx.key) ? [...selected] : ctx.filaId ? [ctx.filaId] : [];
-      const enTarjeta = (id: string) =>
-        String(tabFilas.find((f) => f.id === id)?.datos[TRACK_KEYS.enTarjeta] ?? "") === "true";
-      // Solo se ofrece "Quitar" cuando TODO el objetivo ya está en la tarjeta:
-      // con una selección mezclada, lo útil es terminar de mandarla entera.
-      const todasEn = objetivo.length > 0 && objetivo.every(enTarjeta);
-      items.push({
-        label: todasEn ? "Quitar de Tarjeta" : "Enviar a Tarjeta",
-        icon: CalendarClock,
-        hint: objetivo.length > 1 ? String(objetivo.length) : undefined,
-        disabled: !puedoEditar || !objetivo.length,
-        onClick: () => handleMarcarTarjeta(objetivo, !todasEn),
-      });
-
-      items.push("sep");
-      items.push({
-        label: "Quitar de la pestaña",
-        icon: Trash2,
-        danger: true,
-        disabled: !puedoEditar || !ctx.filaId,
-        onClick: () => handleDeleteFila(ctx.filaId!),
-      });
-      if (agrupar) {
-        const gk = groupKeyOf(ctx.data, agruparPor);
-        const delGrupo = tabFilas.filter((f) => groupKeyOf(f.datos, agruparPor) === gk);
-        const { titulo } = grupoTitulo(gk, ctx.data, agruparPor);
-        items.push({
-          label: `Quitar «${titulo}» entero`,
-          icon: Trash2,
-          danger: true,
-          hint: `${delGrupo.length}`,
-          disabled: !puedoEditar || !delGrupo.length,
-          onClick: () => handleDeleteGrupo(delGrupo.map((f) => f.id), titulo),
-        });
-      }
-    } else {
-      if (items.length) items.push("sep");
-      // Fijar sigue trabajando con rowKey y no con ctx.key: los fijados se
-      // guardan en localStorage y se resuelven contra el índice por rowKey, así
-      // que usar el id nuevo dejaría huérfano todo lo ya fijado.
-      const claveFijado = rowKey(ctx.data as unknown as BusquedaRow);
-      const fijada = pinnedKeys.includes(claveFijado);
-      items.push({
-        label: fijada ? "Quitar de fijadas" : "Fijar arriba",
-        icon: Pin,
-        onClick: () => togglePin(claveFijado),
-      });
-      items.push({
-        label: selected.has(ctx.key) ? "Quitar de la selección" : "Seleccionar",
-        icon: selected.has(ctx.key) ? X : Check,
-        onClick: () => setSelected((prev) => {
-          const s = new Set(prev);
-          if (s.has(ctx.key)) s.delete(ctx.key); else s.add(ctx.key);
-          return s;
-        }),
-      });
-
-      const editables = tabs.filter((t) => permisoDe(t) === "edicion");
-      if (editables.length) {
-        items.push("sep");
-        for (const t of editables) {
-          items.push({
-            label: `Agregar a «${t.nombre}»`,
-            icon: ListPlus,
-            onClick: () => handleAddRowToTab(t.id, ctx.data as unknown as BusquedaRow),
-          });
-        }
-      }
-    }
-
-    setCtxMenu({ x: e.clientX, y: e.clientY, items });
-  }, [
-    isTabMode, puedoEditar, agrupar, agruparPor, tabFilas, pinnedKeys, selected,
-    tabs, permisoDe, togglePin, handleDeleteFila, handleDeleteGrupo, handleAddRowToTab,
-    handleMarcarTarjeta,
-  ]);
-
-  /** Menú contextual de una PESTAÑA (click derecho en la barra de arriba). */
-  const abrirMenuPestana = useCallback((e: React.MouseEvent, t: BuscadorTab) => {
-    e.preventDefault();
-    const propia  = t.user_id === userId;
-    const permiso = permisoDe(t);
-    const items: (CtxItem | "sep")[] = [];
-
-    if (activeTab !== t.id) {
-      items.push({
-        label: "Abrir",
-        icon: Database,
-        onClick: () => { setActiveTab(t.id); setEditing(null); setSort({ col: null, dir: "asc" }); },
-      });
-    }
-    // Renombrar lo puede hacer el dueño y también un colaborador con edición.
-    if (propia || permiso === "edicion") {
-      items.push({ label: "Renombrar…", icon: Pencil, onClick: () => handleRenameTab(t) });
-    }
-    // Compartir y borrar son solo del dueño.
-    if (propia) {
-      items.push({ label: "Compartir…", icon: Share2, onClick: () => setShareTabId(t.id) });
-      items.push("sep");
-      items.push({ label: "Borrar pestaña", icon: Trash2, danger: true, onClick: () => handleDeleteTab(t) });
-    }
-
-    // Compartida de solo lectura y ya abierta: no hay nada que ofrecer.
-    if (!items.length) return;
-    setCtxMenu({ x: e.clientX, y: e.clientY, items });
-  }, [activeTab, userId, permisoDe, handleRenameTab, handleDeleteTab]);
 
 
   // ── Filas que efectivamente se pintan ──
@@ -2241,32 +2073,266 @@ export function BuscadorSection() {
 
   // Exporta las columnas visibles, en el orden elegido (igual a lo que se ve
   // en pantalla). Las columnas ocultas no se pierden — siguen en el índice.
-  const exportCSV = useCallback(() => {
-    if (!displayRows.length) { toast.error("No hay datos para exportar."); return; }
-    // En una pestaña se suman las columnas de seguimiento al final.
-    const cols: { key: string; label: string }[] = [
+  /**
+   * Exporta filas a un .xlsx de verdad, no a CSV.
+   *
+   * El CSV obligaba a elegir separador y codificación, y en es-AR terminaba
+   * abriéndose con todo en una sola columna según la configuración regional de
+   * cada máquina. Un xlsx no tiene esa ambigüedad. `xlsx` ya es dependencia
+   * (se usa para LEER las planillas), y se importa dinámico para no sumarle
+   * peso al bundle del Buscador, que es la pantalla más pesada.
+   */
+  const exportarAExcel = useCallback(async (
+    filas: Record<string, unknown>[],
+    cols: { key: string; label: string }[],
+    nombre: string,
+  ) => {
+    if (!filas.length) { toast.error("No hay filas para exportar."); return; }
+    try {
+      const XLSX = await import("xlsx");
+      const aoa = [
+        cols.map((c) => c.label),
+        ...filas.map((f) => cols.map((c) => {
+          const v = f[c.key];
+          return v == null ? "" : (typeof v === "number" ? v : String(v));
+        })),
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "Datos");
+      XLSX.writeFile(wb, `${nombre.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, "-")}.xlsx`);
+      toast.success(`${filas.length} fila(s) exportadas.`);
+    } catch (e) {
+      toast.error(`No se pudo exportar: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, []);
+
+  /** Columnas de la vista actual, en el orden en que se ven. */
+  const colsVisibles = useMemo(
+    () => [
       ...visibleCols.map((c) => ({ key: c.key as string, label: c.label })),
       ...(isTabMode ? visibleTrackCols.map((c) => ({ key: c.key, label: c.label })) : []),
-    ];
-    const head = cols.map((c) => c.label).join(";");
-    const body = displayRows.map((row) =>
-      cols.map((c) => {
-        const v = row.data[c.key];
-        const s = v == null ? "" : String(v);
-        return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-      }).join(";")
-    ).join("\n");
-    const blob = new Blob(["﻿" + head + "\n" + body], { type: "text/csv;charset=utf-8;" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href = url;
-    const nombreTab = tabs.find((t) => t.id === activeTab)?.nombre;
-    a.download = isTabMode
-      ? `${(nombreTab ?? "pestana").replace(/\s+/g, "-")}.csv`
-      : `busqueda_${query.trim().replace(/\s+/g, "-") || "todo"}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [displayRows, query, visibleCols, isTabMode, tabs, activeTab]);
+    ],
+    [visibleCols, visibleTrackCols, isTabMode]
+  );
+
+  const abrirMenuFila = useCallback((
+    e: React.MouseEvent,
+    ctx: { key: string; filaId?: string; data: Record<string, unknown>; colKey?: string }
+  ) => {
+    e.preventDefault();
+
+    // Click derecho sobre una fila que NO está seleccionada: pasa a ser la
+    // selección. Es lo que hace cualquier explorador de archivos, y evita el
+    // error de creer que la acción del menú va a aplicarse a lo que estaba
+    // seleccionado antes cuando en realidad aplica a otra fila.
+    if (!selected.has(ctx.key)) {
+      setSelected(new Set([ctx.key]));
+      ultimaClickeada.current = ctx.key;
+    }
+
+    const items: (CtxItem | "sep")[] = [];
+
+    const colKey    = ctx.colKey;
+    const label     = colKey ? LABEL_POR_COL[colKey] ?? colKey : "";
+    const esManual  = !!colKey && OP_MANUAL_COLS.has(colKey);
+    const numeroOp  = String(ctx.data.numero_op ?? "");
+    const editable  = !!colKey && (esManual ? (puedoEditar && !!numeroOp) : (isTabMode && puedoEditar));
+    const editKey   = isTabMode ? ctx.filaId : ctx.key;
+    const valor     = colKey ? String(ctx.data[colKey] ?? "") : "";
+
+    if (colKey) {
+      items.push({
+        label: `Editar «${label}»`,
+        icon: Pencil,
+        disabled: !editable,
+        hint: esManual && editable ? "toda la OP" : undefined,
+        onClick: () => { setEditValue(valor); setEditing({ filaId: editKey!, key: colKey }); },
+      });
+      items.push({
+        label: "Copiar valor",
+        icon: Copy,
+        disabled: !valor,
+        onClick: () => {
+          navigator.clipboard.writeText(valor)
+            .then(() => toast.success("Copiado."))
+            .catch(() => toast.error("No se pudo copiar."));
+        },
+      });
+    }
+
+    if (isTabMode) {
+      if (items.length) items.push("sep");
+
+      items.push({
+        label: selected.has(ctx.key) ? "Quitar de la selección" : "Seleccionar",
+        icon: selected.has(ctx.key) ? X : Check,
+        onClick: () => setSelected((prev) => {
+          const s = new Set(prev);
+          if (s.has(ctx.key)) s.delete(ctx.key); else s.add(ctx.key);
+          return s;
+        }),
+      });
+
+      // Si la fila del click está dentro de la selección, la acción va sobre
+      // toda la selección; si no, sobre esa sola fila. Es lo que espera
+      // cualquiera que venga de un explorador de archivos, y evita que un click
+      // derecho descuidado sobre otra fila opere sobre la selección entera.
+      const objetivo = selected.has(ctx.key) ? [...selected] : ctx.filaId ? [ctx.filaId] : [];
+      const enTarjeta = (id: string) =>
+        String(tabFilas.find((f) => f.id === id)?.datos[TRACK_KEYS.enTarjeta] ?? "") === "true";
+      // Solo se ofrece "Quitar" cuando TODO el objetivo ya está en la tarjeta:
+      // con una selección mezclada, lo útil es terminar de mandarla entera.
+      const todasEn = objetivo.length > 0 && objetivo.every(enTarjeta);
+      items.push({
+        label: todasEn ? "Quitar de Tarjeta" : "Enviar a Tarjeta",
+        icon: CalendarClock,
+        hint: objetivo.length > 1 ? String(objetivo.length) : undefined,
+        disabled: !puedoEditar || !objetivo.length,
+        onClick: () => handleMarcarTarjeta(objetivo, !todasEn),
+      });
+
+      items.push("sep");
+      items.push({
+        label: "Quitar de la pestaña",
+        icon: Trash2,
+        danger: true,
+        disabled: !puedoEditar || !ctx.filaId,
+        onClick: () => handleDeleteFila(ctx.filaId!),
+      });
+      if (agrupar) {
+        const gk = groupKeyOf(ctx.data, agruparPor);
+        const delGrupo = tabFilas.filter((f) => groupKeyOf(f.datos, agruparPor) === gk);
+        const { titulo } = grupoTitulo(gk, ctx.data, agruparPor);
+        items.push({
+          label: `Quitar «${titulo}» entero`,
+          icon: Trash2,
+          danger: true,
+          hint: `${delGrupo.length}`,
+          disabled: !puedoEditar || !delGrupo.length,
+          onClick: () => handleDeleteGrupo(delGrupo.map((f) => f.id), titulo),
+        });
+      }
+    } else {
+      if (items.length) items.push("sep");
+      // Fijar sigue trabajando con rowKey y no con ctx.key: los fijados se
+      // guardan en localStorage y se resuelven contra el índice por rowKey, así
+      // que usar el id nuevo dejaría huérfano todo lo ya fijado.
+      const claveFijado = rowKey(ctx.data as unknown as BusquedaRow);
+      const fijada = pinnedKeys.includes(claveFijado);
+      items.push({
+        label: fijada ? "Quitar de fijadas" : "Fijar arriba",
+        icon: Pin,
+        onClick: () => togglePin(claveFijado),
+      });
+      items.push({
+        label: selected.has(ctx.key) ? "Quitar de la selección" : "Seleccionar",
+        icon: selected.has(ctx.key) ? X : Check,
+        onClick: () => setSelected((prev) => {
+          const s = new Set(prev);
+          if (s.has(ctx.key)) s.delete(ctx.key); else s.add(ctx.key);
+          return s;
+        }),
+      });
+
+      const editables = tabs.filter((t) => permisoDe(t) === "edicion");
+      if (editables.length) {
+        items.push("sep");
+        for (const t of editables) {
+          items.push({
+            label: `Agregar a «${t.nombre}»`,
+            icon: ListPlus,
+            onClick: () => handleAddRowToTab(t.id, ctx.data as unknown as BusquedaRow),
+          });
+        }
+      }
+    }
+
+    // Exportar la selección. Va al final y en los dos modos: reemplaza al
+    // botón «CSV» que estaba fijo en la barra. Al abrir el menú la fila
+    // clickeada ya entró en la selección (ver arriba), así que nunca exporta
+    // vacío ni algo distinto de lo que el usuario ve marcado.
+    const seleccionadas = displayRows.filter((r) => selected.has(r.key));
+    if (seleccionadas.length) {
+      items.push("sep");
+      items.push({
+        label: `Exportar selección a Excel (${seleccionadas.length})`,
+        icon: Download,
+        onClick: () => exportarAExcel(
+          seleccionadas.map((r) => r.data),
+          colsVisibles,
+          isTabMode
+            ? `${tabs.find((t) => t.id === activeTab)?.nombre ?? "pestana"}-seleccion`
+            : `busqueda-${query.trim().replace(/\s+/g, "-") || "todo"}`,
+        ),
+      });
+    }
+
+    setCtxMenu({ x: e.clientX, y: e.clientY, items });
+  }, [
+    isTabMode, puedoEditar, agrupar, agruparPor, tabFilas, pinnedKeys, selected,
+    tabs, permisoDe, togglePin, handleDeleteFila, handleDeleteGrupo, handleAddRowToTab,
+    handleMarcarTarjeta, displayRows, colsVisibles, exportarAExcel, activeTab, query,
+  ]);
+
+  /** Menú contextual de una PESTAÑA (click derecho en la barra de arriba). */
+  const abrirMenuPestana = useCallback((e: React.MouseEvent, t: BuscadorTab) => {
+    e.preventDefault();
+    const propia  = t.user_id === userId;
+    const permiso = permisoDe(t);
+    const items: (CtxItem | "sep")[] = [];
+
+    if (activeTab !== t.id) {
+      items.push({
+        label: "Abrir",
+        icon: Database,
+        onClick: () => { setActiveTab(t.id); setEditing(null); setSort({ col: null, dir: "asc" }); },
+      });
+    }
+    // Renombrar lo puede hacer el dueño y también un colaborador con edición.
+    if (propia || permiso === "edicion") {
+      items.push({ label: "Renombrar…", icon: Pencil, onClick: () => handleRenameTab(t) });
+    }
+    // Compartir y borrar son solo del dueño.
+    if (propia) {
+      items.push({ label: "Compartir…", icon: Share2, onClick: () => setShareTabId(t.id) });
+      items.push("sep");
+      items.push({ label: "Borrar pestaña", icon: Trash2, danger: true, onClick: () => handleDeleteTab(t) });
+    }
+
+    // Exportar: disponible siempre, incluso en una compartida de solo
+    // lectura — leer los datos es justamente lo que puede hacer un lector.
+    // Se exporta la pestaña ENTERA, no lo que esté filtrado en pantalla: el
+    // click derecho puede caer sobre una pestaña que ni siquiera está abierta.
+    if (items.length) items.push("sep");
+    items.push({
+      label: "Exportar a Excel",
+      icon: Download,
+      onClick: async () => {
+        try {
+          const filas = t.id === activeTab ? tabFilas : await fetchTabFilas(t.id);
+          // Columnas según la config de ESA pestaña, no la de la vista actual.
+          const cfg     = tabLayouts[t.id];
+          const orden   = cfg?.order ?? DEFAULT_COL_ORDER;
+          const ocultas = new Set(cfg?.hidden ?? []);
+          const cols = [
+            ...orden
+              .filter((k) => !ocultas.has(k))
+              .map((k) => COLS.find((c) => c.key === k))
+              .filter((c): c is ColDef => !!c)
+              .map((c) => ({ key: c.key as string, label: c.label })),
+            ...TRACK_COLS.filter((c) => !ocultas.has(c.key)).map((c) => ({ key: c.key, label: c.label })),
+          ];
+          await exportarAExcel(filas.map((f) => f.datos), cols, t.nombre);
+        } catch (err) {
+          toast.error(`No se pudo exportar: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      },
+    });
+
+    // Compartida de solo lectura y ya abierta: no hay nada que ofrecer.
+    if (!items.length) return;
+    setCtxMenu({ x: e.clientX, y: e.clientY, items });
+  }, [activeTab, userId, permisoDe, handleRenameTab, handleDeleteTab, tabFilas, tabLayouts, exportarAExcel]);
 
   const conOp    = sorted.filter((r) => r.fuente === "op").length;
   const soloMov  = sorted.filter((r) => r.fuente === "transaccion").length;
@@ -2719,14 +2785,9 @@ export function BuscadorSection() {
             </button>
           )}
 
-          <button
-            onClick={exportCSV}
-            disabled={!displayRows.length}
-            className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ height: TOOLBAR_H, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, color: "oklch(0.65 0 0)", cursor: "pointer" }}
-          >
-            <Download className="w-3.5 h-3.5" />CSV
-          </button>
+          {/* El botón de exportar salió de la barra: ocupaba lugar fijo para
+              algo ocasional. Ahora está en el click derecho — sobre las filas
+              (exporta la selección) y sobre una pestaña (la exporta entera). */}
 
           {/* Estado del índice. «Reconstruir» vive adentro de este menú y no
               suelto en la barra: tarda varios minutos y, desde que cada carga
@@ -2797,7 +2858,7 @@ export function BuscadorSection() {
               const nombre = agruparPor === "articulo" ? "matrícula" : agruparPor === "numero_sic" ? "SIC" : "OP";
               return ` en ${gruposCount.toLocaleString("es-AR")} ${nombre}${gruposCount === 1 || agruparPor !== "articulo" ? "" : "s"}`;
             })()}
-            {" · ctrl+click para elegir varias · doble click para editar · click derecho para más acciones"}
+            {" · ctrl+click para elegir varias · doble click para editar · click derecho para exportar y más"}
             {puedeArrastrar && " · arrastrá para reordenar"}
           </p>
         )}
@@ -2811,7 +2872,7 @@ export function BuscadorSection() {
               {soloMov > 0 && <> · {soloMov.toLocaleString("es-AR")} solo con movimientos (OP fuera de la planilla)</>}
               {soloCat > 0 && <> · {soloCat.toLocaleString("es-AR")} solo en catálogo</>}
               {sorted.length >= 500 && <> · mostrando los primeros 500, afiná la búsqueda</>}
-              {" · ctrl+click para elegir varias · click derecho para más acciones"}
+              {" · ctrl+click para elegir varias · click derecho para exportar y más"}
             </span>
             {pinnedRows.length > 0 && (
               <span className="inline-flex items-center gap-1">
