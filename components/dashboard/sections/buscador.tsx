@@ -1316,7 +1316,15 @@ export function BuscadorSection() {
   // El del maestro o el de la pestaña activa, según dónde estemos. Una pestaña
   // sin config propia todavía muestra la del maestro (config = {} en la DB).
   // (`tabCfg` ya se calculó más arriba, junto a `agrupar`/`agruparPor`.)
-  const effOrder = tabCfg?.order ?? colOrder;
+  // El order guardado de una pestaña puede ser viejo (de antes de que
+  // existiera alguna columna, ej. sic_precio/sic_importe) — sin este merge la
+  // columna nueva queda invisible para siempre en esa pestaña, aunque en el
+  // maestro sí aparezca (el maestro ya hace este mismo merge para colOrder).
+  const effOrder = useMemo(() => {
+    const base = tabCfg?.order ?? colOrder;
+    const missing = DEFAULT_COL_ORDER.filter((k) => !base.includes(k));
+    return missing.length ? [...base, ...missing] : base;
+  }, [tabCfg?.order, colOrder]);
   const effHidden = useMemo(
     () => (tabCfg?.hidden ? new Set(tabCfg.hidden) : hiddenCols),
     [tabCfg?.hidden, hiddenCols]
@@ -2316,7 +2324,8 @@ export function BuscadorSection() {
           const filas = t.id === activeTab ? tabFilas : await fetchTabFilas(t.id);
           // Columnas según la config de ESA pestaña, no la de la vista actual.
           const cfg     = tabLayouts[t.id];
-          const orden   = cfg?.order ?? DEFAULT_COL_ORDER;
+          const ordenBase = cfg?.order ?? DEFAULT_COL_ORDER;
+          const orden   = [...ordenBase, ...DEFAULT_COL_ORDER.filter((k) => !ordenBase.includes(k))];
           const ocultas = new Set(cfg?.hidden ?? []);
           const cols = [
             ...orden
