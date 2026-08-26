@@ -3186,10 +3186,13 @@ export function BuscadorSection() {
                           onContextMenu={(e) => abrirMenuFila(e, { key, filaId, data })}
                         >
                           <span className="flex items-center justify-center gap-1">
-                            {/* Desplegar el detalle de entregas. Solo con OP:
-                                una fila de catálogo no tiene movimientos que
-                                mostrar. */}
-                            {!!data.numero_op && (
+                            {/* Desplegar el detalle de entregas. Solo con OP
+                                (una fila de catálogo no tiene movimientos) y
+                                solo dentro de una pestaña: en el índice
+                                maestro la granularidad ya es una fila por
+                                (OP, línea, envío), así que el detalle no
+                                agrega nada que no digan esas columnas. */}
+                            {isTabMode && !!data.numero_op && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); toggleDetalle(key, data as unknown as BusquedaRow); }}
                                 title="Ver entregas de esta línea"
@@ -3436,7 +3439,7 @@ export function BuscadorSection() {
                       </tr>
 
                       {/* Detalle de entregas: comprometido vs. entregado. */}
-                      {filaAbierta === key && (
+                      {isTabMode && filaAbierta === key && (
                         <tr>
                           <td colSpan={1 + visibleCols.length + (isTabMode ? visibleTrackCols.length : 0)} style={{ padding: 0, borderBottom: bottomBorder }}>
                             {cargandoDetalle === key ? (
