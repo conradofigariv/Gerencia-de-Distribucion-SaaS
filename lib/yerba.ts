@@ -37,7 +37,8 @@ export interface CompraMarca {
 export interface Compra {
   id:              string;
   participante_id: string;
-  fecha:           string;         // ISO YYYY-MM-DD
+  fecha:           string;         // ISO YYYY-MM-DD, editable a mano — NO usar para el turno (ver construirTurnos)
+  created_at:      string;         // cuándo se REGISTRÓ la compra — esto define el turno
   nota:            string | null;
   marcas:          CompraMarca[];
 }
@@ -65,14 +66,14 @@ export async function fetchParticipantes(): Promise<Participante[]> {
 export async function fetchCompras(): Promise<Compra[]> {
   const { data, error } = await supabase
     .from("yerba_compras")
-    .select("id, participante_id, fecha, nota, yerba_compra_marca(marca, kilos)")
+    .select("id, participante_id, fecha, created_at, nota, yerba_compra_marca(marca, kilos)")
     .order("fecha", { ascending: false })
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
 
   type Row = Omit<Compra, "marcas"> & { yerba_compra_marca: CompraMarca[] | null };
   return ((data ?? []) as Row[]).map((c) => ({
-    id: c.id, participante_id: c.participante_id, fecha: c.fecha, nota: c.nota,
+    id: c.id, participante_id: c.participante_id, fecha: c.fecha, created_at: c.created_at, nota: c.nota,
     marcas: c.yerba_compra_marca ?? [],
   }));
 }
@@ -101,6 +102,15 @@ export async function fetchMarcasUsadas(): Promise<string[]> {
  * `compras` tiene que venir ordenada de más nueva a más vieja, como la
  * devuelve `fetchCompras`.
  *
+ * ⚠ El turno se calcula por `created_at` (cuándo se REGISTRÓ la compra), no
+ * por `fecha` (que es editable a mano y solo describe cuándo se hizo la
+ * compra en la vida real). Si se usara `fecha`, una compra cargada con fecha
+ * futura o backdateada quedaría siempre "más reciente" que cualquier compra
+ * nueva y el turno se trabaría apuntando siempre al mismo siguiente, sin
+ * importar quién compre después. `created_at` es monótono con el orden real
+ * en que se fueron tomando los turnos, así que no lo puede corromper un
+ * error de tipeo en la fecha.
+ *
  * Casos borde que importan:
  *  • Sin compras todavía → le toca al primero de la lista.
  *  • El último comprador ya no está activo (o lo sacaron) → se busca hacia
@@ -118,11 +128,15 @@ export function construirTurnos(participantes: Participante[], compras: Compra[]
     contadas.set(c.participante_id, (contadas.get(c.participante_id) ?? 0) + 1);
   }
 
+  // Orden real de los turnos tomados: por created_at, no por fecha (ver nota
+  // arriba). `compras` llega ordenada por fecha, así que se reordena una copia.
+  const porRegistro = [...compras].sort((a, b) => b.created_at.localeCompare(a.created_at));
+
   let proximoId: string | null = activos[0]?.id ?? null;
   if (activos.length) {
-    const idxUltimo = compras.findIndex((c) => activos.some((p) => p.id === c.participante_id));
+    const idxUltimo = porRegistro.findIndex((c) => activos.some((p) => p.id === c.participante_id));
     if (idxUltimo !== -1) {
-      const pos = activos.findIndex((p) => p.id === compras[idxUltimo].participante_id);
+      const pos = activos.findIndex((p) => p.id === porRegistro[idxUltimo].participante_id);
       proximoId = activos[(pos + 1) % activos.length].id;
     }
   }
