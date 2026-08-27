@@ -226,3 +226,11 @@ export async function borrarCompra(id: string): Promise<void> {
   const { error } = await supabase.from("yerba_compras").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
+
+/** Corrige la fecha de una compra ya cargada (typo, backdateo, etc.). No
+ *  toca `created_at`: el turno se calcula por eso, no por `fecha`, así que
+ *  arreglar la fecha no puede alterar de quién es el próximo turno. */
+export async function actualizarFechaCompra(id: string, fecha: string): Promise<void> {
+  const { error } = await supabase.from("yerba_compras").update({ fecha }).eq("id", id);
+  if (error) throw new Error(error.message);
+}

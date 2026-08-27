@@ -5,13 +5,13 @@ import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
-  Coffee, Plus, Trash2, Loader2, X, Check, GripVertical,
+  Coffee, Plus, Trash2, Loader2, X, Check, GripVertical, Pencil,
   ShoppingCart, UserPlus, History, Pause, Play,
 } from "lucide-react";
 import {
   fetchParticipantes, fetchCompras, fetchMarcasUsadas, construirTurnos,
   agregarParticipante, borrarParticipante, setActivo, guardarOrden,
-  registrarCompra, borrarCompra, kilosPorMarca, TOTALES_KG,
+  registrarCompra, borrarCompra, actualizarFechaCompra, kilosPorMarca, TOTALES_KG,
   type Participante, type Compra, type FilaTurno,
 } from "@/lib/yerba";
 import { fetchEquipo } from "@/lib/buscadorTabs";
@@ -670,6 +670,24 @@ function DialogHistorial({
   compras: Compra[]; nombrePorParticipante: Map<string, string>;
   onClose: () => void; onBorrada: () => void;
 }) {
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [fechaEdit,  setFechaEdit]  = useState("");
+  const [guardando,  setGuardando]  = useState(false);
+
+  const guardarFecha = async (id: string) => {
+    if (!fechaEdit) return;
+    setGuardando(true);
+    try {
+      await actualizarFechaCompra(id, fechaEdit);
+      setEditandoId(null);
+      onBorrada(); // recarga — mismo callback que usa el borrado
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGuardando(false);
+    }
+  };
+
   return createPortal(
     <div className="fixed inset-0 z-[200] grid place-items-center p-4 bg-black/65" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full max-w-lg max-h-[80vh] flex flex-col rounded-2xl border border-hairline bg-panel overflow-hidden animate-in fade-in zoom-in-95 duration-150" onMouseDown={(e) => e.stopPropagation()}>
@@ -685,7 +703,26 @@ function DialogHistorial({
             <ul>
               {compras.map((c) => (
                 <li key={c.id} className="flex items-center gap-3 px-5 py-3 border-b border-hairline last:border-0 hover:bg-panel-2/40 transition-colors">
-                  <span className="text-[11px] font-mono text-muted-foreground shrink-0 w-14">{fmtFecha(c.fecha)}</span>
+                  {editandoId === c.id ? (
+                    <input
+                      autoFocus
+                      type="date"
+                      value={fechaEdit}
+                      onChange={(e) => setFechaEdit(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") guardarFecha(c.id); if (e.key === "Escape") setEditandoId(null); }}
+                      className="shrink-0 w-32 h-7 px-2 rounded-lg bg-panel-2 border border-hairline text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+                      style={{ colorScheme: "dark" }}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => { setEditandoId(c.id); setFechaEdit(c.fecha); }}
+                      title="Editar fecha"
+                      className="group flex items-center gap-1 shrink-0 w-14 text-[11px] font-mono text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {fmtFecha(c.fecha)}
+                      <Pencil className="w-2.5 h-2.5 opacity-0 group-hover:opacity-60 transition-opacity" />
+                    </button>
+                  )}
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-foreground truncate">{nombreDe.get(c.participante_id) ?? "—"}</p>
                     <p className="text-[11px] text-muted-foreground truncate">
@@ -693,16 +730,34 @@ function DialogHistorial({
                       {c.nota && ` · ${c.nota}`}
                     </p>
                   </div>
-                  <button
-                    onClick={async () => {
-                      if (!confirm("¿Borrar esta compra? Puede cambiar de quién es el turno.")) return;
-                      try { await borrarCompra(c.id); onBorrada(); }
-                      catch (e) { toast.error(e instanceof Error ? e.message : String(e)); }
-                    }}
-                    className="shrink-0 grid place-items-center w-7 h-7 rounded-lg text-muted-foreground hover:text-accent-red hover:bg-accent-red/10 transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {editandoId === c.id ? (
+                    <>
+                      <button
+                        onClick={() => guardarFecha(c.id)}
+                        disabled={guardando}
+                        className="shrink-0 grid place-items-center w-7 h-7 rounded-lg text-accent-green hover:bg-accent-green/10 transition-colors disabled:opacity-50"
+                      >
+                        {guardando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      </button>
+                      <button
+                        onClick={() => setEditandoId(null)}
+                        className="shrink-0 grid place-items-center w-7 h-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-panel-2 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={async () => {
+                        if (!confirm("¿Borrar esta compra? Puede cambiar de quién es el turno.")) return;
+                        try { await borrarCompra(c.id); onBorrada(); }
+                        catch (e) { toast.error(e instanceof Error ? e.message : String(e)); }
+                      }}
+                      className="shrink-0 grid place-items-center w-7 h-7 rounded-lg text-muted-foreground hover:text-accent-red hover:bg-accent-red/10 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
