@@ -155,13 +155,23 @@ miles). La huella es la cantidad de líneas afectadas.
 
 ### Sonido al comienzo del día
 `lib/notificacionSonido.ts` — suena una vez por día, solo si hay pendientes.
-Tono sintetizado con WebAudio (sin archivo binario). La preferencia va a
-`localStorage`, no a la base: es de ese **dispositivo**, no de la cuenta.
+Sin sonido propio, se sintetiza un tono con WebAudio (sin archivo binario).
+
+**Dos preferencias con alcance distinto, a propósito:**
+- *Si suena* (on/off) → `localStorage`. Es de ese **dispositivo** (la compu de
+  la oficina sí, el celular en una reunión no).
+- *Qué sonido usar* → `user_preferences` (Supabase). Es de la **cuenta**: si
+  subiste tu propio audio, te sigue a cualquier dispositivo donde entres.
+
+Sonido propio: bucket de Storage `notif-sounds` (ver
+`supabase/storage_notif_sounds.sql`, mismo patrón que `avatars` — carpeta
+`{user.id}/sonido`, lectura pública, escritura solo en la propia). Máx. 1 MB,
+MP3/WAV/OGG/M4A.
 
 ⚠ Los navegadores bloquean el audio hasta que hay una interacción del usuario.
-Si el `AudioContext` arranca `suspended`, el sonido queda **armado** y se
-dispara con el primer click o tecla. Sin eso no se escucharía nunca y no
-habría forma de saber por qué.
+Si arranca bloqueado, el sonido queda **armado** y se dispara con el primer
+click o tecla — vale tanto para el tono sintetizado como para un audio propio.
+Sin eso no se escucharía nunca y no habría forma de saber por qué.
 
 ### Agregar un tipo de alarma nuevo (partes 3-4)
 Escribir su evaluador y sumarlo a `EVALUADORES` en `lib/notificaciones.ts`.

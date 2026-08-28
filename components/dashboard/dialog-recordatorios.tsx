@@ -4,13 +4,16 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { X, Loader2, Check, BellRing, Volume2, VolumeX, Play, SlidersHorizontal } from "lucide-react";
+import { X, Loader2, Check, BellRing, Volume2, VolumeX, Play, SlidersHorizontal, Music, Upload, Trash2 } from "lucide-react";
 import {
   fetchReglas, fetchUltimasCargas, guardarReglaCarga, reglasDeCargaCompletas,
   guardarReglaServicios, reglaServicios, SERVICIOS_DEFAULT,
   CARGAS_VIGILABLES, type ConfigServicios,
 } from "@/lib/notificaciones";
-import { sonidoActivado, setSonidoActivado, probarSonido } from "@/lib/notificacionSonido";
+import {
+  sonidoActivado, setSonidoActivado, probarSonido,
+  fetchSonidoUrl, subirSonido, quitarSonidoPropio,
+} from "@/lib/notificacionSonido";
 
 /** Atajos de frecuencia. El usuario igual puede escribir cualquier número. */
 const PRESETS = [1, 3, 7, 15, 30];
@@ -56,6 +59,11 @@ export function DialogRecordatorios({
   const [sonido, setSonido] = useState(true);
   useEffect(() => { setSonido(sonidoActivado()); }, []);
 
+  // Sonido propio subido por el usuario — es de la CUENTA, no del dispositivo
+  // (a diferencia del toggle on/off de arriba), así que se guarda en la base.
+  const [sonidoUrl, setSonidoUrl] = useState<string | null>(null);
+  const [subiendoSonido, setSubiendoSonido] = useState(false);
+
   useEffect(() => {
     (async () => {
       try {
@@ -65,6 +73,7 @@ export function DialogRecordatorios({
         const { activa, ...cfg } = reglaServicios(reglas);
         setSvc(cfg);
         setSvcActiva(activa);
+        setSonidoUrl(await fetchSonidoUrl(userId));
       } catch (e) {
         toast.error(e instanceof Error ? e.message : String(e));
       } finally {
@@ -95,6 +104,35 @@ export function DialogRecordatorios({
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setGuardando(false);
+    }
+  };
+
+  const handleSubirSonido = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";   // permite volver a elegir el mismo archivo después
+    if (!file) return;
+    setSubiendoSonido(true);
+    try {
+      const url = await subirSonido(userId, file);
+      setSonidoUrl(url);
+      toast.success("Sonido subido — te va a seguir en cualquier dispositivo.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubiendoSonido(false);
+    }
+  };
+
+  const handleQuitarSonido = async () => {
+    setSubiendoSonido(true);
+    try {
+      await quitarSonidoPropio(userId);
+      setSonidoUrl(null);
+      toast.success("Volviste al tono por defecto.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubiendoSonido(false);
     }
   };
 
@@ -332,13 +370,55 @@ export function DialogRecordatorios({
                     </div>
                     {sonido && (
                       <button
-                        onClick={probarSonido}
+                        onClick={() => probarSonido(sonidoUrl)}
                         className="shrink-0 flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-muted-foreground border border-hairline hover:text-foreground hover:bg-panel-2 transition-colors"
                       >
                         <Play className="w-3 h-3" /> Probar
                       </button>
                     )}
                   </div>
+
+                  {sonido && (
+                    <div className="mt-3 pt-3 border-t border-hairline flex items-center gap-3">
+                      <Music className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] text-foreground">
+                          {sonidoUrl ? "Usando tu propio sonido" : "Usando el tono por defecto"}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          MP3, WAV, OGG o M4A · hasta 1 MB · te sigue en cualquier dispositivo
+                        </p>
+                      </div>
+                      <label className={cn(
+                        "shrink-0 flex items-center gap-1 h-7 px-2 rounded-md text-[11px] border transition-colors cursor-pointer",
+                        subiendoSonido
+                          ? "text-muted-foreground border-hairline opacity-50 pointer-events-none"
+                          : "text-muted-foreground border-hairline hover:text-foreground hover:bg-panel-2"
+                      )}>
+                        {subiendoSonido
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <Upload className="w-3 h-3" />}
+                        {sonidoUrl ? "Cambiar" : "Subir"}
+                        <input
+                          type="file"
+                          accept="audio/mpeg,audio/wav,audio/x-wav,audio/ogg,audio/mp4,audio/webm,.mp3,.wav,.ogg,.m4a"
+                          className="hidden"
+                          disabled={subiendoSonido}
+                          onChange={handleSubirSonido}
+                        />
+                      </label>
+                      {sonidoUrl && (
+                        <button
+                          onClick={handleQuitarSonido}
+                          disabled={subiendoSonido}
+                          title="Volver al tono por defecto"
+                          className="shrink-0 grid place-items-center w-7 h-7 rounded-md text-muted-foreground hover:text-accent-red hover:bg-accent-red/10 transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </>

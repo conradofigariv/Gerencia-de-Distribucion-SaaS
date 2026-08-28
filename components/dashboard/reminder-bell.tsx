@@ -7,7 +7,7 @@ import {
   fetchReglas, fetchUltimasCargas, fetchDescartes, fetchServicios, descartar, evaluar,
   type Notificacion,
 } from "@/lib/notificaciones";
-import { avisarInicioDelDia } from "@/lib/notificacionSonido";
+import { avisarInicioDelDia, fetchSonidoUrl } from "@/lib/notificacionSonido";
 import { fetchUpcomingBirthdays, birthdayLabel, type BirthdayNotice } from "@/lib/birthdays";
 import { DialogRecordatorios } from "@/components/dashboard/dialog-recordatorios";
 
@@ -38,12 +38,13 @@ export function ReminderBell() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [reglasRes, cargasRes, descartesRes, serviciosRes, bdayRes] = await Promise.allSettled([
+    const [reglasRes, cargasRes, descartesRes, serviciosRes, bdayRes, sonidoRes] = await Promise.allSettled([
       userId ? fetchReglas(userId)    : Promise.resolve([]),
       fetchUltimasCargas(),
       userId ? fetchDescartes(userId) : Promise.resolve([]),
       fetchServicios(),
       fetchUpcomingBirthdays(BIRTHDAY_WINDOW_DAYS),
+      userId ? fetchSonidoUrl(userId) : Promise.resolve(null),
     ]);
 
     // Silencioso ante errores: la campana es accesoria, no puede romper el
@@ -60,9 +61,11 @@ export function ReminderBell() {
     setBirthdays(bdayRes.status === "fulfilled" ? bdayRes.value : []);
     setLoading(false);
 
-    // Aviso sonoro del comienzo del día: una sola vez por día y solo si hay
-    // algo pendiente (ver lib/notificacionSonido.ts).
-    avisarInicioDelDia(pendientes.length > 0);
+    // Aviso sonoro del comienzo del día: una sola vez por día, solo si hay
+    // algo pendiente, con el audio propio del usuario si subió uno (ver
+    // lib/notificacionSonido.ts).
+    const sonidoUrl = sonidoRes.status === "fulfilled" ? sonidoRes.value : null;
+    avisarInicioDelDia(pendientes.length > 0, sonidoUrl);
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);
