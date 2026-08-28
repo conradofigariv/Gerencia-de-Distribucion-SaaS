@@ -6,7 +6,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { FileText, X, Loader2, CheckCircle2, Sparkles, BellRing, Upload, Eraser } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { markUpdated, fetchReminders, upsertConfig } from "@/lib/reminders";
+import { markUpdated } from "@/lib/notificaciones";
+import { DialogRecordatorios } from "@/components/dashboard/dialog-recordatorios";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -159,13 +160,9 @@ export function TransformadoresCargaSection() {
   const [userId,    setUserId]    = useState<string | null>(null);
   const [, setCanConfig] = useState(true);
 
-  // Reminder config
-  const [configOpen,      setConfigOpen]      = useState(false);
-  const [loadingConfig,   setLoadingConfig]   = useState(false);
-  const [savingConfig,    setSavingConfig]    = useState(false);
-  const [reminderFreq,    setReminderFreq]    = useState(7);
-  const [reminderTime,    setReminderTime]    = useState("09:00");
-  const [reminderLastUpd, setReminderLastUpd] = useState<string | null>(null);
+  // Recordatorio: la config es por usuario y vive en el diálogo compartido
+  // (ver lib/notificaciones.ts). Acá solo se abre.
+  const [configOpen, setConfigOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -177,31 +174,6 @@ export function TransformadoresCargaSection() {
       if (profile?.nivel_acceso === "visualizador") setCanConfig(false);
     })();
   }, []);
-
-  useEffect(() => {
-    if (!configOpen) return;
-    setLoadingConfig(true);
-    fetchReminders([REMINDER_KEY])
-      .then(cfgs => {
-        const cfg = cfgs[0];
-        if (cfg) {
-          setReminderFreq(cfg.frequency_days);
-          setReminderLastUpd(cfg.last_updated_at);
-          if (cfg.reminder_time) setReminderTime(cfg.reminder_time.substring(0, 5));
-        }
-      })
-      .catch(e => toast.error(`Error al cargar recordatorio: ${e instanceof Error ? e.message : String(e)}`))
-      .finally(() => setLoadingConfig(false));
-  }, [configOpen]);
-
-  const saveConfig = async () => {
-    if (!userId) return;
-    setSavingConfig(true);
-    upsertConfig(REMINDER_KEY, REMINDER_NAME, reminderFreq, reminderTime, userId)
-      .then(() => { toast.success("Recordatorio guardado"); setConfigOpen(false); })
-      .catch(e => toast.error(`Error al guardar: ${e instanceof Error ? e.message : String(e)}`))
-      .finally(() => setSavingConfig(false));
-  };
 
   // ── File selection + auto-analyze ───────────────────────────────────────────
 
@@ -719,64 +691,8 @@ export function TransformadoresCargaSection() {
         document.body
       )}
 
-      {/* ── Reminder config dialog (portal) ── */}
-      {configOpen && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfigOpen(false)} />
-          <div className="relative bg-popover border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-5">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-foreground">Recordatorio · Transformadores</h3>
-              <button onClick={() => setConfigOpen(false)} className="text-muted-foreground hover:text-foreground transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {loadingConfig ? (
-              <div className="py-6 text-center text-sm text-muted-foreground">Cargando…</div>
-            ) : (
-              <>
-                <div className="space-y-1.5">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Frecuencia de actualización</p>
-                  <div className="flex gap-2 flex-wrap">
-                    {[1, 7, 14, 30].map(d => (
-                      <button key={d} onClick={() => setReminderFreq(d)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${reminderFreq === d ? "bg-accent text-accent-foreground border-accent" : "bg-secondary border-border text-muted-foreground hover:text-foreground"}`}>
-                        {d === 1 ? "Diario" : d === 7 ? "Semanal" : d === 14 ? "Quincenal" : "Mensual"}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <button onClick={() => setReminderFreq(v => Math.max(1, v - 1))}
-                      className="w-7 h-7 rounded-md bg-secondary border border-border text-sm text-muted-foreground hover:text-foreground flex items-center justify-center">−</button>
-                    <span className="text-sm text-foreground w-24 text-center">
-                      {reminderFreq === 1 ? "Cada 1 día" : `Cada ${reminderFreq} días`}
-                    </span>
-                    <button onClick={() => setReminderFreq(v => v + 1)}
-                      className="w-7 h-7 rounded-md bg-secondary border border-border text-sm text-muted-foreground hover:text-foreground flex items-center justify-center">+</button>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Hora del recordatorio</p>
-                  <input type="time" value={reminderTime} onChange={e => setReminderTime(e.target.value)}
-                    className="bg-secondary border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-accent w-full" />
-                </div>
-
-                {reminderLastUpd && (
-                  <p className="text-xs text-muted-foreground">
-                    Última carga: {new Date(reminderLastUpd).toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })}
-                  </p>
-                )}
-
-                <button onClick={saveConfig} disabled={savingConfig}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-colors">
-                  {savingConfig ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</> : "Guardar recordatorio"}
-                </button>
-              </>
-            )}
-          </div>
-        </div>,
-        document.body
+      {configOpen && userId && (
+        <DialogRecordatorios userId={userId} onClose={() => setConfigOpen(false)} onGuardado={() => {}} />
       )}
     </div>
   );

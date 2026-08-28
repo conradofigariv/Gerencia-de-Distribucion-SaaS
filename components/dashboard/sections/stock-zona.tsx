@@ -14,6 +14,8 @@ import { CheckIcon } from "lucide-react";
 import { SearchInput } from "@/components/ui/floating-input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { supabase } from "@/lib/supabaseClient";
+import { markUpdated } from "@/lib/notificaciones";
 import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
 import type { ZonaUpload, CompraRow } from "@/lib/stockStorage";
 import { getMatriculasInfo } from "@/lib/stockFamilies";
@@ -954,6 +956,10 @@ export function StockZonaSection() {
       setImportedAt(new Date());
       setImportedCount(rows.length);
       toast.success(`${rows.length} registros · ${byZona.size} zona${byZona.size > 1 ? "s" : ""}: ${[...byZona.keys()].join(", ")}`);
+      // Alimenta el recordatorio de carga (ver lib/notificaciones.ts). No debe
+      // romper el guardado si falla: el dato ya quedó en la base.
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) await markUpdated("stock-zona", "Stock por zona", user.id).catch(() => {});
       // Se queda en "Cargar datos" (se cargan zonas de a una); limpia y refresca.
       setText(""); await refresh();
     }

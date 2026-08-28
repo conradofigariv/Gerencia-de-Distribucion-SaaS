@@ -98,29 +98,49 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
 | buscador | `busqueda_index` (lectura), `op_datos` (descripción y zona de la OP, cargadas a mano), `buscador_tabs`, `buscador_tab_filas`, `buscador_tab_shares` (compartir), `profiles` (lectura, para elegir con quién compartir) — SQL en `supabase/buscador_tabs.sql` + `supabase/buscador_tab_shares.sql` y doc completo en [`docs/buscador.md`](docs/buscador.md) |
 | yerba | `yerba_participantes`, `yerba_compras`, `yerba_compra_marca`, `profiles` (lectura, para sumar usuarios registrados) — SQL en `supabase/yerba.sql` |
 | settings | `profiles` (incluye `nivel_acceso` y `secciones_permitidas`) |
-| recordatorios | `reminder_config` |
+| notificaciones | `notif_reglas`, `notif_descartes`, `section_reminders` |
 
 ---
 
-## Sistema de Recordatorios
+## Sistema de Notificaciones (multiusuario)
 
-Cada sección de carga de datos puede tener un recordatorio configurable.
+Un solo motor alimenta la campana del header. Ver `supabase/notificaciones.sql`.
 
-- **Tabla Supabase:** `reminder_config(key, name, user_id, freq_days, time, last_updated_at)`
-- **Lib:** `lib/reminders.ts` — exporta `markUpdated(key, name, userId)`, `fetchReminders(userId)`, `upsertConfig(key, name, userId, freq, time)`
-- **Bell global:** `components/dashboard/reminder-bell.tsx` — lee todas las claves en `ALL_REMINDER_KEYS` y alerta si alguna está vencida. Cada notificación tiene una X para descartarla (sesión actual).
-- **Claves registradas hoy:** `planillas-OP`, `planillas-QW`, `planillas-MATRICULAS`, `transformadores-carga` (ver `ALL_REMINDER_KEYS` en `reminder-bell.tsx` para la lista completa y actualizada).
+- **Tablas:**
+  - `notif_reglas(id, user_id, tipo, config jsonb, activa)` — qué vigila cada
+    usuario. `tipo` ∈ `carga` | `servicios` | `transformadores` | `stock`.
+    **RLS real** (`auth.uid() = user_id`), no permisiva: las reglas son personales.
+  - `notif_descartes(user_id, clave, huella)` — lo que ya descartó cada uno.
+  - `section_reminders` — sobrevive SOLO para `last_updated_at`: cuándo se
+    subió cada planilla. Es un **hecho compartido** (si alguien la sube, se
+    subió para todos). Sus columnas `frequency_days`/`reminder_time`/`enabled`
+    quedaron obsoletas y las ignora el código nuevo.
+- **Lib:** `lib/notificaciones.ts` — `markUpdated`, `fetchReglas`,
+  `guardarReglaCarga`, `descartar`, `evaluar`, `CARGAS_VIGILABLES`.
+- **UI:** `components/dashboard/reminder-bell.tsx` (campana) +
+  `components/dashboard/dialog-recordatorios.tsx` (configuración por usuario).
 
-### Patrón para agregar recordatorio a una sección nueva
-1. Importar `createPortal` de `react-dom`, `BellRing` de `lucide-react`, y `markUpdated`, `fetchReminders`, `upsertConfig` de `@/lib/reminders`.
-2. Constantes: `REMINDER_KEY = "mi-seccion"`, `REMINDER_NAME = "Nombre legible"`.
-3. Estados: `userId`, `configOpen`, `loadingConfig`, `savingConfig`, `reminderFreq`, `reminderTime`, `reminderLastUpd`.
-4. Botón en la barra superior (SIN guard de `canConfig`): `<button onClick={() => setConfigOpen(true)}><BellRing/> Recordatorio</button>`
-5. Llamar `markUpdated(REMINDER_KEY, REMINDER_NAME, userId)` después de un guardado exitoso.
-6. Renderizar el dialog via `createPortal(dialog, document.body)` al final del return.
-7. Agregar la clave a `ALL_REMINDER_KEYS` en `reminder-bell.tsx`.
+### Regla por usuario, dato compartido
+La separación clave: *cuándo se cargó* la planilla es global; *cada cuánto
+quiero que me avisen* es de cada usuario. Antes estaba todo en la misma fila y
+cambiar la frecuencia se la cambiaba a toda la oficina.
 
-(Ejemplo real ya implementado: `transformadores-carga.tsx`.)
+### Descarte por huella
+`huella` es el estado que disparó la alarma al descartarla. En cada evaluación
+se compara con la huella actual: iguales → sigue silenciada; distintas →
+reaparece sola. Así "silenciar" no entierra nada.
+
+⚠ La huella no debe incluir nada que cambie solo (un timestamp haría reaparecer
+todo cada vez).
+
+### Agregar una carga nueva al recordatorio
+1. Sumarla a `CARGAS_VIGILABLES` en `lib/notificaciones.ts`.
+2. Llamar a `markUpdated(key, nombre, userId)` con **la misma clave** desde el
+   guardado de esa sección. Sin esto el recordatorio nunca se entera.
+
+### Agregar un tipo de alarma nuevo (partes 2-4)
+Escribir su evaluador y sumarlo a `EVALUADORES` en `lib/notificaciones.ts`.
+Campana, descartes y RLS quedan enganchados solos.
 
 ---
 

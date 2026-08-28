@@ -9,7 +9,8 @@ import {
   UploadCloud, Loader2, Trash2, CheckCircle2,
   AlertTriangle, RefreshCw, Database, BellRing, X, HelpCircle, Check,
 } from "lucide-react";
-import { markUpdated, fetchReminders, upsertConfig } from "@/lib/reminders";
+import { markUpdated } from "@/lib/notificaciones";
+import { DialogRecordatorios } from "@/components/dashboard/dialog-recordatorios";
 import { replaceSicSoler, upsertSicSoler, clearSicSoler, getSicSolerStatus, type SicSolerRow } from "@/lib/sicSoler";
 import { reconstruirIndiceEnSegundoPlano } from "@/lib/busqueda";
 import { normArticulo, parseNum, parseEntero, parseFechaArg } from "@/lib/tableroOp";
@@ -319,19 +320,9 @@ export function ServiciosPlanillasSection() {
   const [userId,    setUserId]    = useState<string | null>(null);
   const [canConfig, setCanConfig] = useState(true);
 
-  // Reminder config dialog
-  const [configOpen,    setConfigOpen]    = useState(false);
-  const [loadingConfig, setLoadingConfig] = useState(false);
-  const [savingConfig,  setSavingConfig]  = useState(false);
-  const [reminderFreq, setReminderFreq] = useState<Record<string, number>>({
-    "planillas-OP": 7, "planillas-SIC": 7, "planillas-MATRICULAS": 7, "planillas-TRANSACCIONES": 7,
-  });
-  const [reminderTime, setReminderTime] = useState<Record<string, string>>({
-    "planillas-OP": "09:00", "planillas-SIC": "09:00", "planillas-MATRICULAS": "09:00", "planillas-TRANSACCIONES": "09:00",
-  });
-  const [reminderLastUpdate, setReminderLastUpdate] = useState<Record<string, string | null>>({
-    "planillas-OP": null, "planillas-SIC": null, "planillas-MATRICULAS": null, "planillas-TRANSACCIONES": null,
-  });
+  // Recordatorios: la config es por usuario y vive en el diálogo compartido
+  // (ver lib/notificaciones.ts). Acá solo se abre.
+  const [configOpen, setConfigOpen] = useState(false);
 
   const setS = (tipo: PlanillaType, u: Partial<PlanillaState>) =>
     setStates(prev => ({ ...prev, [tipo]: { ...prev[tipo], ...u } }));
@@ -386,43 +377,6 @@ export function ServiciosPlanillasSection() {
 
   useEffect(() => { loadStatus(); }, [loadStatus]);
 
-  // Load reminder data whenever the dialog opens
-  useEffect(() => {
-    if (!configOpen) return;
-    setLoadingConfig(true);
-    fetchReminders(REMINDER_DEFS.map(d => d.key))
-      .then(cfgs => {
-        const freq:  Record<string, number>       = { "planillas-OP": 7,      "planillas-SIC": 7,      "planillas-MATRICULAS": 7,      "planillas-TRANSACCIONES": 7 };
-        const time:  Record<string, string>       = { "planillas-OP": "09:00", "planillas-SIC": "09:00", "planillas-MATRICULAS": "09:00", "planillas-TRANSACCIONES": "09:00" };
-        const lastUp: Record<string, string|null> = { "planillas-OP": null,   "planillas-SIC": null,   "planillas-MATRICULAS": null,   "planillas-TRANSACCIONES": null };
-        for (const cfg of cfgs) {
-          freq[cfg.section_id]   = cfg.frequency_days;
-          lastUp[cfg.section_id] = cfg.last_updated_at;
-          if (cfg.reminder_time) time[cfg.section_id] = cfg.reminder_time.substring(0, 5);
-        }
-        setReminderFreq(freq);
-        setReminderTime(time);
-        setReminderLastUpdate(lastUp);
-      })
-      .catch(e => toast.error(`Error al cargar recordatorios: ${e instanceof Error ? e.message : String(e)}`))
-      .finally(() => setLoadingConfig(false));
-  }, [configOpen]);
-
-  const saveConfig = async () => {
-    if (!userId) return;
-    setSavingConfig(true);
-    try {
-      await Promise.all(
-        REMINDER_DEFS.map(d => upsertConfig(d.key, d.name, reminderFreq[d.key] ?? 7, reminderTime[d.key] ?? "09:00", userId))
-      );
-      toast.success("Recordatorios guardados");
-      setConfigOpen(false);
-    } catch (e) {
-      toast.error(`Error al guardar: ${e instanceof Error ? e.message : "Error"}`);
-    } finally {
-      setSavingConfig(false);
-    }
-  };
 
   const uploadOP = async (file: File) => {
     setS("OP", { uploading: true });
@@ -835,129 +789,8 @@ export function ServiciosPlanillasSection() {
       )}
 
       {/* Reminder config dialog — rendered via portal to escape stacking context */}
-      {configOpen && createPortal(
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
-          onClick={() => setConfigOpen(false)}
-        >
-          <div
-            className="bg-popover border border-border rounded-xl shadow-2xl w-full max-w-lg overflow-hidden"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-              <div className="flex items-center gap-2">
-                <BellRing className="w-4 h-4 text-accent" />
-                <span className="text-sm font-semibold text-foreground">Configurar recordatorios</span>
-              </div>
-              <button
-                onClick={() => setConfigOpen(false)}
-                className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Body */}
-            {loadingConfig ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <div className="p-5 space-y-3">
-                {REMINDER_DEFS.map(({ key, label, descripcion, accentClass }) => (
-                  <div
-                    key={key}
-                    className="flex items-center justify-between gap-4 p-4 rounded-xl bg-secondary/30 border border-border"
-                  >
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className={cn("text-xs font-bold uppercase tracking-widest mb-0.5", accentClass)}>
-                        {label}
-                      </div>
-                      <p className="text-sm font-medium text-foreground">{descripcion}</p>
-                      {reminderLastUpdate[key] ? (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Última carga:{" "}
-                          {new Date(reminderLastUpdate[key]!).toLocaleString("es-AR", {
-                            dateStyle: "short",
-                            timeStyle: "short",
-                          })}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground mt-0.5">Sin carga registrada</p>
-                      )}
-                    </div>
-
-                    {/* Controls */}
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      {/* Preset buttons */}
-                      <div className="flex items-center gap-1">
-                        {[1, 7, 14, 30].map(d => (
-                          <button
-                            key={d}
-                            onClick={() => setReminderFreq(p => ({ ...p, [key]: d }))}
-                            className={cn(
-                              "px-2 py-0.5 text-xs rounded font-medium transition-all",
-                              reminderFreq[key] === d
-                                ? "bg-accent text-accent-foreground"
-                                : "bg-secondary text-muted-foreground hover:text-foreground"
-                            )}
-                          >
-                            {d}d
-                          </button>
-                        ))}
-                      </div>
-                      {/* Stepper */}
-                      <div className="flex items-center gap-1 bg-secondary rounded-lg px-2 py-1">
-                        <button
-                          onClick={() => setReminderFreq(p => ({ ...p, [key]: Math.max(1, (p[key] ?? 7) - 1) }))}
-                          className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-foreground rounded transition-colors font-bold text-sm"
-                        >
-                          −
-                        </button>
-                        <span className="w-9 text-center text-sm font-semibold tabular-nums">
-                          {reminderFreq[key] ?? 7}d
-                        </span>
-                        <button
-                          onClick={() => setReminderFreq(p => ({ ...p, [key]: Math.min(365, (p[key] ?? 7) + 1) }))}
-                          className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-foreground rounded transition-colors font-bold text-sm"
-                        >
-                          +
-                        </button>
-                      </div>
-                      {/* Time */}
-                      <input
-                        type="time"
-                        value={reminderTime[key] ?? "09:00"}
-                        onChange={e => setReminderTime(p => ({ ...p, [key]: e.target.value }))}
-                        className="h-8 px-2 rounded-lg bg-secondary border border-border text-sm text-foreground tabular-nums focus:outline-none focus:ring-2 focus:ring-ring/20"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Footer */}
-            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-              <button
-                onClick={() => setConfigOpen(false)}
-                className="h-8 px-4 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={saveConfig}
-                disabled={savingConfig || loadingConfig}
-                className="h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-all"
-              >
-                {savingConfig ? "Guardando..." : "Guardar"}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {configOpen && userId && (
+        <DialogRecordatorios userId={userId} onClose={() => setConfigOpen(false)} onGuardado={() => {}} />
       )}
 
       {sicHelpOpen && <SicHelpModal onClose={() => setSicHelpOpen(false)} />}

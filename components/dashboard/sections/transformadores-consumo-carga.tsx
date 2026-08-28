@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { Loader2, CheckCircle2, Eraser, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { markUpdated } from "@/lib/notificaciones";
 import {
   POT_CONSUMO,
   SECTORES,
@@ -163,6 +164,10 @@ export function TransformadoresConsumoCargaSection() {
         );
       if (error) throw error;
       toast.success(`Consumo de ${etiquetaMes(mes)} guardado`, { duration: 1500 });
+      // Alimenta el recordatorio de carga (ver lib/notificaciones.ts). No debe
+      // romper el guardado si falla: el dato ya quedó en la base.
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) await markUpdated("transformadores-consumo", "Consumo de transformadores", user.id).catch(() => {});
       importadoRef.current = null;
       setExiste(true);
       setDirty(false);
