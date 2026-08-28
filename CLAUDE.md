@@ -138,9 +138,35 @@ todo cada vez).
 2. Llamar a `markUpdated(key, nombre, userId)` con **la misma clave** desde el
    guardado de esa sección. Sin esto el recordatorio nunca se entera.
 
-### Agregar un tipo de alarma nuevo (partes 2-4)
+### Alarmas de control de servicios (tipo `servicios`)
+Una regla por usuario con los **cuatro umbrales** configurables: vencimiento
+crítico / aviso (en meses) y saldo crítico / aviso (en % restante). Defaults
+3 / 4 / 30% / 40% — los valores que antes estaban hardcodeados.
+
+⚠ Los umbrales de saldo son **cuánto QUEDA**, no cuánto se consumió: salta
+cuando `saldo_linea / cantidad` cae por debajo del porcentaje.
+
+⚠ `servicios-resumen.tsx` lee los MISMOS umbrales (`reglaServicios`). Si esa
+pantalla volviera a usar valores fijos, la campana avisaría por un criterio y
+la tabla mostraría otro.
+
+La campana emite **un resumen por umbral**, no una notificación por línea (son
+miles). La huella es la cantidad de líneas afectadas.
+
+### Sonido al comienzo del día
+`lib/notificacionSonido.ts` — suena una vez por día, solo si hay pendientes.
+Tono sintetizado con WebAudio (sin archivo binario). La preferencia va a
+`localStorage`, no a la base: es de ese **dispositivo**, no de la cuenta.
+
+⚠ Los navegadores bloquean el audio hasta que hay una interacción del usuario.
+Si el `AudioContext` arranca `suspended`, el sonido queda **armado** y se
+dispara con el primer click o tecla. Sin eso no se escucharía nunca y no
+habría forma de saber por qué.
+
+### Agregar un tipo de alarma nuevo (partes 3-4)
 Escribir su evaluador y sumarlo a `EVALUADORES` en `lib/notificaciones.ts`.
-Campana, descartes y RLS quedan enganchados solos.
+Campana, descartes y RLS quedan enganchados solos. Si el evaluador necesita
+datos nuevos, sumarlos a `ContextoEval` y traerlos en la campana.
 
 ---
 

@@ -163,6 +163,7 @@ export async function descartar(userId: string, clave: string, huella: string): 
 /** Todo lo que los evaluadores pueden necesitar. Cada uno usa lo suyo. */
 export interface ContextoEval {
   ultimasCargas: UltimaCarga[];
+  servicios:     FilaServicio[];
   ahora:         Date;
 }
 
@@ -227,13 +228,177 @@ const evaluarCargas: Evaluador = (reglas, ctx) => {
   });
 };
 
+// ─── Control de servicios ───────────────────────────────────────────────────
+
+/** Lo que el evaluador necesita de una línea de `seguimiento`. */
+export interface FilaServicio {
+  op:            number | string | null;
+  zona:          string | null;
+  descripcion:   string | null;
+  fecha_pactada: string | null;
+  cantidad:      number | null;
+  saldo_linea:   number | null;
+}
+
 /**
- * Un evaluador por tipo. Las partes 2-4 suman su entrada acá y quedan
+ * Los cuatro umbrales, todos configurables.
+ *
+ * ⚠ Los de saldo son «cuánto QUEDA», no «cuánto se consumió»: la alerta salta
+ *   cuando `saldo/cantidad` cae por debajo del porcentaje. Los valores viejos
+ *   hardcodeados eran 30% (crítico) y 40% (aviso) — se mantienen de default
+ *   para que nadie note un cambio de criterio al migrar.
+ */
+export interface ConfigServicios {
+  vence_critico_meses: number;   // default 3
+  vence_aviso_meses:   number;   // default 4
+  saldo_critico_pct:   number;   // default 30
+  saldo_aviso_pct:     number;   // default 40
+}
+
+export const SERVICIOS_DEFAULT: ConfigServicios = {
+  vence_critico_meses: 3,
+  vence_aviso_meses:   4,
+  saldo_critico_pct:   30,
+  saldo_aviso_pct:     40,
+};
+
+/** Mes calendario, no 30 días fijos. El código viejo usaba `3 * 30 * MS_DAY`,
+ *  que corre la fecha ~5 días por año — acá se suma el mes de verdad. */
+const sumarMeses = (d: Date, meses: number): Date => {
+  const r = new Date(d);
+  r.setMonth(r.getMonth() + meses);
+  return r;
+};
+
+/**
+ * Alertas de control de servicios. Se resumen por umbral en vez de emitir una
+ * notificación por línea: hay miles de líneas y la campana quedaría inusable.
+ * El detalle sigue estando en la sección, que es donde se trabaja.
+ *
+ * La huella es la CANTIDAD de líneas afectadas: mientras el número no se mueva
+ * el descarte aguanta; si aparece una línea más (o se resuelve una), vuelve a
+ * avisar. Deliberadamente no incluye qué líneas son — si no, cualquier cambio
+ * de zona o descripción reabriría el aviso sin que haya nada nuevo que hacer.
+ */
+const evaluarServicios: Evaluador = (reglas, ctx) => {
+  const filas = ctx.servicios;
+  if (!filas.length) return [];
+
+  return reglas.flatMap((r) => {
+    const cfg = { ...SERVICIOS_DEFAULT, ...(r.config as unknown as Partial<ConfigServicios>) };
+    const hoy = ctx.ahora;
+
+    const limiteCritico = sumarMeses(hoy, cfg.vence_critico_meses);
+    const limiteAviso   = sumarMeses(hoy, cfg.vence_aviso_meses);
+
+    // Una línea entra en UN solo balde por eje, el más grave: si vence en 2
+    // meses no tiene sentido contarla también en «vence dentro de 4».
+    let venceCritico = 0, venceAviso = 0, saldoCritico = 0, saldoAviso = 0;
+
+    for (const f of filas) {
+      const pactada = f.fecha_pactada ? new Date(String(f.fecha_pactada)) : null;
+      if (pactada && !Number.isNaN(pactada.getTime()) && pactada >= hoy) {
+        if      (pactada <= limiteCritico) venceCritico++;
+        else if (pactada <= limiteAviso)   venceAviso++;
+      }
+
+      const cant  = Number(f.cantidad);
+      const saldo = Number(f.saldo_linea);
+      if (cant > 0) {
+        const pct = (saldo / cant) * 100;
+        if      (pct <= cfg.saldo_critico_pct) saldoCritico++;
+        else if (pct <= cfg.saldo_aviso_pct)   saldoAviso++;
+      }
+    }
+
+    const n: Notificacion[] = [];
+    const push = (
+      sufijo: string, cant: number, titulo: string, detalle: string, severidad: Severidad
+    ) => {
+      if (cant > 0) {
+        n.push({
+          clave: `servicios:${sufijo}`, huella: String(cant), tipo: "servicios" as const,
+          titulo, detalle, severidad, seccion: "servicios-resumen",
+        });
+      }
+    };
+
+    const lineas = (c: number) => (c === 1 ? "1 línea" : `${c} líneas`);
+
+    push("vence-critico", venceCritico,
+      `Vencen dentro de ${cfg.vence_critico_meses} ${cfg.vence_critico_meses === 1 ? "mes" : "meses"}`,
+      `${lineas(venceCritico)} en control de servicios`, "alta");
+    push("vence-aviso", venceAviso,
+      `Vencen dentro de ${cfg.vence_aviso_meses} ${cfg.vence_aviso_meses === 1 ? "mes" : "meses"}`,
+      `${lineas(venceAviso)} en control de servicios`, "media");
+    push("saldo-critico", saldoCritico,
+      `Saldo por debajo del ${cfg.saldo_critico_pct}%`,
+      `${lineas(saldoCritico)} casi sin saldo`, "alta");
+    push("saldo-aviso", saldoAviso,
+      `Saldo por debajo del ${cfg.saldo_aviso_pct}%`,
+      `${lineas(saldoAviso)} con saldo bajo`, "media");
+
+    return n;
+  });
+};
+
+/** Lee `seguimiento` para el evaluador de servicios. Solo las columnas que
+ *  usa: la tabla tiene decenas y son miles de filas. */
+export async function fetchServicios(): Promise<FilaServicio[]> {
+  const { data, error } = await supabase
+    .from("seguimiento")
+    .select("op, zona, descripcion_matricula, fecha_pactada, cantidad, saldo_linea");
+  if (error) throw sbErr(error);
+
+  type Row = Omit<FilaServicio, "descripcion"> & { descripcion_matricula: string | null };
+  return ((data ?? []) as Row[]).map((r) => ({
+    op: r.op, zona: r.zona, descripcion: r.descripcion_matricula,
+    fecha_pactada: r.fecha_pactada, cantidad: r.cantidad, saldo_linea: r.saldo_linea,
+  }));
+}
+
+/** Crea o actualiza la regla de servicios del usuario (hay una sola por
+ *  usuario: los cuatro umbrales viven juntos en la misma config). */
+export async function guardarReglaServicios(
+  userId: string, cfg: ConfigServicios, activa: boolean
+): Promise<void> {
+  const existente = await supabase
+    .from("notif_reglas")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("tipo", "servicios")
+    .maybeSingle();
+
+  const fila = {
+    user_id: userId, tipo: "servicios" as const,
+    config: cfg as unknown as Record<string, unknown>,
+    activa, updated_at: new Date().toISOString(),
+  };
+
+  const { error } = existente.data?.id
+    ? await supabase.from("notif_reglas").update(fila).eq("id", existente.data.id)
+    : await supabase.from("notif_reglas").insert(fila);
+  if (error) throw sbErr(error);
+}
+
+/** La regla de servicios del usuario, o los defaults si todavía no la creó. */
+export function reglaServicios(reglas: Regla[]): ConfigServicios & { activa: boolean } {
+  const r = reglas.find((x) => x.tipo === "servicios");
+  return {
+    ...SERVICIOS_DEFAULT,
+    ...((r?.config ?? {}) as Partial<ConfigServicios>),
+    activa: r?.activa ?? false,
+  };
+}
+
+/**
+ * Un evaluador por tipo. Las partes 3-4 suman su entrada acá y quedan
  * enganchadas al resto del sistema (campana, descartes, RLS) sin tocar nada
  * más de este archivo.
  */
 const EVALUADORES: Partial<Record<TipoRegla, Evaluador>> = {
-  carga: evaluarCargas,
+  carga:     evaluarCargas,
+  servicios: evaluarServicios,
 };
 
 /**

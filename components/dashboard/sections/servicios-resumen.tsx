@@ -20,6 +20,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { fetchReglas, reglaServicios, SERVICIOS_DEFAULT, type ConfigServicios } from "@/lib/notificaciones";
 import { toast } from "sonner";
 import {
   getColumnLabels,
@@ -35,7 +36,11 @@ const LABELS_SCOPE = "servicios-resumen";
 
 type Alerta = {
   id: string;
-  tipo: "Vencimiento 3M" | "Vencimiento 4M" | "Consumo 30%" | "Consumo 40%";
+  // `tipo` es la CLASE de alerta; el texto que se muestra va en `etiqueta`.
+  // Antes `tipo` era un literal con el umbral adentro ("Vencimiento 3M"), lo
+  // que dejaba de compilar apenas los umbrales pasaron a ser configurables.
+  tipo: "vence" | "saldo";
+  etiqueta: string;
   op: number;
   zona: string;
   descripcion: string;
@@ -190,10 +195,18 @@ export function ServiciosResumenSection() {
   const [tabs, setTabs]                   = useState<BuscadorTab[]>([]);
   const [sincronizando, setSincronizando] = useState(false);
 
+  // Umbrales de alerta del usuario. Son los MISMOS que usa la campana (ver
+  // lib/notificaciones.ts): si esta pantalla usara los valores fijos viejos,
+  // la campana avisaría por un criterio y la tabla mostraría otro.
+  const [umbrales, setUmbrales] = useState<ConfigServicios>(SERVICIOS_DEFAULT);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) return;
       fetchTabs(data.user.id).then(setTabs).catch(() => { /* sin pestañas, el botón queda deshabilitado */ });
+      fetchReglas(data.user.id)
+        .then((rs) => { const { activa: _a, ...cfg } = reglaServicios(rs); setUmbrales(cfg); })
+        .catch(() => { /* sin config propia, quedan los defaults */ });
     });
   }, []);
 
@@ -522,6 +535,11 @@ export function ServiciosResumenSection() {
   // Alertas recientes (por vencer / alto consumo) sobre el universo base.
   const alertas = useMemo(() => {
     const today = new Date();
+    // Mes calendario, no 30 días fijos: `3 * 30` corría la fecha ~5 días por
+    // año y no coincidía con lo que evalúa la campana.
+    const enMeses = (m: number) => { const d = new Date(today); d.setMonth(d.getMonth() + m); return d; };
+    const limiteCritico = enMeses(umbrales.vence_critico_meses);
+    const limiteAviso   = enMeses(umbrales.vence_aviso_meses);
     const alertasGen: Alerta[] = [];
     const alertIds = new Set<string>();
     for (const row of baseRows) {
@@ -534,25 +552,25 @@ export function ServiciosResumenSection() {
       const razon = cantidad > 0 ? saldo / cantidad : 1;
       const alertId = `${op}-${zona}`;
 
-      if (fecha_pactada && fecha_pactada >= today && fecha_pactada.getTime() - today.getTime() <= 3 * 30 * MS_DAY) {
-        const id = `${alertId}-3m`;
-        if (!alertIds.has(id)) { alertasGen.push({ id, tipo: "Vencimiento 3M", op, zona, descripcion, fecha: fecha_pactada.toISOString().split("T")[0], severity: "high" }); alertIds.add(id); }
-      } else if (fecha_pactada && fecha_pactada >= today && fecha_pactada.getTime() - today.getTime() <= 4 * 30 * MS_DAY) {
-        const id = `${alertId}-4m`;
-        if (!alertIds.has(id)) { alertasGen.push({ id, tipo: "Vencimiento 4M", op, zona, descripcion, fecha: fecha_pactada.toISOString().split("T")[0], severity: "medium" }); alertIds.add(id); }
+      if (fecha_pactada && fecha_pactada >= today && fecha_pactada <= limiteCritico) {
+        const id = `${alertId}-vc`;
+        if (!alertIds.has(id)) { alertasGen.push({ id, tipo: "vence", etiqueta: `Vence en ${umbrales.vence_critico_meses} ${umbrales.vence_critico_meses === 1 ? "mes" : "meses"}`, op, zona, descripcion, fecha: fecha_pactada.toISOString().split("T")[0], severity: "high" }); alertIds.add(id); }
+      } else if (fecha_pactada && fecha_pactada >= today && fecha_pactada <= limiteAviso) {
+        const id = `${alertId}-va`;
+        if (!alertIds.has(id)) { alertasGen.push({ id, tipo: "vence", etiqueta: `Vence en ${umbrales.vence_aviso_meses} ${umbrales.vence_aviso_meses === 1 ? "mes" : "meses"}`, op, zona, descripcion, fecha: fecha_pactada.toISOString().split("T")[0], severity: "medium" }); alertIds.add(id); }
       }
 
-      if (cantidad > 0 && razon <= 0.3) {
-        const id = `${alertId}-30p`;
-        if (!alertIds.has(id)) { alertasGen.push({ id, tipo: "Consumo 30%", op, zona, descripcion, fecha: today.toISOString().split("T")[0], severity: "high" }); alertIds.add(id); }
-      } else if (cantidad > 0 && razon <= 0.4) {
-        const id = `${alertId}-40p`;
-        if (!alertIds.has(id)) { alertasGen.push({ id, tipo: "Consumo 40%", op, zona, descripcion, fecha: today.toISOString().split("T")[0], severity: "medium" }); alertIds.add(id); }
+      if (cantidad > 0 && razon * 100 <= umbrales.saldo_critico_pct) {
+        const id = `${alertId}-sc`;
+        if (!alertIds.has(id)) { alertasGen.push({ id, tipo: "saldo", etiqueta: `Saldo ≤${umbrales.saldo_critico_pct}%`, op, zona, descripcion, fecha: today.toISOString().split("T")[0], severity: "high" }); alertIds.add(id); }
+      } else if (cantidad > 0 && razon * 100 <= umbrales.saldo_aviso_pct) {
+        const id = `${alertId}-sa`;
+        if (!alertIds.has(id)) { alertasGen.push({ id, tipo: "saldo", etiqueta: `Saldo ≤${umbrales.saldo_aviso_pct}%`, op, zona, descripcion, fecha: today.toISOString().split("T")[0], severity: "medium" }); alertIds.add(id); }
       }
     }
     alertasGen.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
     return alertasGen.slice(0, 10);
-  }, [baseRows]);
+  }, [baseRows, umbrales]);
 
   const cycleVencer  = () => { const i = CYCLE_VENCER.indexOf(filtroVencer);   setFiltroVencer(CYCLE_VENCER[(i + 1) % CYCLE_VENCER.length]);   };
   const cycleConsumo = () => { const i = CYCLE_CONSUMO.indexOf(filtroConsumo); setFiltroConsumo(CYCLE_CONSUMO[(i + 1) % CYCLE_CONSUMO.length]); };
@@ -1101,9 +1119,7 @@ export function ServiciosResumenSection() {
                   <div>
                     <p className="text-sm text-foreground truncate max-w-[700px]">
                       <span className="font-bold">OP {alerta.op}</span>
-                      <span className="font-bold"> · {alerta.tipo === "Vencimiento 3M" ? "Vence en 3 meses" :
-                       alerta.tipo === "Vencimiento 4M" ? "Vence en 4 meses" :
-                       alerta.tipo === "Consumo 30%"    ? "Consumo ≤30%"     : "Consumo ≤40%"}</span>
+                      <span className="font-bold"> · {alerta.etiqueta}</span>
                       {alerta.descripcion && (
                         <span className="font-normal text-muted-foreground"> — {alerta.descripcion.length > 60 ? alerta.descripcion.slice(0, 60) + "…" : alerta.descripcion}</span>
                       )}

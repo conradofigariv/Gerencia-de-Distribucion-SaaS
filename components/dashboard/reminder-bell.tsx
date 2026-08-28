@@ -4,9 +4,10 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { Bell, X, RefreshCw, Cake, Settings2, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import {
-  fetchReglas, fetchUltimasCargas, fetchDescartes, descartar, evaluar,
+  fetchReglas, fetchUltimasCargas, fetchDescartes, fetchServicios, descartar, evaluar,
   type Notificacion,
 } from "@/lib/notificaciones";
+import { avisarInicioDelDia } from "@/lib/notificacionSonido";
 import { fetchUpcomingBirthdays, birthdayLabel, type BirthdayNotice } from "@/lib/birthdays";
 import { DialogRecordatorios } from "@/components/dashboard/dialog-recordatorios";
 
@@ -37,10 +38,11 @@ export function ReminderBell() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [reglasRes, cargasRes, descartesRes, bdayRes] = await Promise.allSettled([
+    const [reglasRes, cargasRes, descartesRes, serviciosRes, bdayRes] = await Promise.allSettled([
       userId ? fetchReglas(userId)    : Promise.resolve([]),
       fetchUltimasCargas(),
       userId ? fetchDescartes(userId) : Promise.resolve([]),
+      fetchServicios(),
       fetchUpcomingBirthdays(BIRTHDAY_WINDOW_DAYS),
     ]);
 
@@ -49,10 +51,18 @@ export function ReminderBell() {
     const reglas    = reglasRes.status    === "fulfilled" ? reglasRes.value    : [];
     const cargas    = cargasRes.status    === "fulfilled" ? cargasRes.value    : [];
     const descartes = descartesRes.status === "fulfilled" ? descartesRes.value : [];
+    const servicios = serviciosRes.status === "fulfilled" ? serviciosRes.value : [];
 
-    setNotifs(evaluar(reglas, descartes, { ultimasCargas: cargas, ahora: new Date() }));
+    const pendientes = evaluar(reglas, descartes, {
+      ultimasCargas: cargas, servicios, ahora: new Date(),
+    });
+    setNotifs(pendientes);
     setBirthdays(bdayRes.status === "fulfilled" ? bdayRes.value : []);
     setLoading(false);
+
+    // Aviso sonoro del comienzo del día: una sola vez por día y solo si hay
+    // algo pendiente (ver lib/notificacionSonido.ts).
+    avisarInicioDelDia(pendientes.length > 0);
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);
