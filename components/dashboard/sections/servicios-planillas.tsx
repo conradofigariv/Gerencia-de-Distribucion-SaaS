@@ -114,7 +114,9 @@ const REMINDER_DEFS = [
   { key: "planillas-TRANSACCIONES", planilla: "TRANSACCIONES" as PlanillaType, label: "TRANSACCIONES", name: "TRANSACCIONES — Log de movimientos", descripcion: "Log de movimientos (Recibir/Aceptar/Entregar/devoluciones)", accentClass: "text-orange-400" },
 ] as const;
 
-// ─── Ayuda: cómo exportar las SICs desde SIEPEC ─────────────────────────────
+// ─── Ayuda: cómo exportar cada planilla desde SIEPEC ────────────────────────
+// Un solo modal genérico (HelpModal) reutilizado por cada planilla que tenga
+// su propio instructivo — evita duplicar el marcado por cada una.
 
 const SIC_HELP_STEPS: { n: number; text: ReactNode }[] = [
   { n: 1, text: <>Entrá a <strong>SIEPEC</strong> y andá a <strong>Siga → Compras → Solicitante</strong>.</> },
@@ -124,7 +126,25 @@ const SIC_HELP_STEPS: { n: number; text: ReactNode }[] = [
   { n: 5, text: <>Andá a <strong>Archivo → Exportar</strong> para descargar el Excel.</> },
 ];
 
-function SicHelpModal({ onClose }: { onClose: () => void }) {
+// Instructivo original: "Instructivo para Exportar Transacciones de SIEPEC".
+const TRANSACCIONES_HELP_STEPS: { n: number; text: ReactNode }[] = [
+  { n: 1, text: <>Entrá a <strong>SIEPEC</strong> y andá a <strong>Siga → Compras → Recepción e Inspección → Resumen de Transacción de Recepción</strong>.</> },
+  { n: 2, text: <>En la ventana que se abre, seleccioná la pestaña <strong>«Zona A»</strong> y tocá <strong>Aceptar</strong>.</> },
+  { n: 3, text: <>Elegí <strong>«Detalle de Transacción»</strong>, cargá el rango de fechas, tildá <strong>«Transacciones»</strong> y tocá <strong>«Encontrar»</strong>.</> },
+  { n: 4, text: <>Andá a <strong>Archivo → Exportar</strong>.</> },
+  { n: 5, text: <>Elegí <strong>«Continuar hasta el final»</strong> y esperá — puede tardar varios minutos.</> },
+];
+
+function HelpModal({
+  titulo, intro, steps, nota, onClose,
+}: {
+  titulo: string;
+  intro:  ReactNode;
+  steps:  { n: number; text: ReactNode }[];
+  nota?:  ReactNode;
+  onClose: () => void;
+}) {
+  const ultimo = steps.length + 1;
   return createPortal(
     <div
       style={{ position: "fixed", inset: 0, zIndex: 9000, background: "oklch(0 0 0 / 0.65)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}
@@ -139,7 +159,7 @@ function SicHelpModal({ onClose }: { onClose: () => void }) {
             <div style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 8, background: "color-mix(in oklab, var(--accent-emerald-deep) 35%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 45%, transparent)", color: "var(--accent-green)" }}>
               <HelpCircle className="w-4 h-4" />
             </div>
-            <span style={{ fontSize: 16, fontWeight: 600, color: "var(--foreground)", letterSpacing: -0.3 }}>Cómo exportar las SICs</span>
+            <span style={{ fontSize: 16, fontWeight: 600, color: "var(--foreground)", letterSpacing: -0.3 }}>{titulo}</span>
           </div>
           <button onClick={onClose} style={{ display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 7, background: "transparent", border: "1px solid oklch(1 0 0 / 0.08)", color: "oklch(0.60 0 0)", cursor: "pointer", transition: "color .15s, background .15s" }}
             onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.90 0 0)"; (e.currentTarget as HTMLButtonElement).style.background = "oklch(0.22 0.005 270)"; }}
@@ -150,28 +170,30 @@ function SicHelpModal({ onClose }: { onClose: () => void }) {
 
         <div style={{ flex: 1, overflowY: "auto", padding: "22px 24px" }}>
           <p style={{ fontSize: 13.5, color: "oklch(0.72 0 0)", lineHeight: 1.6, marginBottom: 16 }}>
-            Seguí estos pasos en <strong>SIEPEC</strong> para descargar el Excel de SICs con las columnas correctas (Artículo, Línea, Cantidad y Número Pedido incluidos).
+            {intro}
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {SIC_HELP_STEPS.map(s => (
+            {steps.map(s => (
               <div key={s.n} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
                 <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 999, background: "#a78bfa", color: "oklch(0.12 0 0)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{s.n}</span>
                 <span style={{ fontSize: 13.5, color: "oklch(0.85 0 0)", lineHeight: 1.55, paddingTop: 1 }}>{s.text}</span>
               </div>
             ))}
             <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 999, background: "var(--accent-green)", color: "oklch(0.12 0 0)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>8</span>
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 999, background: "var(--accent-green)", color: "oklch(0.12 0 0)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{ultimo}</span>
               <span style={{ fontSize: 13.5, color: "oklch(0.85 0 0)", lineHeight: 1.55, paddingTop: 1 }}>
                 Volvé acá y subí ese archivo <strong>.xlsx</strong> en esta tarjeta.
               </span>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 10, padding: "10px 14px", borderRadius: 9, background: "color-mix(in oklab, var(--accent-emerald-deep) 12%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 22%, transparent)", marginTop: 18 }}>
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--accent-green)" }} />
-            <span style={{ fontSize: 12.5, color: "oklch(0.78 0 0)", lineHeight: 1.55 }}>
-              Si el archivo exportado no trae la columna <strong>«Número Pedido»</strong>, el sistema no va a poder cruzar las SICs con la OP — es señal de que se exportó otro reporte (por ejemplo, uno de cabeceras) en vez del detalle por línea.
-            </span>
-          </div>
+          {nota && (
+            <div style={{ display: "flex", gap: 10, padding: "10px 14px", borderRadius: 9, background: "color-mix(in oklab, var(--accent-emerald-deep) 12%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 22%, transparent)", marginTop: 18 }}>
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--accent-green)" }} />
+              <span style={{ fontSize: 12.5, color: "oklch(0.78 0 0)", lineHeight: 1.55 }}>
+                {nota}
+              </span>
+            </div>
+          )}
         </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", padding: "14px 24px", borderTop: "1px solid var(--hairline)", flexShrink: 0 }}>
@@ -313,6 +335,7 @@ export function ServiciosPlanillasSection() {
   const [sicFile, setSicFile] = useState<File | null>(null);
   // Ayuda: cómo exportar las SICs desde SIEPEC.
   const [sicHelpOpen, setSicHelpOpen] = useState(false);
+  const [txHelpOpen,  setTxHelpOpen]  = useState(false);
   // Archivo de MATRICULAS pendiente de confirmar el modo (abre el diálogo).
   const [matFile, setMatFile] = useState<File | null>(null);
 
@@ -699,7 +722,7 @@ export function ServiciosPlanillasSection() {
         <PlanillaCard tipo="OP"            label="OP"            descripcion="Planilla «Envíos»"       accentClass="text-blue-400"    state={states.OP}            onUpload={f => handleUpload("OP",            f)} onClear={() => handleClear("OP")}            />
         <PlanillaCard tipo="SIC"           label="SIC"           descripcion="Solicitudes internas de compra" accentClass="text-purple-400"  state={states.SIC}           onUpload={f => handleUpload("SIC",           f)} onClear={() => handleClear("SIC")}           onHelp={() => setSicHelpOpen(true)} />
         <PlanillaCard tipo="MATRICULAS"    label="MATRICULAS"    descripcion="Catálogo de materiales"   accentClass="text-emerald-400" state={states.MATRICULAS}    onUpload={f => handleUpload("MATRICULAS",    f)} onClear={() => handleClear("MATRICULAS")}    />
-        <PlanillaCard tipo="TRANSACCIONES" label="TRANSACCIONES" descripcion="Log de movimientos"       accentClass="text-orange-400"  state={states.TRANSACCIONES} onUpload={f => handleUpload("TRANSACCIONES", f)} onClear={() => handleClear("TRANSACCIONES")} />
+        <PlanillaCard tipo="TRANSACCIONES" label="TRANSACCIONES" descripcion="Log de movimientos"       accentClass="text-orange-400"  state={states.TRANSACCIONES} onUpload={f => handleUpload("TRANSACCIONES", f)} onClear={() => handleClear("TRANSACCIONES")} onHelp={() => setTxHelpOpen(true)} />
       </div>
 
       {/* Diálogo Sobreescribir / Actualizar al subir la planilla de SICs */}
@@ -793,7 +816,24 @@ export function ServiciosPlanillasSection() {
         <DialogRecordatorios userId={userId} onClose={() => setConfigOpen(false)} onGuardado={() => {}} />
       )}
 
-      {sicHelpOpen && <SicHelpModal onClose={() => setSicHelpOpen(false)} />}
+      {sicHelpOpen && (
+        <HelpModal
+          titulo="Cómo exportar las SICs"
+          intro={<>Seguí estos pasos en <strong>SIEPEC</strong> para descargar el Excel de SICs con las columnas correctas (Artículo, Línea, Cantidad y Número Pedido incluidos).</>}
+          steps={SIC_HELP_STEPS}
+          nota={<>Si el archivo exportado no trae la columna <strong>«Número Pedido»</strong>, el sistema no va a poder cruzar las SICs con la OP — es señal de que se exportó otro reporte (por ejemplo, uno de cabeceras) en vez del detalle por línea.</>}
+          onClose={() => setSicHelpOpen(false)}
+        />
+      )}
+      {txHelpOpen && (
+        <HelpModal
+          titulo="Cómo exportar las Transacciones"
+          intro={<>Seguí estos pasos en <strong>SIEPEC</strong> para descargar el detalle de transacciones de recepción (Recibir / Aceptar / Entregar y devoluciones).</>}
+          steps={TRANSACCIONES_HELP_STEPS}
+          nota={<>El export puede tardar varios minutos en generarse — es un reporte pesado, no hace falta reintentar si tarda.</>}
+          onClose={() => setTxHelpOpen(false)}
+        />
+      )}
     </div>
   );
 }
