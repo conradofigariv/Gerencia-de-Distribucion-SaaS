@@ -237,7 +237,7 @@ function PlanillaCard({
   const busy    = state.loading || state.uploading;
 
   return (
-    <div className="bg-card border border-border rounded-xl p-5 flex flex-col gap-4">
+    <div className="bg-card border border-border rounded-xl p-5 flex flex-col gap-4 h-full">
       <div className="flex items-start justify-between gap-2">
         {/* min-h reserva el alto de la etiqueta + 2 líneas de descripción
             (18px + 40px): sin esto, una descripción corta ("Planilla
@@ -293,29 +293,33 @@ function PlanillaCard({
         )}
       </div>
 
+      {/* flex-1: se queda con todo el alto extra que le sobra a la tarjeta
+          (ver el flex-1 del grid más arriba), en vez de quedar como una
+          franja fija con espacio vacío debajo hasta el botón «Limpiar tabla». */}
       <div
         onClick={() => !busy && ref.current?.click()}
         onDragOver={e => { e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}
         onDrop={handleDrop}
         className={cn(
-          "border-2 border-dashed rounded-lg p-4 text-center transition-all duration-200",
+          "flex-1 min-h-[120px] flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-4 text-center transition-all duration-200",
           busy  ? "border-accent/30 bg-accent/5 cursor-default"
                : drag ? "border-accent bg-accent/8 cursor-pointer"
                : "border-border hover:border-muted-foreground/40 hover:bg-secondary/20 cursor-pointer"
         )}
       >
         {state.uploading ? (
-          <div className="flex flex-col items-center gap-1.5">
-            <Loader2 className="w-5 h-5 text-accent animate-spin" />
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="w-7 h-7 text-accent animate-spin" />
             <p className="text-xs text-muted-foreground">Subiendo...</p>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-1">
-            <UploadCloud className="w-5 h-5 text-muted-foreground" />
+          <div className="flex flex-col items-center gap-2">
+            <UploadCloud className="w-7 h-7 text-muted-foreground" />
             <p className="text-xs text-muted-foreground">
               {hasData ? "Cargar" : "Subir archivo"} <span className="font-medium text-foreground">.xlsx</span>
             </p>
+            <p className="text-[11px] text-muted-foreground/70">o arrastrá el archivo acá</p>
           </div>
         )}
       </div>
@@ -699,7 +703,11 @@ export function ServiciosPlanillasSection() {
   const allReady  = states.OP.count > 0 && states.SIC.count > 0 && states.MATRICULAS.count > 0 && states.TRANSACCIONES.count > 0;
 
   return (
-    <div className="space-y-6">
+    // min-h-full + flex-col: la sección ocupa todo el alto disponible del
+    // <main> (ver app/page.tsx) en vez de solo lo que ocupa su contenido, así
+    // el grid de abajo (flex-1) puede estirarse hasta el fondo de la pantalla
+    // en vez de quedar pegado arriba con un hueco negro debajo.
+    <div className="space-y-6 min-h-full flex flex-col">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">Subí las planillas base — quedan persistidas en Supabase.</p>
         <div className="flex items-center gap-2">
@@ -729,7 +737,11 @@ export function ServiciosPlanillasSection() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+      {/* flex-1: con una sola fila, un grid se estira solo para llenar el
+          alto sobrante del contenedor (align-content:normal ≡ stretch acá) —
+          y como los items quedan align-items:stretch por default, cada
+          tarjeta hereda ese alto extra. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 flex-1">
         <PlanillaCard tipo="OP"            label="OP"            descripcion="Planilla «Envíos»"       accentClass="text-blue-400"    state={states.OP}            onUpload={f => handleUpload("OP",            f)} onClear={() => handleClear("OP")}            />
         <PlanillaCard tipo="SIC"           label="SIC"           descripcion="Solicitudes internas de compra" accentClass="text-purple-400"  state={states.SIC}           onUpload={f => handleUpload("SIC",           f)} onClear={() => handleClear("SIC")}           onHelp={() => setSicHelpOpen(true)} />
         <PlanillaCard tipo="MATRICULAS"    label="MATRICULAS"    descripcion="Catálogo de materiales"   accentClass="text-emerald-400" state={states.MATRICULAS}    onUpload={f => handleUpload("MATRICULAS",    f)} onClear={() => handleClear("MATRICULAS")}    />
