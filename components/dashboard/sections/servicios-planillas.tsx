@@ -239,7 +239,12 @@ function PlanillaCard({
   return (
     <div className="bg-card border border-border rounded-xl p-5 flex flex-col gap-4">
       <div className="flex items-start justify-between gap-2">
-        <div>
+        {/* min-h reserva el alto de 2 líneas de descripción: sin esto, una
+            descripción corta ("Planilla «Envíos»") deja esa tarjeta más baja
+            que una que sí ocupa dos líneas ("Solicitudes internas de
+            compra"), y todo lo de abajo (filas, botón de carga, etc.) queda
+            desalineado entre tarjetas. */}
+        <div className="min-h-[38px]">
           <div className={cn("text-xs font-bold uppercase tracking-widest mb-0.5", accentClass)}>{label}</div>
           <p className="text-sm font-semibold text-foreground">{descripcion}</p>
         </div>
@@ -261,27 +266,32 @@ function PlanillaCard({
         </div>
       </div>
 
-      {state.loading ? (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="w-3.5 h-3.5 animate-spin" />Cargando...
-        </div>
-      ) : hasData ? (
-        <div className="space-y-0.5">
-          <div className="flex items-center gap-2">
-            <Database className="w-3.5 h-3.5 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">{state.count.toLocaleString("es-AR")} filas</span>
+      {/* min-h reserva el alto de las 2 líneas (filas + actualizado): sin
+          esto, una tarjeta sin `uploadedAt` o en otro estado queda más baja
+          que sus vecinas y el resto de la tarjeta (carga, botón) se desalinea. */}
+      <div className="min-h-[38px]">
+        {state.loading ? (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />Cargando...
           </div>
-          {state.uploadedAt && (
-            <p className="text-xs text-muted-foreground pl-5">
-              Actualizado: {new Date(state.uploadedAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <AlertTriangle className="w-3.5 h-3.5 text-warning" />Sin datos en Supabase
-        </div>
-      )}
+        ) : hasData ? (
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <Database className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-sm font-medium text-foreground">{state.count.toLocaleString("es-AR")} filas</span>
+            </div>
+            {state.uploadedAt && (
+              <p className="text-xs text-muted-foreground pl-5">
+                Actualizado: {new Date(state.uploadedAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <AlertTriangle className="w-3.5 h-3.5 text-warning" />Sin datos en Supabase
+          </div>
+        )}
+      </div>
 
       <div
         onClick={() => !busy && ref.current?.click()}
