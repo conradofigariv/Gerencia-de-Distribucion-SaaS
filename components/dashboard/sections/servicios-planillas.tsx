@@ -239,14 +239,14 @@ function PlanillaCard({
   return (
     <div className="bg-card border border-border rounded-xl p-5 flex flex-col gap-4">
       <div className="flex items-start justify-between gap-2">
-        {/* min-h reserva el alto de 2 líneas de descripción: sin esto, una
-            descripción corta ("Planilla «Envíos»") deja esa tarjeta más baja
-            que una que sí ocupa dos líneas ("Solicitudes internas de
-            compra"), y todo lo de abajo (filas, botón de carga, etc.) queda
-            desalineado entre tarjetas. */}
-        <div className="min-h-[38px]">
+        {/* min-h reserva el alto de la etiqueta + 2 líneas de descripción
+            (18px + 40px): sin esto, una descripción corta ("Planilla
+            «Envíos»") deja esa tarjeta más baja que la de SIC, que sí ocupa
+            dos líneas ("Solicitudes internas de compra"), y todo lo de abajo
+            (filas, botón de carga, etc.) queda desalineado entre tarjetas. */}
+        <div className="min-h-[58px]">
           <div className={cn("text-xs font-bold uppercase tracking-widest mb-0.5", accentClass)}>{label}</div>
-          <p className="text-sm font-semibold text-foreground">{descripcion}</p>
+          <p className="text-sm font-semibold text-foreground leading-5">{descripcion}</p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {onHelp && (
