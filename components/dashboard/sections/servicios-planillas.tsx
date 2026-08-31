@@ -121,9 +121,10 @@ const REMINDER_DEFS = [
 const SIC_HELP_STEPS: { n: number; text: ReactNode }[] = [
   { n: 1, text: <>Entrá a <strong>SIEPEC</strong> y andá a <strong>Siga → Compras → Solicitante</strong>.</> },
   { n: 2, text: <>Abrí <strong>Resumen de Solicitudes Internas</strong>.</> },
-  { n: 3, text: <>Seleccioná la pestaña <strong>«Líneas»</strong>.</> },
-  { n: 4, text: <>Abrí la carpetita <strong>SIC (ALL)</strong>.</> },
-  { n: 5, text: <>Andá a <strong>Archivo → Exportar</strong> para descargar el Excel.</> },
+  { n: 3, text: <>Seleccioná la pestaña <strong>«Rango de fechas»</strong> y elegí desde el <strong>01/01/2017</strong> hasta tu fecha actual.</> },
+  { n: 4, text: <>Hacé click a la derecha en <strong>«Envíos»</strong> y luego en <strong>«Encontrar»</strong>.</> },
+  { n: 5, text: <>Cuando se abra la lista, seleccioná la carpetita y elegí <strong>SIC (ALL)</strong>.</> },
+  { n: 6, text: <>Andá a <strong>Archivo → Exportar</strong> para descargar el Excel.</> },
 ];
 
 // Instructivo original: "Instructivo para Exportar Transacciones de SIEPEC".
