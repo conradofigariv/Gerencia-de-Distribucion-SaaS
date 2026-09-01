@@ -3,6 +3,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  DataTablePanel, DataTableScroll, DataTableRoot,
+  DataTableHead, DataTableCell, DataTableRow, DataTableResize,
+} from "@/components/ui/data-table";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -36,19 +40,8 @@ const DEFAULT_WIDTHS: Record<ColKey, number> = {
   articulo: 150, descripcion: 380, udm: 90, tipo: 120, estado: 130,
 };
 const ACCIONES_W = 96;
-
-// ─── Handle para redimensionar columnas ─────────────────────────────────────
-function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
-  return (
-    <div
-      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none group/rh"
-      onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onStart(e.nativeEvent); }}
-      onClick={e => e.stopPropagation()}
-    >
-      <div className="absolute right-0 top-1/4 h-1/2 w-px bg-border group-hover/rh:bg-accent/60 transition-colors" />
-    </div>
-  );
-}
+/** Alto real de una fila, en px — ver el comentario del virtualizador. */
+const ALTO_FILA = 43;
 
 // Separador de campos: tabulador. Combinado con BOM UTF-16LE es el formato
 // que Excel siempre reconoce sin ambigüedad (es lo mismo que genera
@@ -402,11 +395,17 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
   }, [rows]);
 
   // Virtualización
+  //
+  // ⚠ ALTO_FILA tiene que coincidir con lo que la fila mide DE VERDAD, o el
+  //   alto total del scroll queda mal (sobra o falta espacio al final). Sale
+  //   de: 7px + 7px de padding vertical (DataTableCell) + 28px de los botones
+  //   de acción (w-7 h-7, que son lo más alto de la fila) + 1px de borde.
+  //   Si cambia la densidad del shell o el tamaño de esos botones, se ajusta acá.
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: filtered.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 44,
+    estimateSize: () => ALTO_FILA,
     overscan: 14,
   });
 
@@ -460,7 +459,6 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
     toast.success(`${filtered.length.toLocaleString("es-AR")} matrículas exportadas`);
   };
 
-  const thBase = "px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground sticky top-0 z-[2] bg-panel-header border-b border-border";
   const totalWidth = COLS.reduce((s, c) => s + colWidths[c.key], 0) + ACCIONES_W;
   const vItems = virtualizer.getVirtualItems();
   const totalH = virtualizer.getTotalSize();
@@ -529,9 +527,9 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
       )}
 
       {/* Tabla — ocupa todo el alto restante (sin números mágicos internos) */}
-      <div className="rounded-xl border border-border overflow-hidden bg-card flex-1 min-h-0 flex flex-col">
-        <div ref={scrollRef} className="overflow-auto flex-1 min-h-0">
-          <table className="text-sm" style={{ tableLayout: "fixed", width: totalWidth, borderCollapse: "separate", borderSpacing: 0 }}>
+      <DataTablePanel className="flex-1 min-h-0">
+        <DataTableScroll ref={scrollRef}>
+          <DataTableRoot width={totalWidth}>
             <colgroup>
               {COLS.map(c => <col key={c.key} style={{ width: colWidths[c.key] }} />)}
               <col style={{ width: ACCIONES_W }} />
@@ -539,9 +537,10 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
             <thead>
               <tr>
                 {COLS.map(c => (
-                  <th
+                  <DataTableHead
                     key={c.key}
-                    className={cn(thBase, "cursor-pointer select-none hover:text-foreground transition-colors")}
+                    active={sortKey === c.key}
+                    className="cursor-pointer hover:text-foreground"
                     onClick={() => toggleSort(c.key)}
                   >
                     <span className="flex items-center gap-1">
@@ -553,10 +552,10 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
                         : <ChevronUp className="w-3 h-3 shrink-0 opacity-0" />
                       }
                     </span>
-                    <ResizeHandle onStart={e => { resizingRef.current = { col: c.key, startX: e.clientX, startWidth: colWidths[c.key] }; }} />
-                  </th>
+                    <DataTableResize onStart={e => { resizingRef.current = { col: c.key, startX: e.clientX, startWidth: colWidths[c.key] }; }} />
+                  </DataTableHead>
                 ))}
-                <th className={cn(thBase, "text-right")}>Acciones</th>
+                <DataTableHead align="right">Acciones</DataTableHead>
               </tr>
             </thead>
             <tbody>
@@ -581,17 +580,16 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
                   {vItems.map(vi => {
                     const r = filtered[vi.index];
                     const isLast = vi.index === filtered.length - 1;
-                    const border = isLast ? {} : { borderBottom: "1px solid hsl(var(--border))" };
                     return (
-                      <tr key={r.id ?? r.articulo} className="group hover:bg-secondary/40 transition-colors">
-                        <td style={border} className="px-3 py-2.5 font-mono text-xs text-accent-green truncate" title={r.articulo}>{r.articulo}</td>
-                        <td style={border} className="px-3 py-2.5 text-foreground truncate" title={r.descripcion}>
+                      <DataTableRow key={r.id ?? r.articulo}>
+                        <DataTableCell mono last={isLast} className="text-accent-green" title={r.articulo}>{r.articulo}</DataTableCell>
+                        <DataTableCell last={isLast} className="text-foreground" title={r.descripcion}>
                           {r.descripcion || <span className="text-muted-foreground/50">—</span>}
-                        </td>
-                        <td style={border} className="px-3 py-2.5 text-muted-foreground truncate" title={r.unidad_medida}>{r.unidad_medida || "—"}</td>
-                        <td style={border} className="px-3 py-2.5 truncate"><TipoBadge matServ={r.mat_serv} /></td>
-                        <td style={border} className="px-3 py-2.5 text-muted-foreground truncate" title={r.estado}>{r.estado || "—"}</td>
-                        <td style={border} className="px-3 py-2.5">
+                        </DataTableCell>
+                        <DataTableCell last={isLast} className="text-muted-foreground" title={r.unidad_medida}>{r.unidad_medida || "—"}</DataTableCell>
+                        <DataTableCell last={isLast}><TipoBadge matServ={r.mat_serv} /></DataTableCell>
+                        <DataTableCell last={isLast} className="text-muted-foreground" title={r.estado}>{r.estado || "—"}</DataTableCell>
+                        <DataTableCell last={isLast} className="overflow-visible">
                           <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                             <button
                               onClick={() => setModal({ mode: "edit", row: r })}
@@ -608,17 +606,17 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
-                        </td>
-                      </tr>
+                        </DataTableCell>
+                      </DataTableRow>
                     );
                   })}
                   {padBot > 0 && <tr style={{ height: padBot }}><td colSpan={6} style={{ padding: 0, border: "none" }} /></tr>}
                 </>
               )}
             </tbody>
-          </table>
-        </div>
-      </div>
+          </DataTableRoot>
+        </DataTableScroll>
+      </DataTablePanel>
 
       {modal && (
         <MatriculaModal
