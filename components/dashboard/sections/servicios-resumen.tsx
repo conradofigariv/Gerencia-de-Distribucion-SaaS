@@ -194,6 +194,9 @@ export function ServiciosResumenSection() {
   // al costo de que un renombre la deja sin efecto (avisado en el botón).
   const [tabs, setTabs]                   = useState<BuscadorTab[]>([]);
   const [sincronizando, setSincronizando] = useState(false);
+  // Errores de cruce de la última sincronización — ver el comentario en
+  // sincronizarDesdeBuscador. Persisten en pantalla hasta que se descarten.
+  const [erroresCruce, setErroresCruce] = useState<string[]>([]);
 
   // Umbrales de alerta del usuario. Son los MISMOS que usa la campana (ver
   // lib/notificaciones.ts): si esta pantalla usara los valores fijos viejos,
@@ -229,6 +232,13 @@ export function ServiciosResumenSection() {
     try {
       const { escritas, errores, totalEnPestana } = await enviarMarcadasASeguimiento(tabActiva.id);
       await recargarSeguimiento();
+      // Se reemplaza entero, no se acumula: son los errores de ESTA sincronización.
+      // Antes solo se avisaban en un toast que se cierra solo a los 10s y corta
+      // en las primeras 3 — una fila sin fecha pactada/días restantes casi
+      // siempre es esto (la OP salió de la planilla actual), pero el toast se
+      // pierde antes de que alguien lo relacione. Acá queda a la vista hasta
+      // que se descarte a mano o se vuelva a sincronizar.
+      setErroresCruce(errores);
       if (escritas === 0) {
         // Diagnóstico temporal: distingue "la pestaña está vacía" de "tiene
         // filas pero ninguna marcada" — el mensaje genérico de antes daba lo
@@ -741,6 +751,30 @@ export function ServiciosResumenSection() {
           {!loadingData && <> · <span className="text-foreground font-medium">{baseRows.length.toLocaleString("es-AR")}</span> líneas</>}
         </p>
       </div>
+
+      {erroresCruce.length > 0 && (
+        <div className="flex items-start gap-3 rounded-xl border border-accent-amber/30 bg-accent-amber/10 px-4 py-3">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-accent-amber" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground">
+              {erroresCruce.length} fila{erroresCruce.length === 1 ? "" : "s"} no se pudo{erroresCruce.length === 1 ? "" : "n"} cruzar contra la planilla de OP actual
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Por eso les falta fecha pactada / días para vencer — la OP+línea de esa fila ya no está en la última carga de «OP» (se cerró, se recontrató o cambió de línea).
+            </p>
+            <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground max-h-32 overflow-y-auto">
+              {erroresCruce.map((e, i) => <li key={i}>· {e}</li>)}
+            </ul>
+          </div>
+          <button
+            onClick={() => setErroresCruce([])}
+            title="Descartar"
+            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <XCircle className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

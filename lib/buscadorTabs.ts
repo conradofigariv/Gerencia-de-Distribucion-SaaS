@@ -313,7 +313,20 @@ export async function enviarMarcadasASeguimiento(
 
   const { loadCrossMaps, buildSeguimientoRow, num, str } = await import("@/lib/seguimientoBuild");
   const { fetchOpDatos, normOp } = await import("@/lib/opDatos");
-  const [{ opMap, matMap }, opDatos] = await Promise.all([loadCrossMaps(), fetchOpDatos()]);
+  const [{ opMap, matMap }, opDatos, nombresPrevios] = await Promise.all([
+    loadCrossMaps(),
+    fetchOpDatos(),
+    // `nombre_corto` es el ÚNICO campo de `seguimiento` que se carga a mano
+    // en el Resumen y no sale de ninguna fuente del Buscador (a diferencia de
+    // `observacion`, que sí viaja desde la nota de la pestaña). Como esta
+    // función borra y reinserta TODO lo que tiene origen='buscador', sin este
+    // rescate cada «Traer del Buscador» pisaba el nombre corto con null.
+    supabase.from("seguimiento").select("op, linea, matricula, nombre_corto").eq("origen", "buscador"),
+  ]);
+  const nombreCortoPrevio = new Map<string, string>();
+  for (const r of (nombresPrevios.data ?? []) as { op: number; linea: number; matricula: string; nombre_corto: string | null }[]) {
+    if (r.nombre_corto) nombreCortoPrevio.set(`${r.op}|${r.linea}|${r.matricula}`, r.nombre_corto);
+  }
   const today = new Date();
 
   const rows: Record<string, unknown>[] = [];
@@ -347,7 +360,8 @@ export async function enviarMarcadasASeguimiento(
       opMap, matMap, today,
     );
     errores.push(...errors);
-    rows.push({ ...row, origen: "buscador" });
+    const nombreCorto = nombreCortoPrevio.get(`${op}|${row.linea}|${row.matricula}`) ?? null;
+    rows.push({ ...row, origen: "buscador", nombre_corto: nombreCorto });
   }
 
   const { error: errDel } = await supabase.from("seguimiento").delete().eq("origen", "buscador");
