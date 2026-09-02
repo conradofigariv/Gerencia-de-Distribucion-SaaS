@@ -9,7 +9,7 @@ import {
   Plus, X, Check, AlertTriangle, Trash2, Loader2, ShoppingCart, CalendarPlus,
 } from "lucide-react";
 import {
-  listPlanes, createPlan, updatePlan, listItems, agregarItems, updateItem, deleteItem,
+  listPlanes, createPlan, updatePlan, deletePlan, listItems, agregarItems, updateItem, deleteItem,
   calcularItem, totalPlan, incidencia, parseMatriculasPegadas, cruzarContraCatalogo,
   type PlanCompra, type PlanCompraItem, type PlanCompraItemInput, type CruceCatalogo,
 } from "@/lib/planCompras";
@@ -73,8 +73,9 @@ export function PlanDeComprasCargaSection() {
   const [items,    setItems]    = useState<PlanCompraItem[]>([]);
   const [cargando, setCargando] = useState(true);
   const [userId,   setUserId]   = useState<string | null>(null);
-  const [modalPlan,  setModalPlan]  = useState(false);
-  const [modalPegar, setModalPegar] = useState(false);
+  const [modalPlan,   setModalPlan]   = useState(false);
+  const [modalPegar,  setModalPegar]  = useState(false);
+  const [modalBorrar, setModalBorrar] = useState(false);
 
   const plan = useMemo(() => planes.find(p => p.id === planId) ?? null, [planes, planId]);
 
@@ -142,6 +143,23 @@ export function PlanDeComprasCargaSection() {
     }
   }, [items]);
 
+  // Borrar el plan se lleva sus ítems por delante (ON DELETE CASCADE), por eso
+  // pasa siempre por la confirmación de `ModalBorrarPlan`.
+  const borrarPlan = async () => {
+    if (!plan) return;
+    try {
+      await deletePlan(plan.id);
+      toast.success(`Plan «${plan.nombre}» eliminado.`);
+      setModalBorrar(false);
+      setPlanId(null);
+      const ps = await listPlanes();
+      setPlanes(ps);
+      setPlanId(ps[0]?.id ?? null);
+    } catch (e) {
+      toast.error(`No se pudo eliminar: ${(e as Error).message}`);
+    }
+  };
+
   const guardarTC = async (valor: number) => {
     if (!plan || plan.tipo_cambio === valor) return;
     setPlanes(prev => prev.map(p => (p.id === plan.id ? { ...p, tipo_cambio: valor } : p)));
@@ -191,6 +209,15 @@ export function PlanDeComprasCargaSection() {
 
         <div className="flex-1" />
 
+        {plan && (
+          <button
+            onClick={() => setModalBorrar(true)}
+            title="Eliminar este plan y todas sus matrículas"
+            className="h-9 px-3 inline-flex items-center gap-2 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:text-accent-red hover:border-accent-red/40 transition-colors"
+          >
+            <Trash2 className="w-4 h-4" /> Eliminar plan
+          </button>
+        )}
         <button
           onClick={() => setModalPlan(true)}
           className="h-9 px-3 inline-flex items-center gap-2 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-secondary transition-colors"
@@ -281,6 +308,14 @@ export function PlanDeComprasCargaSection() {
           userId={userId}
           onClose={() => setModalPlan(false)}
           onCreado={id => { setModalPlan(false); recargarPlanes(id); }}
+        />
+      )}
+      {modalBorrar && plan && (
+        <ModalBorrarPlan
+          plan={plan}
+          cantidadItems={items.length}
+          onClose={() => setModalBorrar(false)}
+          onConfirmar={borrarPlan}
         />
       )}
       {modalPegar && plan && (
@@ -534,6 +569,83 @@ function ModalNuevoPlan({
             className="h-9 px-4 inline-flex items-center gap-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
           >
             {guardando && <Loader2 className="w-4 h-4 animate-spin" />} Crear plan
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// ─── Modal: borrar plan ─────────────────────────────────────────────────────
+//
+// Pide escribir el año para confirmar. Es deliberado: el borrado se lleva
+// todas las matrículas cargadas del plan y no hay papelera para recuperarlas.
+
+function ModalBorrarPlan({
+  plan, cantidadItems, onClose, onConfirmar,
+}: {
+  plan: PlanCompra;
+  cantidadItems: number;
+  onClose: () => void;
+  onConfirmar: () => Promise<void>;
+}) {
+  const [texto, setTexto] = useState("");
+  const [borrando, setBorrando] = useState(false);
+  const confirmado = texto.trim() === String(plan.anio);
+
+  const borrar = async () => {
+    if (!confirmado) return;
+    setBorrando(true);
+    await onConfirmar();
+    setBorrando(false);
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-popover border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-accent-red" />
+            <span className="text-sm font-semibold text-foreground">Eliminar plan de compras</span>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-foreground">
+            Se va a eliminar <span className="font-semibold">«{plan.nombre}»</span>
+            {cantidadItems > 0 && (
+              <> junto con sus <span className="font-semibold">{fmtNum(cantidadItems)} matrícula{cantidadItems === 1 ? "" : "s"}</span></>
+            )}. Esta acción no se puede deshacer.
+          </p>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">
+              Escribí <span className="font-mono text-foreground">{plan.anio}</span> para confirmar
+            </label>
+            <input
+              autoFocus value={texto}
+              onChange={e => setTexto(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && confirmado) borrar(); }}
+              className={cn(INPUT, "font-mono")}
+              placeholder={String(plan.anio)}
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-border">
+          <button onClick={onClose} className="h-9 px-4 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={borrar} disabled={!confirmado || borrando}
+            className="h-9 px-4 inline-flex items-center gap-2 rounded-lg bg-destructive text-destructive-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+          >
+            {borrando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            Eliminar plan
           </button>
         </div>
       </div>
