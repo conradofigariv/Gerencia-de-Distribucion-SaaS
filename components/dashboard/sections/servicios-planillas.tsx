@@ -69,6 +69,99 @@ const pick = (r: Record<string, unknown>, aliases: string[]): unknown => {
   return null;
 };
 
+/** Un campo que el resto del sistema espera encontrar en la planilla. */
+interface ColReq {
+  /** Nombre a mostrar en el error — el primero de `aliases`. */
+  campo:     string;
+  aliases:   string[];
+  /** Si falta y es requerido, la carga se corta ANTES de tocar la base. */
+  requerido: boolean;
+}
+
+/**
+ * Chequea que las columnas de `ColReq[]` estén en el archivo ANTES de mapear
+ * fila por fila — es lo que faltaba en el incidente de la planilla OP: si
+ * "Cantidad Recibida" o "Fecha Pactada" no están, `pick()` devuelve `null`
+ * para TODAS las filas sin ningún error, y el archivo se termina guardando
+ * igual con esas columnas vacías. El síntoma aparece lejos de la carga (en
+ * Control de Servicios, como saldo=cantidad y fecha pactada en blanco), sin
+ * que nadie se entere de que el archivo era el reporte equivocado.
+ *
+ * Se mira el encabezado UNA vez (todas las filas de `parseFile` comparten el
+ * mismo set de columnas, ver su comentario), no fila por fila.
+ */
+function columnasFaltantes(rows: Record<string, unknown>[], reqs: ColReq[]): ColReq[] {
+  if (!rows.length) return [];
+  const encontradas = new Set(Object.keys(rows[0]).map(normHeader));
+  return reqs.filter(r => r.requerido && !r.aliases.some(a => encontradas.has(normHeader(a))));
+}
+
+/** Arma el mensaje de error con los nombres de columna que faltan. */
+function errorColumnasFaltantes(planilla: string, faltantes: ColReq[]): string {
+  const nombres = faltantes.map(f => `«${f.campo}»`).join(", ");
+  return `${planilla}: falta${faltantes.length === 1 ? "" : "n"} la columna${faltantes.length === 1 ? "" : "s"} ${nombres}. ` +
+    `Este archivo no parece ser el reporte correcto — revisá que sea la planilla de siempre y no otro export.`;
+}
+
+// ─── Columnas requeridas por planilla ───────────────────────────────────────
+// Los alias tienen que ser un espejo de los que usa cada `pick(...)` de más
+// abajo — si se agrega un alias nuevo a un campo requerido, sumarlo acá
+// también, o la validación puede cortar una carga que en realidad es válida.
+
+const REQ_OP: ColReq[] = [
+  { campo: "Número",            aliases: ["Número", "Numero"],                          requerido: true },
+  { campo: "Línea",              aliases: ["Línea", "Linea"],                            requerido: true },
+  { campo: "Artículo",           aliases: ["Artículo", "Articulo"],                      requerido: true },
+  { campo: "Cantidad",           aliases: ["Cantidad"],                                  requerido: true },
+  { campo: "Cantidad Recibida",  aliases: ["Cantidad Recibida", "Cant. Recibida", "Cant Recibida", "Recibida"], requerido: true },
+  { campo: "Fecha Pactada",      aliases: ["Fecha Pactada", "Fecha Pactado", "F. Pactada"], requerido: true },
+  { campo: "Fecha Creación",     aliases: ["Fecha Creación", "Fecha Creacion"],          requerido: true },
+  { campo: "Proveedor",          aliases: ["Proveedor"],                                 requerido: true },
+  { campo: "Estado Cierre",      aliases: ["Estado Cierre"],                             requerido: true },
+  { campo: "Envío",              aliases: ["Envío", "Envio"],                            requerido: false },
+  { campo: "Relación",           aliases: ["Relación", "Relacion"],                      requerido: false },
+  { campo: "Descripción Artículo", aliases: ["Descripción Artículo", "Descripcion Articulo"], requerido: false },
+  { campo: "UDM",                aliases: ["UDM", "UdM", "Unidad Medida", "Unidad de Medida"], requerido: false },
+  { campo: "Cantidad Vencida",   aliases: ["Cantidad Vencida"],                          requerido: false },
+  { campo: "Ctd Aceptada",       aliases: ["Ctd Aceptada", "Cantidad Aceptada", "Cant. Aceptada"], requerido: false },
+  { campo: "Cantidad Rechazada", aliases: ["Cantidad Rechazada", "Cant. Rechazada"],     requerido: false },
+  { campo: "Cantidad Facturada", aliases: ["Cantidad Facturada", "Cant. Facturada"],     requerido: false },
+  { campo: "Cantidad Cancelada", aliases: ["Cantidad Cancelada", "Cant. Cancelada"],     requerido: false },
+  { campo: "Estado Autorización", aliases: ["Estado Autorización", "Estado Autorizacion"], requerido: false },
+];
+
+const REQ_SIC: ColReq[] = [
+  { campo: "Número",         aliases: ["Número", "Numero", "N° SIC", "Nro SIC", "SIC", "Número SIC", "Numero SIC"], requerido: true },
+  { campo: "Línea",          aliases: ["Línea", "Linea"],                        requerido: true },
+  { campo: "Artículo",       aliases: ["Artículo", "Articulo", "Artículo Código", "Articulo Codigo"], requerido: true },
+  { campo: "Cantidad",       aliases: ["Cantidad", "Ctd", "Cant"],               requerido: true },
+  { campo: "Número Pedido",  aliases: ["Número Pedido", "Numero Pedido", "Nro Pedido", "Número OP", "Numero OP", "OP", "Pedido"], requerido: true },
+  { campo: "Descripción",    aliases: ["Descripción", "Descripcion", "Descripción Artículo", "Descripcion Articulo"], requerido: false },
+  { campo: "UDM",            aliases: ["UDM", "UdM", "Unidad Medida", "Unidad de Medida", "Unidad Medida Primaria"], requerido: false },
+  { campo: "Preparador",     aliases: ["Preparador", "Preparador Nombre", "SC Preparador Nombre"], requerido: false },
+  { campo: "Fecha Creación", aliases: ["Fecha Creación", "Fecha Creacion", "Fecha de Creación", "Fecha de Creacion"], requerido: false },
+  { campo: "Precio",         aliases: ["Precio", "Precio Unitario", "Precio Unit"], requerido: false },
+  { campo: "Importe",        aliases: ["Importe", "Monto"],                     requerido: false },
+];
+
+const REQ_TX: ColReq[] = [
+  { campo: "Tipo Transacción", aliases: ["Tipo Transacción", "Tipo"],           requerido: true },
+  { campo: "Importe",          aliases: ["Importe", "Cantidad"],                requerido: true },
+  { campo: "Fecha",            aliases: ["Fecha"],                              requerido: true },
+  { campo: "Artículo",         aliases: ["Artículo", "Articulo"],               requerido: true },
+  { campo: "Número Pedido",    aliases: ["Número Pedido", "Numero Pedido"],     requerido: true },
+  { campo: "Línea",            aliases: ["Línea", "Linea"],                     requerido: false },
+  { campo: "Proveedor",        aliases: ["Proveedor"],                         requerido: false },
+];
+
+const REQ_MAT: ColReq[] = [
+  { campo: "Artículo",     aliases: ["Artículo", "Articulo"],                                     requerido: true },
+  { campo: "Descripción",  aliases: ["Descripción", "Descripcion"],                                requerido: true },
+  { campo: "Unidad Medida Primaria", aliases: ["Unidad Medida Primaria", "Unidad de medida", "UDM", "UdM"], requerido: false },
+  { campo: "Estado",       aliases: ["Estado Artículo", "Estado Articulo", "Estado"],               requerido: false },
+  { campo: "Mat/Serv",     aliases: ["Mat/Serv", "Mat./serv.", "MAT_SERV"],                         requerido: false },
+];
+
 // Lee la primera hoja y detecta la fila de encabezados automáticamente.
 // `anchors`: nombres de columna esperados (sin tildes/case). Se escanean las
 // primeras filas y se elige como header la que contenga MÁS anchors. Si no se
@@ -439,6 +532,8 @@ export function ServiciosPlanillasSection() {
       // encabezados; se autodetecta la fila de headers buscando estas columnas.
       const rows = await parseFile(file, 1, ["Número", "Artículo", "Proveedor", "Cantidad"]);
       if (!rows.length) { toast.error("OP: sin datos"); return; }
+      const faltantes = columnasFaltantes(rows, REQ_OP);
+      if (faltantes.length) { toast.error(errorColumnasFaltantes("OP", faltantes), { duration: 12000 }); return; }
       const now = new Date().toISOString();
       // Todo encabezado variable se lee con `pick` (tolerante a tildes,
       // mayúsculas y espacios) — ver el comentario largo en su definición.
@@ -515,6 +610,8 @@ export function ServiciosPlanillasSection() {
     try {
       const rows = await parseFile(file, 1, ["Tipo Transacción", "Importe", "Fecha", "Artículo", "Número Pedido"]);
       if (!rows.length) { toast.error("TRANSACCIONES: sin datos"); return; }
+      const faltantes = columnasFaltantes(rows, REQ_TX);
+      if (faltantes.length) { toast.error(errorColumnasFaltantes("TRANSACCIONES", faltantes), { duration: 12000 }); return; }
 
       let sinPedido = 0;
       let invalidas = 0;
@@ -577,6 +674,8 @@ export function ServiciosPlanillasSection() {
       // ajustar los alias acá. Se autodetecta la fila de headers por estas anclas.
       const rows = await parseFile(file, 1, ["Número", "Artículo", "Cantidad", "Número Pedido", "Línea"]);
       if (!rows.length) { toast.error("SIC: sin datos"); return; }
+      const faltantes = columnasFaltantes(rows, REQ_SIC);
+      if (faltantes.length) { toast.error(errorColumnasFaltantes("SIC", faltantes), { duration: 12000 }); return; }
 
       const mapped: SicSolerRow[] = rows.map(r => {
         const cant    = pick(r, ["Cantidad", "Ctd", "Cant"]);
@@ -620,6 +719,8 @@ export function ServiciosPlanillasSection() {
     try {
       const rows = await parseFile(file);
       if (!rows.length) { toast.error("MATRICULAS: sin datos (headers en fila 2)"); return; }
+      const faltantes = columnasFaltantes(rows, REQ_MAT);
+      if (faltantes.length) { toast.error(errorColumnasFaltantes("MATRICULAS", faltantes), { duration: 12000 }); return; }
       const rawMapped = rows.map(r => ({
         articulo:      str(r["Artículo"]              ?? r["Articulo"]),
         descripcion:   str(r["Descripción"]          ?? r["Descripcion"]),
