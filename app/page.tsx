@@ -35,7 +35,7 @@ import { TableroOpResumenSection } from "@/components/dashboard/sections/tablero
 import { TableroOpCargaSection } from "@/components/dashboard/sections/tablero-op-carga";
 import { BuscadorSection } from "@/components/dashboard/sections/buscador";
 import { YerbaSection } from "@/components/dashboard/sections/yerba";
-import { PlanDeComprasSection } from "@/components/dashboard/sections/plan-de-compras";
+import { PlanDeComprasCargaSection } from "@/components/dashboard/sections/plan-de-compras-carga";
 import { LoginPage } from "@/components/auth/login";
 import { Loader2 } from "lucide-react";
 
@@ -58,7 +58,7 @@ export type Section =
   | "indice-ido-resumen" | "indice-ido-carga"
   | "tablero-op-resumen" | "tablero-op-carga"
   | "buscador"
-  | "plan-de-compras"
+  | "plan-de-compras-carga"
   | "yerba";
 
 export interface HeaderProfile {
@@ -200,7 +200,7 @@ export default function Dashboard() {
       case "tablero-op-resumen":      return <TableroOpResumenSection />;
       case "tablero-op-carga":        return <TableroOpCargaSection />;
       case "buscador":                return <BuscadorSection />;
-      case "plan-de-compras":         return <PlanDeComprasSection />;
+      case "plan-de-compras-carga":   return <PlanDeComprasCargaSection />;
       case "yerba":                   return <YerbaSection />;
       default:                       return <OverviewSection />;
     }

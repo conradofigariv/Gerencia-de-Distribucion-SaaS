@@ -136,7 +136,15 @@ const navItems: NavItemDef[] = [
       { id: "tablero-op-carga",   label: "Carga de datos", icon: UploadCloud },
     ],
   },
-  { kind: "link", id: "plan-de-compras", label: "Plan de Compras", icon: ShoppingCart },
+  {
+    kind: "group",
+    id: "plan-de-compras",
+    label: "Plan de Compras",
+    icon: ShoppingCart,
+    children: [
+      { id: "plan-de-compras-carga", label: "Carga de datos", icon: UploadCloud },
+    ],
+  },
   { kind: "link", id: "yerba", label: "Control de Yerba", icon: Coffee },
   { kind: "link", id: "settings", label: "Configuración", icon: Settings },
 ];
@@ -177,6 +185,10 @@ const INDICE_IDO_SECTIONS: Section[] = [
 const TABLERO_OP_SECTIONS: Section[] = [
   "tablero-op-resumen",
   "tablero-op-carga",
+];
+
+const PLAN_COMPRAS_SECTIONS: Section[] = [
+  "plan-de-compras-carga",
 ];
 
 export function Sidebar({
@@ -221,6 +233,7 @@ export function Sidebar({
     ...(TRANSFORMADORES_SECTIONS.includes(activeSection)? ["transformadores"] : []),
     ...(INDICE_IDO_SECTIONS.includes(activeSection)     ? ["indice-ido"]      : []),
     ...(TABLERO_OP_SECTIONS.includes(activeSection)     ? ["tablero-op"]      : []),
+    ...(PLAN_COMPRAS_SECTIONS.includes(activeSection)   ? ["plan-de-compras"] : []),
   ];
   const [expandedGroups, setExpandedGroups] = useState<string[]>(initialGroups);
 
@@ -261,6 +274,9 @@ export function Sidebar({
     }
     if (TABLERO_OP_SECTIONS.includes(activeSection)) {
       setExpandedGroups((prev) => prev.includes("tablero-op") ? prev : [...prev, "tablero-op"]);
+    }
+    if (PLAN_COMPRAS_SECTIONS.includes(activeSection)) {
+      setExpandedGroups((prev) => prev.includes("plan-de-compras") ? prev : [...prev, "plan-de-compras"]);
     }
   }, [activeSection]);
 
