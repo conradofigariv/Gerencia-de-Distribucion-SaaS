@@ -358,6 +358,198 @@ export interface PreviewColumna {
   invalidas:     { articulo: string; crudo: string }[];
 }
 
+// ─── Pegado de un bloque de Excel ───────────────────────────────────────────
+//
+// El caso real: en la planilla la columna «Artículo» y la del dato (Pu Sic,
+// GD, Familia…) están lejos entre sí, y Excel no deja copiar dos columnas no
+// adyacentes y pegarlas una al lado de la otra. Entonces se pega el RANGO
+// ENTERO con su fila de encabezados, y acá se reconoce cada columna por su
+// título. Así el artículo viaja en el mismo bloque que los valores y no hay
+// que confiar en que las filas queden en el mismo orden.
+
+/** Encabezado normalizado: sin acentos, sin dobles espacios, en minúscula. */
+function normHeader(h: string): string {
+  return String(h ?? "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Título de columna del Excel → campo del plan.
+ *
+ * El match es EXACTO sobre el encabezado normalizado, no por "contiene": hay
+ * títulos que se parecen y no son lo mismo. «familias viejas» no es
+ * «familia», y «pu sic + 20%» es una fórmula, no «pu sic» — mapearlos por
+ * parecido escribiría datos en la columna equivocada.
+ *
+ * A «GD» se le saca el año antes de comparar («GD 2025», «GD 2027» → «gd»),
+ * porque cambia de nombre en cada plan.
+ */
+const ALIAS_HEADERS: Record<string, CampoCargable> = {
+  "familia":           "familia",
+  "subfamilia":        "subfamilia",
+  "a cargo de":        "a_cargo_de",
+  "gd":                "gd",
+  "cant. aprobadas":   "cant_aprobada",
+  "cant aprobadas":    "cant_aprobada",
+  "cant. aprobada":    "cant_aprobada",
+  "cantidad aprobada": "cant_aprobada",
+  "pu sic":            "pu_sic",
+  "pu op":             "pu_op",
+  "pu est (usd)":      "pu_est_usd",
+  "pu est usd":        "pu_est_usd",
+};
+
+/** ¿Este encabezado es la columna de matrículas? */
+function esHeaderArticulo(h: string): boolean {
+  const n = normHeader(h);
+  return n === "articulo" || n === "matricula" || n === "matriculas";
+}
+
+/** Campo al que corresponde un encabezado, o null si no se reconoce. */
+export function campoDeHeader(header: string): CampoCargable | null {
+  const n = normHeader(header).replace(/\s*\d{4}\s*$/, "").trim();
+  return ALIAS_HEADERS[n] ?? null;
+}
+
+export interface BloqueParseado {
+  headers: string[];
+  filas:   string[][];
+  /** Índice de la columna de matrículas, o -1 si no se encontró. */
+  colArticulo: number;
+  /** Mapeo propuesto: índice de columna → campo del plan. */
+  mapeo: Record<number, CampoCargable>;
+}
+
+/**
+ * Parte el bloque pegado en encabezados + filas, y propone qué es cada
+ * columna. La primera línea SIEMPRE se toma como encabezado: es lo que hace
+ * falta para reconocer las columnas, y pegar sin ella no permitiría saber
+ * cuál es cuál.
+ */
+export function parseBloque(texto: string): BloqueParseado {
+  const lineas = texto.split(/\r?\n/).filter((l) => l.trim() !== "");
+  if (lineas.length === 0) return { headers: [], filas: [], colArticulo: -1, mapeo: {} };
+
+  const sep = lineas[0].includes("\t") ? "\t" : lineas[0].includes(";") ? ";" : "\t";
+  const corte = (l: string) => l.split(sep).map((c) => c.trim());
+
+  const headers = corte(lineas[0]);
+  const filas   = lineas.slice(1).map(corte);
+
+  const colArticulo = headers.findIndex(esHeaderArticulo);
+
+  const mapeo: Record<number, CampoCargable> = {};
+  headers.forEach((h, i) => {
+    if (i === colArticulo) return;
+    const campo = campoDeHeader(h);
+    // Una misma columna del plan no puede venir de dos columnas del pegado.
+    if (campo && !Object.values(mapeo).includes(campo)) mapeo[i] = campo;
+  });
+
+  return { headers, filas, colArticulo, mapeo };
+}
+
+/** Una fila lista para escribir: la matrícula y los campos que trae. */
+export interface FilaBloque {
+  articulo: string;
+  campos:   Partial<Record<CampoCargable, string | number>>;
+}
+
+export interface PreviewBloque {
+  aplicar:      FilaBloque[];
+  fueraDelPlan: string[];
+  /** Celdas numéricas que no se pudieron interpretar (se dejan sin tocar). */
+  invalidas:    { articulo: string; campo: CampoCargable; crudo: string }[];
+}
+
+/**
+ * Cruza el bloque contra las matrículas del plan y arma lo que se va a
+ * escribir. Las celdas VACÍAS se ignoran (no se escriben): en una planilla
+ * grande lo normal es que muchas columnas estén en blanco, y tomarlas como
+ * "poner en cero / borrar el texto" pisaría datos ya cargados.
+ */
+export function prepararBloque(
+  bloque: BloqueParseado,
+  mapeo: Record<number, CampoCargable>,
+  articulosDelPlan: Set<string>,
+): PreviewBloque {
+  const out: PreviewBloque = { aplicar: [], fueraDelPlan: [], invalidas: [] };
+  if (bloque.colArticulo < 0) return out;
+
+  const vistos = new Set<string>();
+
+  for (const fila of bloque.filas) {
+    const articulo = (fila[bloque.colArticulo] ?? "").trim();
+    if (!articulo || vistos.has(articulo)) continue;
+    vistos.add(articulo);
+
+    if (!articulosDelPlan.has(articulo)) { out.fueraDelPlan.push(articulo); continue; }
+
+    const campos: FilaBloque["campos"] = {};
+    for (const [idx, campo] of Object.entries(mapeo)) {
+      const crudo = (fila[Number(idx)] ?? "").trim();
+      if (crudo === "") continue;
+
+      if (esCampoNumerico(campo)) {
+        const n = parseNumero(crudo);
+        if (n === null) { out.invalidas.push({ articulo, campo, crudo }); continue; }
+        campos[campo] = n;
+      } else {
+        campos[campo] = crudo;
+      }
+    }
+    if (Object.keys(campos).length > 0) out.aplicar.push({ articulo, campos });
+  }
+  return out;
+}
+
+/**
+ * Escribe las filas del bloque. Cada fila puede traer varias columnas a la
+ * vez; se manda solo lo que trae, así las columnas que el pegado no incluía
+ * quedan como estaban.
+ */
+export async function cargarBloque(planId: string, filas: FilaBloque[]): Promise<number> {
+  if (filas.length === 0) return 0;
+
+  // ⚠ PostgREST exige que TODAS las filas de un mismo upsert tengan las
+  //   mismas claves. Como cada fila trae solo las celdas que no venían
+  //   vacías, se agrupan por "juego de columnas" y se manda un upsert por
+  //   grupo. En la práctica son pocos grupos: las planillas suelen tener las
+  //   mismas columnas llenas en casi todas las filas.
+  const grupos = new Map<string, FilaBloque[]>();
+  for (const f of filas) {
+    const clave = Object.keys(f.campos).sort().join("|");
+    const g = grupos.get(clave);
+    if (g) g.push(f);
+    else grupos.set(clave, [f]);
+  }
+
+  const LOTE = 500;
+  let escritas = 0;
+
+  for (const grupo of grupos.values()) {
+    for (let i = 0; i < grupo.length; i += LOTE) {
+      const rows = grupo.slice(i, i + LOTE).map((f) => ({
+        plan_id:    planId,
+        articulo:   f.articulo,
+        ...f.campos,
+        updated_at: new Date().toISOString(),
+      }));
+
+      const { data, error } = await supabase
+        .from("plan_compra_items")
+        .upsert(rows, { onConflict: "plan_id,articulo" })
+        .select("id");
+      if (error) throw new Error(error.message);
+      escritas += data?.length ?? 0;
+    }
+  }
+  return escritas;
+}
+
 /**
  * Separa una línea pegada en «matrícula» y «valor».
  *

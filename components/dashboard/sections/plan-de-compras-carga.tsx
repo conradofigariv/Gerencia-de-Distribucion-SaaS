@@ -11,9 +11,9 @@ import {
 import {
   listPlanes, createPlan, updatePlan, deletePlan, listItems, agregarItems, updateItem, deleteItem,
   calcularItem, totalPlan, incidencia, parseMatriculasPegadas, cruzarContraCatalogo,
-  cargarColumna, prepararColumna, esCampoNumerico, CAMPOS_CARGABLES,
+  parseBloque, prepararBloque, cargarBloque, esCampoNumerico, CAMPOS_CARGABLES,
   type PlanCompra, type PlanCompraItem, type PlanCompraItemInput, type CruceCatalogo,
-  type CampoCargable, type PreviewColumna,
+  type CampoCargable, type PreviewBloque,
 } from "@/lib/planCompras";
 import {
   DataTablePanel, DataTableScroll, DataTableRoot,
@@ -699,7 +699,7 @@ function ModalCargar({
         <div className="flex gap-1 px-5 pt-4 shrink-0">
           {([
             { id: "matriculas", label: "Matrículas" },
-            { id: "columna",    label: "Columna de datos" },
+            { id: "columna",    label: "Datos (tabla de Excel)" },
           ] as const).map(t => (
             <button
               key={t.id}
@@ -719,7 +719,7 @@ function ModalCargar({
         {modo === "matriculas" ? (
           <PanelMatriculas planId={planId} onClose={onClose} onListo={onListo} />
         ) : (
-          <PanelColumna planId={planId} articulosDelPlan={articulosDelPlan} onClose={onClose} onListo={onListo} />
+          <PanelBloque planId={planId} articulosDelPlan={articulosDelPlan} onClose={onClose} onListo={onListo} />
         )}
       </div>
     </div>,
@@ -843,9 +843,15 @@ function PanelMatriculas({
   );
 }
 
-// ─── Modo 2: cargar una columna para las matrículas ya cargadas ─────────────
+// ─── Modo 2: pegar el bloque de Excel tal cual ──────────────────────────────
+//
+// En la planilla la columna «Artículo» y la del dato están lejos, y Excel no
+// deja copiar dos columnas no adyacentes para pegarlas juntas. Así que se
+// pega el RANGO ENTERO con su fila de encabezados: el artículo viaja en el
+// mismo bloque, y cada columna se reconoce por su título (y se puede
+// corregir a mano si el título no coincide con ninguno conocido).
 
-function PanelColumna({
+function PanelBloque({
   planId, articulosDelPlan, onClose, onListo,
 }: {
   planId: string;
@@ -853,26 +859,44 @@ function PanelColumna({
   onClose: () => void;
   onListo: () => void;
 }) {
-  const [campo, setCampo] = useState<CampoCargable>("familia");
   const [texto, setTexto] = useState("");
   const [guardando, setGuardando] = useState(false);
+  /** Correcciones manuales del mapeo automático: columna → campo o "ignorar". */
+  const [ajustes, setAjustes] = useState<Record<number, CampoCargable | "">>({});
 
-  const def = CAMPOS_CARGABLES.find(c => c.campo === campo)!;
-  const numerico = esCampoNumerico(campo);
+  const bloque = useMemo(() => parseBloque(texto), [texto]);
 
-  // El preview se recalcula solo mientras se tipea: es puro parseo local, no
-  // pega contra la base hasta que se aprieta «Cargar».
-  const preview: PreviewColumna = useMemo(
-    () => prepararColumna(texto, campo, articulosDelPlan),
-    [texto, campo, articulosDelPlan],
+  // Al cambiar el pegado, las correcciones viejas dejan de tener sentido.
+  useEffect(() => { setAjustes({}); }, [texto]);
+
+  // Mapeo efectivo = el automático, pisado por lo que el usuario haya tocado.
+  const mapeo = useMemo(() => {
+    const m: Record<number, CampoCargable> = { ...bloque.mapeo };
+    for (const [idx, campo] of Object.entries(ajustes)) {
+      const i = Number(idx);
+      if (campo === "") delete m[i];
+      else m[i] = campo;
+    }
+    return m;
+  }, [bloque.mapeo, ajustes]);
+
+  const preview: PreviewBloque = useMemo(
+    () => prepararBloque(bloque, mapeo, articulosDelPlan),
+    [bloque, mapeo, articulosDelPlan],
   );
+
+  const campoDeCol = (i: number): CampoCargable | "" => ajustes[i] ?? bloque.mapeo[i] ?? "";
+
+  // Un campo no puede venir de dos columnas a la vez: sería ambiguo cuál gana.
+  const duplicado = (i: number, campo: CampoCargable) =>
+    Object.entries(mapeo).some(([j, c]) => Number(j) !== i && c === campo);
 
   const cargar = async () => {
     if (preview.aplicar.length === 0) { toast.error("No hay filas para cargar."); return; }
     setGuardando(true);
     try {
-      const n = await cargarColumna(planId, campo, preview.aplicar);
-      toast.success(`«${def.label}» cargada en ${n} matrícula${n === 1 ? "" : "s"}.`);
+      const n = await cargarBloque(planId, preview.aplicar);
+      toast.success(`${n} matrícula${n === 1 ? "" : "s"} actualizada${n === 1 ? "" : "s"}.`);
       onListo();
     } catch (e) {
       toast.error(`No se pudo cargar: ${(e as Error).message}`);
@@ -880,64 +904,93 @@ function PanelColumna({
     }
   };
 
+  const columnasMapeadas = Object.keys(mapeo).length;
+
   return (
     <>
       <div className="p-5 space-y-4 overflow-y-auto">
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Columna a cargar</label>
-          <Select value={campo} onValueChange={v => setCampo(v as CampoCargable)}>
-            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {CAMPOS_CARGABLES.map(c => (
-                <SelectItem key={c.campo} value={c.campo}>{c.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
-            Matrícula y valor{" "}
-            <span className="text-muted-foreground/60">(una fila por línea)</span>
+            Pegá el bloque del Excel <span className="text-muted-foreground/60">(con la fila de encabezados)</span>
           </label>
           <textarea
             autoFocus value={texto}
             onChange={e => setTexto(e.target.value)}
-            rows={8}
-            placeholder={numerico ? "00015276.0\t120\n00015930.0\t1070" : "00015276.0\tACEITES, LUBRICANTES\n00015930.0\tHERRAMIENTAS"}
+            rows={7}
+            placeholder={"Artículo\tDescripción\tFAMILIA\tGD 2027\tPu Sic\n00015276.0\tGRASA…\tACEITES\t120\t8200"}
             className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-ring/20 resize-y"
           />
           <p className="text-[11px] text-muted-foreground">
-            Copiá del Excel la columna del artículo y la de «{def.label}» juntas y pegalas acá.
-            Solo se tocan las matrículas que ya están en el plan; el resto de las columnas queda igual.
+            Seleccioná en el Excel las columnas que necesites —incluyendo la de «Artículo»— junto con
+            sus encabezados, y pegá acá. Las columnas se reconocen solas por el título; las que no
+            correspondan a ningún campo se ignoran.
           </p>
         </div>
 
-        {texto.trim() && (
+        {/* Sin columna de artículo no hay forma de saber a qué fila va cada dato. */}
+        {texto.trim() && bloque.colArticulo < 0 && (
+          <div className="flex items-start gap-2 rounded-lg border border-accent-red/40 bg-accent-red/5 p-3 text-sm">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-accent-red mt-0.5" />
+            <div>
+              <p className="font-medium text-foreground">Falta la columna «Artículo»</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                El bloque tiene que incluir la columna de matrículas con su encabezado
+                («Artículo» o «Matrícula») para saber a qué fila del plan corresponde cada valor.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Mapeo de columnas: qué entendió de cada título, corregible. */}
+        {bloque.headers.length > 0 && bloque.colArticulo >= 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">
+              Columnas detectadas <span className="text-muted-foreground/60">({columnasMapeadas} se van a cargar)</span>
+            </p>
+            <div className="rounded-lg border border-hairline bg-panel-2 divide-y divide-border max-h-56 overflow-y-auto">
+              {bloque.headers.map((h, i) => {
+                const esArticulo = i === bloque.colArticulo;
+                const campo = campoDeCol(i);
+                return (
+                  <div key={i} className="flex items-center gap-2 px-3 py-2">
+                    <span className="flex-1 min-w-0 truncate text-[12px] text-foreground" title={h}>
+                      {h || <span className="text-muted-foreground/60">(sin título)</span>}
+                    </span>
+                    {esArticulo ? (
+                      <span className="text-[11px] font-medium text-accent-green shrink-0">Matrícula</span>
+                    ) : (
+                      <select
+                        value={campo}
+                        onChange={e => setAjustes(p => ({ ...p, [i]: e.target.value as CampoCargable | "" }))}
+                        className={cn(
+                          "h-7 px-2 rounded-md bg-panel-input border text-[11px] shrink-0",
+                          "focus:outline-none focus:ring-1 focus:ring-ring/30",
+                          campo && duplicado(i, campo)
+                            ? "border-accent-red/60 text-accent-red"
+                            : campo ? "border-border text-foreground" : "border-border text-muted-foreground",
+                        )}
+                      >
+                        <option value="">Ignorar</option>
+                        {CAMPOS_CARGABLES.map(c => (
+                          <option key={c.campo} value={c.campo}>{c.label}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Resultado del cruce */}
+        {texto.trim() && bloque.colArticulo >= 0 && (
           <div className="space-y-2 rounded-lg border border-border bg-secondary/40 p-3">
             <div className="flex items-center gap-2 text-sm text-accent-green">
               <Check className="w-4 h-4 shrink-0" />
-              <span className="font-medium">{preview.aplicar.length} fila{preview.aplicar.length === 1 ? "" : "s"}</span>
+              <span className="font-medium">{preview.aplicar.length} matrícula{preview.aplicar.length === 1 ? "" : "s"}</span>
               <span className="text-muted-foreground">se van a actualizar</span>
             </div>
-
-            {/* Muestra cómo quedó interpretado cada valor: es la red de
-                seguridad para los números («1.070» puede ser ambiguo). */}
-            {preview.aplicar.length > 0 && (
-              <div className="rounded-md bg-panel-2 border border-hairline p-2 max-h-32 overflow-y-auto">
-                {preview.aplicar.slice(0, 8).map(f => (
-                  <div key={f.articulo} className="flex justify-between gap-3 text-[11px] font-mono py-0.5">
-                    <span className="text-muted-foreground truncate">{f.articulo}</span>
-                    <span className="text-foreground shrink-0">
-                      {numerico ? fmtNum(Number(f.valor), campo === "pu_est_usd" ? 2 : 0) : String(f.valor)}
-                    </span>
-                  </div>
-                ))}
-                {preview.aplicar.length > 8 && (
-                  <p className="text-[11px] text-muted-foreground pt-1">… y {preview.aplicar.length - 8} más</p>
-                )}
-              </div>
-            )}
 
             {preview.fueraDelPlan.length > 0 && (
               <div className="space-y-1">
@@ -957,14 +1010,18 @@ function PanelColumna({
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm text-accent-red">
                   <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span className="font-medium">{preview.invalidas.length} sin número válido</span>
+                  <span className="font-medium">{preview.invalidas.length} celda{preview.invalidas.length === 1 ? "" : "s"} sin número válido</span>
                   <span className="text-muted-foreground">(se omiten)</span>
                 </div>
                 <p className="text-[11px] font-mono text-muted-foreground break-all">
-                  {preview.invalidas.slice(0, 10).map(i => `${i.articulo}→«${i.crudo}»`).join(" · ")}
+                  {preview.invalidas.slice(0, 8).map(v => `${v.articulo}·${v.campo}→«${v.crudo}»`).join(" · ")}
                 </p>
               </div>
             )}
+
+            <p className="text-[11px] text-muted-foreground pt-1 border-t border-border">
+              Las celdas vacías no se escriben: las columnas que el pegado no traiga quedan como están.
+            </p>
           </div>
         )}
       </div>
