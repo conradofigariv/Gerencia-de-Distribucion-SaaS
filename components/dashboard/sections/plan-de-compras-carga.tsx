@@ -11,7 +11,9 @@ import {
 import {
   listPlanes, createPlan, updatePlan, deletePlan, listItems, agregarItems, updateItem, deleteItem,
   calcularItem, totalPlan, incidencia, parseMatriculasPegadas, cruzarContraCatalogo,
+  cargarColumna, prepararColumna, esCampoNumerico, CAMPOS_CARGABLES,
   type PlanCompra, type PlanCompraItem, type PlanCompraItemInput, type CruceCatalogo,
+  type CampoCargable, type PreviewColumna,
 } from "@/lib/planCompras";
 import {
   DataTablePanel, DataTableScroll, DataTableRoot,
@@ -114,6 +116,9 @@ export function PlanDeComprasCargaSection() {
 
   const tc = plan?.tipo_cambio ?? 0;
   const total = useMemo(() => totalPlan(items, tc), [items, tc]);
+
+  // Para el pegado de columnas: qué matrículas tiene el plan hoy.
+  const articulosDelPlan = useMemo(() => new Set(items.map(i => i.articulo)), [items]);
 
   // Edición: se pinta al instante y se persiste esa fila. Si el guardado
   // falla se revierte, así la pantalla nunca muestra algo que no se guardó.
@@ -319,8 +324,9 @@ export function PlanDeComprasCargaSection() {
         />
       )}
       {modalPegar && plan && (
-        <ModalAgregarMatriculas
+        <ModalCargar
           planId={plan.id}
+          articulosDelPlan={articulosDelPlan}
           onClose={() => setModalPegar(false)}
           onListo={() => { setModalPegar(false); recargarItems(plan.id); }}
         />
@@ -654,9 +660,76 @@ function ModalBorrarPlan({
   );
 }
 
-// ─── Modal: agregar matrículas (pegado + cruce con el catálogo) ─────────────
+// ─── Modal: cargar datos (matrículas nuevas | columna del plan) ─────────────
+//
+// Un solo botón con dos modos, porque son el mismo gesto —pegar algo copiado
+// del Excel— con dos destinos distintos:
+//   • «Matrículas»  → suma filas al plan (cruza contra el catálogo).
+//   • «Columna»     → llena una columna de las filas que YA están.
+//
+// Los dos muestran preview antes de escribir: cuántas entran, cuántas se
+// omiten y por qué.
 
-function ModalAgregarMatriculas({
+type Modo = "matriculas" | "columna";
+
+function ModalCargar({
+  planId, articulosDelPlan, onClose, onListo,
+}: {
+  planId: string;
+  articulosDelPlan: Set<string>;
+  onClose: () => void;
+  onListo: () => void;
+}) {
+  const [modo, setModo] = useState<Modo>("matriculas");
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-popover border border-border rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+          <div className="flex items-center gap-2">
+            <Plus className="w-4 h-4 text-accent" />
+            <span className="text-sm font-semibold text-foreground">Cargar datos al plan</span>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Selector de modo */}
+        <div className="flex gap-1 px-5 pt-4 shrink-0">
+          {([
+            { id: "matriculas", label: "Matrículas" },
+            { id: "columna",    label: "Columna de datos" },
+          ] as const).map(t => (
+            <button
+              key={t.id}
+              onClick={() => setModo(t.id)}
+              className={cn(
+                "h-8 px-3 rounded-lg text-xs font-medium transition-colors",
+                modo === t.id
+                  ? "bg-accent/15 text-accent"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary",
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {modo === "matriculas" ? (
+          <PanelMatriculas planId={planId} onClose={onClose} onListo={onListo} />
+        ) : (
+          <PanelColumna planId={planId} articulosDelPlan={articulosDelPlan} onClose={onClose} onListo={onListo} />
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// ─── Modo 1: agregar matrículas (cruce con el catálogo) ─────────────────────
+
+function PanelMatriculas({
   planId, onClose, onListo,
 }: {
   planId: string;
@@ -701,84 +774,213 @@ function ModalAgregarMatriculas({
     }
   };
 
-  return createPortal(
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-popover border border-border rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
-          <div className="flex items-center gap-2">
-            <Plus className="w-4 h-4 text-accent" />
-            <span className="text-sm font-semibold text-foreground">Agregar matrículas al plan</span>
-          </div>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-            <X className="w-4 h-4" />
-          </button>
+  return (
+    <>
+      <div className="p-5 space-y-4 overflow-y-auto">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">
+            Matrículas <span className="text-muted-foreground/60">(una por línea — pegá tu lista)</span>
+          </label>
+          <textarea
+            autoFocus value={texto}
+            onChange={e => { setTexto(e.target.value); setCruce(null); }}
+            rows={8}
+            placeholder={"00015276.0\n00015930.0\n…"}
+            className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-ring/20 resize-y"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            {matriculas.length} matrícula{matriculas.length === 1 ? "" : "s"} pegada{matriculas.length === 1 ? "" : "s"}.
+            {" "}Se cruzan contra el catálogo para traer descripción, unidad y Mat/Serv.
+          </p>
         </div>
 
-        <div className="p-5 space-y-4 overflow-y-auto">
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
-              Matrículas <span className="text-muted-foreground/60">(una por línea — pegá tu lista)</span>
-            </label>
-            <textarea
-              autoFocus value={texto}
-              onChange={e => { setTexto(e.target.value); setCruce(null); }}
-              rows={8}
-              placeholder={"00015276.0\n00015930.0\n…"}
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-ring/20 resize-y"
-            />
-            <p className="text-[11px] text-muted-foreground">
-              {matriculas.length} matrícula{matriculas.length === 1 ? "" : "s"} pegada{matriculas.length === 1 ? "" : "s"}.
-              {" "}Se cruzan contra el catálogo para traer descripción y unidad.
-            </p>
-          </div>
-
-          {cruce && (
-            <div className="space-y-2 rounded-lg border border-border bg-secondary/40 p-3">
-              <div className="flex items-center gap-2 text-sm text-accent-green">
-                <Check className="w-4 h-4 shrink-0" />
-                <span className="font-medium">{cruce.reconocidas.length} reconocida{cruce.reconocidas.length === 1 ? "" : "s"}</span>
-                <span className="text-muted-foreground">en el catálogo</span>
-              </div>
-              {cruce.noEncontradas.length > 0 && (
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 text-sm text-accent-amber">
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <span className="font-medium">{cruce.noEncontradas.length} no encontrada{cruce.noEncontradas.length === 1 ? "" : "s"}</span>
-                    <span className="text-muted-foreground">(se omiten)</span>
-                  </div>
-                  <p className="text-[11px] font-mono text-muted-foreground break-all">
-                    {cruce.noEncontradas.slice(0, 30).join(" · ")}
-                    {cruce.noEncontradas.length > 30 && ` … +${cruce.noEncontradas.length - 30}`}
-                  </p>
-                </div>
-              )}
+        {cruce && (
+          <div className="space-y-2 rounded-lg border border-border bg-secondary/40 p-3">
+            <div className="flex items-center gap-2 text-sm text-accent-green">
+              <Check className="w-4 h-4 shrink-0" />
+              <span className="font-medium">{cruce.reconocidas.length} reconocida{cruce.reconocidas.length === 1 ? "" : "s"}</span>
+              <span className="text-muted-foreground">en el catálogo</span>
             </div>
-          )}
+            {cruce.noEncontradas.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-sm text-accent-amber">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span className="font-medium">{cruce.noEncontradas.length} no encontrada{cruce.noEncontradas.length === 1 ? "" : "s"}</span>
+                  <span className="text-muted-foreground">(se omiten)</span>
+                </div>
+                <p className="text-[11px] font-mono text-muted-foreground break-all">
+                  {cruce.noEncontradas.slice(0, 30).join(" · ")}
+                  {cruce.noEncontradas.length > 30 && ` … +${cruce.noEncontradas.length - 30}`}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-end gap-2 px-5 py-4 border-t border-border shrink-0">
+        <button onClick={onClose} className="h-9 px-4 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+          Cancelar
+        </button>
+        {!cruce ? (
+          <button
+            onClick={verificar} disabled={verificando || matriculas.length === 0}
+            className="h-9 px-4 inline-flex items-center gap-2 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-secondary transition-colors disabled:opacity-40"
+          >
+            {verificando && <Loader2 className="w-4 h-4 animate-spin" />} Verificar
+          </button>
+        ) : (
+          <button
+            onClick={agregar} disabled={agregando || cruce.reconocidas.length === 0}
+            className="h-9 px-4 inline-flex items-center gap-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+          >
+            {agregando && <Loader2 className="w-4 h-4 animate-spin" />}
+            Agregar {cruce.reconocidas.length}
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ─── Modo 2: cargar una columna para las matrículas ya cargadas ─────────────
+
+function PanelColumna({
+  planId, articulosDelPlan, onClose, onListo,
+}: {
+  planId: string;
+  articulosDelPlan: Set<string>;
+  onClose: () => void;
+  onListo: () => void;
+}) {
+  const [campo, setCampo] = useState<CampoCargable>("familia");
+  const [texto, setTexto] = useState("");
+  const [guardando, setGuardando] = useState(false);
+
+  const def = CAMPOS_CARGABLES.find(c => c.campo === campo)!;
+  const numerico = esCampoNumerico(campo);
+
+  // El preview se recalcula solo mientras se tipea: es puro parseo local, no
+  // pega contra la base hasta que se aprieta «Cargar».
+  const preview: PreviewColumna = useMemo(
+    () => prepararColumna(texto, campo, articulosDelPlan),
+    [texto, campo, articulosDelPlan],
+  );
+
+  const cargar = async () => {
+    if (preview.aplicar.length === 0) { toast.error("No hay filas para cargar."); return; }
+    setGuardando(true);
+    try {
+      const n = await cargarColumna(planId, campo, preview.aplicar);
+      toast.success(`«${def.label}» cargada en ${n} matrícula${n === 1 ? "" : "s"}.`);
+      onListo();
+    } catch (e) {
+      toast.error(`No se pudo cargar: ${(e as Error).message}`);
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="p-5 space-y-4 overflow-y-auto">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">Columna a cargar</label>
+          <Select value={campo} onValueChange={v => setCampo(v as CampoCargable)}>
+            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {CAMPOS_CARGABLES.map(c => (
+                <SelectItem key={c.campo} value={c.campo}>{c.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-border shrink-0">
-          <button onClick={onClose} className="h-9 px-4 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-            Cancelar
-          </button>
-          {!cruce ? (
-            <button
-              onClick={verificar} disabled={verificando || matriculas.length === 0}
-              className="h-9 px-4 inline-flex items-center gap-2 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-secondary transition-colors disabled:opacity-40"
-            >
-              {verificando && <Loader2 className="w-4 h-4 animate-spin" />} Verificar
-            </button>
-          ) : (
-            <button
-              onClick={agregar} disabled={agregando || cruce.reconocidas.length === 0}
-              className="h-9 px-4 inline-flex items-center gap-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
-            >
-              {agregando && <Loader2 className="w-4 h-4 animate-spin" />}
-              Agregar {cruce.reconocidas.length}
-            </button>
-          )}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">
+            Matrícula y valor{" "}
+            <span className="text-muted-foreground/60">(una fila por línea)</span>
+          </label>
+          <textarea
+            autoFocus value={texto}
+            onChange={e => setTexto(e.target.value)}
+            rows={8}
+            placeholder={numerico ? "00015276.0\t120\n00015930.0\t1070" : "00015276.0\tACEITES, LUBRICANTES\n00015930.0\tHERRAMIENTAS"}
+            className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-ring/20 resize-y"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Copiá del Excel la columna del artículo y la de «{def.label}» juntas y pegalas acá.
+            Solo se tocan las matrículas que ya están en el plan; el resto de las columnas queda igual.
+          </p>
         </div>
+
+        {texto.trim() && (
+          <div className="space-y-2 rounded-lg border border-border bg-secondary/40 p-3">
+            <div className="flex items-center gap-2 text-sm text-accent-green">
+              <Check className="w-4 h-4 shrink-0" />
+              <span className="font-medium">{preview.aplicar.length} fila{preview.aplicar.length === 1 ? "" : "s"}</span>
+              <span className="text-muted-foreground">se van a actualizar</span>
+            </div>
+
+            {/* Muestra cómo quedó interpretado cada valor: es la red de
+                seguridad para los números («1.070» puede ser ambiguo). */}
+            {preview.aplicar.length > 0 && (
+              <div className="rounded-md bg-panel-2 border border-hairline p-2 max-h-32 overflow-y-auto">
+                {preview.aplicar.slice(0, 8).map(f => (
+                  <div key={f.articulo} className="flex justify-between gap-3 text-[11px] font-mono py-0.5">
+                    <span className="text-muted-foreground truncate">{f.articulo}</span>
+                    <span className="text-foreground shrink-0">
+                      {numerico ? fmtNum(Number(f.valor), campo === "pu_est_usd" ? 2 : 0) : String(f.valor)}
+                    </span>
+                  </div>
+                ))}
+                {preview.aplicar.length > 8 && (
+                  <p className="text-[11px] text-muted-foreground pt-1">… y {preview.aplicar.length - 8} más</p>
+                )}
+              </div>
+            )}
+
+            {preview.fueraDelPlan.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-sm text-accent-amber">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span className="font-medium">{preview.fueraDelPlan.length} no está{preview.fueraDelPlan.length === 1 ? "" : "n"} en el plan</span>
+                  <span className="text-muted-foreground">(se omiten)</span>
+                </div>
+                <p className="text-[11px] font-mono text-muted-foreground break-all">
+                  {preview.fueraDelPlan.slice(0, 20).join(" · ")}
+                  {preview.fueraDelPlan.length > 20 && ` … +${preview.fueraDelPlan.length - 20}`}
+                </p>
+              </div>
+            )}
+
+            {preview.invalidas.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-sm text-accent-red">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span className="font-medium">{preview.invalidas.length} sin número válido</span>
+                  <span className="text-muted-foreground">(se omiten)</span>
+                </div>
+                <p className="text-[11px] font-mono text-muted-foreground break-all">
+                  {preview.invalidas.slice(0, 10).map(i => `${i.articulo}→«${i.crudo}»`).join(" · ")}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
-    </div>,
-    document.body,
+
+      <div className="flex justify-end gap-2 px-5 py-4 border-t border-border shrink-0">
+        <button onClick={onClose} className="h-9 px-4 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+          Cancelar
+        </button>
+        <button
+          onClick={cargar} disabled={guardando || preview.aplicar.length === 0}
+          className="h-9 px-4 inline-flex items-center gap-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+        >
+          {guardando && <Loader2 className="w-4 h-4 animate-spin" />}
+          Cargar {preview.aplicar.length > 0 ? preview.aplicar.length : ""}
+        </button>
+      </div>
+    </>
   );
 }

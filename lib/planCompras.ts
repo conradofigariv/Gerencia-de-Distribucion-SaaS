@@ -42,6 +42,32 @@ export interface PlanCompraItem {
 /** Campos de un ítem que se editan a mano (todo menos id/plan_id). */
 export type PlanCompraItemInput = Omit<PlanCompraItem, "id" | "plan_id">;
 
+/**
+ * Las columnas que se pueden cargar de a una para todo el plan.
+ *
+ * NO están ni `descripcion`/`unidad`/`mat_serv` (vienen del catálogo) ni las
+ * calculadas (Recorte, Pu Est ($), Total $…): esas se derivan, cargarlas a
+ * mano sería poder dejarlas en un valor que no se corresponde con su fórmula.
+ */
+export const CAMPOS_CARGABLES = [
+  { campo: "familia",       label: "Familia",      numerico: false },
+  { campo: "subfamilia",    label: "Subfamilia",   numerico: false },
+  { campo: "a_cargo_de",    label: "A cargo de",   numerico: false },
+  { campo: "gd",            label: "GD",           numerico: true  },
+  { campo: "cant_aprobada", label: "Cant. aprobada", numerico: true },
+  { campo: "pu_sic",        label: "Pu Sic",       numerico: true  },
+  { campo: "pu_op",         label: "Pu OP",        numerico: true  },
+  { campo: "pu_est_usd",    label: "Pu Est (USD)", numerico: true  },
+] as const;
+
+export type CampoCargable = (typeof CAMPOS_CARGABLES)[number]["campo"];
+type CampoNumerico = "gd" | "cant_aprobada" | "pu_sic" | "pu_op" | "pu_est_usd";
+
+const CAMPOS_NUMERICOS: CampoNumerico[] = ["gd", "cant_aprobada", "pu_sic", "pu_op", "pu_est_usd"];
+
+export const esCampoNumerico = (campo: CampoCargable): boolean =>
+  CAMPOS_NUMERICOS.includes(campo as CampoNumerico);
+
 /** Los valores derivados de un ítem — no se guardan, se calculan. */
 export interface PlanCompraCalculado {
   recorte:       number;
@@ -231,6 +257,48 @@ export async function updateItem(
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Carga UNA columna de golpe para las matrículas que ya están en el plan.
+ *
+ * Es la alternativa a tipear celda por celda: se pega «matrícula + valor» tal
+ * como sale de copiar dos columnas del Excel. Solo pisa la columna elegida;
+ * el resto de la fila queda como estaba.
+ *
+ * ⚠ Las matrículas que no estén en el plan hay que filtrarlas ANTES de llamar
+ *   (lo hace `prepararColumna`): este upsert las insertaría como filas nuevas
+ *   a medio llenar.
+ */
+export async function cargarColumna(
+  planId: string,
+  campo: CampoCargable,
+  valores: { articulo: string; valor: string | number }[],
+): Promise<number> {
+  if (valores.length === 0) return 0;
+
+  const LOTE = 500;
+  let escritas = 0;
+
+  for (let i = 0; i < valores.length; i += LOTE) {
+    const rows = valores.slice(i, i + LOTE).map((v) => ({
+      plan_id:  planId,
+      articulo: str(v.articulo),
+      // PostgREST hace ON CONFLICT DO UPDATE solo con las columnas que van en
+      // el payload, así que mandar `plan_id`, `articulo` y el campo alcanza
+      // para actualizar ese campo sin tocar los demás.
+      [campo]: CAMPOS_NUMERICOS.includes(campo as CampoNumerico) ? num(v.valor) : str(v.valor),
+      updated_at: new Date().toISOString(),
+    }));
+
+    const { data, error } = await supabase
+      .from("plan_compra_items")
+      .upsert(rows, { onConflict: "plan_id,articulo" })
+      .select("id");
+    if (error) throw new Error(error.message);
+    escritas += data?.length ?? 0;
+  }
+  return escritas;
+}
+
 /** Saca una matrícula del plan. */
 export async function deleteItem(id: string): Promise<void> {
   const { error } = await supabase.from("plan_compra_items").delete().eq("id", id);
@@ -255,6 +323,100 @@ export interface DatosCatalogo {
   descripcion: string;
   unidad:      string;
   mat_serv:    string;
+}
+
+/**
+ * Interpreta un número escrito a la argentina o a la inglesa.
+ *
+ * Si hay coma, la coma es el decimal y los puntos son separadores de miles
+ * («1.070,50»). Si no hay coma, el punto se toma como decimal («5.43»), que
+ * es lo que aparece en los precios. El caso ambiguo —«1.070» -que puede ser
+ * mil setenta o uno coma cero siete— cae del lado decimal, y por eso la UI
+ * muestra el valor ya interpretado antes de escribir nada.
+ */
+export function parseNumero(texto: string): number | null {
+  const t = String(texto ?? "").trim().replace(/\s|\$|%/g, "");
+  if (t === "") return null;
+  const limpio = t.includes(",") ? t.replace(/\./g, "").replace(",", ".") : t;
+  const n = Number(limpio);
+  return Number.isFinite(n) ? n : null;
+}
+
+export interface FilaColumna {
+  articulo: string;
+  /** El texto tal como se pegó — para mostrarlo si no se pudo interpretar. */
+  crudo:    string;
+  valor:    string | number;
+}
+
+export interface PreviewColumna {
+  /** Van a escribirse: la matrícula está en el plan y el valor es válido. */
+  aplicar:       FilaColumna[];
+  /** Matrículas pegadas que no están en este plan — se omiten. */
+  fueraDelPlan:  string[];
+  /** Filas cuyo valor no se pudo interpretar como número — se omiten. */
+  invalidas:     { articulo: string; crudo: string }[];
+}
+
+/**
+ * Separa una línea pegada en «matrícula» y «valor».
+ *
+ * El tab manda, porque es lo que produce copiar celdas de Excel. Si la línea
+ * trae columnas del medio (copiaron un rango, no dos columnas sueltas), se
+ * toman la PRIMERA como matrícula y la ÚLTIMA con contenido como valor.
+ *
+ * Recién si no hay tabs se prueba con `;` y por último con `,`, y ahí sí
+ * corta en la primera aparición: un valor de texto puede tener comas adentro
+ * («HERRAJES, MORSETERIA») y partirlo lo arruinaría.
+ */
+function partirLinea(linea: string): { articulo: string; crudo: string } | null {
+  for (const sep of ["\t", ";"]) {
+    if (linea.includes(sep)) {
+      const partes = linea.split(sep).map((s) => s.trim());
+      const articulo = partes[0];
+      const valor = [...partes.slice(1)].reverse().find((p) => p !== "") ?? "";
+      return articulo ? { articulo, crudo: valor } : null;
+    }
+  }
+  const m = /^([^,]+),([\s\S]*)$/.exec(linea);
+  if (!m) return null;
+  const articulo = m[1].trim();
+  return articulo ? { articulo, crudo: m[2].trim() } : null;
+}
+
+/**
+ * Parte el pegado de «matrícula + valor» y lo contrasta contra las matrículas
+ * que ya tiene el plan. Cada línea es una fila.
+ */
+export function prepararColumna(
+  texto: string,
+  campo: CampoCargable,
+  articulosDelPlan: Set<string>,
+): PreviewColumna {
+  const numerico = esCampoNumerico(campo);
+  const out: PreviewColumna = { aplicar: [], fueraDelPlan: [], invalidas: [] };
+  const vistos = new Set<string>();
+
+  for (const linea of texto.split(/\r?\n/)) {
+    if (!linea.trim()) continue;
+
+    const partido = partirLinea(linea);
+    if (!partido) continue;
+    const { articulo, crudo } = partido;
+    if (vistos.has(articulo)) continue;
+    vistos.add(articulo);
+
+    if (!articulosDelPlan.has(articulo)) { out.fueraDelPlan.push(articulo); continue; }
+
+    if (numerico) {
+      const n = parseNumero(crudo);
+      if (n === null) { out.invalidas.push({ articulo, crudo }); continue; }
+      out.aplicar.push({ articulo, crudo, valor: n });
+    } else {
+      out.aplicar.push({ articulo, crudo, valor: crudo });
+    }
+  }
+  return out;
 }
 
 export interface CruceCatalogo {
