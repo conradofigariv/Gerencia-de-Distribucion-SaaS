@@ -53,6 +53,22 @@ const BATCH = 500;
 const normHeader = (h: unknown): string =>
   str(h).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
 
+// Toma el primer alias presente en la fila (normalizando el encabezado: sin
+// tildes, sin may\u00fasculas, espacios colapsados). Si el export cambia apenas el
+// nombre de una columna ("Cantidad Recibida" \u2192 "Cant. Recibida", con doble
+// espacio, sin tilde, etc.), una comparaci\u00f3n exacta por corchete (`r["..."]`)
+// devuelve `undefined` en SILENCIO para TODAS las filas \u2014 no rompe la carga,
+// solo deja esa columna vac\u00eda, y el s\u00edntoma aparece lejos de ac\u00e1 (en Control
+// de Servicios, como saldo=cantidad y fecha pactada en blanco). Por eso todo
+// encabezado variable de una planilla se lee con esto, no con acceso directo.
+const pick = (r: Record<string, unknown>, aliases: string[]): unknown => {
+  const want = aliases.map(normHeader);
+  for (const k of Object.keys(r)) {
+    if (want.includes(normHeader(k))) return r[k];
+  }
+  return null;
+};
+
 // Lee la primera hoja y detecta la fila de encabezados automáticamente.
 // `anchors`: nombres de columna esperados (sin tildes/case). Se escanean las
 // primeras filas y se elige como header la que contenga MÁS anchors. Si no se
@@ -424,36 +440,47 @@ export function ServiciosPlanillasSection() {
       const rows = await parseFile(file, 1, ["Número", "Artículo", "Proveedor", "Cantidad"]);
       if (!rows.length) { toast.error("OP: sin datos"); return; }
       const now = new Date().toISOString();
+      // Todo encabezado variable se lee con `pick` (tolerante a tildes,
+      // mayúsculas y espacios) — ver el comentario largo en su definición.
+      // Antes varias columnas se leían por acceso directo (`r["Fecha
+      // Pactada"]`): si el export cambiaba apenas el nombre, esa columna
+      // quedaba en blanco para TODAS las filas sin ningún error, y el síntoma
+      // aparecía lejos de acá (Control de Servicios mostrando saldo=cantidad
+      // y fecha pactada vacía en absolutamente todas las líneas).
+      const numAlias = (r: Record<string, unknown>, aliases: string[]): number | null => {
+        const v = pick(r, aliases);
+        return v != null && v !== "" ? Number(v) : null;
+      };
       const mapped = rows.map(r => ({
-        relacion:             str(r["Relación"]            ?? r["Relacion"]),
-        numero:               str(r["Número"]              ?? r["Numero"]),
-        linea:                str(r["Línea"]               ?? r["Linea"]),
-        envio:                str(r["Envío"]               ?? r["Envio"]),
-        articulo:             str(r["Artículo"]            ?? r["Articulo"]),
-        descripcion_articulo: str(r["Descripción Artículo"] ?? r["Descripcion Articulo"]),
-        udm:                  str(r["UDM"]                 ?? r["UdM"]),
+        relacion:             str(pick(r, ["Relación", "Relacion"])),
+        numero:               str(pick(r, ["Número", "Numero"])),
+        linea:                str(pick(r, ["Línea", "Linea"])),
+        envio:                str(pick(r, ["Envío", "Envio"])),
+        articulo:             str(pick(r, ["Artículo", "Articulo"])),
+        descripcion_articulo: str(pick(r, ["Descripción Artículo", "Descripcion Articulo"])),
+        udm:                  str(pick(r, ["UDM", "UdM", "Unidad Medida", "Unidad de Medida"])),
         // fechaStr, NO str: con str() una celda de fecha del Excel queda como
         // "Tue Jul 23 2024 00:00:48 GMT-0300", que no se puede ordenar ni
         // comparar (alfabéticamente ordena por el nombre del día). fechaStr la
         // deja en ISO "YYYY-MM-DD", igual que ya hacía la carga de SIC.
         // Lo viejo ya cargado se sigue leyendo bien: gd_parse_fecha() en SQL y
         // fmtFechaISO() en el front entienden los dos formatos.
-        fecha_creacion:       fechaStr(r["Fecha Creación"]  ?? r["Fecha Creacion"]),
-        fecha_pactada:        fechaStr(r["Fecha Pactada"]),
+        fecha_creacion:       fechaStr(pick(r, ["Fecha Creación", "Fecha Creacion"])),
+        fecha_pactada:        fechaStr(pick(r, ["Fecha Pactada", "Fecha Pactado", "F. Pactada"])),
         // organizacion_envio (columna «Organización Envío» del Excel) se dejó
         // de cargar: no era confiable y la Zona pasó a ser 100% manual, desde
         // op_datos (ver docs/buscador.md). La columna se borró de planillas_op
         // — ver supabase/planillas_op_drop_organizacion_envio.sql.
-        cantidad:             r["Cantidad"]           != null ? Number(r["Cantidad"])           : null,
-        cantidad_vencida:     r["Cantidad Vencida"]   != null ? Number(r["Cantidad Vencida"])   : null,
-        cantidad_recibida:    r["Cantidad Recibida"]  != null ? Number(r["Cantidad Recibida"])  : null,
-        ctd_aceptada:         r["Ctd Aceptada"]       != null ? Number(r["Ctd Aceptada"])       : null,
-        cantidad_rechazada:   r["Cantidad Rechazada"] != null ? Number(r["Cantidad Rechazada"]) : null,
-        cantidad_facturada:   r["Cantidad Facturada"] != null ? Number(r["Cantidad Facturada"]) : null,
-        cantidad_cancelada:   r["Cantidad Cancelada"] != null ? Number(r["Cantidad Cancelada"]) : null,
-        proveedor:            str(r["Proveedor"]),
-        estado_autorizacion:  str(r["Estado Autorización"] ?? r["Estado Autorizacion"]),
-        estado_cierre:        str(r["Estado Cierre"]),
+        cantidad:             numAlias(r, ["Cantidad"]),
+        cantidad_vencida:     numAlias(r, ["Cantidad Vencida"]),
+        cantidad_recibida:    numAlias(r, ["Cantidad Recibida", "Cant. Recibida", "Cant Recibida", "Recibida"]),
+        ctd_aceptada:         numAlias(r, ["Ctd Aceptada", "Cantidad Aceptada", "Cant. Aceptada"]),
+        cantidad_rechazada:   numAlias(r, ["Cantidad Rechazada", "Cant. Rechazada"]),
+        cantidad_facturada:   numAlias(r, ["Cantidad Facturada", "Cant. Facturada"]),
+        cantidad_cancelada:   numAlias(r, ["Cantidad Cancelada", "Cant. Cancelada"]),
+        proveedor:            str(pick(r, ["Proveedor"])),
+        estado_autorizacion:  str(pick(r, ["Estado Autorización", "Estado Autorizacion"])),
+        estado_cierre:        str(pick(r, ["Estado Cierre"])),
         uploaded_at:          now,
       })).filter(r => r.numero);
       if (!mapped.length) { toast.error("OP: no se encontró columna 'Número'"); return; }
@@ -550,15 +577,6 @@ export function ServiciosPlanillasSection() {
       // ajustar los alias acá. Se autodetecta la fila de headers por estas anclas.
       const rows = await parseFile(file, 1, ["Número", "Artículo", "Cantidad", "Número Pedido", "Línea"]);
       if (!rows.length) { toast.error("SIC: sin datos"); return; }
-
-      // Toma el primer alias presente en la fila (normalizando el encabezado).
-      const pick = (r: Record<string, unknown>, aliases: string[]): unknown => {
-        const want = aliases.map(normHeader);
-        for (const k of Object.keys(r)) {
-          if (want.includes(normHeader(k))) return r[k];
-        }
-        return null;
-      };
 
       const mapped: SicSolerRow[] = rows.map(r => {
         const cant    = pick(r, ["Cantidad", "Ctd", "Cant"]);
