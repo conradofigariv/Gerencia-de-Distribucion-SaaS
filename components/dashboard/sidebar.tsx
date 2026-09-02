@@ -27,6 +27,7 @@ import {
   Tag,
   Search,
   LogOut,
+  ShoppingCart,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -135,6 +136,7 @@ const navItems: NavItemDef[] = [
       { id: "tablero-op-carga",   label: "Carga de datos", icon: UploadCloud },
     ],
   },
+  { kind: "link", id: "plan-de-compras", label: "Plan de Compras", icon: ShoppingCart },
   { kind: "link", id: "yerba", label: "Control de Yerba", icon: Coffee },
   { kind: "link", id: "settings", label: "Configuración", icon: Settings },
 ];

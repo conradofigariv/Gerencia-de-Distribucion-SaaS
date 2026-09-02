@@ -49,6 +49,7 @@ const sectionTitles: Record<Section, string> = {
   "indice-ido-carga":         "Índice IDO — Carga de datos",
   "tablero-op-resumen":       "Tablero OP — Resumen",
   "tablero-op-carga":         "Tablero OP — Carga de datos",
+  "plan-de-compras":          "Plan de Compras",
   "yerba":                    "Control de Yerba",
 };
 
