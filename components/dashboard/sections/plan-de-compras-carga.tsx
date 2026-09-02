@@ -34,7 +34,7 @@ const fmtPct = (v: number) =>
 // `campo` marca las editables (mapea a una columna de `plan_compra_items`);
 // las que no lo tienen son calculadas o vienen del catálogo, y van en gris.
 
-type CampoTexto  = "mat_serv" | "familia" | "subfamilia" | "a_cargo_de";
+type CampoTexto  = "familia" | "subfamilia" | "a_cargo_de";
 type CampoNumero = "gd" | "cant_aprobada" | "pu_sic" | "pu_op" | "pu_est_usd";
 
 const COLS: {
@@ -48,7 +48,7 @@ const COLS: {
   { key: "articulo",      label: "Artículo",      width: 118, tipo: "texto" },
   { key: "descripcion",   label: "Descripción",   width: 300, tipo: "texto" },
   { key: "unidad",        label: "Unidad",        width: 78,  tipo: "texto" },
-  { key: "mat_serv",      label: "Mat/Serv",      width: 92,  tipo: "texto",  campo: "mat_serv" },
+  { key: "mat_serv",      label: "Mat/Serv",      width: 92,  tipo: "texto" },
   { key: "familia",       label: "Familia",       width: 180, tipo: "texto",  campo: "familia" },
   { key: "subfamilia",    label: "Subfamilia",    width: 150, tipo: "texto",  campo: "subfamilia" },
   { key: "a_cargo_de",    label: "A cargo de",    width: 110, tipo: "texto",  campo: "a_cargo_de" },

@@ -59,15 +59,16 @@ CREATE TABLE IF NOT EXISTS plan_compra_items (
   -- recarga entero desde Excel y una FK volaría ítems del plan al hacerlo.
   articulo    text NOT NULL,
 
-  -- Copia del catálogo al momento de agregar la matrícula. Se guarda (en vez
-  -- de leerse siempre de `matriculas`) para que el plan quede como una foto
-  -- fiel del año: si mañana cambia la descripción en el catálogo, el plan
-  -- cerrado no se reescribe solo.
+  -- Copia del catálogo al momento de agregar la matrícula. Descripción,
+  -- unidad y Mat/Serv son intrínsecos a la matrícula: salen de `matriculas` y
+  -- NO se editan desde el plan. Se copian (en vez de leerse siempre) para que
+  -- el plan quede como una foto fiel del año: si mañana cambia la descripción
+  -- en el catálogo, el plan cerrado no se reescribe solo.
   descripcion text NOT NULL DEFAULT '',
   unidad      text NOT NULL DEFAULT '',
+  mat_serv    text NOT NULL DEFAULT '',
 
-  -- Clasificación: se carga a mano, es propia de cada plan.
-  mat_serv            text NOT NULL DEFAULT '',
+  -- Clasificación propia del plan: se carga a mano, cambia de un año a otro.
   familia             text NOT NULL DEFAULT '',
   subfamilia          text NOT NULL DEFAULT '',
   a_cargo_de          text NOT NULL DEFAULT '',

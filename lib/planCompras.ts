@@ -193,7 +193,7 @@ export async function listItems(planId: string): Promise<PlanCompraItem[]> {
  */
 export async function agregarItems(
   planId: string,
-  filas: { articulo: string; descripcion?: string; unidad?: string }[],
+  filas: DatosCatalogo[],
 ): Promise<number> {
   if (filas.length === 0) return 0;
 
@@ -202,6 +202,7 @@ export async function agregarItems(
     articulo:    str(f.articulo),
     descripcion: str(f.descripcion),
     unidad:      str(f.unidad),
+    mat_serv:    str(f.mat_serv),
   }));
 
   const { data, error } = await supabase
@@ -217,7 +218,7 @@ export async function updateItem(
   id: string, campos: Partial<PlanCompraItemInput>,
 ): Promise<void> {
   const textos = [
-    "descripcion", "unidad", "mat_serv", "familia", "subfamilia",
+    "descripcion", "unidad", "familia", "subfamilia",
     "a_cargo_de", "partida", "descripcion_partida",
   ] as const;
   const numeros = ["gd", "cant_aprobada", "pu_sic", "pu_op", "pu_est_usd"] as const;
@@ -248,36 +249,46 @@ export function parseMatriculasPegadas(texto: string): string[] {
   )];
 }
 
+/** Los datos que el catálogo aporta a una fila del plan. */
+export interface DatosCatalogo {
+  articulo:    string;
+  descripcion: string;
+  unidad:      string;
+  mat_serv:    string;
+}
+
 export interface CruceCatalogo {
   /** Matrículas que existen en el catálogo, con sus datos. */
-  reconocidas:   { articulo: string; descripcion: string; unidad: string }[];
+  reconocidas:   DatosCatalogo[];
   /** Las que no aparecen en `matriculas` — se informan y no se agregan. */
   noEncontradas: string[];
 }
 
 /**
  * Cruza las matrículas pegadas contra el catálogo (`matriculas`), trayendo
- * descripción y unidad. El cruce es por igualdad exacta de `articulo`, igual
- * que en el resto del sistema (el número va con su `.0` y sus ceros).
+ * descripción, unidad y Mat/Serv. El cruce es por igualdad exacta de
+ * `articulo`, igual que en el resto del sistema (el número va con su `.0` y
+ * sus ceros).
  */
 export async function cruzarContraCatalogo(articulos: string[]): Promise<CruceCatalogo> {
   if (articulos.length === 0) return { reconocidas: [], noEncontradas: [] };
 
   // De a tandas: un `in` con miles de valores no entra en la URL del request.
   const LOTE = 200;
-  const encontrados = new Map<string, { descripcion: string; unidad: string }>();
+  const encontrados = new Map<string, Omit<DatosCatalogo, "articulo">>();
 
   for (let i = 0; i < articulos.length; i += LOTE) {
     const lote = articulos.slice(i, i + LOTE);
     const { data, error } = await supabase
       .from("matriculas")
-      .select("articulo, descripcion, unidad_medida")
+      .select("articulo, descripcion, unidad_medida, mat_serv")
       .in("articulo", lote);
     if (error) throw new Error(error.message);
     for (const m of data ?? []) {
       encontrados.set(String(m.articulo), {
         descripcion: str(m.descripcion),
         unidad:      str(m.unidad_medida),
+        mat_serv:    str(m.mat_serv),
       });
     }
   }
