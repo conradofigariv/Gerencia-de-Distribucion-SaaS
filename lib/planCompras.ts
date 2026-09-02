@@ -210,35 +210,6 @@ export async function listItems(planId: string): Promise<PlanCompraItem[]> {
   return out;
 }
 
-/**
- * Suma matrículas al plan. Las que ya estaban se ignoran (no se pisan): el
- * `onConflict` con `ignoreDuplicates` evita borrar lo ya cargado a mano si
- * alguien vuelve a pegar una lista que se solapa.
- *
- * Devuelve cuántas entraron de verdad.
- */
-export async function agregarItems(
-  planId: string,
-  filas: DatosCatalogo[],
-): Promise<number> {
-  if (filas.length === 0) return 0;
-
-  const rows = filas.map((f) => ({
-    plan_id:     planId,
-    articulo:    str(f.articulo),
-    descripcion: str(f.descripcion),
-    unidad:      str(f.unidad),
-    mat_serv:    str(f.mat_serv),
-  }));
-
-  const { data, error } = await supabase
-    .from("plan_compra_items")
-    .upsert(rows, { onConflict: "plan_id,articulo", ignoreDuplicates: true })
-    .select("id");
-  if (error) throw new Error(error.message);
-  return data?.length ?? 0;
-}
-
 /** Guarda los campos editados de un ítem. */
 export async function updateItem(
   id: string, campos: Partial<PlanCompraItemInput>,
@@ -257,64 +228,10 @@ export async function updateItem(
   if (error) throw new Error(error.message);
 }
 
-/**
- * Carga UNA columna de golpe para las matrículas que ya están en el plan.
- *
- * Es la alternativa a tipear celda por celda: se pega «matrícula + valor» tal
- * como sale de copiar dos columnas del Excel. Solo pisa la columna elegida;
- * el resto de la fila queda como estaba.
- *
- * ⚠ Las matrículas que no estén en el plan hay que filtrarlas ANTES de llamar
- *   (lo hace `prepararColumna`): este upsert las insertaría como filas nuevas
- *   a medio llenar.
- */
-export async function cargarColumna(
-  planId: string,
-  campo: CampoCargable,
-  valores: { articulo: string; valor: string | number }[],
-): Promise<number> {
-  if (valores.length === 0) return 0;
-
-  const LOTE = 500;
-  let escritas = 0;
-
-  for (let i = 0; i < valores.length; i += LOTE) {
-    const rows = valores.slice(i, i + LOTE).map((v) => ({
-      plan_id:  planId,
-      articulo: str(v.articulo),
-      // PostgREST hace ON CONFLICT DO UPDATE solo con las columnas que van en
-      // el payload, así que mandar `plan_id`, `articulo` y el campo alcanza
-      // para actualizar ese campo sin tocar los demás.
-      [campo]: CAMPOS_NUMERICOS.includes(campo as CampoNumerico) ? num(v.valor) : str(v.valor),
-      updated_at: new Date().toISOString(),
-    }));
-
-    const { data, error } = await supabase
-      .from("plan_compra_items")
-      .upsert(rows, { onConflict: "plan_id,articulo" })
-      .select("id");
-    if (error) throw new Error(error.message);
-    escritas += data?.length ?? 0;
-  }
-  return escritas;
-}
-
 /** Saca una matrícula del plan. */
 export async function deleteItem(id: string): Promise<void> {
   const { error } = await supabase.from("plan_compra_items").delete().eq("id", id);
   if (error) throw new Error(error.message);
-}
-
-// ─── Pegado de matrículas ───────────────────────────────────────────────────
-
-/**
- * Separa una lista pegada en matrículas sueltas. Tolera saltos de línea, tabs,
- * comas y punto y coma (según de dónde se copie), y descarta repetidas.
- */
-export function parseMatriculasPegadas(texto: string): string[] {
-  return [...new Set(
-    texto.split(/[\r\n\t,;]+/).map((s) => s.trim()).filter(Boolean),
-  )];
 }
 
 /** Los datos que el catálogo aporta a una fila del plan. */
@@ -342,30 +259,63 @@ export function parseNumero(texto: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export interface FilaColumna {
-  articulo: string;
-  /** El texto tal como se pegó — para mostrarlo si no se pudo interpretar. */
-  crudo:    string;
-  valor:    string | number;
+export interface CruceCatalogo {
+  /** Matrículas que existen en el catálogo, con sus datos. */
+  reconocidas:   DatosCatalogo[];
+  /** Las que no aparecen en `matriculas` — se informan y no se agregan. */
+  noEncontradas: string[];
 }
 
-export interface PreviewColumna {
-  /** Van a escribirse: la matrícula está en el plan y el valor es válido. */
-  aplicar:       FilaColumna[];
-  /** Matrículas pegadas que no están en este plan — se omiten. */
-  fueraDelPlan:  string[];
-  /** Filas cuyo valor no se pudo interpretar como número — se omiten. */
-  invalidas:     { articulo: string; crudo: string }[];
+/**
+ * Cruza las matrículas pegadas contra el catálogo (`matriculas`), trayendo
+ * descripción, unidad y Mat/Serv. El cruce es por igualdad exacta de
+ * `articulo`, igual que en el resto del sistema (el número va con su `.0` y
+ * sus ceros).
+ */
+export async function cruzarContraCatalogo(articulos: string[]): Promise<CruceCatalogo> {
+  if (articulos.length === 0) return { reconocidas: [], noEncontradas: [] };
+
+  // De a tandas: un `in` con miles de valores no entra en la URL del request.
+  const LOTE = 200;
+  const encontrados = new Map<string, Omit<DatosCatalogo, "articulo">>();
+
+  for (let i = 0; i < articulos.length; i += LOTE) {
+    const lote = articulos.slice(i, i + LOTE);
+    const { data, error } = await supabase
+      .from("matriculas")
+      .select("articulo, descripcion, unidad_medida, mat_serv")
+      .in("articulo", lote);
+    if (error) throw new Error(error.message);
+    for (const m of data ?? []) {
+      encontrados.set(String(m.articulo), {
+        descripcion: str(m.descripcion),
+        unidad:      str(m.unidad_medida),
+        mat_serv:    str(m.mat_serv),
+      });
+    }
+  }
+
+  const reconocidas: CruceCatalogo["reconocidas"] = [];
+  const noEncontradas: string[] = [];
+  for (const a of articulos) {
+    const hit = encontrados.get(a);
+    if (hit) reconocidas.push({ articulo: a, ...hit });
+    else     noEncontradas.push(a);
+  }
+  return { reconocidas, noEncontradas };
 }
 
 // ─── Pegado de un bloque de Excel ───────────────────────────────────────────
 //
-// El caso real: en la planilla la columna «Artículo» y la del dato (Pu Sic,
-// GD, Familia…) están lejos entre sí, y Excel no deja copiar dos columnas no
-// adyacentes y pegarlas una al lado de la otra. Entonces se pega el RANGO
-// ENTERO con su fila de encabezados, y acá se reconoce cada columna por su
-// título. Así el artículo viaja en el mismo bloque que los valores y no hay
-// que confiar en que las filas queden en el mismo orden.
+// El caso real: en la planilla la columna de matrículas (que ahí se titula
+// «Artículo» — es el mismo dato) y la del valor están lejos entre sí, y Excel
+// no deja copiar dos columnas no adyacentes y pegarlas una al lado de la
+// otra. Entonces se pega el RANGO ENTERO con su fila de encabezados, y acá se
+// reconoce cada columna por su título.
+//
+// Una sola pegada hace todo: suma las matrículas que falten y carga las
+// columnas. Pedir primero la lista de matrículas y después los datos sería
+// hacer dos veces el mismo trabajo — la lista ya viene adentro del bloque.
 
 /** Encabezado normalizado: sin acentos, sin dobles espacios, en minúscula. */
 function normHeader(h: string): string {
@@ -402,7 +352,13 @@ const ALIAS_HEADERS: Record<string, CampoCargable> = {
   "pu est usd":        "pu_est_usd",
 };
 
-/** ¿Este encabezado es la columna de matrículas? */
+/**
+ * ¿Este encabezado es la columna de matrículas?
+ *
+ * En el Excel esa columna se titula «Artículo», y en el sistema el mismo dato
+ * se llama matrícula: son lo mismo, no dos campos distintos. Se aceptan los
+ * dos títulos porque el pegado viene de la planilla.
+ */
 function esHeaderArticulo(h: string): boolean {
   const n = normHeader(h);
   return n === "articulo" || n === "matricula" || n === "matriculas";
@@ -421,24 +377,54 @@ export interface BloqueParseado {
   colArticulo: number;
   /** Mapeo propuesto: índice de columna → campo del plan. */
   mapeo: Record<number, CampoCargable>;
+  /**
+   * false = el pegado es una lista pelada de matrículas, sin encabezados.
+   * Sirve para el caso simple de sumar matrículas sin datos todavía.
+   */
+  tieneEncabezados: boolean;
 }
 
 /**
- * Parte el bloque pegado en encabezados + filas, y propone qué es cada
- * columna. La primera línea SIEMPRE se toma como encabezado: es lo que hace
- * falta para reconocer las columnas, y pegar sin ella no permitiría saber
- * cuál es cuál.
+ * Parte el bloque pegado en encabezados + filas y propone qué es cada columna.
+ *
+ * Acepta las dos formas de pegar, sin que haya que elegir modo:
+ *   • Un bloque del Excel con su fila de encabezados → se reconocen las
+ *     columnas por el título.
+ *   • Una lista pelada de matrículas (una por línea) → se toman todas como
+ *     matrículas y no hay columnas que cargar.
+ *
+ * La distinción se hace mirando si la primera línea tiene algún título
+ * conocido. Nunca se descarta una línea de datos como si fuera encabezado:
+ * si no se reconoce nada, se asume lista.
  */
 export function parseBloque(texto: string): BloqueParseado {
   const lineas = texto.split(/\r?\n/).filter((l) => l.trim() !== "");
-  if (lineas.length === 0) return { headers: [], filas: [], colArticulo: -1, mapeo: {} };
+  const vacio: BloqueParseado = {
+    headers: [], filas: [], colArticulo: -1, mapeo: {}, tieneEncabezados: false,
+  };
+  if (lineas.length === 0) return vacio;
 
   const sep = lineas[0].includes("\t") ? "\t" : lineas[0].includes(";") ? ";" : "\t";
   const corte = (l: string) => l.split(sep).map((c) => c.trim());
 
-  const headers = corte(lineas[0]);
-  const filas   = lineas.slice(1).map(corte);
+  const posiblesHeaders = corte(lineas[0]);
+  const tieneEncabezados = posiblesHeaders.some(
+    (h) => esHeaderArticulo(h) || campoDeHeader(h) !== null,
+  );
 
+  // Lista pelada: cada línea es una matrícula, sin datos que cargar.
+  if (!tieneEncabezados) {
+    return {
+      headers: ["Matrícula"],
+      filas: lineas.map((l) => [corte(l)[0] ?? ""]),
+      colArticulo: 0,
+      mapeo: {},
+      tieneEncabezados: false,
+    };
+  }
+
+  const headers = posiblesHeaders;
+  const filas   = lineas.slice(1).map(corte);
   const colArticulo = headers.findIndex(esHeaderArticulo);
 
   const mapeo: Record<number, CampoCargable> = {};
@@ -449,34 +435,49 @@ export function parseBloque(texto: string): BloqueParseado {
     if (campo && !Object.values(mapeo).includes(campo)) mapeo[i] = campo;
   });
 
-  return { headers, filas, colArticulo, mapeo };
+  return { headers, filas, colArticulo, mapeo, tieneEncabezados };
 }
 
-/** Una fila lista para escribir: la matrícula y los campos que trae. */
+/**
+ * Una fila lista para escribir: la matrícula y los campos que trae.
+ *
+ * Además de las columnas cargables incluye las del catálogo, porque al sumar
+ * una matrícula nueva se escriben en la misma operación.
+ */
+export type CamposEscribibles = Partial<
+  Record<CampoCargable | "descripcion" | "unidad" | "mat_serv", string | number>
+>;
+
 export interface FilaBloque {
   articulo: string;
-  campos:   Partial<Record<CampoCargable, string | number>>;
+  campos:   CamposEscribibles;
 }
 
 export interface PreviewBloque {
-  aplicar:      FilaBloque[];
-  fueraDelPlan: string[];
+  /** Ya están en el plan: se les actualizan las columnas que trae el pegado. */
+  actualizar: FilaBloque[];
+  /** No están en el plan todavía: se agregan (si el catálogo las conoce). */
+  agregar:    FilaBloque[];
   /** Celdas numéricas que no se pudieron interpretar (se dejan sin tocar). */
-  invalidas:    { articulo: string; campo: CampoCargable; crudo: string }[];
+  invalidas:  { articulo: string; campo: CampoCargable; crudo: string }[];
 }
 
 /**
  * Cruza el bloque contra las matrículas del plan y arma lo que se va a
- * escribir. Las celdas VACÍAS se ignoran (no se escriben): en una planilla
- * grande lo normal es que muchas columnas estén en blanco, y tomarlas como
- * "poner en cero / borrar el texto" pisaría datos ya cargados.
+ * escribir.
+ *
+ * Las matrículas que todavía no están en el plan NO son un error: se suman.
+ *
+ * Las celdas VACÍAS se ignoran (no se escriben): en una planilla grande lo
+ * normal es que muchas columnas estén en blanco, y tomarlas como "poner en
+ * cero / borrar el texto" pisaría datos ya cargados.
  */
 export function prepararBloque(
   bloque: BloqueParseado,
   mapeo: Record<number, CampoCargable>,
   articulosDelPlan: Set<string>,
 ): PreviewBloque {
-  const out: PreviewBloque = { aplicar: [], fueraDelPlan: [], invalidas: [] };
+  const out: PreviewBloque = { actualizar: [], agregar: [], invalidas: [] };
   if (bloque.colArticulo < 0) return out;
 
   const vistos = new Set<string>();
@@ -486,9 +487,7 @@ export function prepararBloque(
     if (!articulo || vistos.has(articulo)) continue;
     vistos.add(articulo);
 
-    if (!articulosDelPlan.has(articulo)) { out.fueraDelPlan.push(articulo); continue; }
-
-    const campos: FilaBloque["campos"] = {};
+    const campos: CamposEscribibles = {};
     for (const [idx, campo] of Object.entries(mapeo)) {
       const crudo = (fila[Number(idx)] ?? "").trim();
       if (crudo === "") continue;
@@ -501,7 +500,13 @@ export function prepararBloque(
         campos[campo] = crudo;
       }
     }
-    if (Object.keys(campos).length > 0) out.aplicar.push({ articulo, campos });
+
+    if (articulosDelPlan.has(articulo)) {
+      // Sin ninguna columna que cargar no hay nada que actualizar.
+      if (Object.keys(campos).length > 0) out.actualizar.push({ articulo, campos });
+    } else {
+      out.agregar.push({ articulo, campos });
+    }
   }
   return out;
 }
@@ -550,109 +555,50 @@ export async function cargarBloque(planId: string, filas: FilaBloque[]): Promise
   return escritas;
 }
 
+export interface ResultadoBloque {
+  agregadas:    number;
+  actualizadas: number;
+  /** Matrículas nuevas que el catálogo no conoce — no se agregan. */
+  sinCatalogo:  string[];
+}
+
 /**
- * Separa una línea pegada en «matrícula» y «valor».
+ * Aplica un pegado completo: agrega las matrículas nuevas (trayendo del
+ * catálogo descripción, unidad y Mat/Serv) y actualiza las que ya estaban.
  *
- * El tab manda, porque es lo que produce copiar celdas de Excel. Si la línea
- * trae columnas del medio (copiaron un rango, no dos columnas sueltas), se
- * toman la PRIMERA como matrícula y la ÚLTIMA con contenido como valor.
- *
- * Recién si no hay tabs se prueba con `;` y por último con `,`, y ahí sí
- * corta en la primera aparición: un valor de texto puede tener comas adentro
- * («HERRAJES, MORSETERIA») y partirlo lo arruinaría.
+ * Las nuevas se insertan ya con los datos del pegado, en una sola escritura:
+ * `cargarBloque` hace upsert por (plan_id, articulo), así que sirve tanto
+ * para insertar como para actualizar.
  */
-function partirLinea(linea: string): { articulo: string; crudo: string } | null {
-  for (const sep of ["\t", ";"]) {
-    if (linea.includes(sep)) {
-      const partes = linea.split(sep).map((s) => s.trim());
-      const articulo = partes[0];
-      const valor = [...partes.slice(1)].reverse().find((p) => p !== "") ?? "";
-      return articulo ? { articulo, crudo: valor } : null;
-    }
-  }
-  const m = /^([^,]+),([\s\S]*)$/.exec(linea);
-  if (!m) return null;
-  const articulo = m[1].trim();
-  return articulo ? { articulo, crudo: m[2].trim() } : null;
-}
+export async function aplicarBloque(
+  planId: string, preview: PreviewBloque,
+): Promise<ResultadoBloque> {
+  const out: ResultadoBloque = { agregadas: 0, actualizadas: 0, sinCatalogo: [] };
 
-/**
- * Parte el pegado de «matrícula + valor» y lo contrasta contra las matrículas
- * que ya tiene el plan. Cada línea es una fila.
- */
-export function prepararColumna(
-  texto: string,
-  campo: CampoCargable,
-  articulosDelPlan: Set<string>,
-): PreviewColumna {
-  const numerico = esCampoNumerico(campo);
-  const out: PreviewColumna = { aplicar: [], fueraDelPlan: [], invalidas: [] };
-  const vistos = new Set<string>();
+  if (preview.agregar.length > 0) {
+    const cruce = await cruzarContraCatalogo(preview.agregar.map((f) => f.articulo));
+    out.sinCatalogo = cruce.noEncontradas;
 
-  for (const linea of texto.split(/\r?\n/)) {
-    if (!linea.trim()) continue;
-
-    const partido = partirLinea(linea);
-    if (!partido) continue;
-    const { articulo, crudo } = partido;
-    if (vistos.has(articulo)) continue;
-    vistos.add(articulo);
-
-    if (!articulosDelPlan.has(articulo)) { out.fueraDelPlan.push(articulo); continue; }
-
-    if (numerico) {
-      const n = parseNumero(crudo);
-      if (n === null) { out.invalidas.push({ articulo, crudo }); continue; }
-      out.aplicar.push({ articulo, crudo, valor: n });
-    } else {
-      out.aplicar.push({ articulo, crudo, valor: crudo });
-    }
-  }
-  return out;
-}
-
-export interface CruceCatalogo {
-  /** Matrículas que existen en el catálogo, con sus datos. */
-  reconocidas:   DatosCatalogo[];
-  /** Las que no aparecen en `matriculas` — se informan y no se agregan. */
-  noEncontradas: string[];
-}
-
-/**
- * Cruza las matrículas pegadas contra el catálogo (`matriculas`), trayendo
- * descripción, unidad y Mat/Serv. El cruce es por igualdad exacta de
- * `articulo`, igual que en el resto del sistema (el número va con su `.0` y
- * sus ceros).
- */
-export async function cruzarContraCatalogo(articulos: string[]): Promise<CruceCatalogo> {
-  if (articulos.length === 0) return { reconocidas: [], noEncontradas: [] };
-
-  // De a tandas: un `in` con miles de valores no entra en la URL del request.
-  const LOTE = 200;
-  const encontrados = new Map<string, Omit<DatosCatalogo, "articulo">>();
-
-  for (let i = 0; i < articulos.length; i += LOTE) {
-    const lote = articulos.slice(i, i + LOTE);
-    const { data, error } = await supabase
-      .from("matriculas")
-      .select("articulo, descripcion, unidad_medida, mat_serv")
-      .in("articulo", lote);
-    if (error) throw new Error(error.message);
-    for (const m of data ?? []) {
-      encontrados.set(String(m.articulo), {
-        descripcion: str(m.descripcion),
-        unidad:      str(m.unidad_medida),
-        mat_serv:    str(m.mat_serv),
+    const datos = new Map(cruce.reconocidas.map((r) => [r.articulo, r]));
+    const nuevas: FilaBloque[] = [];
+    for (const f of preview.agregar) {
+      const cat = datos.get(f.articulo);
+      if (!cat) continue;
+      nuevas.push({
+        articulo: f.articulo,
+        campos: {
+          ...f.campos,
+          descripcion: cat.descripcion,
+          unidad:      cat.unidad,
+          mat_serv:    cat.mat_serv,
+        },
       });
     }
+    out.agregadas = await cargarBloque(planId, nuevas);
   }
 
-  const reconocidas: CruceCatalogo["reconocidas"] = [];
-  const noEncontradas: string[] = [];
-  for (const a of articulos) {
-    const hit = encontrados.get(a);
-    if (hit) reconocidas.push({ articulo: a, ...hit });
-    else     noEncontradas.push(a);
+  if (preview.actualizar.length > 0) {
+    out.actualizadas = await cargarBloque(planId, preview.actualizar);
   }
-  return { reconocidas, noEncontradas };
+  return out;
 }
