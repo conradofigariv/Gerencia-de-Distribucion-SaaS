@@ -236,6 +236,18 @@ const SIC_HELP_STEPS: { n: number; text: ReactNode }[] = [
   { n: 6, text: <>Andá a <strong>Archivo → Exportar</strong> para descargar el Excel.</> },
 ];
 
+// Instructivo original: "Instructivo para Exportar OP de SIEPEC" (para
+// Control de Servicios). Es el reporte de «Envíos», no el genérico de OP —
+// esa distinción es justo lo que causó el incidente de la planilla de 99
+// columnas: exportar la vista equivocada de SIEPEC.
+const OP_HELP_STEPS: { n: number; text: ReactNode }[] = [
+  { n: 1, text: <>Entrá a <strong>SIEPEC</strong> y andá a <strong>Siga → Compras → Solicitante → Resumen de Orden de Compra</strong>.</> },
+  { n: 2, text: <>Seleccioná la pestaña <strong>«Rango de Fechas»</strong> y cargá desde el <strong>01/01/2020</strong> hasta la fecha de hoy.</> },
+  { n: 3, text: <>Hacé click en <strong>«Envíos»</strong> y tocá <strong>«Encontrar»</strong>.</> },
+  { n: 4, text: <>En la ventana que se abre, tocá la carpetita de arriba a la izquierda y seleccioná la carpeta correspondiente (en el instructivo original, «M_Dibella» — la del preparador que corresponda).</> },
+  { n: 5, text: <>Andá a <strong>Archivo → Exportar</strong> y elegí <strong>«Continuar hasta el final»</strong> — puede tardar varios minutos.</> },
+];
+
 // Instructivo original: "Instructivo para Exportar Transacciones de SIEPEC".
 const TRANSACCIONES_HELP_STEPS: { n: number; text: ReactNode }[] = [
   { n: 1, text: <>Entrá a <strong>SIEPEC</strong> y andá a <strong>Siga → Compras → Recepción e Inspección → Resumen de Transacción de Recepción</strong>.</> },
@@ -459,6 +471,7 @@ export function ServiciosPlanillasSection() {
   const [sicFile, setSicFile] = useState<File | null>(null);
   // Ayuda: cómo exportar las SICs desde SIEPEC.
   const [sicHelpOpen, setSicHelpOpen] = useState(false);
+  const [opHelpOpen,  setOpHelpOpen]  = useState(false);
   const [txHelpOpen,  setTxHelpOpen]  = useState(false);
   // Archivo de MATRICULAS pendiente de confirmar el modo (abre el diálogo).
   const [matFile, setMatFile] = useState<File | null>(null);
@@ -861,7 +874,7 @@ export function ServiciosPlanillasSection() {
           y como los items quedan align-items:stretch por default, cada
           tarjeta hereda ese alto extra. */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 flex-1">
-        <PlanillaCard tipo="OP"            label="OP"            descripcion="Planilla «Envíos»"       accentClass="text-blue-400"    state={states.OP}            onUpload={f => handleUpload("OP",            f)} onClear={() => handleClear("OP")}            />
+        <PlanillaCard tipo="OP"            label="OP"            descripcion="Planilla «Envíos»"       accentClass="text-blue-400"    state={states.OP}            onUpload={f => handleUpload("OP",            f)} onClear={() => handleClear("OP")}            onHelp={() => setOpHelpOpen(true)} />
         <PlanillaCard tipo="SIC"           label="SIC"           descripcion="Solicitudes internas de compra" accentClass="text-purple-400"  state={states.SIC}           onUpload={f => handleUpload("SIC",           f)} onClear={() => handleClear("SIC")}           onHelp={() => setSicHelpOpen(true)} />
         <PlanillaCard tipo="MATRICULAS"    label="MATRICULAS"    descripcion="Catálogo de materiales"   accentClass="text-emerald-400" state={states.MATRICULAS}    onUpload={f => handleUpload("MATRICULAS",    f)} onClear={() => handleClear("MATRICULAS")}    />
         <PlanillaCard tipo="TRANSACCIONES" label="TRANSACCIONES" descripcion="Log de movimientos"       accentClass="text-orange-400"  state={states.TRANSACCIONES} onUpload={f => handleUpload("TRANSACCIONES", f)} onClear={() => handleClear("TRANSACCIONES")} onHelp={() => setTxHelpOpen(true)} />
@@ -958,6 +971,15 @@ export function ServiciosPlanillasSection() {
         <DialogRecordatorios userId={userId} onClose={() => setConfigOpen(false)} onGuardado={() => {}} />
       )}
 
+      {opHelpOpen && (
+        <HelpModal
+          titulo="Cómo exportar la OP"
+          intro={<>Seguí estos pasos en <strong>SIEPEC</strong> para descargar la planilla de «Envíos» con las columnas que Control de Servicios necesita (Cantidad Recibida y Fecha Pactada incluidas).</>}
+          steps={OP_HELP_STEPS}
+          nota={<>Si el archivo exportado no trae las columnas <strong>«Cantidad Recibida»</strong> o <strong>«Fecha Pactada»</strong>, la carga se corta sola con un aviso — es señal de que se exportó otro reporte (de negociación/aprobación) en vez del de «Envíos».</>}
+          onClose={() => setOpHelpOpen(false)}
+        />
+      )}
       {sicHelpOpen && (
         <HelpModal
           titulo="Cómo exportar las SICs"
