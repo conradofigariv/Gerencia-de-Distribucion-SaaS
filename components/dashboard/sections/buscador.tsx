@@ -3061,6 +3061,11 @@ export function BuscadorSection() {
                             <span className="truncate">{c.label}</span>
                             <SortIcon className={`w-3.5 h-3.5 shrink-0 transition-opacity ${active ? "opacity-100" : "opacity-30"}`} />
                           </span>
+                          <ResizeHandle
+                            onStart={(e) => {
+                              resizingRef.current = { col: c.key, startX: e.clientX, startWidth: effWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] };
+                            }}
+                          />
                         </th>
                       );
                     })}
