@@ -33,6 +33,8 @@ import { IndiceIdoResumenSection } from "@/components/dashboard/sections/indice-
 import { IndiceIdoCargaSection } from "@/components/dashboard/sections/indice-ido-carga";
 import { TableroOpResumenSection } from "@/components/dashboard/sections/tablero-op-resumen";
 import { TableroOpCargaSection } from "@/components/dashboard/sections/tablero-op-carga";
+import { PlanComprasResumenSection } from "@/components/dashboard/sections/plan-compras-resumen";
+import { PlanComprasCargaSection } from "@/components/dashboard/sections/plan-compras-carga";
 import { BuscadorSection } from "@/components/dashboard/sections/buscador";
 import { YerbaSection } from "@/components/dashboard/sections/yerba";
 import { LoginPage } from "@/components/auth/login";
@@ -56,6 +58,7 @@ export type Section =
   | "informe-tecnico"
   | "indice-ido-resumen" | "indice-ido-carga"
   | "tablero-op-resumen" | "tablero-op-carga"
+  | "plan-compras-resumen" | "plan-compras-carga"
   | "buscador"
   | "yerba";
 
@@ -197,6 +200,8 @@ export default function Dashboard() {
       case "indice-ido-carga":        return <IndiceIdoCargaSection />;
       case "tablero-op-resumen":      return <TableroOpResumenSection />;
       case "tablero-op-carga":        return <TableroOpCargaSection />;
+      case "plan-compras-resumen":    return <PlanComprasResumenSection />;
+      case "plan-compras-carga":      return <PlanComprasCargaSection />;
       case "buscador":                return <BuscadorSection />;
       case "yerba":                   return <YerbaSection />;
       default:                       return <OverviewSection />;
