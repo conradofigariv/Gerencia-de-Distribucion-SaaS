@@ -640,6 +640,11 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   tx_primera_fecha:    120,
   tx_ultima_fecha:     120,
   stock_za:            95,
+  // Columnas de seguimiento: mismo diccionario que las del índice, para que
+  // el resize y el ancho persistido funcionen igual sin un lookup aparte —
+  // ver el comentario de `mergedCols`, más abajo, sobre por qué ahora
+  // conviven en un solo orden renderizado.
+  ...Object.fromEntries(TRACK_COLS.map((c) => [c.key, c.width])),
 };
 
 const COLUMNS_KEY = "buscador-columns";
@@ -1327,23 +1332,50 @@ export function BuscadorSection() {
     [tabCfg?.widths, colWidths]
   );
 
-  // Columnas realmente visibles, en el orden elegido — todo lo que se
-  // renderiza (tabla + CSV) sale de acá; COLS completo sigue existiendo para
-  // el menú de columnas y no se pierde ningún dato.
-  const visibleCols = useMemo(
-    () => effOrder
+  /**
+   * Todas las columnas visibles, EN UN SOLO orden — las del índice y las de
+   * seguimiento (Nota, Estado seg., etc.) mezcladas según `effOrder`.
+   *
+   * Antes esto eran dos listas (`visibleCols` / `visibleTrackCols`)
+   * renderizadas en dos pasadas separadas: la tabla SIEMPRE pintaba primero
+   * todas las del índice y recién después todas las de seguimiento, sin
+   * importar qué orden se arrastrara en el panel «Columnas» — ese panel ya
+   * incluía las de seguimiento en la misma lista arrastrable (`effOrder` las
+   * contempla desde siempre, ver DEFAULT_COL_ORDER), pero la posición que
+   * ahí se elegía nunca llegaba a afectar el render. Resultado: arrastrar
+   * «Nota» reordenaba la lista del panel pero la tabla no se movía un pixel.
+   *
+   * Ahora una sola pasada respeta `effOrder` de punta a punta, así que
+   * cualquier columna se puede ubicar en cualquier posición.
+   */
+  const mergedCols = useMemo(() => {
+    const dataByKey  = new Map(COLS.map((c) => [c.key as string, c]));
+    const trackByKey = new Map(TRACK_COLS.map((c) => [c.key, c]));
+    type Item =
+      | { kind: "data";  key: string; data: ColDef }
+      | { kind: "track"; key: string; track: TrackColDef };
+    return effOrder
       .filter((k) => !effHidden.has(k))
-      .map((k) => COLS.find((c) => c.key === k))
-      .filter((c): c is ColDef => !!c),
-    [effOrder, effHidden]
-  );
+      .map((k): Item | null => {
+        const d = dataByKey.get(k);
+        if (d) return { kind: "data", key: k, data: d };
+        if (!isTabMode) return null;   // de seguimiento: solo dentro de una pestaña
+        const t = trackByKey.get(k);
+        return t ? { kind: "track", key: k, track: t } : null;
+      })
+      .filter((x): x is Item => x !== null);
+  }, [effOrder, effHidden, isTabMode]);
 
-  // Las Personalizadas van siempre al final, en su orden fijo — lo único que
-  // se respeta acá es si están ocultas. No entran en `visibleCols` porque no
-  // salen del índice y su celda se edita, no se renderiza como dato.
+  // Derivadas de `mergedCols`, para el código existente que solo necesita un
+  // tipo — ya no definen el orden de render (eso lo hace `mergedCols`), solo
+  // filtran por tipo conservando la posición relativa entre sí.
+  const visibleCols = useMemo(
+    () => mergedCols.filter((x) => x.kind === "data").map((x) => x.data),
+    [mergedCols]
+  );
   const visibleTrackCols = useMemo(
-    () => TRACK_COLS.filter((c) => !effHidden.has(c.key)),
-    [effHidden]
+    () => mergedCols.filter((x) => x.kind === "track").map((x) => x.track),
+    [mergedCols]
   );
 
   // Filas fijadas arriba (misma función que en Stock por Zona). Se guarda la
@@ -2902,7 +2934,7 @@ export function BuscadorSection() {
               {query.trim() ? `Sin resultados para «${query.trim()}».` : "El índice no tiene filas todavía."}
               {indice?.filas === 0 && <span className="text-[12px]">El índice está vacío — probá «Reconstruir índice».</span>}
             </div>
-          ) : !visibleCols.length ? (
+          ) : !mergedCols.length ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-2.5 text-sm text-muted-foreground">
               <Columns3 className="w-10 h-10 opacity-20" />
               Ocultaste todas las columnas — abrí «Columnas» para mostrar alguna.
@@ -2917,11 +2949,8 @@ export function BuscadorSection() {
                       En el índice maestro lleva el check de selección y el pin;
                       dentro de una pestaña, el handle de arrastre y el borrar. */}
                   <col style={{ width: isTabMode ? 78 : 58 }} />
-                  {visibleCols.map((c) => (
-                    <col key={c.key} style={{ width: effWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] }} />
-                  ))}
-                  {isTabMode && visibleTrackCols.map((c) => (
-                    <col key={c.key} style={{ width: c.width }} />
+                  {mergedCols.map((x) => (
+                    <col key={x.key} style={{ width: effWidths[x.key] ?? DEFAULT_COL_WIDTHS[x.key] }} />
                   ))}
                 </colgroup>
                 <thead>
@@ -2968,49 +2997,48 @@ export function BuscadorSection() {
                         </button>
                       )}
                     </th>
-                    {visibleCols.map((c) => {
-                      const active = sortCol === c.key;
+                    {mergedCols.map((x) => {
+                      const active = sortCol === x.key;
                       const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
-                      return (
-                        <th
-                          key={c.key}
-                          onClick={() => handleSort(c.key)}
-                          title={`Fuente: ${GROUP_META[c.group].label}`}
-                          className="relative"
-                          style={{
-                            padding: "8px 12px",
-                            textAlign: c.num ? "right" : "left",
-                            fontSize: 12, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase",
-                            color: active ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
-                            cursor: "pointer", userSelect: "none",
-                            position: "sticky", top: 0, zIndex: 2,
-                            background: STICKY_BG,
-                            borderBottom: "1px solid hsl(var(--border))",
-                            // Franja de color arriba del header: de qué tabla sale la
-                            // columna (SIC / OP / Movimientos / Matrícula). boxShadow
-                            // inset no altera el layout, a diferencia de un borderTop.
-                            boxShadow: `inset 0 2.5px 0 0 ${GROUP_META[c.group].color}`,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%", justifyContent: c.num ? "flex-end" : "flex-start" }}>
-                            <span className="truncate">{c.label}</span>
-                            <SortIcon className={`w-3.5 h-3.5 shrink-0 transition-opacity ${active ? "opacity-100" : "opacity-30"}`} />
-                          </span>
-                          <ResizeHandle
-                            onStart={(e) => {
-                              resizingRef.current = { col: c.key, startX: e.clientX, startWidth: effWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] };
+                      if (x.kind === "data") {
+                        const c = x.data;
+                        return (
+                          <th
+                            key={c.key}
+                            onClick={() => handleSort(c.key)}
+                            title={`Fuente: ${GROUP_META[c.group].label}`}
+                            className="relative"
+                            style={{
+                              padding: "8px 12px",
+                              textAlign: c.num ? "right" : "left",
+                              fontSize: 12, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase",
+                              color: active ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
+                              cursor: "pointer", userSelect: "none",
+                              position: "sticky", top: 0, zIndex: 2,
+                              background: STICKY_BG,
+                              borderBottom: "1px solid hsl(var(--border))",
+                              // Franja de color arriba del header: de qué tabla sale la
+                              // columna (SIC / OP / Movimientos / Matrícula). boxShadow
+                              // inset no altera el layout, a diferencia de un borderTop.
+                              boxShadow: `inset 0 2.5px 0 0 ${GROUP_META[c.group].color}`,
+                              whiteSpace: "nowrap",
                             }}
-                          />
-                        </th>
-                      );
-                    })}
-
-                    {/* Columnas de seguimiento: no vienen del índice, las
-                        escribe el usuario. Fondo propio para diferenciarlas. */}
-                    {isTabMode && visibleTrackCols.map((c) => {
-                      const active = sortCol === c.key;
-                      const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
+                          >
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%", justifyContent: c.num ? "flex-end" : "flex-start" }}>
+                              <span className="truncate">{c.label}</span>
+                              <SortIcon className={`w-3.5 h-3.5 shrink-0 transition-opacity ${active ? "opacity-100" : "opacity-30"}`} />
+                            </span>
+                            <ResizeHandle
+                              onStart={(e) => {
+                                resizingRef.current = { col: c.key, startX: e.clientX, startWidth: effWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] };
+                              }}
+                            />
+                          </th>
+                        );
+                      }
+                      // Columnas de seguimiento: no vienen del índice, las
+                      // escribe el usuario. Fondo propio para diferenciarlas.
+                      const c = x.track;
                       return (
                         <th
                           key={c.key}
@@ -3046,7 +3074,7 @@ export function BuscadorSection() {
                       return (
                         <tr key={item.key}>
                           <td
-                            colSpan={1 + visibleCols.length + (isTabMode ? visibleTrackCols.length : 0)}
+                            colSpan={1 + mergedCols.length}
                             style={{
                               padding: 0,
                               background: "oklch(0.245 0.008 270)",
@@ -3211,96 +3239,13 @@ export function BuscadorSection() {
                           </span>
                         </td>
 
-                        {/* Columnas del índice. En una pestaña son copias, así
-                            que se editan con doble click. */}
-                        {visibleCols.map((c) => {
-                          // Las columnas manuales de OP (descripción / zona) se
-                          // editan TAMBIÉN en el índice maestro, donde no hay
-                          // filaId: la clave de edición es la fila visible.
-                          const esManualOp = OP_MANUAL_COLS.has(c.key as string);
-                          const numeroOp   = String(data.numero_op ?? "");
-                          const editKey    = isTabMode ? filaId : key;
-                          const editable   = esManualOp
-                            ? (puedoEditar && !!numeroOp)
-                            : (isTabMode && puedoEditar);
-                          const editando = editing?.filaId === editKey && editing?.key === c.key;
-                          return (
-                            <td
-                              key={c.key}
-                              className={cn(
-                                !editando && !editable && "truncate",
-                                editable && !editando && "group/celda",
-                                c.num ? "text-right tabular-nums" : "text-left",
-                              )}
-                              style={{
-                                padding: editando ? "2px 6px" : "7px 12px",
-                                borderBottom: bottomBorder,
-                                fontFamily: (c.num || c.mono) ? "ui-monospace, monospace" : undefined,
-                                color: c.key === "articulo" ? "hsl(var(--foreground))" : undefined,
-                                fontWeight: c.key === "articulo" ? 500 : undefined,
-                                cursor: editable ? "text" : undefined,
-                              }}
-                              title={
-                                esManualOp
-                                  ? (!numeroOp ? "Esta fila no tiene OP"
-                                     : !puedoEditar ? "Solo lectura — pedile al dueño permiso de edición"
-                                     : `Doble click para editar — se guarda para toda la OP ${numeroOp}`)
-                                : isTabMode ? (puedoEditar ? "Doble click para editar" : "Solo lectura — pedile al dueño permiso de edición")
-                                  : c.key === "descripcion" ? String(data.descripcion ?? "") : undefined
-                              }
-                              onDoubleClick={editable ? () => {
-                                setEditValue(String(data[c.key] ?? ""));
-                                setEditing({ filaId: editKey!, key: c.key });
-                              } : undefined}
-                              onContextMenu={(e) => abrirMenuFila(e, { key, filaId, data, colKey: c.key as string })}
-                            >
-                              {editando ? (
-                                <input
-                                  autoFocus
-                                  onClick={(e) => e.stopPropagation()}
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
-                                  onBlur={() => commitEdit(isTabMode ? filaId ?? null : null, c.key, editValue, numeroOp)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") e.currentTarget.blur();
-                                    if (e.key === "Escape") setEditing(null);
-                                  }}
-                                  className="w-full bg-transparent outline-none text-[13px]"
-                                  style={{
-                                    padding: "5px 6px", borderRadius: 6,
-                                    border: "1px solid oklch(0.55 0.20 295 / 0.6)",
-                                    background: "oklch(0.16 0.005 270)",
-                                    color: "hsl(var(--foreground))",
-                                    textAlign: c.num ? "right" : "left",
-                                  }}
-                                />
-                              ) : editable ? (
-                                // Lápiz al pasar el mouse: el doble click es el
-                                // único gesto de edición y sin esto no se
-                                // anuncia por ningún lado. Vale sobre todo para
-                                // Zona y Descripción OP, que arrancan vacías.
-                                <span className="flex items-center gap-1.5" style={{ justifyContent: c.num ? "flex-end" : "flex-start" }}>
-                                  <span className="truncate">
-                                    {c.render
-                                      ? c.render(data as unknown as BusquedaRow)
-                                      : c.num ? fmtNum(data[c.key] as number) : ((data[c.key] ?? "") as ReactNode)}
-                                  </span>
-                                  <Pencil
-                                    className="w-3 h-3 shrink-0 opacity-0 group-hover/celda:opacity-100 transition-opacity"
-                                    style={{ color: "oklch(0.5 0 0)" }}
-                                  />
-                                </span>
-                              ) : (
-                                c.render
-                                  ? c.render(data as unknown as BusquedaRow)
-                                  : c.num ? fmtNum(data[c.key] as number) : ((data[c.key] ?? "") as ReactNode)
-                              )}
-                            </td>
-                          );
-                        })}
-
-                        {/* Columnas de seguimiento */}
-                        {isTabMode && visibleTrackCols.map((c) => {
+                        {/* Columnas del índice y de seguimiento, EN UN SOLO
+                            orden — ver el comentario largo de `mergedCols`
+                            más arriba sobre por qué dejaron de ser dos
+                            pasadas separadas. */}
+                        {mergedCols.map((x) => {
+                          if (x.kind === "track") {
+                          const c = x.track;
                           const editando = editing?.filaId === filaId && editing?.key === c.key;
                           const val = String(data[c.key] ?? "");
                           const est = c.tipo === "estado" ? ESTADO_STYLE[val] : undefined;
@@ -3391,6 +3336,93 @@ export function BuscadorSection() {
                                     />
                                   )}
                                 </span>
+                              )}
+                            </td>
+                          );
+                          }
+                          // Columnas del índice. En una pestaña son copias, así
+                          // que se editan con doble click.
+                          const c = x.data;
+                          // Las columnas manuales de OP (descripción / zona) se
+                          // editan TAMBIÉN en el índice maestro, donde no hay
+                          // filaId: la clave de edición es la fila visible.
+                          const esManualOp = OP_MANUAL_COLS.has(c.key as string);
+                          const numeroOp   = String(data.numero_op ?? "");
+                          const editKey    = isTabMode ? filaId : key;
+                          const editable   = esManualOp
+                            ? (puedoEditar && !!numeroOp)
+                            : (isTabMode && puedoEditar);
+                          const editando = editing?.filaId === editKey && editing?.key === c.key;
+                          return (
+                            <td
+                              key={c.key}
+                              className={cn(
+                                !editando && !editable && "truncate",
+                                editable && !editando && "group/celda",
+                                c.num ? "text-right tabular-nums" : "text-left",
+                              )}
+                              style={{
+                                padding: editando ? "2px 6px" : "7px 12px",
+                                borderBottom: bottomBorder,
+                                fontFamily: (c.num || c.mono) ? "ui-monospace, monospace" : undefined,
+                                color: c.key === "articulo" ? "hsl(var(--foreground))" : undefined,
+                                fontWeight: c.key === "articulo" ? 500 : undefined,
+                                cursor: editable ? "text" : undefined,
+                              }}
+                              title={
+                                esManualOp
+                                  ? (!numeroOp ? "Esta fila no tiene OP"
+                                     : !puedoEditar ? "Solo lectura — pedile al dueño permiso de edición"
+                                     : `Doble click para editar — se guarda para toda la OP ${numeroOp}`)
+                                : isTabMode ? (puedoEditar ? "Doble click para editar" : "Solo lectura — pedile al dueño permiso de edición")
+                                  : c.key === "descripcion" ? String(data.descripcion ?? "") : undefined
+                              }
+                              onDoubleClick={editable ? () => {
+                                setEditValue(String(data[c.key] ?? ""));
+                                setEditing({ filaId: editKey!, key: c.key });
+                              } : undefined}
+                              onContextMenu={(e) => abrirMenuFila(e, { key, filaId, data, colKey: c.key as string })}
+                            >
+                              {editando ? (
+                                <input
+                                  autoFocus
+                                  onClick={(e) => e.stopPropagation()}
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={() => commitEdit(isTabMode ? filaId ?? null : null, c.key, editValue, numeroOp)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") e.currentTarget.blur();
+                                    if (e.key === "Escape") setEditing(null);
+                                  }}
+                                  className="w-full bg-transparent outline-none text-[13px]"
+                                  style={{
+                                    padding: "5px 6px", borderRadius: 6,
+                                    border: "1px solid oklch(0.55 0.20 295 / 0.6)",
+                                    background: "oklch(0.16 0.005 270)",
+                                    color: "hsl(var(--foreground))",
+                                    textAlign: c.num ? "right" : "left",
+                                  }}
+                                />
+                              ) : editable ? (
+                                // Lápiz al pasar el mouse: el doble click es el
+                                // único gesto de edición y sin esto no se
+                                // anuncia por ningún lado. Vale sobre todo para
+                                // Zona y Descripción OP, que arrancan vacías.
+                                <span className="flex items-center gap-1.5" style={{ justifyContent: c.num ? "flex-end" : "flex-start" }}>
+                                  <span className="truncate">
+                                    {c.render
+                                      ? c.render(data as unknown as BusquedaRow)
+                                      : c.num ? fmtNum(data[c.key] as number) : ((data[c.key] ?? "") as ReactNode)}
+                                  </span>
+                                  <Pencil
+                                    className="w-3 h-3 shrink-0 opacity-0 group-hover/celda:opacity-100 transition-opacity"
+                                    style={{ color: "oklch(0.5 0 0)" }}
+                                  />
+                                </span>
+                              ) : (
+                                c.render
+                                  ? c.render(data as unknown as BusquedaRow)
+                                  : c.num ? fmtNum(data[c.key] as number) : ((data[c.key] ?? "") as ReactNode)
                               )}
                             </td>
                           );
