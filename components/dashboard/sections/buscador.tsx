@@ -519,11 +519,17 @@ interface TrackColDef { key: string; label: string; tipo: "texto" | "estado" | "
 // `_en_tarjeta` NO va acá: no es un dato que se lea de la fila sino una marca,
 // y como tal se opera seleccionando filas y usando el menú contextual («Enviar
 // a Tarjeta»), no tildando una celda columna por columna.
+//
+// ⚠ Estas columnas NO son arrastrables (no hay drag & drop entre ellas ni con
+// las del índice): siempre se renderizan al final de la tabla, en ESTE orden
+// fijo. "Nota" va primera del grupo a propósito — es la que más se usa como
+// descripción corta y la idea es que quede lo más cerca posible de los datos
+// del índice, sin tener que scrollear hasta el final para verla.
 const TRACK_COLS: TrackColDef[] = [
+  { key: TRACK_KEYS.nota,          label: "Nota",         tipo: "texto",  width: 260 },
   { key: TRACK_KEYS.estado,        label: "Estado seg.",  tipo: "estado", width: 130 },
   { key: TRACK_KEYS.responsable,   label: "Responsable",  tipo: "texto",  width: 160 },
   { key: TRACK_KEYS.fechaRevision, label: "F. revisión",  tipo: "fecha",  width: 130 },
-  { key: TRACK_KEYS.nota,          label: "Nota",         tipo: "texto",  width: 260 },
 ];
 
 // ─── Agrupado de pestañas ────────────────────────────────────────────────────
