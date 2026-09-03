@@ -12,11 +12,10 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
-  buscar, reconstruirIndice, estadoIndice, rowKey, fechaMs, fetchEntregasLinea, fmtFechaISO,
-  ORDENABLES_SERVIDOR, CAMPOS_FECHA, CAMPOS_FECHA_TX,
-  type BusquedaRow, type CampoBusqueda, type CampoFecha, type DetalleEntregas,
+  buscar, reconstruirIndice, estadoIndice, rowKey, fechaMs, fmtFechaISO,
+  ORDENABLES_SERVIDOR, CAMPOS_FECHA,
+  type BusquedaRow, type CampoBusqueda, type CampoFecha,
 } from "@/lib/busqueda";
-import { DetalleEntregasFila } from "@/components/dashboard/entregas-detalle";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -996,18 +995,6 @@ export function BuscadorSection() {
   const [fechaAplicada, setFechaAplicada] =
     useState<{ campo: CampoFecha; desde: string; hasta: string } | null>(null);
 
-  // El mismo rango acota el detalle de entregas, pero SOLO si la fecha elegida
-  // es de transacciones: con «creación de la SIC» el rango no habla de los
-  // movimientos y recortarlos por ahí mostraría un detalle incompleto sin que
-  // nada lo explique.
-  const rangoTx = fechaAplicada && CAMPOS_FECHA_TX.has(fechaAplicada.campo) ? fechaAplicada : null;
-  const entregasDesde = rangoTx?.desde ?? "";
-  const entregasHasta = rangoTx?.hasta ?? "";
-  // Fila abierta (rowKey) y su detalle, cacheado por clave para no volver a
-  // consultar al plegar y desplegar la misma fila.
-  const [filaAbierta, setFilaAbierta] = useState<string | null>(null);
-  const [detalles, setDetalles] = useState<Map<string, DetalleEntregas>>(new Map());
-  const [cargandoDetalle, setCargandoDetalle] = useState<string | null>(null);
   const [rows, setRows]       = useState<BusquedaRow[]>([]);
   // Datos manuales de la OP (descripción + zona real), por OP normalizada. Se
   // superponen a lo que traiga el índice o la copia congelada de la pestaña,
@@ -1650,35 +1637,6 @@ export function BuscadorSection() {
     }, 300);
     return () => clearTimeout(t);
   }, [query, activeTab, campoBusqueda, ordenServidor, sortDir, fechaAplicada]);
-
-  /**
-   * Abre/cierra el detalle de entregas de una fila. Se consulta bajo demanda
-   * (una línea por vez) en vez de traerlo con la búsqueda: el detalle sale de
-   * `tablero_op_transaccion`, que tiene 60k+ filas, y pedirlo para las 500 de
-   * la búsqueda sería tirar el 99% del trabajo.
-   */
-  // `k` es la clave de fila del render (id del índice, o filaId en una
-  // pestaña) — se recibe en vez de derivarla acá: en una pestaña la fila es
-  // una copia y no tiene `id` del índice, y en el índice rowKey puede
-  // repetirse entre filas, que es justo lo que se está evitando.
-  const toggleDetalle = useCallback((k: string, r: BusquedaRow) => {
-    if (filaAbierta === k) { setFilaAbierta(null); return; }
-    setFilaAbierta(k);
-    if (detalles.has(k)) return;   // ya cacheado
-
-    setCargandoDetalle(k);
-    fetchEntregasLinea(r.numero_op ?? "", r.articulo ?? "", r.linea, entregasDesde || null, entregasHasta || null)
-      .then((d) => setDetalles((prev) => new Map(prev).set(k, d)))
-      .catch((e) => toast.error(`No se pudo traer el detalle: ${e instanceof Error ? e.message : String(e)}`))
-      .finally(() => setCargandoDetalle((c) => (c === k ? null : c)));
-  }, [filaAbierta, detalles, entregasDesde, entregasHasta]);
-
-  // Cambiar el rango invalida lo cacheado: los detalles guardados se pidieron
-  // con el rango anterior y mostrarían entregas que ya no corresponden.
-  useEffect(() => {
-    setDetalles(new Map());
-    setFilaAbierta(null);
-  }, [entregasDesde, entregasHasta]);
 
   // El stock se trae una sola vez y se cruza en memoria: son ~5k matrículas en
   // un único registro jsonb, mucho más barato que pedirlo por fila.
@@ -3199,24 +3157,6 @@ export function BuscadorSection() {
                           onContextMenu={(e) => abrirMenuFila(e, { key, filaId, data })}
                         >
                           <span className="flex items-center justify-center gap-1">
-                            {/* Desplegar el detalle de entregas. Solo con OP
-                                (una fila de catálogo no tiene movimientos) y
-                                solo dentro de una pestaña: en el índice
-                                maestro la granularidad ya es una fila por
-                                (OP, línea, envío), así que el detalle no
-                                agrega nada que no digan esas columnas. */}
-                            {isTabMode && !!data.numero_op && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); toggleDetalle(key, data as unknown as BusquedaRow); }}
-                                title="Ver entregas de esta línea"
-                                className="grid place-items-center shrink-0"
-                                style={{ width: 16, height: 16, color: filaAbierta === key ? "#86efac" : "oklch(0.42 0 0)", cursor: "pointer" }}
-                              >
-                                {filaAbierta === key
-                                  ? <ChevronDown className="w-3.5 h-3.5" />
-                                  : <ChevronRight className="w-3.5 h-3.5" />}
-                              </button>
-                            )}
                             {isTabMode ? (
                               <>
                                 <span
@@ -3451,20 +3391,6 @@ export function BuscadorSection() {
                         })}
                       </tr>
 
-                      {/* Detalle de entregas: comprometido vs. entregado. */}
-                      {isTabMode && filaAbierta === key && (
-                        <tr>
-                          <td colSpan={1 + visibleCols.length + (isTabMode ? visibleTrackCols.length : 0)} style={{ padding: 0, borderBottom: bottomBorder }}>
-                            {cargandoDetalle === key ? (
-                              <div className="flex items-center gap-2 text-[12px]" style={{ padding: "14px 16px 14px 62px", background: "oklch(0.185 0.005 270)", color: "oklch(0.55 0 0)" }}>
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />Cargando entregas…
-                              </div>
-                            ) : detalles.has(key) ? (
-                              <DetalleEntregasFila detalle={detalles.get(key)!} />
-                            ) : null}
-                          </td>
-                        </tr>
-                      )}
                       </Fragment>
                     );
                   })}
