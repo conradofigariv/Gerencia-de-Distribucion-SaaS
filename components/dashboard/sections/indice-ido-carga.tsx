@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   DataSheetGrid,
-  textColumn,
+  createTextColumn,
   keyColumn,
   type Column,
 } from "react-datasheet-grid";
@@ -50,6 +50,11 @@ const EDITABLE_FIELDS: (keyof DsgRow)[] = [
 ];
 
 const POVA_OBJ = 95;
+
+// Columna numérica: todo IDO es numérico, así que se alinea a la derecha
+// (mucho más legible para comparar magnitudes bajando por una columna) y
+// hereda la fuente monoespaciada del wrapper (números tabulares gratis).
+const numColumn = createTextColumn({ alignRight: true });
 
 function computeRow(row: DsgRow): DsgRow {
   const t = parseNum(row.pova_transferido);
@@ -107,20 +112,31 @@ function dsgToIdoRow(periodo: string, r: DsgRow): IdoRow | null {
   return { periodo, zona: r.zona, ...parsed } as unknown as IdoRow;
 }
 
-// ── Group title helper (colored left border for group separators) ──────────────
-function GroupTitle({ label }: { label: string }) {
+// ── Column header (grupo + campo en dos líneas fijas, nunca texto que envuelve
+// de forma impredecible) — el borde verde a la izquierda marca el inicio de
+// cada sección (Técnico / POVA / Mantenimiento); las columnas intermedias
+// reservan la misma línea superior (vacía) para que el nombre del campo quede
+// siempre a la misma altura en todo el header. ──────────────────────────────
+function ColumnHeader({ group, label }: { group?: string; label: string }) {
   return (
-    <span style={{
-      display: "inline-block",
-      borderLeft: "2px solid oklch(0.55 0.2 155 / 0.7)",
-      paddingLeft: 6,
-      color: "oklch(0.72 0.18 155)",
-      fontWeight: 700,
-      textTransform: "uppercase",
-      fontSize: 10,
-      letterSpacing: "0.06em",
-    }}>
-      {label}
+    <span
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+        paddingLeft: 6,
+        borderLeft: group ? "2px solid oklch(0.55 0.2 155 / 0.7)" : "2px solid transparent",
+      }}
+    >
+      <span style={{
+        fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em",
+        color: "oklch(0.72 0.18 155)", lineHeight: 1.3, minHeight: 12,
+      }}>
+        {group ?? " "}
+      </span>
+      <span style={{ fontSize: 11.5, fontWeight: 500, color: "oklch(0.82 0 0)", lineHeight: 1.2 }}>
+        {label}
+      </span>
     </span>
   );
 }
@@ -222,40 +238,32 @@ export function IndiceIdoCargaSection() {
 
   // Columns defined inside component to capture removeZona
   const columns = useMemo((): Column<DsgRow>[] => {
-    function mk(key: keyof DsgRow, title: string, groupStart?: boolean): Column<DsgRow> {
+    function mk(key: keyof DsgRow, label: string, group?: string): Column<DsgRow> {
       return {
-        ...(keyColumn(key, textColumn as never) as object),
-        title: groupStart ? <GroupTitle label={title} /> : title,
-        minWidth: 85,
+        ...(keyColumn(key, numColumn as never) as object),
+        title: <ColumnHeader label={label} group={group} />,
+        minWidth: 88,
       } as Column<DsgRow>;
     }
-    function mkDisabled(key: keyof DsgRow, title: string): Column<DsgRow> {
+    function mkDisabled(key: keyof DsgRow, label: string, group?: string): Column<DsgRow> {
       return {
-        ...(keyColumn(key, textColumn as never) as object),
-        title,
+        ...(keyColumn(key, numColumn as never) as object),
+        title: <ColumnHeader label={label} group={group} />,
         disabled: true,
-        minWidth: 95,
+        cellClassName: "ido-computed-cell",
+        minWidth: 96,
       } as Column<DsgRow>;
     }
 
     return [
-      // Zona identifier (sticky left, read-only)
-      {
-        ...(keyColumn("zona", textColumn as never) as object),
-        title: "Zona",
-        disabled: true,
-        minWidth: 56,
-        grow: 0,
-      } as Column<DsgRow>,
-
       // ── Técnico ────────────────────────────────────────────────────────────
-      mk("fmik_s1", "Técnico — FMIK S1", true),
+      mk("fmik_s1", "FMIK S1", "Técnico"),
       mk("fmik_s2", "FMIK S2"),
       mk("dmik_s1", "DMIK S1"),
       mk("dmik_s2", "DMIK S2"),
 
       // ── POVA ───────────────────────────────────────────────────────────────
-      mk("pova_transferido", "POVA — Transferido", true),
+      mk("pova_transferido", "Transferido", "POVA"),
       mk("pova_fin_obra", "Fin de obra"),
       mk("pova_creadas", "Creadas"),
       mk("pova_total", "Total obras"),
@@ -263,12 +271,14 @@ export function IndiceIdoCargaSection() {
       mkDisabled("_pova_resultado", "Result. s/ Obj"),
 
       // ── Mantenimiento ──────────────────────────────────────────────────────
-      mk("mant_poda_bt", "Mant. — Poda BT", true),
+      mk("mant_poda_bt", "Poda BT", "Mantenimiento"),
       mk("mant_poda_mt", "Poda MT"),
       mk("mant_termografia", "Termografía"),
       mkDisabled("_mant_promedio", "Mantenimiento"),
 
-      // ── Delete button ──────────────────────────────────────────────────────
+      // ── Delete button ── ancho fijo real: en react-datasheet-grid un `grow:0`
+      // sin `basis` se queda "congelado" en 0px (el minWidth nunca llega a
+      // evaluarse) — hay que fijar el tamaño con `basis`, no con `width`/`minWidth`.
       {
         component: ({ rowData }: { rowData: DsgRow }) => (
           <button
@@ -280,9 +290,9 @@ export function IndiceIdoCargaSection() {
           </button>
         ),
         title: "",
-        width: 36,
-        minWidth: 36,
+        basis: 36,
         grow: 0,
+        shrink: 0,
         disabled: true,
       } as unknown as Column<DsgRow>,
     ];
@@ -432,11 +442,19 @@ export function IndiceIdoCargaSection() {
             value={grid}
             onChange={handleChange}
             columns={columns}
+            // Gutter fijo (sticky) con la zona en vez del índice de fila: así
+            // siempre se sabe a qué zona corresponde la fila aunque se haya
+            // scrolleado horizontalmente hacia las últimas columnas.
+            gutterColumn={{
+              basis: 60, grow: 0, shrink: 0,
+              component: ({ rowData }) => <div className="ido-zona-gutter">{rowData.zona}</div>,
+            }}
+            rowClassName={({ rowIndex }) => (rowIndex % 2 === 1 ? "ido-row-alt" : undefined)}
             lockRows
             disableContextMenu
             rowHeight={34}
-            headerRowHeight={38}
-            height={grid.length * 34 + 38 + 2}
+            headerRowHeight={42}
+            height={grid.length * 34 + 42 + 2}
           />
         </div>
       )}
