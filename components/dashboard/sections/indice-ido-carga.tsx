@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  DataSheetGrid,
+  textColumn,
+  keyColumn,
+  type Column,
+} from "react-datasheet-grid";
+import "react-datasheet-grid/dist/style.css";
 import {
   UploadCloud, Loader2, Save, RefreshCw, Calendar, Trash2, Plus, Info,
   SlidersHorizontal, ChevronDown,
@@ -11,7 +18,7 @@ import {
 } from "@/lib/idoStorage";
 import type { IdoRow, IdoMetas } from "@/lib/idoStorage";
 
-// Criterios estratégicos / metas internas (editables y persistidos por período).
+// ── Meta fields ───────────────────────────────────────────────────────────────
 const META_FIELDS: { key: keyof IdoMetas; label: string; calc?: boolean }[] = [
   { key: "fmikS1", label: "FMIK S1 ≤", calc: true },
   { key: "fmikS2", label: "FMIK S2 ≤", calc: true },
@@ -22,134 +29,117 @@ const META_FIELDS: { key: keyof IdoMetas; label: string; calc?: boolean }[] = [
   { key: "povaCreados", label: "POVA Creados/demás =" },
 ];
 
-// Buffer de texto para editar metas (permite escribir decimales como "0,77")
 const metaToInputs = (m: IdoMetas): Record<keyof IdoMetas, string> =>
   Object.fromEntries(Object.entries(m).map(([k, v]) => [k, String(v)])) as Record<keyof IdoMetas, string>;
 
-// Orden canónico de zonas (igual que las tablas de origen FMIK/DMIK) para que
-// al pegar una columna de valores se alineen fila por fila.
-const DEFAULT_ZONAS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
+// ── Grid data type ────────────────────────────────────────────────────────────
+// Flat row: all string (raw input). Fields prefixed _ are computed, not persisted.
+type DsgRow = {
+  zona: string;
+  fmik_s1: string; fmik_s2: string; dmik_s1: string; dmik_s2: string;
+  pova_transferido: string; pova_fin_obra: string; pova_creadas: string; pova_total: string;
+  _pova_ejecutado: string; _pova_resultado: string;
+  mant_poda_bt: string; mant_poda_mt: string; mant_termografia: string;
+  _mant_promedio: string;
+};
 
-interface Field {
-  key: string;
-  label: string;
-}
-
-interface DerivedCol {
-  key: string;
-  label: string;
-  compute: (cells: Record<string, string>) => number | null;
-}
-
-interface Group {
-  label: string;
-  fields: Field[];
-  derived?: DerivedCol[];
-}
-
-// POVA — cálculos provisorios (no se persisten; el valor oficial sale en el Resumen)
-const POVA_OBJETIVO = 95; // %
-function povaEjecutado(cells: Record<string, string>): number | null {
-  const t = parseNum(cells.pova_transferido ?? "");
-  const f = parseNum(cells.pova_fin_obra ?? "");
-  const tot = parseNum(cells.pova_total ?? "");
-  if (t === null || f === null || tot === null || tot === 0) return null;
-  return ((t + f) / tot) * 100;
-}
-function povaResultado(cells: Record<string, string>): number | null {
-  const e = povaEjecutado(cells);
-  if (e === null) return null;
-  return Math.min(100, (e / POVA_OBJETIVO) * 100);
-}
-
-// Mantenimiento — promedio de Poda BT, Poda MT y Termografía. Siempre divide por 3
-// (los valores faltantes cuentan como 0, igual que en el cálculo oficial del IDO).
-function mantPromedio(cells: Record<string, string>): number | null {
-  const vals = [cells.mant_poda_bt, cells.mant_poda_mt, cells.mant_termografia]
-    .map((v) => parseNum(v ?? ""));
-  if (vals.every((n) => n === null)) return null;
-  return vals.reduce((a, b) => a + (b ?? 0), 0) / 3;
-}
-
-const GROUPS: Group[] = [
-  {
-    label: "Técnico — FMIK / DMIK",
-    fields: [
-      { key: "fmik_s1", label: "FMIK S1" },
-      { key: "fmik_s2", label: "FMIK S2" },
-      { key: "dmik_s1", label: "DMIK S1" },
-      { key: "dmik_s2", label: "DMIK S2" },
-    ],
-  },
-  {
-    label: "POVA — Obras",
-    fields: [
-      { key: "pova_transferido", label: "Transferido" },
-      { key: "pova_fin_obra", label: "Fin de obra" },
-      { key: "pova_creadas", label: "Creadas" },
-      { key: "pova_total", label: "Total obras" },
-    ],
-    derived: [
-      { key: "pova_ejecutado", label: "Ejecutado", compute: povaEjecutado },
-      { key: "pova_resultado", label: "Result. sobre Objetivo", compute: povaResultado },
-    ],
-  },
-  {
-    label: "Mantenimiento",
-    fields: [
-      { key: "mant_poda_bt", label: "Poda BT" },
-      { key: "mant_poda_mt", label: "Poda MT" },
-      { key: "mant_termografia", label: "Termografía" },
-    ],
-    derived: [
-      { key: "mant_promedio", label: "Mantenimiento", compute: mantPromedio },
-    ],
-  },
+const EDITABLE_FIELDS: (keyof DsgRow)[] = [
+  "fmik_s1", "fmik_s2", "dmik_s1", "dmik_s2",
+  "pova_transferido", "pova_fin_obra", "pova_creadas", "pova_total",
+  "mant_poda_bt", "mant_poda_mt", "mant_termografia",
 ];
 
-// Solo los campos editables se mapean a la base y al pegado de columnas.
-const FLAT_FIELDS: string[] = GROUPS.flatMap((g) => g.fields.map((f) => f.key));
+const POVA_OBJ = 95;
 
-// Layout de columnas (editables + derivadas) con índice de pegado y borde de grupo.
-type Col =
-  | { kind: "input"; field: string; label: string; fieldIdx: number; groupStart: boolean }
-  | { kind: "derived"; key: string; label: string; compute: DerivedCol["compute"]; groupStart: boolean };
+function computeRow(row: DsgRow): DsgRow {
+  const t = parseNum(row.pova_transferido);
+  const f = parseNum(row.pova_fin_obra);
+  const tot = parseNum(row.pova_total);
+  let ejec: number | null = null;
+  if (t !== null && f !== null && tot !== null && tot > 0)
+    ejec = ((t + f) / tot) * 100;
+  const result = ejec !== null ? Math.min(100, (ejec / POVA_OBJ) * 100) : null;
 
-const COLUMNS: Col[] = (() => {
-  const cols: Col[] = [];
-  let ei = 0;
-  for (const g of GROUPS) {
-    g.fields.forEach((f, idx) => {
-      cols.push({ kind: "input", field: f.key, label: f.label, fieldIdx: ei, groupStart: idx === 0 });
-      ei++;
-    });
-    (g.derived ?? []).forEach((d, idx) => {
-      cols.push({ kind: "derived", key: d.key, label: d.label, compute: d.compute, groupStart: g.fields.length === 0 && idx === 0 });
-    });
+  const bt = parseNum(row.mant_poda_bt);
+  const mt = parseNum(row.mant_poda_mt);
+  const termo = parseNum(row.mant_termografia);
+  const allNull = bt === null && mt === null && termo === null;
+  // Siempre divide por 3 (faltantes = 0)
+  const prom = allNull ? null : ((bt ?? 0) + (mt ?? 0) + (termo ?? 0)) / 3;
+
+  return {
+    ...row,
+    _pova_ejecutado: ejec !== null ? `${ejec.toFixed(1)}%` : "",
+    _pova_resultado: result !== null ? `${result.toFixed(1)}%` : "",
+    _mant_promedio: prom !== null ? `${prom.toFixed(1)}%` : "",
+  };
+}
+
+function emptyDsgRow(zona: string): DsgRow {
+  return {
+    zona,
+    fmik_s1: "", fmik_s2: "", dmik_s1: "", dmik_s2: "",
+    pova_transferido: "", pova_fin_obra: "", pova_creadas: "", pova_total: "",
+    _pova_ejecutado: "", _pova_resultado: "",
+    mant_poda_bt: "", mant_poda_mt: "", mant_termografia: "",
+    _mant_promedio: "",
+  };
+}
+
+function idoRowToDsg(r: IdoRow): DsgRow {
+  const raw = emptyDsgRow(r.zona);
+  for (const f of EDITABLE_FIELDS) {
+    const v = (r as unknown as Record<string, number | null>)[f as string];
+    (raw as unknown as Record<string, string>)[f as string] = v !== null && v !== undefined ? String(v) : "";
   }
-  return cols;
-})();
-
-interface GridRow {
-  zona: string;
-  cells: Record<string, string>;
+  return computeRow(raw);
 }
 
-function numToStr(v: number | null | undefined): string {
-  return v === null || v === undefined ? "" : String(v);
+function dsgToIdoRow(periodo: string, r: DsgRow): IdoRow | null {
+  const parsed: Record<string, number | null> = {};
+  let hasData = false;
+  for (const f of EDITABLE_FIELDS) {
+    const n = parseNum((r as unknown as Record<string, string>)[f as string] ?? "");
+    parsed[f as string] = n;
+    if (n !== null) hasData = true;
+  }
+  if (!hasData) return null;
+  return { periodo, zona: r.zona, ...parsed } as unknown as IdoRow;
 }
 
-function fmtPct(v: number | null): string {
-  return v === null ? "—" : `${Math.round(v)}%`;
+// ── Group title helper (colored left border for group separators) ──────────────
+function GroupTitle({ label }: { label: string }) {
+  return (
+    <span style={{
+      display: "inline-block",
+      borderLeft: "2px solid oklch(0.55 0.2 155 / 0.7)",
+      paddingLeft: 6,
+      color: "oklch(0.72 0.18 155)",
+      fontWeight: 700,
+      textTransform: "uppercase",
+      fontSize: 10,
+      letterSpacing: "0.06em",
+    }}>
+      {label}
+    </span>
+  );
 }
 
-function emptyCells(): Record<string, string> {
-  return Object.fromEntries(FLAT_FIELDS.map((f) => [f, ""]));
+// Trash icon inline (avoids importing Lucide in column closures)
+function TrashIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18M19 6l-1 14H6L5 6M8 6V4h8v2"/>
+    </svg>
+  );
 }
 
+const DEFAULT_ZONAS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
+
+// ── Component ─────────────────────────────────────────────────────────────────
 export function IndiceIdoCargaSection() {
   const [periodo, setPeriodo] = useState(String(new Date().getFullYear()));
-  const [grid, setGrid] = useState<GridRow[]>([]);
+  const [grid, setGrid] = useState<DsgRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [newZona, setNewZona] = useState("");
@@ -163,69 +153,33 @@ export function IndiceIdoCargaSection() {
     const rows = await getRows(p);
     const byZona = new Map<string, IdoRow>();
     for (const r of rows) byZona.set(r.zona, r);
-
-    // Siempre mostramos las zonas por defecto + cualquier extra ya guardada
     const zonas = [...DEFAULT_ZONAS];
     for (const z of byZona.keys()) if (!zonas.includes(z)) zonas.push(z);
-
-    const next: GridRow[] = zonas.map((zona) => {
+    setGrid(zonas.map((zona) => {
       const r = byZona.get(zona);
-      const cells = emptyCells();
-      if (r) {
-        for (const f of FLAT_FIELDS) {
-          cells[f] = numToStr((r as unknown as Record<string, number | null>)[f]);
-        }
-      }
-      return { zona, cells };
-    });
-    setGrid(next);
+      return r ? idoRowToDsg(r) : emptyDsgRow(zona);
+    }));
     setLoading(false);
   }, []);
 
   useEffect(() => { load(periodo); }, [periodo, load]);
 
-  function setCell(rowIdx: number, field: string, value: string) {
-    setGrid((prev) => {
-      const next = prev.map((r) => ({ ...r, cells: { ...r.cells } }));
-      next[rowIdx].cells[field] = value;
-      return next;
-    });
-  }
+  const removeZona = useCallback(async (zona: string) => {
+    setGrid((prev) => prev.filter((r) => r.zona !== zona));
+    await deleteRow(periodo, zona);
+  }, [periodo]);
 
-  // Pegar desde Excel: rellena hacia abajo (y a la derecha si hay tabs)
-  function handlePaste(e: React.ClipboardEvent, rowIdx: number, fieldIdx: number) {
-    const text = e.clipboardData.getData("text");
-    if (!text) return;
-    const lines = text.replace(/\r/g, "").split("\n");
-    while (lines.length && lines[lines.length - 1] === "") lines.pop();
-    // Una sola celda sin tabs → comportamiento normal de pegado
-    if (lines.length <= 1 && !text.includes("\t")) return;
-    e.preventDefault();
-    setGrid((prev) => {
-      const next = prev.map((r) => ({ ...r, cells: { ...r.cells } }));
-      lines.forEach((line, i) => {
-        const r = rowIdx + i;
-        if (r >= next.length) return;
-        line.split("\t").forEach((val, j) => {
-          const f = FLAT_FIELDS[fieldIdx + j];
-          if (f) next[r].cells[f] = val.trim();
-        });
-      });
-      return next;
-    });
+  // Recompute derived columns on every grid change
+  function handleChange(newData: DsgRow[]) {
+    setGrid(newData.map(computeRow));
   }
 
   function addZona() {
     const z = newZona.trim().toUpperCase();
     if (!z) return;
     if (grid.some((r) => r.zona === z)) { toast.error(`La zona ${z} ya existe.`); return; }
-    setGrid((prev) => [...prev, { zona: z, cells: emptyCells() }]);
+    setGrid((prev) => [...prev, emptyDsgRow(z)]);
     setNewZona("");
-  }
-
-  async function removeZona(zona: string) {
-    setGrid((prev) => prev.filter((r) => r.zona !== zona));
-    await deleteRow(periodo, zona);
   }
 
   function setMeta(key: keyof IdoMetas, value: string) {
@@ -246,15 +200,8 @@ export function IndiceIdoCargaSection() {
   async function handleSave() {
     const rows: IdoRow[] = [];
     for (const r of grid) {
-      const parsedCells: Record<string, number | null> = {};
-      let hasData = false;
-      for (const f of FLAT_FIELDS) {
-        const n = parseNum(r.cells[f] ?? "");
-        parsedCells[f] = n;
-        if (n !== null) hasData = true;
-      }
-      if (!hasData) continue;
-      rows.push({ periodo, zona: r.zona, ...parsedCells } as unknown as IdoRow);
+      const ido = dsgToIdoRow(periodo, r);
+      if (ido) rows.push(ido);
     }
     if (rows.length === 0) { toast.error("No hay datos para guardar."); return; }
     setSaving(true);
@@ -264,6 +211,74 @@ export function IndiceIdoCargaSection() {
     toast.success(`Guardado: ${rows.length} zona(s) para el período ${periodo}.`);
     load(periodo);
   }
+
+  // Columns defined inside component to capture removeZona
+  const columns = useMemo((): Column<DsgRow>[] => {
+    function mk(key: keyof DsgRow, title: string, groupStart?: boolean): Column<DsgRow> {
+      return {
+        ...(keyColumn(key, textColumn as never) as object),
+        title: groupStart ? <GroupTitle label={title} /> : title,
+        minWidth: 85,
+      } as Column<DsgRow>;
+    }
+    function mkDisabled(key: keyof DsgRow, title: string): Column<DsgRow> {
+      return {
+        ...(keyColumn(key, textColumn as never) as object),
+        title,
+        disabled: true,
+        minWidth: 95,
+      } as Column<DsgRow>;
+    }
+
+    return [
+      // Zona identifier (sticky left, read-only)
+      {
+        ...(keyColumn("zona", textColumn as never) as object),
+        title: "Zona",
+        disabled: true,
+        minWidth: 56,
+        grow: 0,
+      } as Column<DsgRow>,
+
+      // ── Técnico ────────────────────────────────────────────────────────────
+      mk("fmik_s1", "Técnico — FMIK S1", true),
+      mk("fmik_s2", "FMIK S2"),
+      mk("dmik_s1", "DMIK S1"),
+      mk("dmik_s2", "DMIK S2"),
+
+      // ── POVA ───────────────────────────────────────────────────────────────
+      mk("pova_transferido", "POVA — Transferido", true),
+      mk("pova_fin_obra", "Fin de obra"),
+      mk("pova_creadas", "Creadas"),
+      mk("pova_total", "Total obras"),
+      mkDisabled("_pova_ejecutado", "Ejecutado"),
+      mkDisabled("_pova_resultado", "Result. s/ Obj"),
+
+      // ── Mantenimiento ──────────────────────────────────────────────────────
+      mk("mant_poda_bt", "Mant. — Poda BT", true),
+      mk("mant_poda_mt", "Poda MT"),
+      mk("mant_termografia", "Termografía"),
+      mkDisabled("_mant_promedio", "Mantenimiento"),
+
+      // ── Delete button ──────────────────────────────────────────────────────
+      {
+        component: ({ rowData }: { rowData: DsgRow }) => (
+          <button
+            onMouseDown={(e) => { e.stopPropagation(); removeZona(rowData.zona); }}
+            title="Eliminar zona"
+            className="ido-delete-btn"
+          >
+            <TrashIcon />
+          </button>
+        ),
+        title: "",
+        width: 36,
+        minWidth: 36,
+        grow: 0,
+        disabled: true,
+      } as unknown as Column<DsgRow>,
+    ];
+  }, [removeZona]);
 
   return (
     <div className="space-y-6">
@@ -303,7 +318,7 @@ export function IndiceIdoCargaSection() {
         </div>
       </div>
 
-      {/* Contenedor beast pure (modelo Stock por Zona) */}
+      {/* Beast pure container */}
       <div
         className="px-4 py-6 sm:px-6 space-y-5"
         style={{
@@ -312,182 +327,128 @@ export function IndiceIdoCargaSection() {
           borderRadius: 14,
         }}
       >
+        {/* Alcance */}
+        <div className="text-xs text-muted-foreground bg-secondary/30 border border-border rounded-lg px-3 py-2.5">
+          <strong className="text-foreground/80">Alcance:</strong> se consideran únicamente las{" "}
+          <strong className="text-foreground/80">Obras Vía Administrativa</strong> y las{" "}
+          <strong className="text-foreground/80">Obras de mantenimiento</strong>. No se tienen en cuenta las
+          obras a cargo del cliente.
+        </div>
 
-      {/* Alcance */}
-      <div className="text-xs text-muted-foreground bg-secondary/30 border border-border rounded-lg px-3 py-2.5">
-        <strong className="text-foreground/80">Alcance:</strong> se consideran únicamente las{" "}
-        <strong className="text-foreground/80">Obras Vía Administrativa</strong> y las{" "}
-        <strong className="text-foreground/80">Obras de mantenimiento</strong>. No se tienen en cuenta las
-        obras a cargo del cliente.
-      </div>
+        {/* Criterios estratégicos */}
+        <div className="rounded-[14px] bg-panel-2 border border-hairline">
+          <button
+            onClick={() => setMetasOpen((o) => !o)}
+            className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-foreground"
+          >
+            <SlidersHorizontal className="w-4 h-4 text-accent" />
+            Criterios estratégicos / metas internas
+            <span className="text-xs text-muted-foreground font-normal">
+              (FMIK S1 ≤ {metaInputs.fmikS1} · DMIK S1 ≤ {metaInputs.dmikS1} · Obj. POVA {metaInputs.povaTransferido}%)
+            </span>
+            <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${metasOpen ? "rotate-180" : ""}`} />
+          </button>
+          {metasOpen && (
+            <div className="px-4 pb-4 space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {META_FIELDS.map(({ key, label, calc }) => (
+                  <label key={key} className="flex flex-col gap-1 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      {label}
+                      {calc && <span className="text-accent" title="Afecta el cálculo del IDO">•</span>}
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={metaInputs[key]}
+                      onChange={(e) => setMeta(key, e.target.value)}
+                      className="h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent"
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={handleSaveMetas}
+                  disabled={metasSaving}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-40 transition-colors"
+                >
+                  {metasSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Guardar criterios
+                </button>
+                <p className="text-[11px] text-muted-foreground/70">
+                  Los marcados con <span className="text-accent">•</span> afectan el cálculo del IDO.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
 
-      {/* Criterios estratégicos / metas internas (editables, persistidos por período) */}
-      <div className="rounded-[14px] bg-panel-2 border border-hairline">
-        <button
-          onClick={() => setMetasOpen((o) => !o)}
-          className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-foreground"
-        >
-          <SlidersHorizontal className="w-4 h-4 text-accent" />
-          Criterios estratégicos / metas internas
-          <span className="text-xs text-muted-foreground font-normal">
-            (FMIK S1 ≤ {metaInputs.fmikS1} · DMIK S1 ≤ {metaInputs.dmikS1} · Obj. POVA {metaInputs.povaTransferido}%)
+        {/* Ayuda */}
+        <div className="flex items-start gap-2 text-xs text-muted-foreground bg-secondary/40 border border-border rounded-lg px-3 py-2.5">
+          <Info className="w-4 h-4 shrink-0 mt-0.5 text-accent" />
+          <span>
+            Seleccioná una celda y pegá directamente desde Excel — se completa hacia abajo y a la derecha
+            automáticamente. Las columnas en <span style={{ color: "oklch(0.72 0.18 155)" }}>verde</span> son calculadas (provisorias).
+            Decimales con coma o punto.
           </span>
-          <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${metasOpen ? "rotate-180" : ""}`} />
-        </button>
-        {metasOpen && (
-          <div className="px-4 pb-4 space-y-3">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              {META_FIELDS.map(({ key, label, calc }) => (
-                <label key={key} className="flex flex-col gap-1 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    {label}
-                    {calc && <span className="text-accent" title="Afecta el cálculo del IDO">•</span>}
-                  </span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={metaInputs[key]}
-                    onChange={(e) => setMeta(key, e.target.value)}
-                    className="h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent"
-                  />
-                </label>
-              ))}
-            </div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <button
-                onClick={handleSaveMetas}
-                disabled={metasSaving}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-40 transition-colors"
-              >
-                {metasSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Guardar criterios
-              </button>
-              <p className="text-[11px] text-muted-foreground/70">
-                Los marcados con <span className="text-accent">•</span> afectan el cálculo del IDO (umbrales de FMIK/DMIK y objetivo de POVA). El resto son de referencia.
-              </p>
-            </div>
+        </div>
+
+        {/* Grid */}
+        {loading ? (
+          <div className="flex items-center justify-center h-40 text-muted-foreground gap-2">
+            <Loader2 className="w-5 h-5 animate-spin" /> Cargando…
+          </div>
+        ) : (
+          <div className="ido-dsg-wrapper rounded-[14px] overflow-hidden border border-hairline">
+            <DataSheetGrid<DsgRow>
+              value={grid}
+              onChange={handleChange}
+              columns={columns}
+              lockRows
+              disableContextMenu
+              rowHeight={34}
+              headerRowHeight={38}
+            />
           </div>
         )}
-      </div>
 
-      {/* Ayuda */}
-      <div className="flex items-start gap-2 text-xs text-muted-foreground bg-secondary/40 border border-border rounded-lg px-3 py-2.5">
-        <Info className="w-4 h-4 shrink-0 mt-0.5 text-accent" />
-        <span>
-          Copiá una columna desde Excel (ej. FMIK <strong>2026 S1</strong>) y pegala sobre la primera celda
-          de la columna correspondiente: se completa hacia abajo automáticamente. Las zonas están en el orden
-          de origen (A, B, C, …, I). También podés escribir valores a mano. Decimales con coma o punto.
-        </span>
-      </div>
-
-      {/* Tabla editable */}
-      <div className="overflow-x-auto rounded-[14px] bg-panel-2 border border-hairline">
-        <table className="w-full text-xs border-collapse">
-          <thead>
-            <tr className="border-b border-border">
-              <th rowSpan={2} className="text-left font-medium px-3 py-2 sticky left-0 bg-panel-header z-10 align-bottom">
-                Zona
-              </th>
-              {GROUPS.map((g) => (
-                <th
-                  key={g.label}
-                  colSpan={g.fields.length + (g.derived?.length ?? 0)}
-                  className="text-center font-bold uppercase tracking-wider text-accent-green px-3 py-1.5 border-l-2 border-foreground/20 bg-secondary/40"
-                >
-                  {g.label}
-                </th>
-              ))}
-              <th rowSpan={2} className="px-2 py-2" />
-            </tr>
-            <tr className="border-b border-border text-muted-foreground">
-              {COLUMNS.map((col) => (
-                <th
-                  key={col.kind === "input" ? col.field : col.key}
-                  className={`text-right font-medium px-3 py-1.5 whitespace-nowrap ${col.groupStart ? "border-l-2 border-foreground/20" : ""} ${col.kind === "derived" ? "text-accent/70 italic" : ""}`}
-                >
-                  {col.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {grid.map((row, rowIdx) => (
-              <tr key={row.zona} className="border-b border-border/50 even:bg-secondary/15 hover:bg-secondary/30">
-                <td className="px-3 py-1.5 font-semibold text-foreground sticky left-0 bg-panel-header z-10">
-                  {row.zona}
-                </td>
-                {COLUMNS.map((col) => {
-                  if (col.kind === "input") {
-                    return (
-                      <td key={col.field} className={`px-1 py-1 ${col.groupStart ? "border-l-2 border-foreground/20" : ""}`}>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={row.cells[col.field]}
-                          onChange={(e) => setCell(rowIdx, col.field, e.target.value)}
-                          onPaste={(e) => handlePaste(e, rowIdx, col.fieldIdx)}
-                          className="w-20 px-2 py-1 rounded bg-[oklch(0.16_0.005_270)] border border-[oklch(1_0_0_/_0.07)] text-right font-mono text-foreground/90 focus:outline-none focus:border-accent"
-                        />
-                      </td>
-                    );
-                  }
-                  return (
-                    <td key={col.key} className={`px-2 py-1.5 text-right ${col.groupStart ? "border-l-2 border-foreground/20" : ""}`}>
-                      <span className="font-mono text-accent/80" title="Calculado (provisorio)">{fmtPct(col.compute(row.cells))}</span>
-                    </td>
-                  );
-                })}
-                <td className="px-2 py-1.5 text-right">
-                  <button
-                    onClick={() => removeZona(row.zona)}
-                    title="Eliminar zona"
-                    className="text-muted-foreground hover:text-red-400 transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Acciones */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <button
-          onClick={handleSave}
-          disabled={saving || loading}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          Guardar período {periodo}
-        </button>
-        <button
-          onClick={() => load(periodo)}
-          disabled={loading}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          Recargar
-        </button>
-
-        {/* Agregar zona */}
-        <div className="flex items-center gap-2 ml-auto">
-          <input
-            value={newZona}
-            onChange={(e) => setNewZona(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addZona()}
-            placeholder="Nueva zona"
-            className="w-28 h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent placeholder:text-muted-foreground"
-          />
+        {/* Acciones */}
+        <div className="flex items-center gap-3 flex-wrap">
           <button
-            onClick={addZona}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-muted-foreground hover:text-foreground transition-colors"
+            onClick={handleSave}
+            disabled={saving || loading}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            <Plus className="w-4 h-4" /> Agregar
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Guardar período {periodo}
           </button>
+          <button
+            onClick={() => load(periodo)}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Recargar
+          </button>
+
+          {/* Agregar zona */}
+          <div className="flex items-center gap-2 ml-auto">
+            <input
+              value={newZona}
+              onChange={(e) => setNewZona(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addZona()}
+              placeholder="Nueva zona"
+              className="w-28 h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent placeholder:text-muted-foreground"
+            />
+            <button
+              onClick={addZona}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Agregar
+            </button>
+          </div>
         </div>
-      </div>
       </div>
     </div>
   );

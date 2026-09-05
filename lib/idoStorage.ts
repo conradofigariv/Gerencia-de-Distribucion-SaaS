@@ -284,7 +284,7 @@ export function computeIdo(row: IdoRow, metas: IdoMetas = DEFAULT_METAS): IdoCal
   const mantRaw = [row.mant_poda_bt, row.mant_poda_mt, row.mant_termografia];
   const mantenimiento = mantRaw.every((x) => x === null)
     ? null
-    : mantRaw.reduce((a, x) => a + (x !== null ? toFrac(x) : 0), 0) / 3;
+    : mantRaw.reduce<number>((a, x) => a + (x !== null ? toFrac(x) : 0), 0) / 3;
 
   let ido: number | null = null;
   if (resultadoTecnico !== null && pova !== null && mantenimiento !== null) {
