@@ -289,3 +289,62 @@ input[type="number"] { -moz-appearance: textfield; }
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* ── react-datasheet-grid — tema oscuro IDO ───────────────────────────────────── */
+.ido-dsg-wrapper :root,
+.ido-dsg-wrapper {
+  --dsg-border-color: oklch(1 0 0 / 0.08);
+  --dsg-selection-border-color: oklch(0.65 0.2 155);
+  --dsg-selection-border-radius: 2px;
+  --dsg-selection-background-color: oklch(0.65 0.2 155 / 0.12);
+  --dsg-selection-disabled-border-color: oklch(0.5 0 0 / 0.4);
+  --dsg-selection-disabled-background-color: oklch(0.5 0 0 / 0.06);
+  --dsg-header-text-color: oklch(0.58 0 0);
+  --dsg-header-active-text-color: oklch(0.88 0 0);
+  --dsg-cell-background-color: oklch(0.235 0.005 270);
+  --dsg-cell-disabled-background-color: oklch(0.20 0.005 270);
+  --dsg-scroll-shadow-color: oklch(0 0 0 / 0.4);
+}
+
+.ido-dsg-wrapper .dsg-container {
+  color: oklch(0.88 0 0);
+  background: oklch(0.235 0.005 270);
+  border: none;
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+/* Header row */
+.ido-dsg-wrapper .dsg-row-header .dsg-cell {
+  background: oklch(0.18 0.005 270);
+  font-size: 11px;
+}
+
+/* Disabled (computed) cells — subtle accent tint */
+.ido-dsg-wrapper .dsg-cell-disabled {
+  color: oklch(0.72 0.18 155) !important;
+  font-style: italic;
+}
+
+/* Active / selected border green */
+.ido-dsg-wrapper .dsg-cell-focus {
+  outline: 2px solid oklch(0.65 0.2 155) !important;
+  outline-offset: -1px;
+}
+
+/* Delete button inside grid cell */
+.ido-delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: oklch(0.5 0 0);
+  transition: color 0.15s;
+}
+.ido-delete-btn:hover {
+  color: oklch(0.65 0.18 25);
+}
