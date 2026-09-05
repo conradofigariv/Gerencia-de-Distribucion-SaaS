@@ -2,6 +2,7 @@
 
 - **Propósito:** Ver y cargar el stock de materiales (con matrícula) agrupado por zona de depósito, clasificarlos en familias y consultar su tipo (Material/Servicio).
 - **UI "beast pure":** unificada con Informe Técnico — header con ícono verde, tabs pill con flechas `→`, contenedor `oklch(0.235 0.005 270)`, paneles internos `oklch(0.205 0.005 270)`. Dropdowns con el componente local `BeastSelect` (mismo estilo que Informe Técnico, soporta `portal` para escapar contenedores con overflow).
+- **Tabla "Resumen de stock":** renderizada con **Material React Table** (`material-react-table` + `@mui/material` v7, no v9 — ver nota de compatibilidad más abajo). Reemplaza la tabla `<table>` a mano + `@tanstack/react-virtual` manual que tenía antes (columnas de zona dinámicas, fijado de filas, selección, resize y virtualización ahora son nativos de MRT).
 
 ## Tres fuentes de datos (independientes)
 | Fuente (sección) | Tabla | Aporta | Frescura |
@@ -31,11 +32,28 @@ El stock y las familias son enriquecimientos sobre la lista maestra de matrícul
 `tipoOf(articulo)` = override manual (`matricula_tipo.tipo`) si existe, si no el `mat_serv` del catálogo `matriculas`.
 
 ## Rendimiento
-- **Tablas virtualizadas** con `@tanstack/react-virtual` (técnica de filas espaciadoras + header sticky). Solo se renderizan las filas visibles → fluidez con miles de filas.
-- **Header sticky opaco:** los `<th>` usan `background: oklch(0.255 0.006 270)` (opaco) — en la práctica, la clase `bg-panel-header`. ⚠ NO usar `bg-secondary` / `hsl(var(--secondary))` para el fondo del header: `--secondary` está definida en oklch **con alpha** (`oklch(0.18 0.005 260 / 0.85)`), así que queda semitransparente y el contenido de las filas se transparenta debajo al hacer scroll (bug real, visto en Matrículas → Catálogo, PR #58).
+- **Tabla virtualizada** vía `enableRowVirtualization` de Material React Table (usa `@tanstack/react-virtual` internamente). Solo se renderizan las filas visibles → fluidez con miles de filas.
+- **Header sticky opaco:** `muiTableHeadCellProps` pisa el fondo con `var(--panel-header)` (opaco). ⚠ NO usar `bg-secondary` / `hsl(var(--secondary))`: `--secondary` está definida en oklch **con alpha** (`oklch(0.18 0.005 260 / 0.85)`), así que queda semitransparente y el contenido de las filas se transparenta debajo al hacer scroll (bug real, visto en Matrículas → Catálogo, PR #58).
 - **Catálogo cacheado:** `getMatriculasInfo` se cachea en `sessionStorage` (`MATRICULAS_CACHE_KEY`) → 2ª carga instantánea; se refresca en segundo plano (no bloquea la vista de stock; hay indicador "catálogo…").
-- **Ancho de columnas persistido** en `localStorage` (`COLWIDTHS_KEY`) → se restaura al volver a abrir.
-- Animación colapso/expansión de zonas: keyframes `sz-zone-in` / `sz-zone-out` en `app/globals.css`.
+- **Ancho de columnas persistido** en `localStorage` (`COLSIZING_KEY`, `columnSizing` de MRT) → se restaura al volver a abrir.
+- **Fijado de filas (pin):** nativo de MRT (`enableRowPinning`, `rowPinningDisplayMode: "top"`) — el botón de fijar sigue siendo el mismo control custom embebido en la celda Matrícula (llama a `row.pin(...)`); la columna de pin que agrega MRT por defecto se oculta vía `columnVisibility["mrt-row-pin"] = false`. Las zonas elegidas + matrículas fijadas + "solo con stock" se persisten en `localStorage` (`RESUMEN_STATE_KEY`), igual que antes.
+- **Colapsar columnas de zona:** ya no es una columna-toggle animada dentro de la tabla — es un botón en la barra de filtros que simplemente excluye las columnas de zona del array `columns` que se le pasa a MRT.
+
+### ⚠ Compatibilidad `material-react-table` + MUI
+`material-react-table` v3.2.1 solo declara peer dep `@mui/material >= 6`, pero
+**`@mui/material` v9 le pasa `inputProps` (deprecado) a los checkboxes internos**
+y React tira un warning en cada render (`inputprops` no es un atributo DOM
+válido). Se fijó el proyecto en `@mui/material` / `@mui/icons-material` /
+`@mui/x-date-pickers` / `@mui/system` **v7.x** (no v9) para evitarlo — no
+subir estos paquetes a v9 sin volver a probar la tabla.
+
+`useMaterialReactTable(...)` llama a `useTheme()` de MUI internamente para
+armar sus estilos por defecto (fondo de filas, etc.) — necesita que el
+`<ThemeProvider>` sea un **ancestro del componente**, no un hijo dentro de su
+propio JSX (un hook no ve un Provider que el propio componente renderiza como
+hijo). Por eso `StockZonaSection` es un wrapper delgado que envuelve
+`StockZonaSectionInner` (donde vive toda la lógica y el `useMaterialReactTable`)
+en `<ThemeProvider theme={muiDarkTheme}>`.
 
 ## Botón "Ayuda" (`StockHelpModal`)
 Centro de ayuda con el **mismo diseño y concepto que el `HelpModal` de Informe Técnico** (overlay oscuro, card `oklch(0.15)`, sidebar de temas con íconos de color + subtítulo, header de tema, footer Anterior/puntos/Siguiente/Entendido). Temas: **Cargar datos** (guía SIGA con capturas en `public/ayuda-stock/paso1-5.png`), **Resumen de stock**, **Familias**. Helpers replicados: `HelpSection`, `HelpAction`, `HelpTip`.

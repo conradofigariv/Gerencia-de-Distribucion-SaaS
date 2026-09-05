@@ -2,18 +2,25 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { ThemeProvider, createTheme } from "@mui/material/styles";
+import {
+  MaterialReactTable, useMaterialReactTable,
+  type MRT_ColumnDef, type MRT_RowSelectionState, type MRT_SortingState,
+} from "material-react-table";
+// `@tanstack/react-table` (donde vive `RowPinningState`) es una dependencia
+// transitiva de material-react-table, no resoluble directo con pnpm — se
+// declara la forma acá en vez de importarla.
+type RowPinningState = { top?: string[]; bottom?: string[] };
 import { DirectionAwareTabs } from "@/components/ui/direction-aware-tabs";
 import {
   Loader2, X, PackageOpen, RefreshCw,
-  ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight,
+  ChevronDown, ChevronRight,
   Download, Wrench, Package, Check, HelpCircle,
   ChevronLeft, ArrowRight, Lightbulb, ListChecks, Pin, Filter, FileSpreadsheet,
 } from "lucide-react";
 import { CheckIcon } from "lucide-react";
 import { SearchInput } from "@/components/ui/floating-input";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/lib/supabaseClient";
 import { markUpdated } from "@/lib/notificaciones";
 import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
@@ -24,14 +31,30 @@ import { getFamilyRowsCompat } from "@/lib/familias";
 import { toast } from "sonner";
 
 type Tab            = "resumen" | "cargar";
-type SortDir        = "asc" | "desc";
 
 // Caché de sesión del catálogo maestro (para que la 2da carga sea instantánea)
 const MATRICULAS_CACHE_KEY = "stock-zona-matriculas-cache";
 // Ancho de columnas persistido (para que la lista se vea igual al volver)
-const COLWIDTHS_KEY = "stock-zona-colwidths";
+const COLSIZING_KEY = "stock-zona-colsizing";
 // Zonas elegidas + matrículas fijadas + "solo zonas con stock" (persistido)
 const RESUMEN_STATE_KEY = "stock-zona-resumen-state";
+
+// ─── Tema MUI oscuro para Material React Table ─────────────────────────────────
+// Solo fija los tokens que MUI necesita poder "parsear" internamente (hover,
+// disabled, ripple). El resto del look (fondos/paneles/bordes visibles) se
+// pisa por completo con los tokens de la app vía sx/muiXxxProps más abajo —
+// acá NO se define nada que el usuario vea directamente.
+const muiDarkTheme = createTheme({
+  palette: {
+    mode: "dark",
+    background: { default: "#1a1a20", paper: "#1a1a20" },
+    text: { primary: "#e5e5e5", secondary: "#8a8a92" },
+    divider: "rgba(255,255,255,0.08)",
+    primary: { main: "#8b5cf6" },
+  },
+  typography: { fontFamily: "inherit" },
+  shape: { borderRadius: 10 },
+});
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "resumen",  label: "Resumen de stock", icon: PackageOpen },
@@ -119,20 +142,6 @@ function TipoPill({ tipo }: { tipo: ArticuloTipo }) {
       <Icon className="w-3 h-3" strokeWidth={2.2} />
       {m.label}
     </span>
-  );
-}
-
-// ─── Resize handle ────────────────────────────────────────────────────────────
-
-function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
-  return (
-    <div
-      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none group/rh"
-      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onStart(e.nativeEvent); }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="absolute right-0 top-1/4 h-1/2 w-px bg-border group-hover/rh:bg-accent/60 transition-colors" />
-    </div>
   );
 }
 
@@ -510,7 +519,20 @@ function ZonasCargadasMenu({
 
 // ─── Main section ─────────────────────────────────────────────────────────────
 
+// `useMaterialReactTable` llama a `useTheme()` internamente al construir las
+// opciones de la tabla — necesita que el ThemeProvider sea un ANCESTRO del
+// componente, no un hijo dentro de su propio JSX (donde no lo vería). Por
+// eso el wrapper envuelve todo el componente en vez de envolver solo el
+// `<MaterialReactTable>` renderizado más abajo.
 export function StockZonaSection() {
+  return (
+    <ThemeProvider theme={muiDarkTheme}>
+      <StockZonaSectionInner />
+    </ThemeProvider>
+  );
+}
+
+function StockZonaSectionInner() {
   const [tab, setTab]                       = useState<Tab>("resumen");
   const [uploads, setUploads]               = useState<ZonaUpload[]>([]);
   const [loading, setLoading]               = useState(true);
@@ -524,63 +546,39 @@ export function StockZonaSection() {
   // Resumen state
   const [selectedZonas, setSelectedZonas]   = useState<string[]>([]);   // [] = todas las zonas
   const [onlyZonasConStock, setOnlyZonasConStock] = useState(false);    // solo columnas de zona con stock
-  const [pinnedArticulos, setPinnedArticulos] = useState<string[]>([]); // matrículas fijadas arriba
+  const [rowPinning, setRowPinning]         = useState<RowPinningState>({ top: [], bottom: [] }); // matrículas fijadas arriba
   const [filterFamilia, setFilterFamilia]   = useState("");
   const [filterTipo, setFilterTipo]         = useState<ArticuloTipo>("");
   const [filterSearch, setFilterSearch]     = useState("");
-  const [sortCol, setSortCol]               = useState("articulo");
-  const [sortDir, setSortDir]               = useState<SortDir>("asc");
+  const [sorting, setSorting]               = useState<MRT_SortingState>([{ id: "articulo", desc: false }]);
   const [selectedRow, setSelectedRow]       = useState<string | null>(null);
-  const [checkedArticulos, setCheckedArticulos] = useState<Set<string>>(new Set()); // tildadas para exportar
+  const [rowSelection, setRowSelection]     = useState<MRT_RowSelectionState>({}); // tildadas para exportar
   const [exporting, setExporting]           = useState(false);
+  const [zonesExpanded, setZonesExpanded]   = useState(true);
+  const [columnSizing, setColumnSizing]     = useState<Record<string, number>>({});
 
-  // Toggle de fijar matrícula arriba
-  const togglePin = useCallback((articulo: string) => {
-    setPinnedArticulos(prev =>
-      prev.includes(articulo) ? prev.filter(a => a !== articulo) : [...prev, articulo],
-    );
+  const pinnedArticulos = rowPinning.top ?? [];
+
+  // ── Persistencia del ancho de columnas (localStorage) ───────────────────────
+  const columnSizingLoaded = useRef(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(COLSIZING_KEY);
+      if (raw) setColumnSizing(JSON.parse(raw));
+    } catch { /* ignorar */ }
+    columnSizingLoaded.current = true;
   }, []);
+
+  useEffect(() => {
+    if (!columnSizingLoaded.current) return;
+    try { localStorage.setItem(COLSIZING_KEY, JSON.stringify(columnSizing)); } catch { /* ignorar */ }
+  }, [columnSizing]);
+
   const toggleZonaSel = useCallback((zona: string) => {
     setSelectedZonas(prev =>
       prev.includes(zona) ? prev.filter(z => z !== zona) : [...prev, zona],
     );
   }, []);
-
-  // Tildado de filas para exportar a Excel
-  const toggleCheck = useCallback((articulo: string) => {
-    setCheckedArticulos(prev => {
-      const next = new Set(prev);
-      if (next.has(articulo)) next.delete(articulo); else next.add(articulo);
-      return next;
-    });
-  }, []);
-
-  // Column resize & zone collapse
-  const [colWidths, setColWidths] = useState({ articulo: 140, descArticulo: 280, udmPrimaria: 84, tipo: 130, total: 100 });
-  const [zoneWidth, setZoneWidth] = useState(120);
-  const [zonesExpanded, setZonesExpanded] = useState(true);
-  const [zoneAnim, setZoneAnim] = useState<"in" | "out" | null>(null);   // animación colapso/expansión
-  const zoneAnimTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const colWidthsLoaded = useRef(false);
-  const resizingRef = useRef<{ col: string; startX: number; startWidth: number } | null>(null);
-
-  // ── Persistencia del ancho de columnas (localStorage) ───────────────────────
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(COLWIDTHS_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw) as { colWidths?: Partial<typeof colWidths>; zoneWidth?: number };
-        if (saved.colWidths) setColWidths(c => ({ ...c, ...saved.colWidths }));
-        if (typeof saved.zoneWidth === "number") setZoneWidth(saved.zoneWidth);
-      }
-    } catch { /* ignorar */ }
-    colWidthsLoaded.current = true;
-  }, []);
-
-  useEffect(() => {
-    if (!colWidthsLoaded.current) return;   // no guardar antes de cargar lo previo
-    try { localStorage.setItem(COLWIDTHS_KEY, JSON.stringify({ colWidths, zoneWidth })); } catch { /* ignorar */ }
-  }, [colWidths, zoneWidth]);
 
   // ── Persistencia de zonas elegidas / matrículas fijadas (localStorage) ──────
   const resumenStateLoaded = useRef(false);
@@ -590,7 +588,7 @@ export function StockZonaSection() {
       if (raw) {
         const saved = JSON.parse(raw) as { selectedZonas?: string[]; pinned?: string[]; onlyConStock?: boolean };
         if (Array.isArray(saved.selectedZonas)) setSelectedZonas(saved.selectedZonas);
-        if (Array.isArray(saved.pinned))        setPinnedArticulos(saved.pinned);
+        if (Array.isArray(saved.pinned))        setRowPinning({ top: saved.pinned, bottom: [] });
         if (typeof saved.onlyConStock === "boolean") setOnlyZonasConStock(saved.onlyConStock);
       }
     } catch { /* ignorar */ }
@@ -606,24 +604,7 @@ export function StockZonaSection() {
     } catch { /* ignorar */ }
   }, [selectedZonas, pinnedArticulos, onlyZonasConStock]);
 
-  // ── Toggle de zonas con animación ───────────────────────────────────────────
-  const toggleZones = useCallback(() => {
-    if (zoneAnimTimer.current) clearTimeout(zoneAnimTimer.current);
-    if (zonesExpanded) {
-      // colapsar: reproducir salida y recién después ocultar las columnas
-      setZoneAnim("out");
-      zoneAnimTimer.current = setTimeout(() => { setZonesExpanded(false); setZoneAnim(null); }, 230);
-    } else {
-      // expandir: mostrar las columnas y reproducir entrada
-      setZonesExpanded(true);
-      setZoneAnim("in");
-      zoneAnimTimer.current = setTimeout(() => setZoneAnim(null), 260);
-    }
-  }, [zonesExpanded]);
-
-  useEffect(() => () => { if (zoneAnimTimer.current) clearTimeout(zoneAnimTimer.current); }, []);
-
-  const zoneAnimClass = zoneAnim === "in" ? "sz-zone-in" : zoneAnim === "out" ? "sz-zone-out" : "";
+  const toggleZones = useCallback(() => setZonesExpanded(v => !v), []);
 
   // Catálogo maestro de matrículas (descripción + UDM + tipo más actualizados)
   const [matriculasInfo, setMatriculasInfo] = useState<Map<string, MatriculaInfo>>(new Map());
@@ -632,22 +613,6 @@ export function StockZonaSection() {
   // Familias: solo se leen para el filtro del Resumen. La edición/carga de
   // familias se movió a la sección Matrículas → Familias.
   const [families, setFamilies]             = useState<FamilyRow[]>([]);
-
-  // ── Resize events ─────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!resizingRef.current) return;
-      const { col, startX, startWidth } = resizingRef.current;
-      const newW = Math.max(50, startWidth + e.clientX - startX);
-      if (col === "__zone__") setZoneWidth(newW);
-      else setColWidths(p => ({ ...p, [col]: newW }));
-    };
-    const onUp = () => { resizingRef.current = null; };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-    return () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
-  }, []);
 
   // ── Data loading ──────────────────────────────────────────────────────────
 
@@ -681,14 +646,9 @@ export function StockZonaSection() {
   useEffect(() => { refreshFamilies(); }, [refreshFamilies]);
   useEffect(() => { refreshMatriculas(); }, [refreshMatriculas]);
 
-  // ── Sort ──────────────────────────────────────────────────────────────────
-
-  const handleSort = (col: string) => {
-    if (col === sortCol) setSortDir(d => d === "asc" ? "desc" : "asc");
-    else { setSortCol(col); setSortDir(col === "articulo" || col === "descArticulo" || col === "udmPrimaria" || col === "tipo" ? "asc" : "desc"); }
-  };
-
   // ── Derived ───────────────────────────────────────────────────────────────
+  // El orden final (sort + fijado arriba) lo maneja Material React Table
+  // (`sorting` + `rowPinning`, nativos) — acá solo se arma y filtra el dataset.
 
   const zonas = useMemo(
     () => uploads.map(u => u.zona).sort((a, b) => a.localeCompare(b, "es", { numeric: true })),
@@ -810,27 +770,7 @@ export function StockZonaSection() {
         || r.articulo.toLowerCase().includes(lo)
         || r.descArticulo.toLowerCase().includes(lo);
       return familiaOk && tipoOk && searchOk;
-    })
-    .sort((a, b) => {
-      if (sortCol === "total") {
-        return sortDir === "asc" ? a.total - b.total : b.total - a.total;
-      }
-      if (sortCol === "tipo") {
-        const va = tipoOf(a.articulo);
-        const vb = tipoOf(b.articulo);
-        const cmp = va.localeCompare(vb, "es");
-        return sortDir === "asc" ? cmp : -cmp;
-      }
-      if (sortCol === "articulo" || sortCol === "descArticulo" || sortCol === "udmPrimaria") {
-        const va = a[sortCol as keyof Pick<PivotRow, "articulo" | "descArticulo" | "udmPrimaria">];
-        const vb = b[sortCol as keyof Pick<PivotRow, "articulo" | "descArticulo" | "udmPrimaria">];
-        const cmp = String(va).localeCompare(String(vb), "es", { numeric: true, sensitivity: "base" });
-        return sortDir === "asc" ? cmp : -cmp;
-      }
-      const va = a.byZona[sortCol] ?? 0;
-      const vb = b.byZona[sortCol] ?? 0;
-      return sortDir === "asc" ? va - vb : vb - va;
-    }), [pivotMap, searchExtraRows, familiasOf, tipoOf, filterFamilia, filterTipo, filterSearch, sortCol, sortDir]);
+    }), [pivotMap, searchExtraRows, familiasOf, tipoOf, filterFamilia, filterTipo, filterSearch]);
 
   // Conjunto de matrículas fijadas (para estilo y para no duplicarlas).
   const pinnedSet = useMemo(() => new Set(pinnedArticulos), [pinnedArticulos]);
@@ -867,26 +807,16 @@ export function StockZonaSection() {
     return baseZonas.filter(z => conStock.has(z));
   }, [baseZonas, onlyZonasConStock, pivotRows]);
 
-  // Tildado: "seleccionar todas" actúa solo sobre las filas actualmente visibles
-  // (respeta filtros/búsqueda), sin tocar tildes de otras filas fuera de vista.
-  const allCheckedInView = pivotRows.length > 0 && pivotRows.every(r => checkedArticulos.has(r.articulo));
-  const toggleCheckAll = useCallback(() => {
-    setCheckedArticulos(prev => {
-      const next = new Set(prev);
-      if (allCheckedInView) pivotRows.forEach(r => next.delete(r.articulo));
-      else pivotRows.forEach(r => next.add(r.articulo));
-      return next;
-    });
-  }, [allCheckedInView, pivotRows]);
+  const checkedCount = Object.values(rowSelection).filter(Boolean).length;
 
   // Exporta las matrículas tildadas a un .xlsx (Matrícula, Descripción, UDM,
   // Tipo, Total + una columna por cada zona actualmente visible).
   const handleExportSelected = async () => {
-    if (checkedArticulos.size === 0) return;
+    if (checkedCount === 0) return;
     setExporting(true);
     try {
       const XLSX = await import("xlsx");
-      const rows = pivotRows.filter(r => checkedArticulos.has(r.articulo));
+      const rows = pivotRows.filter(r => rowSelection[r.articulo]);
       const data = rows.map(r => {
         const rec: Record<string, string | number> = {
           "Matrícula":   r.articulo,
@@ -909,16 +839,6 @@ export function StockZonaSection() {
       setExporting(false);
     }
   };
-
-  // ── Virtualización de tablas (rinde solo las filas visibles) ────────────────
-  const resumenScrollRef  = useRef<HTMLDivElement>(null);
-
-  const resumenVirtualizer = useVirtualizer({
-    count: pivotRows.length,
-    getScrollElement: () => resumenScrollRef.current,
-    estimateSize: () => 38, // 8px padding vertical (era 10px) + texto 14px
-    overscan: 14,
-  });
 
   // Column detection for Cargar tab
   const REQUIRED_COLS = Object.values(COL_MAP) as string[];
@@ -980,23 +900,144 @@ export function StockZonaSection() {
     return [...new Set(rows.map(r => r.organizacion).filter(Boolean))];
   }, [text]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Table layout ──────────────────────────────────────────────────────────
+  // ── Columnas de la tabla pivot (Material React Table) ───────────────────────
 
-  const CHECK_W = 36;
-  const TOGGLE_W = zonesExpanded ? 36 : 96;
-  const tableWidth =
-    CHECK_W + colWidths.articulo + colWidths.descArticulo + colWidths.udmPrimaria + colWidths.tipo + colWidths.total +
-    TOGGLE_W + (zonesExpanded ? visibleZonas.length * zoneWidth : 0);
+  const resumenColumns = useMemo<MRT_ColumnDef<PivotRow>[]>(() => {
+    const fixed: MRT_ColumnDef<PivotRow>[] = [
+      {
+        accessorKey: "articulo",
+        header: "Matrícula",
+        size: 160,
+        Cell: ({ row }) => {
+          const isPinned = !!row.getIsPinned();
+          return (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: "100%", fontFamily: "var(--font-mono)", fontSize: 12, color: "#7ee2a8" }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); row.pin(isPinned ? false : "top"); }}
+                title={isPinned ? "Quitar de fijadas" : "Fijar arriba"}
+                className="shrink-0 grid place-items-center transition-colors"
+                style={{
+                  width: 20, height: 20, borderRadius: 5, border: "none", cursor: "pointer",
+                  color: isPinned ? "#c4b5fd" : "oklch(0.45 0 0)",
+                  background: isPinned ? "color-mix(in oklab, var(--accent-violet) 20%, transparent)" : "transparent",
+                }}
+              >
+                <Pin className="w-3.5 h-3.5" strokeWidth={2} fill={isPinned ? "#c4b5fd" : "none"} />
+              </button>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.original.articulo}</span>
+            </span>
+          );
+        },
+      },
+      {
+        accessorKey: "descArticulo",
+        header: "Descripción",
+        size: 260,
+        muiTableBodyCellProps: { sx: { color: "hsl(var(--muted-foreground))" } },
+      },
+      {
+        accessorKey: "udmPrimaria",
+        header: "UDM",
+        size: 84,
+        muiTableBodyCellProps: { sx: { color: "hsl(var(--muted-foreground) / 0.65)" } },
+      },
+      {
+        id: "tipo",
+        header: "Tipo",
+        accessorFn: (row) => tipoOf(row.articulo),
+        size: 120,
+        Cell: ({ cell }) => {
+          const tipo = cell.getValue<ArticuloTipo>();
+          return tipo ? <TipoPill tipo={tipo} /> : <span style={{ opacity: 0.25, color: "hsl(var(--muted-foreground))" }}>—</span>;
+        },
+      },
+      {
+        accessorKey: "total",
+        header: "Total",
+        size: 100,
+        muiTableHeadCellProps: { align: "right" },
+        muiTableBodyCellProps: { align: "right", sx: { fontWeight: 600, fontVariantNumeric: "tabular-nums", color: "hsl(var(--foreground))" } },
+        Cell: ({ cell }) => cell.getValue<number>().toLocaleString("es-AR", { maximumFractionDigits: 2 }),
+      },
+    ];
 
-  const fixedCols = [
-    { col: "articulo",     label: "Matrícula",   align: "left"  as const, w: colWidths.articulo     },
-    { col: "descArticulo", label: "Descripción", align: "left"  as const, w: colWidths.descArticulo },
-    { col: "udmPrimaria",  label: "UDM",         align: "left"  as const, w: colWidths.udmPrimaria  },
-    { col: "tipo",         label: "Tipo",        align: "left"  as const, w: colWidths.tipo         },
-    { col: "total",        label: "Total",       align: "right" as const, w: colWidths.total        },
-  ];
+    const zoneCols: MRT_ColumnDef<PivotRow>[] = zonesExpanded
+      ? visibleZonas.map((zona): MRT_ColumnDef<PivotRow> => ({
+          id: `zona:${zona}`,
+          accessorFn: (row) => row.byZona[zona] ?? 0,
+          header: zona,
+          Header: () => <ZonePill zona={zona} />,
+          size: 110,
+          muiTableHeadCellProps: { align: "center" },
+          muiTableBodyCellProps: { align: "center", sx: { color: "hsl(var(--muted-foreground))", fontSize: 12, fontVariantNumeric: "tabular-nums" } },
+          Cell: ({ cell }) => {
+            const qty = cell.getValue<number>();
+            return qty > 0 ? qty.toLocaleString("es-AR", { maximumFractionDigits: 2 }) : <span style={{ opacity: 0.25 }}>—</span>;
+          },
+        }))
+      : [];
 
-  const cellBorder = "1px solid hsl(var(--border) / 0.35)";
+    return [...fixed, ...zoneCols];
+  }, [visibleZonas, zonesExpanded, tipoOf]);
+
+  const resumenTable = useMaterialReactTable({
+    columns: resumenColumns,
+    data: pivotRows,
+    getRowId: (row) => row.articulo,
+    enableTopToolbar: false,
+    enableBottomToolbar: false,
+    enableColumnActions: false,
+    enableColumnFilters: false,
+    enableGlobalFilter: false,
+    enableFilters: false,
+    enablePagination: false,
+    enableSorting: true,
+    enableRowSelection: true,
+    enableRowPinning: true,
+    rowPinningDisplayMode: "top",
+    // El botón de fijar ya está embebido en la celda "Matrícula" (mismo diseño
+    // que antes) — se oculta la columna dedicada que agrega MRT por defecto.
+    initialState: { columnVisibility: { "mrt-row-pin": false } },
+    enableColumnResizing: true,
+    columnResizeMode: "onChange",
+    enableRowVirtualization: true,
+    enableStickyHeader: true,
+    localization: { noRecordsToDisplay: "No hay registros que coincidan con los filtros" },
+    muiTableContainerProps: { sx: { maxHeight: "70vh" } },
+    state: { sorting, rowSelection, rowPinning, columnSizing },
+    onSortingChange: setSorting,
+    onRowSelectionChange: setRowSelection,
+    onRowPinningChange: setRowPinning,
+    onColumnSizingChange: setColumnSizing,
+    muiTablePaperProps: { sx: { background: "transparent", boxShadow: "none" } },
+    muiTableHeadCellProps: {
+      sx: {
+        background: "var(--panel-header)",
+        color: "hsl(var(--muted-foreground))",
+        fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
+        borderBottom: "1px solid hsl(var(--border))",
+      },
+    },
+    muiTableBodyCellProps: {
+      sx: { borderBottom: "1px solid hsl(var(--border) / 0.35)", fontSize: 14 },
+    },
+    muiTableBodyRowProps: ({ row }) => ({
+      onClick: (e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest("button") || target.closest("input")) return;
+        setSelectedRow(prev => prev === row.original.articulo ? null : row.original.articulo);
+      },
+      sx: {
+        cursor: "pointer",
+        background: selectedRow === row.original.articulo
+          ? "color-mix(in oklab, var(--accent-violet) 15%, transparent)"
+          : row.getIsPinned()
+            ? "color-mix(in oklab, var(--accent-violet) 8%, transparent)"
+            : undefined,
+        "&:hover": { background: "hsl(var(--secondary) / 0.35)" },
+      },
+    }),
+  });
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -1114,6 +1155,22 @@ export function StockZonaSection() {
                   Solo zonas con stock
                 </button>
 
+                {/* Colapsar/expandir las columnas de zona (dinámicas) */}
+                <button
+                  onClick={toggleZones}
+                  title={zonesExpanded ? "Ocultar columnas de zona" : "Mostrar columnas de zona"}
+                  style={{
+                    height: 38, padding: "0 12px", borderRadius: 9,
+                    display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer",
+                    fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap",
+                    background: "var(--panel-input)", border: "1px solid var(--hairline)",
+                    color: "var(--muted-foreground)",
+                  }}
+                >
+                  <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${zonesExpanded ? "rotate-90" : ""}`} />
+                  {zonesExpanded ? "Ocultar zonas" : `${zonas.length} zona${zonas.length !== 1 ? "s" : ""}`}
+                </button>
+
                 {familiasDisponibles.length > 0 && (
                   <BeastSelect
                     options={familiasDisponibles.map(f => ({ value: f, label: f }))}
@@ -1146,7 +1203,7 @@ export function StockZonaSection() {
                     {pinnedCount > 0 && (
                       <span className="inline-flex items-center gap-1" style={{ color: "#c4b5fd" }}>
                         <Pin className="w-3 h-3" fill="#c4b5fd" strokeWidth={2} /> {pinnedCount} fijada{pinnedCount !== 1 ? "s" : ""}
-                        <button onClick={() => setPinnedArticulos([])} className="ml-0.5 underline decoration-dotted hover:text-foreground" style={{ fontSize: 11.5 }}>
+                        <button onClick={() => setRowPinning({ top: [], bottom: [] })} className="ml-0.5 underline decoration-dotted hover:text-foreground" style={{ fontSize: 11.5 }}>
                           limpiar
                         </button>
                       </span>
@@ -1160,231 +1217,9 @@ export function StockZonaSection() {
                 )}
               </div>
 
-              {/* Pivot table */}
+              {/* Pivot table (Material React Table) */}
               <div className="rounded-[14px] overflow-hidden" style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)" }}>
-                <div ref={resumenScrollRef} className="overflow-auto" style={{ maxHeight: "70vh" }}>
-                  <table
-                    style={zonesExpanded
-                      ? { tableLayout: "fixed", width: "100%", minWidth: tableWidth, borderCollapse: "separate", borderSpacing: 0, fontSize: 14 }
-                      : { tableLayout: "fixed", width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 14 }}
-                  >
-                    <colgroup>
-                      <col style={{ width: CHECK_W }} />
-                      {fixedCols.map(c => <col key={c.col} style={{ width: c.w }} />)}
-                      <col style={{ width: TOGGLE_W }} />
-                      {zonesExpanded && visibleZonas.map(z => <col key={z} style={{ width: zoneWidth }} />)}
-                    </colgroup>
-                    <thead>
-                      <tr>
-                        <th
-                          style={{
-                            width: CHECK_W,
-                            borderBottom: "1px solid hsl(var(--border))",
-                            padding: "10px 8px",
-                            textAlign: "center",
-                            position: "sticky",
-                            top: 0,
-                            zIndex: 2,
-                            background: "var(--panel-header)",
-                          }}
-                        >
-                          <Checkbox
-                            checked={allCheckedInView ? true : pivotRows.some(r => checkedArticulos.has(r.articulo)) ? "indeterminate" : false}
-                            onCheckedChange={() => toggleCheckAll()}
-                            aria-label="Seleccionar todas"
-                          />
-                        </th>
-                        {fixedCols.map(({ col, label, align, w }) => {
-                          const active = sortCol === col;
-                          const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
-                          return (
-                            <th
-                              key={col}
-                              onClick={() => handleSort(col)}
-                              style={{
-                                width: w,
-                                borderBottom: "1px solid hsl(var(--border))",
-                                padding: "10px 14px",
-                                textAlign: align,
-                                fontSize: 10,
-                                fontWeight: 600,
-                                letterSpacing: "0.06em",
-                                textTransform: "uppercase",
-                                color: active ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
-                                cursor: "pointer",
-                                userSelect: "none",
-                                position: "sticky",
-                                top: 0,
-                                zIndex: 2,
-                                background: "var(--panel-header)",
-                              }}
-                            >
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, justifyContent: align === "right" ? "flex-end" : "flex-start" }}>
-                                {label}
-                                <SortIcon className={`w-3 h-3 shrink-0 transition-opacity ${active ? "opacity-100" : "opacity-30"}`} />
-                              </span>
-                              <ResizeHandle onStart={e => { resizingRef.current = { col, startX: e.clientX, startWidth: w }; }} />
-                            </th>
-                          );
-                        })}
-                        <th
-                          onClick={toggleZones}
-                          title={zonesExpanded ? "Colapsar zonas" : "Expandir zonas"}
-                          style={{
-                            width: TOGGLE_W,
-                            borderBottom: "1px solid hsl(var(--border))",
-                            padding: "10px 8px",
-                            cursor: "pointer",
-                            userSelect: "none",
-                            color: "hsl(var(--muted-foreground))",
-                            position: "sticky",
-                            top: 0,
-                            zIndex: 2,
-                            background: "var(--panel-header)",
-                          }}
-                        >
-                          <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                            <ChevronRight className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${zonesExpanded ? "rotate-180" : ""}`} />
-                            {!zonesExpanded && zonas.length > 0 && (
-                              <span className="text-xs font-normal normal-case tracking-normal">{zonas.length} zona{zonas.length !== 1 ? "s" : ""}</span>
-                            )}
-                          </span>
-                        </th>
-                        {zonesExpanded && visibleZonas.map(zona => {
-                          const active = sortCol === zona;
-                          const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
-                          return (
-                            <th
-                              key={zona}
-                              onClick={() => handleSort(zona)}
-                              style={{
-                                width: zoneWidth,
-                                borderBottom: "1px solid hsl(var(--border))",
-                                padding: "10px 8px",
-                                cursor: "pointer",
-                                userSelect: "none",
-                                textAlign: "center",
-                                position: "sticky",
-                                top: 0,
-                                zIndex: 2,
-                                background: "var(--panel-header)",
-                              }}
-                            >
-                              <span className={`inline-flex items-center justify-center gap-1.5 ${zoneAnimClass}`}>
-                                <SortIcon className={`w-3.5 h-3.5 shrink-0 text-muted-foreground ${active ? "opacity-100" : "opacity-30"}`} />
-                                <ZonePill zona={zona} />
-                              </span>
-                              <ResizeHandle onStart={e => { resizingRef.current = { col: "__zone__", startX: e.clientX, startWidth: zoneWidth }; }} />
-                            </th>
-                          );
-                        })}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pivotRows.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={fixedCols.length + 2 + (zonesExpanded ? visibleZonas.length : 0)}
-                            style={{ padding: "48px 24px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 13 }}
-                          >
-                            No hay registros que coincidan con los filtros
-                          </td>
-                        </tr>
-                      ) : (() => {
-                        const vItems  = resumenVirtualizer.getVirtualItems();
-                        const totalH  = resumenVirtualizer.getTotalSize();
-                        const padTop  = vItems.length ? vItems[0].start : 0;
-                        const padBot  = vItems.length ? totalH - vItems[vItems.length - 1].end : 0;
-                        const colSpan = fixedCols.length + 1 + (zonesExpanded ? visibleZonas.length : 0);
-                        return (
-                          <>
-                            {padTop > 0 && <tr style={{ height: padTop }}><td colSpan={colSpan} style={{ padding: 0, border: "none" }} /></tr>}
-                            {vItems.map(vi => {
-                              const row = pivotRows[vi.index];
-                              const isSelected = selectedRow === row.articulo;
-                              const isPinned   = pinnedSet.has(row.articulo);
-                              const isLastPinned = pinnedCount > 0 && vi.index === pinnedCount - 1;
-                              const isLast = vi.index === pivotRows.length - 1;
-                              const bottomBorder = isLastPinned
-                                ? { borderBottom: "2px solid color-mix(in oklab, var(--accent-violet) 50%, transparent)" }
-                                : isLast ? {} : { borderBottom: cellBorder };
-                              const pinnedBg = "color-mix(in oklab, var(--accent-violet) 8%, transparent)";
-                              const baseBg = isSelected ? "color-mix(in oklab, var(--accent-violet) 15%, transparent)" : isPinned ? pinnedBg : "";
-                              return (
-                                <tr
-                                  key={row.articulo}
-                                  onClick={() => setSelectedRow(isSelected ? null : row.articulo)}
-                                  style={{ cursor: "pointer", background: baseBg || undefined, transition: "background 0.1s" }}
-                                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "hsl(var(--secondary) / 0.35)"; }}
-                                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = baseBg; }}
-                                >
-                                  <td style={{ ...bottomBorder, padding: "8px 8px", textAlign: "center" }} onClick={e => e.stopPropagation()}>
-                                    <Checkbox
-                                      checked={checkedArticulos.has(row.articulo)}
-                                      onCheckedChange={() => toggleCheck(row.articulo)}
-                                      aria-label={`Seleccionar ${row.articulo}`}
-                                    />
-                                  </td>
-                                  <td style={{ ...bottomBorder, padding: "8px 12px 8px 10px", fontFamily: "var(--font-mono)", fontSize: 12, color: "#7ee2a8", overflow: "hidden", whiteSpace: "nowrap" }}>
-                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: "100%" }}>
-                                      <button
-                                        onClick={e => { e.stopPropagation(); togglePin(row.articulo); }}
-                                        title={isPinned ? "Quitar de fijadas" : "Fijar arriba"}
-                                        className="shrink-0 grid place-items-center transition-colors"
-                                        style={{
-                                          width: 20, height: 20, borderRadius: 5,
-                                          color: isPinned ? "#c4b5fd" : "oklch(0.45 0 0)",
-                                          background: isPinned ? "color-mix(in oklab, var(--accent-violet) 20%, transparent)" : "transparent",
-                                        }}
-                                        onMouseEnter={e => { if (!isPinned) (e.currentTarget as HTMLButtonElement).style.color = "#c4b5fd"; }}
-                                        onMouseLeave={e => { if (!isPinned) (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.45 0 0)"; }}
-                                      >
-                                        <Pin className="w-3.5 h-3.5" strokeWidth={2} fill={isPinned ? "#c4b5fd" : "none"} />
-                                      </button>
-                                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.articulo}</span>
-                                    </span>
-                                  </td>
-                                  <td style={{ ...bottomBorder, padding: "8px 12px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                    {row.descArticulo}
-                                  </td>
-                                  <td style={{ ...bottomBorder, padding: "8px 12px", color: "hsl(var(--muted-foreground) / 0.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                    {row.udmPrimaria}
-                                  </td>
-                                  <td style={{ ...bottomBorder, padding: "8px 12px", whiteSpace: "nowrap" }}>
-                                    {(() => {
-                                      const tipo = tipoOf(row.articulo);
-                                      return tipo
-                                        ? <TipoPill tipo={tipo} />
-                                        : <span style={{ opacity: 0.25, color: "hsl(var(--muted-foreground))" }}>—</span>;
-                                    })()}
-                                  </td>
-                                  <td style={{ ...bottomBorder, padding: "8px 12px", textAlign: "right", fontWeight: 600, color: "hsl(var(--foreground))", fontVariantNumeric: "tabular-nums" }}>
-                                    {row.total.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
-                                  </td>
-                                  <td style={{ ...bottomBorder }} />
-                                  {zonesExpanded && visibleZonas.map(zona => {
-                                    const qty = row.byZona[zona];
-                                    return (
-                                      <td key={zona} style={{ ...bottomBorder, padding: "8px 6px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
-                                        <span className={zoneAnimClass ? `${zoneAnimClass} inline-block` : undefined}>
-                                          {qty != null && qty > 0
-                                            ? qty.toLocaleString("es-AR", { maximumFractionDigits: 2 })
-                                            : <span style={{ opacity: 0.25 }}>—</span>
-                                          }
-                                        </span>
-                                      </td>
-                                    );
-                                  })}
-                                </tr>
-                              );
-                            })}
-                            {padBot > 0 && <tr style={{ height: padBot }}><td colSpan={colSpan} style={{ padding: 0, border: "none" }} /></tr>}
-                          </>
-                        );
-                      })()}
-                    </tbody>
-                  </table>
-                </div>
+                <MaterialReactTable table={resumenTable} />
               </div>
             </>
           )}
@@ -1531,7 +1366,7 @@ export function StockZonaSection() {
 
       {/* Barra flotante de selección — position:fixed vía portal para que no
           empuje/reacomode nada del layout al tildar o destildar filas. */}
-      {tab === "resumen" && checkedArticulos.size > 0 && createPortal(
+      {tab === "resumen" && checkedCount > 0 && createPortal(
         <div
           className="animate-in fade-in slide-in-from-bottom-2 duration-150"
           style={{
@@ -1544,7 +1379,7 @@ export function StockZonaSection() {
           }}
         >
           <span className="text-xs whitespace-nowrap" style={{ color: "oklch(0.85 0 0)" }}>
-            <span className="font-semibold" style={{ color: "#fff" }}>{checkedArticulos.size}</span> seleccionada{checkedArticulos.size !== 1 ? "s" : ""}
+            <span className="font-semibold" style={{ color: "#fff" }}>{checkedCount}</span> seleccionada{checkedCount !== 1 ? "s" : ""}
           </span>
           <button
             onClick={handleExportSelected}
@@ -1561,7 +1396,7 @@ export function StockZonaSection() {
             Exportar Excel
           </button>
           <button
-            onClick={() => setCheckedArticulos(new Set())}
+            onClick={() => setRowSelection({})}
             title="Limpiar selección"
             className="grid place-items-center rounded-full transition-colors"
             style={{ width: 28, height: 28, color: "oklch(0.60 0 0)" }}
