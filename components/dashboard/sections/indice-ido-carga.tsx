@@ -409,6 +409,7 @@ export function IndiceIdoCargaSection() {
               disableContextMenu
               rowHeight={34}
               headerRowHeight={38}
+              height={grid.length * 34 + 38 + 2}
             />
           </div>
         )}
