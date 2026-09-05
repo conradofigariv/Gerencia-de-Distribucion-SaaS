@@ -136,6 +136,14 @@ function TrashIcon() {
 
 const DEFAULT_ZONAS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
 
+// ── Design tokens (same palette as Buscador) ──────────────────────────────────
+const CARD_BG      = "oklch(0.235 0.005 270)";
+const PANEL_BG     = "oklch(0.205 0.005 270)";
+const PANEL_BORDER = "1px solid oklch(1 0 0 / 0.07)";
+const BTN_IDLE     = { background: "oklch(0.16 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" } as const;
+const BTN_ACTIVE   = { background: "oklch(0.28 0.02 295)", border: "1px solid oklch(0.55 0.20 295 / 0.45)" } as const;
+const BTN_ACCENT   = { background: "oklch(0.55 0.18 155)", border: "none" } as const;
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export function IndiceIdoCargaSection() {
   const [periodo, setPeriodo] = useState(String(new Date().getFullYear()));
@@ -280,177 +288,158 @@ export function IndiceIdoCargaSection() {
     ];
   }, [removeZona]);
 
+  const inputStyle: React.CSSProperties = {
+    height: 30, borderRadius: 8,
+    background: "oklch(0.16 0.005 270)",
+    border: "1px solid oklch(1 0 0 / 0.07)",
+    color: "oklch(0.92 0 0)", fontSize: 12,
+    paddingInline: 8, outline: "none",
+  };
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-start gap-3">
-          <div
-            className="grid place-items-center mt-0.5"
-            style={{
-              width: 36, height: 36, borderRadius: 9,
-              background: "oklch(0.30 0.10 155 / 0.45)",
-              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
-              color: "#86efac",
-            }}
-          >
-            <UploadCloud className="w-[18px] h-[18px]" strokeWidth={2} />
+    <div
+      className="p-2.5 overflow-hidden space-y-2"
+      style={{ background: CARD_BG, border: PANEL_BORDER, borderRadius: 12 }}
+    >
+      {/* ── Toolbar ──────────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <div
+          className="grid place-items-center shrink-0"
+          style={{ width: 28, height: 28, borderRadius: 7, background: "oklch(0.30 0.10 155 / 0.45)", border: "1px solid oklch(0.55 0.15 155 / 0.5)", color: "#86efac" }}
+        >
+          <UploadCloud className="w-[14px] h-[14px]" strokeWidth={2} />
+        </div>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "oklch(0.92 0 0)", letterSpacing: -0.2 }}>
+          IDO — Carga de datos
+        </span>
+        <div style={{ width: 1, height: 16, background: "oklch(1 0 0 / 0.10)", marginInline: 4 }} />
+        <Calendar className="w-3.5 h-3.5" style={{ color: "oklch(0.58 0 0)" }} />
+        <span style={{ fontSize: 12, color: "oklch(0.58 0 0)" }}>Período</span>
+        <input
+          value={periodo}
+          onChange={(e) => setPeriodo(e.target.value)}
+          style={{ ...inputStyle, width: 72 }}
+        />
+
+        <div className="flex-1" />
+
+        {/* Criterios toggle */}
+        <button
+          onClick={() => setMetasOpen((o) => !o)}
+          style={{ height: 30, borderRadius: 9, paddingInline: 10, fontSize: 12.5, fontWeight: 500, display: "flex", alignItems: "center", gap: 6, color: "oklch(0.88 0 0)", cursor: "pointer", ...(metasOpen ? BTN_ACTIVE : BTN_IDLE) }}
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5" />
+          Criterios
+          <ChevronDown className={`w-3 h-3 transition-transform ${metasOpen ? "rotate-180" : ""}`} />
+        </button>
+
+        {/* Guardar */}
+        <button
+          onClick={handleSave}
+          disabled={saving || loading}
+          style={{ height: 30, borderRadius: 9, paddingInline: 12, fontSize: 12.5, fontWeight: 500, display: "flex", alignItems: "center", gap: 6, color: "#fff", cursor: saving || loading ? "not-allowed" : "pointer", opacity: saving || loading ? 0.45 : 1, ...BTN_ACCENT }}
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          Guardar {periodo}
+        </button>
+
+        {/* Recargar */}
+        <button
+          onClick={() => load(periodo)}
+          disabled={loading}
+          style={{ height: 30, borderRadius: 9, paddingInline: 10, fontSize: 12.5, fontWeight: 500, display: "flex", alignItems: "center", gap: 6, color: "oklch(0.68 0 0)", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.45 : 1, ...BTN_IDLE }}
+        >
+          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+          Recargar
+        </button>
+
+        {/* Agregar zona */}
+        <input
+          value={newZona}
+          onChange={(e) => setNewZona(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && addZona()}
+          placeholder="Zona…"
+          style={{ ...inputStyle, width: 62 }}
+        />
+        <button
+          onClick={addZona}
+          style={{ height: 30, borderRadius: 9, paddingInline: 9, fontSize: 12.5, fontWeight: 500, display: "flex", alignItems: "center", gap: 5, color: "oklch(0.68 0 0)", cursor: "pointer", ...BTN_IDLE }}
+        >
+          <Plus className="w-3.5 h-3.5" /> Agregar
+        </button>
+      </div>
+
+      {/* ── Alcance ──────────────────────────────────────────────────────────── */}
+      <div style={{ background: PANEL_BG, border: PANEL_BORDER, borderRadius: 9, padding: "5px 10px", fontSize: 11, color: "oklch(0.56 0 0)", lineHeight: 1.45 }}>
+        <strong style={{ color: "oklch(0.70 0 0)" }}>Alcance:</strong>{" "}
+        únicamente <strong style={{ color: "oklch(0.70 0 0)" }}>Obras Vía Administrativa</strong> y{" "}
+        <strong style={{ color: "oklch(0.70 0 0)" }}>obras de mantenimiento</strong>. No se incluyen obras a cargo del cliente.
+      </div>
+
+      {/* ── Criterios panel (collapsible) ────────────────────────────────────── */}
+      {metasOpen && (
+        <div style={{ background: PANEL_BG, border: PANEL_BORDER, borderRadius: 9, padding: "10px 12px" }} className="space-y-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+            {META_FIELDS.map(({ key, label, calc }) => (
+              <label key={key} className="flex flex-col gap-1" style={{ fontSize: 11, color: "oklch(0.58 0 0)" }}>
+                <span className="flex items-center gap-1">
+                  {label}
+                  {calc && <span style={{ color: "oklch(0.65 0.2 155)" }} title="Afecta el cálculo del IDO">•</span>}
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={metaInputs[key]}
+                  onChange={(e) => setMeta(key, e.target.value)}
+                  style={{ ...inputStyle, height: 28, borderRadius: 7, fontFamily: "monospace", width: "100%" }}
+                />
+              </label>
+            ))}
           </div>
-          <div>
-            <h2 className="text-[22px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.4, margin: 0 }}>
-              Índice IDO — Carga de datos
-            </h2>
-            <p className="mt-1 text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
-              Completá la tabla con los valores crudos. Los KPIs e IDO se calculan en el Resumen.
-            </p>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <button
+              onClick={handleSaveMetas}
+              disabled={metasSaving}
+              style={{ height: 28, borderRadius: 8, paddingInline: 10, fontSize: 12, fontWeight: 500, display: "flex", alignItems: "center", gap: 5, color: "#fff", cursor: metasSaving ? "not-allowed" : "pointer", opacity: metasSaving ? 0.45 : 1, ...BTN_ACCENT }}
+            >
+              {metasSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+              Guardar criterios
+            </button>
+            <span style={{ fontSize: 11, color: "oklch(0.50 0 0)" }}>
+              Los <span style={{ color: "oklch(0.65 0.2 155)" }}>•</span> afectan el cálculo del IDO.
+            </span>
           </div>
         </div>
+      )}
 
-        {/* Período */}
-        <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-muted-foreground" />
-          <label className="text-sm text-muted-foreground">Período</label>
-          <input
-            value={periodo}
-            onChange={(e) => setPeriodo(e.target.value)}
-            className="w-24 h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent"
+      {/* ── Ayuda ────────────────────────────────────────────────────────────── */}
+      <div className="flex items-start gap-1.5" style={{ fontSize: 11, color: "oklch(0.52 0 0)", paddingInline: 2 }}>
+        <Info className="w-3.5 h-3.5 shrink-0 mt-px" style={{ color: "oklch(0.65 0.2 155)" }} />
+        <span>
+          Pegá desde Excel — completa hacia abajo y a la derecha. Columnas en{" "}
+          <span style={{ color: "oklch(0.72 0.18 155)" }}>verde</span> son calculadas. Decimales con coma o punto.
+        </span>
+      </div>
+
+      {/* ── Grid ─────────────────────────────────────────────────────────────── */}
+      {loading ? (
+        <div className="flex items-center justify-center h-32 gap-2" style={{ color: "oklch(0.55 0 0)" }}>
+          <Loader2 className="w-4 h-4 animate-spin" /> Cargando…
+        </div>
+      ) : (
+        <div className="ido-dsg-wrapper overflow-hidden" style={{ borderRadius: 10, border: PANEL_BORDER }}>
+          <DataSheetGrid<DsgRow>
+            value={grid}
+            onChange={handleChange}
+            columns={columns}
+            lockRows
+            disableContextMenu
+            rowHeight={34}
+            headerRowHeight={38}
+            height={grid.length * 34 + 38 + 2}
           />
         </div>
-      </div>
-
-      {/* Beast pure container */}
-      <div
-        className="px-4 py-6 sm:px-6 space-y-5"
-        style={{
-          background: "oklch(0.235 0.005 270)",
-          border: "1px solid oklch(1 0 0 / 0.07)",
-          borderRadius: 14,
-        }}
-      >
-        {/* Alcance */}
-        <div className="text-xs text-muted-foreground bg-secondary/30 border border-border rounded-lg px-3 py-2.5">
-          <strong className="text-foreground/80">Alcance:</strong> se consideran únicamente las{" "}
-          <strong className="text-foreground/80">Obras Vía Administrativa</strong> y las{" "}
-          <strong className="text-foreground/80">Obras de mantenimiento</strong>. No se tienen en cuenta las
-          obras a cargo del cliente.
-        </div>
-
-        {/* Criterios estratégicos */}
-        <div className="rounded-[14px] bg-panel-2 border border-hairline">
-          <button
-            onClick={() => setMetasOpen((o) => !o)}
-            className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-foreground"
-          >
-            <SlidersHorizontal className="w-4 h-4 text-accent" />
-            Criterios estratégicos / metas internas
-            <span className="text-xs text-muted-foreground font-normal">
-              (FMIK S1 ≤ {metaInputs.fmikS1} · DMIK S1 ≤ {metaInputs.dmikS1} · Obj. POVA {metaInputs.povaTransferido}%)
-            </span>
-            <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${metasOpen ? "rotate-180" : ""}`} />
-          </button>
-          {metasOpen && (
-            <div className="px-4 pb-4 space-y-3">
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                {META_FIELDS.map(({ key, label, calc }) => (
-                  <label key={key} className="flex flex-col gap-1 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      {label}
-                      {calc && <span className="text-accent" title="Afecta el cálculo del IDO">•</span>}
-                    </span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={metaInputs[key]}
-                      onChange={(e) => setMeta(key, e.target.value)}
-                      className="h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent"
-                    />
-                  </label>
-                ))}
-              </div>
-              <div className="flex items-center gap-3 flex-wrap">
-                <button
-                  onClick={handleSaveMetas}
-                  disabled={metasSaving}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-40 transition-colors"
-                >
-                  {metasSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  Guardar criterios
-                </button>
-                <p className="text-[11px] text-muted-foreground/70">
-                  Los marcados con <span className="text-accent">•</span> afectan el cálculo del IDO.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Ayuda */}
-        <div className="flex items-start gap-2 text-xs text-muted-foreground bg-secondary/40 border border-border rounded-lg px-3 py-2.5">
-          <Info className="w-4 h-4 shrink-0 mt-0.5 text-accent" />
-          <span>
-            Seleccioná una celda y pegá directamente desde Excel — se completa hacia abajo y a la derecha
-            automáticamente. Las columnas en <span style={{ color: "oklch(0.72 0.18 155)" }}>verde</span> son calculadas (provisorias).
-            Decimales con coma o punto.
-          </span>
-        </div>
-
-        {/* Grid */}
-        {loading ? (
-          <div className="flex items-center justify-center h-40 text-muted-foreground gap-2">
-            <Loader2 className="w-5 h-5 animate-spin" /> Cargando…
-          </div>
-        ) : (
-          <div className="ido-dsg-wrapper rounded-[14px] overflow-hidden border border-hairline">
-            <DataSheetGrid<DsgRow>
-              value={grid}
-              onChange={handleChange}
-              columns={columns}
-              lockRows
-              disableContextMenu
-              rowHeight={34}
-              headerRowHeight={38}
-              height={grid.length * 34 + 38 + 2}
-            />
-          </div>
-        )}
-
-        {/* Acciones */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <button
-            onClick={handleSave}
-            disabled={saving || loading}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Guardar período {periodo}
-          </button>
-          <button
-            onClick={() => load(periodo)}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            Recargar
-          </button>
-
-          {/* Agregar zona */}
-          <div className="flex items-center gap-2 ml-auto">
-            <input
-              value={newZona}
-              onChange={(e) => setNewZona(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addZona()}
-              placeholder="Nueva zona"
-              className="w-28 h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent placeholder:text-muted-foreground"
-            />
-            <button
-              onClick={addZona}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Plus className="w-4 h-4" /> Agregar
-            </button>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
