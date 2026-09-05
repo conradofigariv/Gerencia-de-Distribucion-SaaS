@@ -1,17 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   DataSheetGrid,
   createTextColumn,
   keyColumn,
   type Column,
+  type ContextMenuComponentProps,
+  type ContextMenuItem,
 } from "react-datasheet-grid";
 import "react-datasheet-grid/dist/style.css";
-import {
-  UploadCloud, Loader2, Save, RefreshCw, Calendar, Trash2, Plus, Info,
-  SlidersHorizontal, ChevronDown,
-} from "lucide-react";
+import { Loader2, Save, RefreshCw, Plus, SlidersHorizontal, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import {
   parseNum, getRows, saveRows, deleteRow, getMetas, saveMetas, DEFAULT_METAS,
@@ -51,10 +50,44 @@ const EDITABLE_FIELDS: (keyof DsgRow)[] = [
 
 const POVA_OBJ = 95;
 
-// Columna numérica: todo IDO es numérico, así que se alinea a la derecha
-// (mucho más legible para comparar magnitudes bajando por una columna) y
-// hereda la fuente monoespaciada del wrapper (números tabulares gratis).
-const numColumn = createTextColumn({ alignRight: true });
+// ── Layout de columnas (anchos fijos, como el diseño) ─────────────────────────
+// `sep` marca el inicio de un bloque (línea vertical + etiqueta de grupo arriba).
+const ZONA_W = 72;
+type ColSpec = {
+  key: keyof DsgRow; label: string; width: number;
+  group?: string; sep?: boolean; calc?: boolean;
+};
+const COLS: ColSpec[] = [
+  { key: "fmik_s1", label: "FMIK S1", width: 96, group: "Técnico", sep: true },
+  { key: "fmik_s2", label: "FMIK S2", width: 96 },
+  { key: "dmik_s1", label: "DMIK S1", width: 96 },
+  { key: "dmik_s2", label: "DMIK S2", width: 96 },
+  { key: "pova_transferido", label: "Transferido", width: 120, group: "POVA", sep: true },
+  { key: "pova_fin_obra", label: "Fin de obra", width: 116 },
+  { key: "pova_creadas", label: "Creadas", width: 96 },
+  { key: "pova_total", label: "Total obras", width: 116 },
+  { key: "_pova_ejecutado", label: "Ejecutado", width: 108, calc: true },
+  { key: "_pova_resultado", label: "Result. s/ Obj", width: 124, calc: true },
+  { key: "mant_poda_bt", label: "Poda BT", width: 96, group: "Mantenimiento", sep: true },
+  { key: "mant_poda_mt", label: "Poda MT", width: 96 },
+  { key: "mant_termografia", label: "Termografía", width: 120 },
+  { key: "_mant_promedio", label: "Mantenimiento", width: 156, calc: true },
+];
+
+// Bloques (Técnico / POVA / Mantenimiento) con su ancho total, para la banda
+// de grupos que va arriba del header.
+const GROUPS = COLS.reduce<{ label: string; width: number }[]>((acc, c) => {
+  if (c.group) acc.push({ label: c.group, width: c.width });
+  else if (acc.length) acc[acc.length - 1].width += c.width;
+  return acc;
+}, []);
+
+const GRID_W = ZONA_W + COLS.reduce((a, c) => a + c.width, 0);
+
+const ROW_H = 52;
+const HEADER_H = 34;
+
+const numColumn = createTextColumn({});
 
 function computeRow(row: DsgRow): DsgRow {
   const t = parseNum(row.pova_transferido);
@@ -112,53 +145,36 @@ function dsgToIdoRow(periodo: string, r: DsgRow): IdoRow | null {
   return { periodo, zona: r.zona, ...parsed } as unknown as IdoRow;
 }
 
-// ── Column header (grupo + campo en dos líneas fijas, nunca texto que envuelve
-// de forma impredecible) — el borde verde a la izquierda marca el inicio de
-// cada sección (Técnico / POVA / Mantenimiento); las columnas intermedias
-// reservan la misma línea superior (vacía) para que el nombre del campo quede
-// siempre a la misma altura en todo el header. ──────────────────────────────
-function ColumnHeader({ group, label }: { group?: string; label: string }) {
-  return (
-    <span
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 2,
-        paddingLeft: 6,
-        borderLeft: group ? "2px solid oklch(0.55 0.2 155 / 0.7)" : "2px solid transparent",
-      }}
-    >
-      <span style={{
-        fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em",
-        color: "oklch(0.72 0.18 155)", lineHeight: 1.3, minHeight: 12,
-      }}>
-        {group ?? " "}
-      </span>
-      <span style={{ fontSize: 11.5, fontWeight: 500, color: "oklch(0.82 0 0)", lineHeight: 1.2 }}>
-        {label}
-      </span>
-    </span>
-  );
-}
-
-// Trash icon inline (avoids importing Lucide in column closures)
-function TrashIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 6h18M19 6l-1 14H6L5 6M8 6V4h8v2"/>
-    </svg>
-  );
-}
-
 const DEFAULT_ZONAS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
 
-// ── Design tokens (same palette as Buscador) ──────────────────────────────────
-const CARD_BG      = "oklch(0.235 0.005 270)";
-const PANEL_BG     = "oklch(0.205 0.005 270)";
-const PANEL_BORDER = "1px solid oklch(1 0 0 / 0.07)";
-const BTN_IDLE     = { background: "oklch(0.16 0.005 270)", border: "1px solid oklch(1 0 0 / 0.07)" } as const;
-const BTN_ACTIVE   = { background: "oklch(0.28 0.02 295)", border: "1px solid oklch(0.55 0.20 295 / 0.45)" } as const;
-const BTN_ACCENT   = { background: "oklch(0.55 0.18 155)", border: "none" } as const;
+// ── Menú contextual (botón secundario) ────────────────────────────────────────
+// Reemplaza el menú por defecto de DSG: mismas acciones de la librería
+// (copiar / pegar / duplicar / eliminar) más dos propias que se resuelven
+// contra el estado del grid (limpiar celda y rellenar hacia abajo).
+type MenuIcon = "copy" | "paste" | "clear" | "fill" | "dup" | "del";
+
+const ICON_PATHS: Record<MenuIcon, React.ReactNode> = {
+  copy: <><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" /><path d="M10.5 3.5V3a1.5 1.5 0 0 0-1.5-1.5H3.5A1.5 1.5 0 0 0 2 3v5.5A1.5 1.5 0 0 0 3.5 10H4" /></>,
+  paste: <><rect x="3.5" y="3" width="9" height="11" rx="1.5" /><path d="M6 3V2.2c0-.4.3-.7.7-.7h2.6c.4 0 .7.3.7.7V3" /></>,
+  clear: <><path d="M14 12.5H6.5L2 8l4.5-4.5H14z" /><path d="M8.5 6.5l3 3M11.5 6.5l-3 3" /></>,
+  fill: <><path d="M8 2.5v11" /><path d="M4.5 10L8 13.5 11.5 10" /></>,
+  dup: <><rect x="2" y="4.5" width="9" height="3" rx="1" /><rect x="2" y="9" width="9" height="3" rx="1" /><path d="M13.5 6.5v3" /></>,
+  del: <><path d="M3 5h10" /><path d="M4.5 5l.6 8a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9L11.5 5" /><path d="M6.5 5V3.6c0-.3.3-.6.6-.6h1.8c.3 0 .6.3.6.6V5" /></>,
+};
+
+function MenuRow({ icon, label, shortcut, danger, onClick }: {
+  icon: MenuIcon; label: string; shortcut: string; danger?: boolean; onClick: () => void;
+}) {
+  return (
+    <div className={`ido-menu-item${danger ? " ido-menu-item-danger" : ""}`} onClick={onClick}>
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.1" style={{ opacity: 0.5 }}>
+        {ICON_PATHS[icon]}
+      </svg>
+      <span style={{ flex: 1 }}>{label}</span>
+      <span className="ido-menu-shortcut">{shortcut}</span>
+    </div>
+  );
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export function IndiceIdoCargaSection() {
@@ -170,6 +186,11 @@ export function IndiceIdoCargaSection() {
   const [metaInputs, setMetaInputs] = useState<Record<keyof IdoMetas, string>>(metaToInputs(DEFAULT_METAS));
   const [metasOpen, setMetasOpen] = useState(false);
   const [metasSaving, setMetasSaving] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [syncAt, setSyncAt] = useState<Date | null>(null);
+  const bandRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<DsgRow[]>([]);
+  gridRef.current = grid;
 
   const load = useCallback(async (p: string) => {
     setLoading(true);
@@ -183,20 +204,37 @@ export function IndiceIdoCargaSection() {
       const r = byZona.get(zona);
       return r ? idoRowToDsg(r) : emptyDsgRow(zona);
     }));
+    setSyncAt(new Date());
     setLoading(false);
   }, []);
 
   useEffect(() => { load(periodo); }, [periodo, load]);
 
-  const removeZona = useCallback(async (zona: string) => {
-    setGrid((prev) => prev.filter((r) => r.zona !== zona));
-    await deleteRow(periodo, zona);
-  }, [periodo]);
+  // Primera letra libre (A..Z) para zonas nuevas o duplicadas.
+  const nextZona = useCallback(() => {
+    const used = new Set(gridRef.current.map((r) => r.zona));
+    for (let i = 0; i < 26; i++) {
+      const l = String.fromCharCode(65 + i);
+      if (!used.has(l)) return l;
+    }
+    return "Z";
+  }, []);
 
-  // Recompute derived columns on every grid change
-  function handleChange(newData: DsgRow[]) {
-    setGrid(newData.map(computeRow));
-  }
+  // Recompute derived columns on every grid change. Las filas que se borran
+  // (menú contextual o borrado inteligente) también se borran en Supabase.
+  const handleChange = useCallback(
+    (newData: DsgRow[], operations: { type: string; fromRowIndex: number; toRowIndex: number }[]) => {
+      const prev = gridRef.current;
+      for (const op of operations) {
+        if (op.type !== "DELETE") continue;
+        for (const r of prev.slice(op.fromRowIndex, op.toRowIndex)) {
+          if (r.zona) deleteRow(periodo, r.zona).catch(() => {});
+        }
+      }
+      setGrid(newData.map(computeRow));
+    },
+    [periodo],
+  );
 
   function addZona() {
     const z = newZona.trim().toUpperCase();
@@ -232,232 +270,212 @@ export function IndiceIdoCargaSection() {
     const err = await saveRows(rows);
     setSaving(false);
     if (err) { toast.error(`Error al guardar: ${err}`); return; }
+    setSyncAt(new Date());
     toast.success(`Guardado: ${rows.length} zona(s) para el período ${periodo}.`);
     load(periodo);
   }
 
-  // Columns defined inside component to capture removeZona
-  const columns = useMemo((): Column<DsgRow>[] => {
-    function mk(key: keyof DsgRow, label: string, group?: string): Column<DsgRow> {
-      return {
-        ...(keyColumn(key, numColumn as never) as object),
-        title: <ColumnHeader label={label} group={group} />,
-        minWidth: 88,
-      } as Column<DsgRow>;
-    }
-    function mkDisabled(key: keyof DsgRow, label: string, group?: string): Column<DsgRow> {
-      return {
-        ...(keyColumn(key, numColumn as never) as object),
-        title: <ColumnHeader label={label} group={group} />,
-        disabled: true,
-        cellClassName: "ido-computed-cell",
-        minWidth: 96,
-      } as Column<DsgRow>;
-    }
+  const columns = useMemo((): Column<DsgRow>[] =>
+    COLS.map((c, i) => ({
+      ...(keyColumn(c.key, numColumn as never) as object),
+      title: c.label,
+      basis: c.width,
+      // Anchos fijos salvo la última, que absorbe el espacio sobrante para que
+      // las filas lleguen siempre hasta el borde de la card. Con `shrink: 0`,
+      // si la pantalla es más angosta que la tabla aparece scroll horizontal
+      // en vez de apretar las columnas.
+      grow: i === COLS.length - 1 ? 1 : 0,
+      shrink: 0,
+      disabled: !!c.calc,
+      headerClassName: c.sep ? "ido-col-sep" : undefined,
+      cellClassName: [c.sep ? "ido-col-sep" : "", c.calc ? "ido-calc-cell" : ""].filter(Boolean).join(" ") || undefined,
+    }) as Column<DsgRow>),
+  []);
 
-    return [
-      // ── Técnico ────────────────────────────────────────────────────────────
-      mk("fmik_s1", "FMIK S1", "Técnico"),
-      mk("fmik_s2", "FMIK S2"),
-      mk("dmik_s1", "DMIK S1"),
-      mk("dmik_s2", "DMIK S2"),
+  // Menú contextual del botón secundario, con el diseño del terminal.
+  const ContextMenu = useCallback(({ clientX, clientY, items, cursorIndex, close }: ContextMenuComponentProps) => {
+    const run = (fn: () => void) => () => { fn(); close(); };
+    const find = (t: ContextMenuItem["type"]) => items.find((i) => i.type === t);
+    const col = COLS[cursorIndex.col];
+    const editable = !!col && !col.calc;
 
-      // ── POVA ───────────────────────────────────────────────────────────────
-      mk("pova_transferido", "Transferido", "POVA"),
-      mk("pova_fin_obra", "Fin de obra"),
-      mk("pova_creadas", "Creadas"),
-      mk("pova_total", "Total obras"),
-      mkDisabled("_pova_ejecutado", "Ejecutado"),
-      mkDisabled("_pova_resultado", "Result. s/ Obj"),
+    // Limpiar celda y rellenar hacia abajo se resuelven contra nuestro estado:
+    // DSG no las trae de fábrica.
+    const clearCell = () => {
+      if (!editable) return;
+      setGrid((prev) => prev.map((r, i) =>
+        i === cursorIndex.row ? computeRow({ ...r, [col.key]: "" }) : r));
+    };
+    const fillDown = () => {
+      if (!editable) return;
+      setGrid((prev) => {
+        const v = prev[cursorIndex.row]?.[col.key] ?? "";
+        return prev.map((r, i) => (i > cursorIndex.row ? computeRow({ ...r, [col.key]: v }) : r));
+      });
+    };
 
-      // ── Mantenimiento ──────────────────────────────────────────────────────
-      mk("mant_poda_bt", "Poda BT", "Mantenimiento"),
-      mk("mant_poda_mt", "Poda MT"),
-      mk("mant_termografia", "Termografía"),
-      mkDisabled("_mant_promedio", "Mantenimiento"),
+    const copy = find("COPY");
+    const paste = find("PASTE");
+    const dup = find("DUPLICATE_ROW");
+    const del = find("DELETE_ROW");
 
-      // ── Delete button ── ancho fijo real: en react-datasheet-grid un `grow:0`
-      // sin `basis` se queda "congelado" en 0px (el minWidth nunca llega a
-      // evaluarse) — hay que fijar el tamaño con `basis`, no con `width`/`minWidth`.
-      {
-        component: ({ rowData }: { rowData: DsgRow }) => (
-          <button
-            onMouseDown={(e) => { e.stopPropagation(); removeZona(rowData.zona); }}
-            title="Eliminar zona"
-            className="ido-delete-btn"
-          >
-            <TrashIcon />
-          </button>
-        ),
-        title: "",
-        basis: 36,
-        grow: 0,
-        shrink: 0,
-        disabled: true,
-      } as unknown as Column<DsgRow>,
-    ];
-  }, [removeZona]);
+    return (
+      <div className="ido-menu" style={{ left: clientX, top: clientY }} onContextMenu={(e) => e.preventDefault()}>
+        {copy && <MenuRow icon="copy" label="Copiar" shortcut="⌘C" onClick={run(copy.action)} />}
+        {paste && <MenuRow icon="paste" label="Pegar" shortcut="⌘V" onClick={run(paste.action)} />}
+        {editable && <MenuRow icon="clear" label="Limpiar celda" shortcut="⌫" onClick={run(clearCell)} />}
+        {(dup || del || editable) && <div className="ido-menu-sep" />}
+        {editable && <MenuRow icon="fill" label="Rellenar hacia abajo" shortcut="⌘D" onClick={run(fillDown)} />}
+        {dup && <MenuRow icon="dup" label="Duplicar zona" shortcut="⇧⌘D" onClick={run(dup.action)} />}
+        {del && <MenuRow icon="del" label="Eliminar zona" shortcut="⌘⌫" danger onClick={run(del.action)} />}
+      </div>
+    );
+  }, []);
 
-  const inputStyle: React.CSSProperties = {
-    height: 30, borderRadius: 8,
-    background: "oklch(0.16 0.005 270)",
-    border: "1px solid oklch(1 0 0 / 0.07)",
-    color: "oklch(0.92 0 0)", fontSize: 12,
-    paddingInline: 8, outline: "none",
-  };
+  // Estadísticas del pie (mismos números que muestra la tabla).
+  const promEjec = useMemo(() => {
+    const vals = grid
+      .map((r) => parseNum(r._pova_ejecutado.replace("%", "")))
+      .filter((v): v is number => v !== null);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  }, [grid]);
 
   return (
-    <div
-      className="p-2.5 overflow-hidden space-y-2"
-      style={{ background: CARD_BG, border: PANEL_BORDER, borderRadius: 12 }}
-    >
-      {/* ── Toolbar ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <div
-          className="grid place-items-center shrink-0"
-          style={{ width: 28, height: 28, borderRadius: 7, background: "oklch(0.30 0.10 155 / 0.45)", border: "1px solid oklch(0.55 0.15 155 / 0.5)", color: "#86efac" }}
-        >
-          <UploadCloud className="w-[14px] h-[14px]" strokeWidth={2} />
-        </div>
-        <span style={{ fontSize: 13, fontWeight: 600, color: "oklch(0.92 0 0)", letterSpacing: -0.2 }}>
-          IDO — Carga de datos
-        </span>
-        <div style={{ width: 1, height: 16, background: "oklch(1 0 0 / 0.10)", marginInline: 4 }} />
-        <Calendar className="w-3.5 h-3.5" style={{ color: "oklch(0.58 0 0)" }} />
-        <span style={{ fontSize: 12, color: "oklch(0.58 0 0)" }}>Período</span>
-        <input
-          value={periodo}
-          onChange={(e) => setPeriodo(e.target.value)}
-          style={{ ...inputStyle, width: 72 }}
-        />
-
-        <div className="flex-1" />
-
-        {/* Criterios toggle */}
-        <button
-          onClick={() => setMetasOpen((o) => !o)}
-          style={{ height: 30, borderRadius: 9, paddingInline: 10, fontSize: 12.5, fontWeight: 500, display: "flex", alignItems: "center", gap: 6, color: "oklch(0.88 0 0)", cursor: "pointer", ...(metasOpen ? BTN_ACTIVE : BTN_IDLE) }}
-        >
-          <SlidersHorizontal className="w-3.5 h-3.5" />
-          Criterios
-          <ChevronDown className={`w-3 h-3 transition-transform ${metasOpen ? "rotate-180" : ""}`} />
-        </button>
-
-        {/* Guardar */}
-        <button
-          onClick={handleSave}
-          disabled={saving || loading}
-          style={{ height: 30, borderRadius: 9, paddingInline: 12, fontSize: 12.5, fontWeight: 500, display: "flex", alignItems: "center", gap: 6, color: "#fff", cursor: saving || loading ? "not-allowed" : "pointer", opacity: saving || loading ? 0.45 : 1, ...BTN_ACCENT }}
-        >
-          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-          Guardar {periodo}
-        </button>
-
-        {/* Recargar */}
-        <button
-          onClick={() => load(periodo)}
-          disabled={loading}
-          style={{ height: 30, borderRadius: 9, paddingInline: 10, fontSize: 12.5, fontWeight: 500, display: "flex", alignItems: "center", gap: 6, color: "oklch(0.68 0 0)", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.45 : 1, ...BTN_IDLE }}
-        >
-          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-          Recargar
-        </button>
-
-        {/* Agregar zona */}
-        <input
-          value={newZona}
-          onChange={(e) => setNewZona(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && addZona()}
-          placeholder="Zona…"
-          style={{ ...inputStyle, width: 62 }}
-        />
-        <button
-          onClick={addZona}
-          style={{ height: 30, borderRadius: 9, paddingInline: 9, fontSize: 12.5, fontWeight: 500, display: "flex", alignItems: "center", gap: 5, color: "oklch(0.68 0 0)", cursor: "pointer", ...BTN_IDLE }}
-        >
-          <Plus className="w-3.5 h-3.5" /> Agregar
-        </button>
-      </div>
-
-      {/* ── Alcance ──────────────────────────────────────────────────────────── */}
-      <div style={{ background: PANEL_BG, border: PANEL_BORDER, borderRadius: 9, padding: "5px 10px", fontSize: 11, color: "oklch(0.56 0 0)", lineHeight: 1.45 }}>
-        <strong style={{ color: "oklch(0.70 0 0)" }}>Alcance:</strong>{" "}
-        únicamente <strong style={{ color: "oklch(0.70 0 0)" }}>Obras Vía Administrativa</strong> y{" "}
-        <strong style={{ color: "oklch(0.70 0 0)" }}>obras de mantenimiento</strong>. No se incluyen obras a cargo del cliente.
-      </div>
-
-      {/* ── Criterios panel (collapsible) ────────────────────────────────────── */}
-      {metasOpen && (
-        <div style={{ background: PANEL_BG, border: PANEL_BORDER, borderRadius: 9, padding: "10px 12px" }} className="space-y-2.5">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-            {META_FIELDS.map(({ key, label, calc }) => (
-              <label key={key} className="flex flex-col gap-1" style={{ fontSize: 11, color: "oklch(0.58 0 0)" }}>
-                <span className="flex items-center gap-1">
-                  {label}
-                  {calc && <span style={{ color: "oklch(0.65 0.2 155)" }} title="Afecta el cálculo del IDO">•</span>}
-                </span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={metaInputs[key]}
-                  onChange={(e) => setMeta(key, e.target.value)}
-                  style={{ ...inputStyle, height: 28, borderRadius: 7, fontFamily: "monospace", width: "100%" }}
-                />
-              </label>
-            ))}
-          </div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <button
-              onClick={handleSaveMetas}
-              disabled={metasSaving}
-              style={{ height: 28, borderRadius: 8, paddingInline: 10, fontSize: 12, fontWeight: 500, display: "flex", alignItems: "center", gap: 5, color: "#fff", cursor: metasSaving ? "not-allowed" : "pointer", opacity: metasSaving ? 0.45 : 1, ...BTN_ACCENT }}
-            >
-              {metasSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-              Guardar criterios
-            </button>
-            <span style={{ fontSize: 11, color: "oklch(0.50 0 0)" }}>
-              Los <span style={{ color: "oklch(0.65 0.2 155)" }}>•</span> afectan el cálculo del IDO.
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* ── Ayuda ────────────────────────────────────────────────────────────── */}
-      <div className="flex items-start gap-1.5" style={{ fontSize: 11, color: "oklch(0.52 0 0)", paddingInline: 2 }}>
-        <Info className="w-3.5 h-3.5 shrink-0 mt-px" style={{ color: "oklch(0.65 0.2 155)" }} />
-        <span>
-          Pegá desde Excel — completa hacia abajo y a la derecha. Columnas en{" "}
-          <span style={{ color: "oklch(0.72 0.18 155)" }}>verde</span> son calculadas. Decimales con coma o punto.
-        </span>
-      </div>
-
-      {/* ── Grid ─────────────────────────────────────────────────────────────── */}
-      {loading ? (
-        <div className="flex items-center justify-center h-32 gap-2" style={{ color: "oklch(0.55 0 0)" }}>
-          <Loader2 className="w-4 h-4 animate-spin" /> Cargando…
-        </div>
-      ) : (
-        <div className="ido-dsg-wrapper overflow-hidden" style={{ borderRadius: 10, border: PANEL_BORDER }}>
-          <DataSheetGrid<DsgRow>
-            value={grid}
-            onChange={handleChange}
-            columns={columns}
-            // Gutter fijo (sticky) con la zona en vez del índice de fila: así
-            // siempre se sabe a qué zona corresponde la fila aunque se haya
-            // scrolleado horizontalmente hacia las últimas columnas.
-            gutterColumn={{
-              basis: 60, grow: 0, shrink: 0,
-              component: ({ rowData }) => <div className="ido-zona-gutter">{rowData.zona}</div>,
-            }}
-            rowClassName={({ rowIndex }) => (rowIndex % 2 === 1 ? "ido-row-alt" : undefined)}
-            lockRows
-            disableContextMenu
-            rowHeight={34}
-            headerRowHeight={42}
-            height={grid.length * 34 + 42 + 2}
+    <div className="ido-terminal">
+      <div className="ido-card">
+        {/* ── Toolbar ────────────────────────────────────────────────────── */}
+        <div className="ido-toolbar">
+          <span className="ido-title">IDO</span>
+          <span className="ido-divider" />
+          <span className="ido-subtitle">Índices de calidad · red de distribución</span>
+          <input
+            className="ido-field"
+            value={periodo}
+            onChange={(e) => setPeriodo(e.target.value)}
+            style={{ width: 76 }}
+            aria-label="Período"
           />
+
+          <div style={{ flex: 1 }} />
+
+          <button
+            className={`ido-btn ido-btn-ghost${metasOpen ? " is-on" : ""}`}
+            onClick={() => setMetasOpen((o) => !o)}
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            Criterios
+            <ChevronDown className={`w-3 h-3 transition-transform ${metasOpen ? "rotate-180" : ""}`} />
+          </button>
+          <button className="ido-btn ido-btn-primary" onClick={handleSave} disabled={saving || loading}>
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            Guardar
+          </button>
+          <button className="ido-btn ido-btn-ghost" onClick={() => load(periodo)} disabled={loading}>
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Recargar
+          </button>
+          <input
+            className="ido-field"
+            value={newZona}
+            onChange={(e) => setNewZona(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addZona()}
+            placeholder="Zona"
+            style={{ width: 66 }}
+          />
+          <button className="ido-btn ido-btn-ghost" onClick={addZona}>
+            <Plus className="w-3.5 h-3.5" /> Agregar
+          </button>
         </div>
-      )}
+
+        {/* ── Criterios (colapsable) ─────────────────────────────────────── */}
+        {metasOpen && (
+          <div className="ido-criterios">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+              {META_FIELDS.map(({ key, label, calc }) => (
+                <label key={key} className="ido-criterio">
+                  <span>
+                    {label}
+                    {calc && <i title="Afecta el cálculo del IDO"> •</i>}
+                  </span>
+                  <input
+                    className="ido-field ido-field-mono"
+                    type="text"
+                    inputMode="decimal"
+                    value={metaInputs[key]}
+                    onChange={(e) => setMeta(key, e.target.value)}
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <button className="ido-btn ido-btn-primary" onClick={handleSaveMetas} disabled={metasSaving}>
+                {metasSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                Guardar criterios
+              </button>
+              <span className="ido-hint">Los <i>•</i> afectan el cálculo del IDO.</span>
+            </div>
+          </div>
+        )}
+
+        {/* ── Banda de grupos (scrollea junto con la grilla) ─────────────── */}
+        <div className="ido-band">
+          <div className="ido-band-zona" style={{ width: ZONA_W }} />
+          <div className="ido-band-scroll">
+            <div ref={bandRef} className="ido-band-track" style={{ width: GRID_W - ZONA_W }}>
+              {GROUPS.map((g) => (
+                <div key={g.label} className="ido-band-group" style={{ width: g.width }}>{g.label}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Grid ──────────────────────────────────────────────────────── */}
+        {loading ? (
+          <div className="ido-loading"><Loader2 className="w-4 h-4 animate-spin" /> Cargando…</div>
+        ) : (
+          <div className={`ido-grid${scrolled ? " is-scrolled" : ""}`}>
+            <DataSheetGrid<DsgRow>
+              value={grid}
+              onChange={handleChange}
+              columns={columns}
+              gutterColumn={{
+                basis: ZONA_W, grow: 0, shrink: 0,
+                title: <span className="ido-zona-head">Zona</span>,
+                component: ({ rowData }) => <span className="ido-zona">{rowData.zona}</span>,
+              }}
+              contextMenuComponent={ContextMenu}
+              createRow={() => emptyDsgRow(nextZona())}
+              duplicateRow={({ rowData }) => ({ ...rowData, zona: nextZona() })}
+              addRowsComponent={false}
+              rowHeight={ROW_H}
+              headerRowHeight={HEADER_H}
+              height={grid.length * ROW_H + HEADER_H + 2}
+              onScroll={(e) => {
+                const x = (e.target as HTMLElement).scrollLeft;
+                if (bandRef.current) bandRef.current.style.transform = `translateX(${-x}px)`;
+                setScrolled(x > 1);
+              }}
+            />
+          </div>
+        )}
+
+        {/* ── Footer ────────────────────────────────────────────────────── */}
+        <div className="ido-foot">
+          <span>{grid.length} ZONAS</span>
+          <span>OBJ {metaInputs.povaTransferido}%</span>
+          <span>PROM. EJEC. {promEjec !== null ? `${promEjec.toFixed(1)}%` : "—"}</span>
+          <span style={{ marginLeft: "auto" }}>
+            SYNC {syncAt ? syncAt.toLocaleTimeString("es-AR", { hour12: false }) : "—"}
+          </span>
+        </div>
+      </div>
+
+      <p className="ido-note">
+        <strong>Alcance:</strong> únicamente Obras Vía Administrativa y obras de mantenimiento (no se
+        incluyen obras a cargo del cliente). Pegá desde Excel con <strong>⌘V</strong> o usá el botón
+        secundario del mouse para copiar, rellenar hacia abajo y administrar zonas. Decimales con coma
+        o punto; las columnas en <span className="ido-note-calc">verde</span> son calculadas.
+      </p>
     </div>
   );
 }

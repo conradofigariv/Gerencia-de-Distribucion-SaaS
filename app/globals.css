@@ -278,87 +278,385 @@ input[type="number"] { -moz-appearance: textfield; }
   background: transparent;
 }
 
-/* ── react-datasheet-grid — tema oscuro IDO ───────────────────────────────────── */
-.ido-dsg-wrapper :root,
-.ido-dsg-wrapper {
-  --dsg-border-color: oklch(1 0 0 / 0.08);
-  --dsg-selection-border-color: oklch(0.65 0.2 155);
-  --dsg-selection-border-radius: 2px;
-  --dsg-selection-background-color: oklch(0.65 0.2 155 / 0.12);
-  --dsg-selection-disabled-border-color: oklch(0.5 0 0 / 0.4);
-  --dsg-selection-disabled-background-color: oklch(0.5 0 0 / 0.06);
-  --dsg-header-text-color: oklch(0.58 0 0);
-  --dsg-header-active-text-color: oklch(0.88 0 0);
-  --dsg-cell-background-color: oklch(0.235 0.005 270);
-  --dsg-cell-disabled-background-color: oklch(0.20 0.005 270);
-  --dsg-scroll-shadow-color: oklch(0 0 0 / 0.4);
+/* ── IDO — "terminal financiero" (react-datasheet-grid) ──────────────────────
+   Tokens del diseño: superficie casi negra, verde de acento, mono para los
+   números y densidad alta. Todo vive detrás de `.ido-terminal` para no filtrar
+   esta paleta al resto de la app. */
+.ido-terminal {
+  --ido-surface: #0d0f12;
+  --ido-surface-hover: #111418;
+  --ido-menu-bg: #16181b;
+  --ido-line: rgba(255, 255, 255, 0.07);
+  --ido-line-strong: rgba(255, 255, 255, 0.12);
+  --ido-line-group: rgba(255, 255, 255, 0.1);
+  --ido-row-line: rgba(255, 255, 255, 0.08);
+  --ido-text: #e4e7eb;
+  --ido-text-dim: rgba(255, 255, 255, 0.45);
+  --ido-text-faint: rgba(255, 255, 255, 0.32);
+  --ido-zone: rgba(255, 255, 255, 0.38);
+  --ido-accent: #3fcf8e;
+  --ido-accent-hover: #57dba0;
+  --ido-accent-ink: #07130d;
+  --ido-danger: #ff8a8a;
+  --ido-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  color: var(--ido-text);
 }
 
-.ido-dsg-wrapper .dsg-container {
-  color: oklch(0.88 0 0);
-  background: oklch(0.235 0.005 270);
-  border: none;
-  font-size: 12px;
-  font-family: var(--font-mono, ui-monospace, monospace);
+.ido-card {
+  background: var(--ido-surface);
+  border: 1px solid var(--ido-line);
+  border-radius: 12px;
+  box-shadow: 0 40px 80px -32px rgba(0, 0, 0, 0.9), 0 4px 16px -8px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
 }
 
-/* Header row */
-.ido-dsg-wrapper .dsg-row-header .dsg-cell {
-  background: oklch(0.18 0.005 270);
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+.ido-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 20px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--ido-line);
+}
+.ido-title {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.ido-divider {
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.ido-subtitle {
   font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ido-text-dim);
 }
 
-/* Disabled (computed) cells — subtle accent tint */
-.ido-dsg-wrapper .dsg-cell-disabled {
-  color: oklch(0.72 0.18 155) !important;
-  font-style: italic;
+.ido-field {
+  height: 30px;
+  padding: 0 10px;
+  background: var(--ido-surface-hover);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 6px;
+  color: var(--ido-text);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 160ms var(--ido-ease);
 }
-
-/* Columnas calculadas (Ejecutado / Result. s/ Obj / Mantenimiento) — mismo
-   tinte verde en las tres, sin importar la fila (par/impar) ni el foco. */
-.ido-dsg-wrapper .ido-computed-cell {
-  background: oklch(0.30 0.05 155 / 0.16) !important;
+.ido-field:focus {
+  border-color: rgba(63, 207, 142, 0.5);
 }
-
-/* Fila cebra — con ~15 columnas numéricas ayuda muchísimo a no perder la fila
-   al escanear horizontalmente. */
-.ido-dsg-wrapper .dsg-row.ido-row-alt .dsg-cell {
-  background: oklch(0.25 0.006 270);
+.ido-field::placeholder {
+  color: rgba(255, 255, 255, 0.18);
 }
-
-/* Active / selected border green */
-.ido-dsg-wrapper .dsg-cell-focus {
-  outline: 2px solid oklch(0.65 0.2 155) !important;
-  outline-offset: -1px;
-}
-
-/* Identificador de zona en el gutter sticky — siempre visible al scrollear
-   horizontalmente entre las ~15 columnas de datos. */
-.ido-zona-gutter {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.ido-field-mono {
   width: 100%;
-  height: 100%;
-  font-weight: 700;
-  font-size: 12.5px;
-  color: #7ee2a8;
-  background: oklch(0.24 0.02 155 / 0.3);
+  height: 28px;
 }
 
-/* Delete button inside grid cell */
-.ido-delete-btn {
-  display: flex;
+.ido-btn {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  background: none;
-  border: none;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  color: oklch(0.5 0 0);
-  transition: color 0.15s;
+  white-space: nowrap;
+  transition: all 160ms var(--ido-ease);
 }
-.ido-delete-btn:hover {
-  color: oklch(0.65 0.18 25);
+.ido-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ido-btn-primary {
+  background: var(--ido-accent);
+  border: 0;
+  color: var(--ido-accent-ink);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 0 14px;
+}
+.ido-btn-primary:hover:not(:disabled) {
+  background: var(--ido-accent-hover);
+}
+.ido-btn-ghost {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.62);
+}
+.ido-btn-ghost:hover:not(:disabled) {
+  color: var(--ido-text);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.ido-btn-ghost.is-on {
+  color: var(--ido-accent);
+  border-color: rgba(63, 207, 142, 0.4);
+  background: rgba(63, 207, 142, 0.08);
+}
+
+/* ── Criterios ───────────────────────────────────────────────────────────── */
+.ido-criterios {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--ido-line);
+}
+.ido-criterio {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ido-text-dim);
+}
+.ido-criterio i {
+  color: var(--ido-accent);
+  font-style: normal;
+}
+.ido-hint {
+  font-size: 11px;
+  color: var(--ido-text-faint);
+}
+.ido-hint i {
+  color: var(--ido-accent);
+  font-style: normal;
+}
+
+/* ── Banda de grupos ─────────────────────────────────────────────────────── */
+.ido-band {
+  display: flex;
+  height: 28px;
+  align-items: flex-end;
+}
+.ido-band-zona {
+  flex: 0 0 auto;
+  background: var(--ido-surface);
+}
+.ido-band-scroll {
+  flex: 1;
+  overflow: hidden;
+}
+.ido-band-track {
+  display: flex;
+  will-change: transform;
+}
+.ido-band-group {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: rgba(63, 207, 142, 0.92);
+}
+
+/* ── Grid ────────────────────────────────────────────────────────────────── */
+.ido-terminal .dsg-container {
+  --dsg-border-color: var(--ido-row-line);
+  --dsg-selection-border-color: var(--ido-accent);
+  --dsg-selection-border-radius: 3px;
+  --dsg-selection-background-color: rgba(63, 207, 142, 0.1);
+  --dsg-selection-disabled-border-color: rgba(255, 255, 255, 0.25);
+  --dsg-selection-disabled-background-color: rgba(255, 255, 255, 0.04);
+  --dsg-header-text-color: var(--ido-text-dim);
+  --dsg-header-active-text-color: var(--ido-text);
+  --dsg-cell-background-color: var(--ido-surface);
+  --dsg-cell-disabled-background-color: var(--ido-surface);
+  --dsg-scroll-shadow-color: rgba(0, 0, 0, 0.85);
+
+  background: var(--ido-surface);
+  border: none;
+  color: var(--ido-text);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Header: etiquetas chicas en mayúsculas, centradas */
+.ido-terminal .dsg-row-header .dsg-cell {
+  background: var(--ido-surface);
+  border-bottom: 1px solid var(--ido-line-strong);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 11px;
+  font-variant-numeric: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ido-text-dim);
+}
+.ido-terminal .dsg-cell-header-container {
+  justify-content: center;
+  width: 100%;
+}
+
+/* Valores centrados (el diseño centra todo el bloque numérico) */
+.ido-terminal .dsg-input {
+  text-align: center;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  color: var(--ido-text);
+}
+.ido-terminal .dsg-cell {
+  border-bottom: 1px solid var(--ido-row-line);
+  justify-content: center;
+}
+
+/* Separador vertical al inicio de cada bloque */
+.ido-terminal .ido-col-sep {
+  border-left: 1px solid var(--ido-line-group);
+}
+
+/* Columnas calculadas: verde, itálica, sin fondo propio */
+.ido-terminal .dsg-cell-disabled,
+.ido-terminal .ido-calc-cell .dsg-input {
+  color: var(--ido-accent) !important;
+  font-style: italic;
+  font-weight: 500;
+  -webkit-text-fill-color: var(--ido-accent);
+}
+
+/* Celda activa: anillo verde de 1.5px + tirador chico abajo a la derecha */
+.ido-terminal .dsg-active-cell {
+  border: none;
+  box-shadow: inset 0 0 0 1.5px var(--ido-accent);
+  border-radius: 3px;
+}
+.ido-terminal .dsg-active-cell::after {
+  content: "";
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 6px;
+  height: 6px;
+  background: var(--ido-accent);
+  border-radius: 1px;
+}
+
+/* Fila bajo el cursor */
+.ido-terminal .dsg-row:hover .dsg-cell {
+  background: var(--ido-surface-hover);
+}
+
+/* Zona (gutter sticky) */
+.ido-terminal .dsg-cell-gutter {
+  background: var(--ido-surface);
+  justify-content: center;
+  transition: box-shadow 160ms var(--ido-ease);
+}
+.ido-terminal .dsg-row:hover .dsg-cell-gutter {
+  background: var(--ido-surface-hover);
+}
+.ido-grid.is-scrolled .dsg-cell-gutter {
+  box-shadow: 10px 0 14px -10px rgba(0, 0, 0, 0.85);
+}
+.ido-zona {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--ido-zone);
+  transition: color 120ms var(--ido-ease);
+}
+.ido-terminal .dsg-row:hover .ido-zona {
+  color: var(--ido-accent);
+}
+.ido-zona-head {
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+.ido-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 140px;
+  color: var(--ido-text-dim);
+  font-size: 13px;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.ido-foot {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: 38px;
+  padding: 0 20px;
+  border-top: 1px solid var(--ido-line);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ido-text-faint);
+}
+
+.ido-note {
+  margin: 10px 2px 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ido-text-faint);
+}
+.ido-note strong {
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 500;
+}
+.ido-note-calc {
+  color: var(--ido-accent);
+}
+
+/* ── Menú contextual (botón secundario) ──────────────────────────────────── */
+.ido-menu {
+  position: fixed;
+  z-index: 10000;
+  width: 210px;
+  padding: 5px;
+  background: var(--ido-menu-bg);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  box-shadow: 0 24px 56px -12px rgba(0, 0, 0, 0.85), 0 8px 20px -8px rgba(0, 0, 0, 0.6);
+  animation: ido-menu-in 140ms var(--ido-ease);
+  transform-origin: top left;
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+@keyframes ido-menu-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.ido-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  cursor: default;
+  color: #d6dae0;
+  font-size: 12.5px;
+  transition: background 120ms var(--ido-ease);
+}
+.ido-menu-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.ido-menu-item-danger:hover {
+  color: var(--ido-danger);
+}
+.ido-menu-shortcut {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  color: var(--ido-text-faint);
+}
+.ido-menu-sep {
+  height: 1px;
+  margin: 5px 6px;
+  background: var(--ido-line);
 }
