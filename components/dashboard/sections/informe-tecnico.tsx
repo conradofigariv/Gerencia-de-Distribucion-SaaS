@@ -2902,12 +2902,12 @@ function OfertasTab({
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-border -mx-4 sm:-mx-6">
+      <div className="overflow-auto max-h-[75vh] rounded-lg border border-border -mx-4 sm:-mx-6">
         <table className="w-full text-[14.5px] border-collapse">
           <thead>
             <tr className="bg-secondary/50">
               <th
-                className="text-left py-3.5 px-4 font-medium text-muted-foreground border-r border-border"
+                className="sticky top-0 z-10 text-left py-3.5 px-4 font-medium text-muted-foreground border-r border-b border-border bg-secondary"
                 style={{ minWidth: "320px" }}
               >
                 Ítem
@@ -2915,7 +2915,7 @@ function OfertasTab({
               {oferentes.map((of) => (
                 <th
                   key={of.id}
-                  className="py-3.5 px-4 font-semibold text-foreground border-r border-border last:border-r-0 text-center text-[15px]"
+                  className="sticky top-0 z-10 py-3.5 px-4 font-semibold text-foreground border-r border-b border-border last:border-r-0 text-center text-[15px] bg-secondary"
                   style={{ minWidth: "210px" }}
                 >
                   {of.nombre}
