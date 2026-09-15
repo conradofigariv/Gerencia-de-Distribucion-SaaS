@@ -15,19 +15,25 @@ function fmtNum(v: number | null): string {
 function fmtPct(v: number | null, dec = 0): string {
   return v === null ? "—" : `${(v * 100).toLocaleString("es-AR", { minimumFractionDigits: dec, maximumFractionDigits: dec })}%`;
 }
+// KPI binario / Resultado Técnico: verde ≥1, ámbar >0, rojo el resto (3 bandas semánticas).
 function kpiColor(v: number | null): string {
-  if (v === null) return "text-muted-foreground";
-  if (v >= 1) return "text-emerald-400";
-  if (v > 0) return "text-amber-400";
-  return "text-red-400";
+  if (v === null) return "var(--ido-text-dim)";
+  if (v >= 1) return "var(--ido-accent)";
+  if (v > 0) return "var(--ido-warning)";
+  return "var(--ido-danger)";
 }
+// IDO final: mismas 3 bandas, con el tinte de badge documentado (design-system.md §4.3).
 function idoStyle(v: number | null): { color: string; bg: string } {
-  if (v === null) return { color: "var(--muted-foreground, #888)", bg: "transparent" };
-  if (v >= 0.85) return { color: "#86efac", bg: "rgba(134,239,172,0.12)" };
-  if (v >= 0.70) return { color: "#bef264", bg: "rgba(190,242,100,0.12)" };
-  if (v >= 0.50) return { color: "#fcd34d", bg: "rgba(252,211,77,0.12)" };
-  return { color: "#fca5a5", bg: "rgba(252,165,165,0.12)" };
+  if (v === null) return { color: "var(--ido-text-dim)", bg: "transparent" };
+  if (v >= 0.70) return { color: "var(--ido-accent)", bg: "rgba(63,207,142,.12)" };
+  if (v >= 0.50) return { color: "var(--ido-warning)", bg: "rgba(245,165,36,.12)" };
+  return { color: "var(--ido-danger)", bg: "rgba(229,72,77,.12)" };
 }
+
+const MONO = "var(--font-mono, ui-monospace, monospace)";
+const HEADER_LABEL_STYLE: React.CSSProperties = {
+  fontSize: 10, fontWeight: 500, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--ido-text-dim)",
+};
 
 export function IndiceIdoResumenSection() {
   const [periodo, setPeriodo] = useState(String(new Date().getFullYear()));
@@ -40,15 +46,16 @@ export function IndiceIdoResumenSection() {
 
   // Anchos de columna ajustables
   const [colW, setColW] = useState<Record<string, number>>({});
+  const [resizingCol, setResizingCol] = useState<string | null>(null);
   const resizing = useRef<{ id: string; startX: number; startW: number } | null>(null);
   useEffect(() => {
     function onMove(e: MouseEvent) {
       const r = resizing.current;
       if (!r) return;
-      const w = Math.max(40, r.startW + (e.clientX - r.startX));
+      const w = Math.max(64, r.startW + (e.clientX - r.startX));
       setColW((p) => ({ ...p, [r.id]: w }));
     }
-    function onUp() { resizing.current = null; }
+    function onUp() { resizing.current = null; setResizingCol(null); }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
@@ -87,7 +94,7 @@ export function IndiceIdoResumenSection() {
   const idosValidos = calc.map((c) => c.ido).filter((x): x is number => x !== null);
   const idoPromedio = idosValidos.length ? idosValidos.reduce((a, b) => a + b, 0) / idosValidos.length : null;
 
-  // Columnas hoja (para colgroup + resize). w = ancho por defecto.
+  // Columnas hoja (para grid-template-columns + resize). w = ancho por defecto.
   const leafCols = useMemo(() => {
     const c: { id: string; w: number }[] = [{ id: "zona", w: 56 }];
     c.push({ id: "fmik_s1", w: 72 }, { id: "fmik_kpi_s1", w: 64 });
@@ -101,214 +108,278 @@ export function IndiceIdoResumenSection() {
   }, [hasS2]);
   const defW = useMemo(() => Object.fromEntries(leafCols.map((c) => [c.id, c.w])), [leafCols]);
 
+  const colIndex = useCallback((id: string) => leafCols.findIndex((c) => c.id === id) + 1, [leafCols]);
+  const gridTemplateColumns = useMemo(
+    () => leafCols.map((c) => `${colW[c.id] ?? c.w}px`).join(" "),
+    [leafCols, colW]
+  );
+  const totalTableWidth = useMemo(
+    () => leafCols.reduce((a, c) => a + (colW[c.id] ?? c.w), 0),
+    [leafCols, colW]
+  );
+  // Guía de arrastre: offset acumulado hasta (e incluyendo) la columna que se está redimensionando.
+  const resizeOffsetX = useMemo(() => {
+    if (!resizingCol) return 0;
+    let x = 0;
+    for (const c of leafCols) {
+      x += colW[c.id] ?? c.w;
+      if (c.id === resizingCol) break;
+    }
+    return x;
+  }, [resizingCol, leafCols, colW]);
+
   function startResize(e: React.MouseEvent, id: string) {
     e.preventDefault();
     e.stopPropagation();
     resizing.current = { id, startX: e.clientX, startW: colW[id] ?? defW[id] };
+    setResizingCol(id);
   }
-  const Resizer = ({ id }: { id: string }) => (
-    <span
-      onMouseDown={(e) => startResize(e, id)}
-      className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-accent/50"
-    />
-  );
+  const Resizer = ({ id }: { id: string }) => {
+    const active = resizingCol === id;
+    return (
+      <span
+        onMouseDown={(e) => startResize(e, id)}
+        className="group absolute top-0 right-[-4px] bottom-0 w-2 cursor-col-resize z-20 flex justify-center"
+      >
+        <span
+          className={`w-[2px] h-full transition-opacity ${active ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+          style={{ background: "var(--ido-accent)", transitionDuration: "100ms", transitionTimingFunction: "var(--ido-ease)" }}
+        />
+      </span>
+    );
+  };
 
   const periodoOptions = useMemo(
     () => [...new Set([periodo, ...periodos])].sort().reverse(),
     [periodo, periodos]
   );
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-start gap-3">
-          <div
-            className="grid place-items-center mt-0.5"
-            style={{
-              width: 36, height: 36, borderRadius: 9,
-              background: "oklch(0.30 0.10 155 / 0.45)",
-              border: "1px solid oklch(0.55 0.15 155 / 0.5)",
-              color: "#86efac",
-            }}
-          >
-            <Gauge className="w-[18px] h-[18px]" strokeWidth={2} />
-          </div>
-          <div>
-            <h2 className="text-[22px] font-semibold tracking-tight text-foreground" style={{ letterSpacing: -0.4, margin: 0 }}>
-              Índice IDO — Resumen
-            </h2>
-            <p className="mt-1 text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
-              KPIs, Resultado Técnico, POVA, Mantenimiento e IDO calculados por zona.
-            </p>
-          </div>
-        </div>
+  const fmikStart = colIndex("fmik_s1");
+  const fmikEnd = colIndex("fmik_kpi");
+  const dmikStart = colIndex("dmik_s1");
+  const dmikEnd = colIndex("dmik_kpi");
 
-        <div className="flex items-center gap-3">
-          {/* Desplegable de años guardados */}
+  return (
+    <div className="ido-terminal">
+      <div className="ido-card">
+        {/* ── Toolbar ────────────────────────────────────────────────────── */}
+        <div className="ido-toolbar">
+          <Gauge className="w-4 h-4" style={{ color: "var(--ido-text-dim)" }} />
+          <span className="ido-title">IDO — Resumen</span>
+          <span className="ido-divider" />
+          <span className="ido-subtitle">KPIs, Resultado Técnico, POVA, Mantenimiento e IDO por zona</span>
+
+          <div style={{ flex: 1 }} />
+
           <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-muted-foreground" />
-            <label className="text-sm text-muted-foreground">Período</label>
+            <Calendar className="w-3.5 h-3.5" style={{ color: "var(--ido-text-dim)" }} />
             <div className="relative" ref={dropRef}>
               <button
                 onClick={() => setDropOpen((o) => !o)}
-                className="w-28 h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground flex items-center justify-between gap-2 hover:border-accent transition-colors"
+                className="ido-field inline-flex items-center justify-between gap-2"
+                style={{ width: 96 }}
+                aria-label="Período"
               >
-                <span className="font-mono">{periodo}</span>
-                <ChevronDown className={`w-4 h-4 transition-transform ${dropOpen ? "rotate-180" : ""}`} />
+                <span style={{ fontFamily: MONO }}>{periodo}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${dropOpen ? "rotate-180" : ""}`} />
               </button>
               {dropOpen && (
-                <div className="absolute right-0 mt-1 w-32 z-30 rounded-lg border border-border bg-card shadow-xl overflow-hidden">
+                <div className="ido-menu" style={{ position: "absolute", left: "auto", right: 0, top: "calc(100% + 4px)", width: 128 }}>
                   {periodoOptions.length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-muted-foreground">Sin años guardados</div>
+                    <div className="ido-menu-item" style={{ cursor: "default", color: "var(--ido-text-dim)" }}>Sin años guardados</div>
                   ) : (
                     periodoOptions.map((p) => (
-                      <button
+                      <div
                         key={p}
+                        className="ido-menu-item"
                         onClick={() => { setPeriodo(p); setDropOpen(false); }}
-                        className={`w-full text-left px-3 py-2 text-sm font-mono hover:bg-secondary/60 transition-colors ${p === periodo ? "text-accent" : "text-foreground"}`}
+                        style={{ fontFamily: MONO, color: p === periodo ? "var(--ido-accent)" : undefined, cursor: "pointer" }}
                       >
                         {p}
-                      </button>
+                      </div>
                     ))
                   )}
                 </div>
               )}
             </div>
           </div>
-          <button
-            onClick={() => load(periodo)}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+
+          <button className="ido-btn ido-btn-ghost" onClick={() => load(periodo)} disabled={loading}>
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             Recargar
           </button>
         </div>
-      </div>
 
-      {/* Contenedor beast pure (modelo Stock por Zona) */}
-      <div
-        className="px-4 py-6 sm:px-6 space-y-5"
-        style={{
-          background: "oklch(0.235 0.005 270)",
-          border: "1px solid oklch(1 0 0 / 0.07)",
-          borderRadius: 14,
-        }}
-      >
-
-      {/* IDO promedio */}
-      {idoPromedio !== null && (
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="rounded-[14px] px-5 py-3 bg-panel-2 border border-hairline">
-            <div className="text-xs text-muted-foreground">IDO promedio ({calc.filter((c) => c.ido !== null).length} zonas)</div>
-            <div className="text-2xl font-semibold font-mono" style={{ color: idoStyle(idoPromedio).color }}>
-              {fmtPct(idoPromedio, 1)}
+        {/* ── IDO promedio ──────────────────────────────────────────────── */}
+        {idoPromedio !== null && (
+          <div style={{ padding: "16px 20px 0" }}>
+            <div className="ido-stat">
+              <span className="ido-stat-label">IDO promedio ({calc.filter((c) => c.ido !== null).length} zonas)</span>
+              <span className="ido-stat-value" style={{ color: idoStyle(idoPromedio).color }}>
+                {fmtPct(idoPromedio, 1)}
+              </span>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Metas (lectura — se editan en Carga de datos) */}
-      <div className="rounded-[14px] bg-panel-2 border border-hairline">
-        <button
-          onClick={() => setMetasOpen((o) => !o)}
-          className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-foreground"
-        >
-          <SlidersHorizontal className="w-4 h-4 text-accent" />
-          Criterios / metas usadas
-          <span className="text-xs text-muted-foreground font-normal">
-            (FMIK S1 ≤ {metas.fmikS1} · DMIK S1 ≤ {metas.dmikS1} · Obj. POVA {metas.povaTransferido}%)
-          </span>
-          <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${metasOpen ? "rotate-180" : ""}`} />
-        </button>
-        {metasOpen && (
-          <div className="px-4 pb-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
-            {([
-              ["FMIK S1 ≤", metas.fmikS1], ["FMIK S2 ≤", metas.fmikS2],
-              ["DMIK S1 ≤", metas.dmikS1], ["DMIK S2 ≤", metas.dmikS2],
-              ["Objetivo POVA", `${metas.povaTransferido}%`],
-              ["POVA Fin obra", `${metas.povaFinObra}%`], ["POVA Creados =", metas.povaCreados],
-            ] as [string, string | number][]).map(([label, val]) => (
-              <div key={label} className="flex flex-col">
-                <span className="text-muted-foreground">{label}</span>
-                <span className="font-mono text-foreground">{val}</span>
+        {/* ── Criterios / metas (lectura — se editan en Carga de datos) ───── */}
+        <div style={{ marginTop: 16 }}>
+          <button onClick={() => setMetasOpen((o) => !o)} className="ido-chevron-row">
+            <span className="ido-chevron-btn" data-open={metasOpen}>
+              <ChevronDown className="w-3 h-3" />
+            </span>
+            <SlidersHorizontal className="w-3.5 h-3.5" style={{ color: "var(--ido-text-dim)" }} />
+            Criterios / metas usadas
+            <span className="ido-hint" style={{ marginTop: 0 }}>
+              (FMIK S1 ≤ {metas.fmikS1} · DMIK S1 ≤ {metas.dmikS1} · Obj. POVA {metas.povaTransferido}%)
+            </span>
+          </button>
+          {metasOpen && (
+            <div className="ido-criterios" style={{ borderBottom: 0 }}>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {([
+                  ["FMIK S1 ≤", metas.fmikS1], ["FMIK S2 ≤", metas.fmikS2],
+                  ["DMIK S1 ≤", metas.dmikS1], ["DMIK S2 ≤", metas.dmikS2],
+                  ["Objetivo POVA", `${metas.povaTransferido}%`],
+                  ["POVA Fin obra", `${metas.povaFinObra}%`], ["POVA Creados =", metas.povaCreados],
+                ] as [string, string | number][]).map(([label, val]) => (
+                  <div key={label} className="ido-criterio">
+                    <span>{label}</span>
+                    <span style={{ fontFamily: MONO, color: "var(--ido-text)" }}>{val}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-            <p className="col-span-full text-[11px] text-muted-foreground/70">
-              Estos valores se editan en <span className="text-accent">Carga de datos → Criterios estratégicos</span>.
-            </p>
-          </div>
-        )}
-      </div>
+              <p className="ido-hint">
+                Estos valores se editan en <span className="ido-note-calc">Carga de datos → Criterios estratégicos</span>.
+              </p>
+            </div>
+          )}
+        </div>
 
-      {/* Tabla calculada */}
-      <div className="overflow-x-auto rounded-[14px] bg-panel-2 border border-hairline">
-        {calc.length === 0 ? (
-          <div className="p-10 text-center text-sm text-muted-foreground">
-            {loading ? "Cargando…" : `Sin datos para el período ${periodo}. Cargá valores en "Carga de datos".`}
-          </div>
-        ) : (
-          <table className="text-xs border-collapse" style={{ tableLayout: "fixed", width: "100%" }}>
-            <colgroup>
-              {leafCols.map((c) => (
-                <col key={c.id} style={{ width: `${colW[c.id] ?? c.w}px` }} />
-              ))}
-            </colgroup>
-            <thead>
-              <tr className="border-b border-border">
-                <th rowSpan={2} className="relative text-left font-medium px-3 py-2 sticky left-0 bg-panel-header z-10 align-bottom">Zona<Resizer id="zona" /></th>
-                <th colSpan={hasS2 ? 5 : 3} className="text-center font-bold uppercase tracking-wider text-accent-green px-3 py-1.5 border-l-2 border-foreground/20 bg-secondary/40">FMIK</th>
-                <th colSpan={hasS2 ? 5 : 3} className="text-center font-bold uppercase tracking-wider text-accent-green px-3 py-1.5 border-l-2 border-foreground/20 bg-secondary/40">DMIK</th>
-                <th rowSpan={2} className="relative text-center font-semibold text-foreground/80 px-3 py-2 border-l-2 border-foreground/20 align-bottom">Result.<br />Técnico<Resizer id="tecnico" /></th>
-                <th rowSpan={2} className="relative text-center font-semibold text-foreground/80 px-3 py-2 border-l-2 border-foreground/20 align-bottom">POVA<Resizer id="pova" /></th>
-                <th rowSpan={2} className="relative text-center font-semibold text-foreground/80 px-3 py-2 border-l-2 border-foreground/20 align-bottom">Manten.<Resizer id="mant" /></th>
-                <th rowSpan={2} className="relative text-center font-semibold text-foreground px-3 py-2 border-l-2 border-foreground/20 align-bottom">IDO<Resizer id="ido" /></th>
-              </tr>
-              <tr className="border-b border-border text-muted-foreground">
-                <th className="relative text-right font-medium px-3 py-1.5 border-l-2 border-foreground/20">S1<Resizer id="fmik_s1" /></th>
-                <th className="relative text-right font-medium px-3 py-1.5">KPI S1<Resizer id="fmik_kpi_s1" /></th>
-                {hasS2 && <th className="relative text-right font-medium px-3 py-1.5">S2<Resizer id="fmik_s2" /></th>}
-                {hasS2 && <th className="relative text-right font-medium px-3 py-1.5">KPI S2<Resizer id="fmik_kpi_s2" /></th>}
-                <th className="relative text-right font-medium px-3 py-1.5">KPI<Resizer id="fmik_kpi" /></th>
-                <th className="relative text-right font-medium px-3 py-1.5 border-l-2 border-foreground/20">S1<Resizer id="dmik_s1" /></th>
-                <th className="relative text-right font-medium px-3 py-1.5">KPI S1<Resizer id="dmik_kpi_s1" /></th>
-                {hasS2 && <th className="relative text-right font-medium px-3 py-1.5">S2<Resizer id="dmik_s2" /></th>}
-                {hasS2 && <th className="relative text-right font-medium px-3 py-1.5">KPI S2<Resizer id="dmik_kpi_s2" /></th>}
-                <th className="relative text-right font-medium px-3 py-1.5">KPI<Resizer id="dmik_kpi" /></th>
-              </tr>
-            </thead>
-            <tbody>
-              {calc.map((c) => {
-                const ido = idoStyle(c.ido);
-                return (
-                  <tr key={c.zona} className="border-b border-border/50 even:bg-secondary/15 hover:bg-secondary/30">
-                    <td className="px-3 py-1.5 font-semibold text-foreground sticky left-0 bg-panel-header z-10 truncate">{c.zona}</td>
-                    <td className="px-3 py-1.5 text-right font-mono border-l-2 border-foreground/20 text-foreground/90 truncate">{fmtNum(c.fmikS1)}</td>
-                    <td className={`px-3 py-1.5 text-right font-mono font-semibold ${kpiColor(c.kpiFmikS1)}`}>{fmtPct(c.kpiFmikS1)}</td>
-                    {hasS2 && <td className="px-3 py-1.5 text-right font-mono text-foreground/90 truncate">{fmtNum(c.fmikS2)}</td>}
-                    {hasS2 && <td className={`px-3 py-1.5 text-right font-mono font-semibold ${kpiColor(c.kpiFmikS2)}`}>{fmtPct(c.kpiFmikS2)}</td>}
-                    <td className={`px-3 py-1.5 text-right font-mono font-semibold ${kpiColor(c.kpiFmik)}`}>{fmtPct(c.kpiFmik)}</td>
-                    <td className="px-3 py-1.5 text-right font-mono border-l-2 border-foreground/20 text-foreground/90 truncate">{fmtNum(c.dmikS1)}</td>
-                    <td className={`px-3 py-1.5 text-right font-mono font-semibold ${kpiColor(c.kpiDmikS1)}`}>{fmtPct(c.kpiDmikS1)}</td>
-                    {hasS2 && <td className="px-3 py-1.5 text-right font-mono text-foreground/90 truncate">{fmtNum(c.dmikS2)}</td>}
-                    {hasS2 && <td className={`px-3 py-1.5 text-right font-mono font-semibold ${kpiColor(c.kpiDmikS2)}`}>{fmtPct(c.kpiDmikS2)}</td>}
-                    <td className={`px-3 py-1.5 text-right font-mono font-semibold ${kpiColor(c.kpiDmik)}`}>{fmtPct(c.kpiDmik)}</td>
-                    <td className={`px-3 py-1.5 text-right font-mono font-semibold border-l-2 border-foreground/20 ${kpiColor(c.resultadoTecnico)}`}>{fmtPct(c.resultadoTecnico)}</td>
-                    <td className="px-3 py-1.5 text-right font-mono border-l-2 border-foreground/20 text-foreground/90 truncate">{fmtPct(c.pova)}</td>
-                    <td className="px-3 py-1.5 text-right font-mono border-l-2 border-foreground/20 text-foreground/90 truncate">{fmtPct(c.mantenimiento)}</td>
-                    <td className="px-3 py-1.5 text-right border-l-2 border-foreground/20">
-                      <span className="inline-block px-2 py-0.5 rounded font-mono font-semibold" style={{ color: ido.color, background: ido.bg }}>
-                        {fmtPct(c.ido, 1)}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+        {/* ── Tabla calculada (CSS grid) ───────────────────────────────── */}
+        <div style={{ overflowX: "auto", marginTop: 16, borderTop: "1px solid var(--ido-line)" }}>
+          {calc.length === 0 ? (
+            <div className="ido-loading" style={{ height: 140 }}>
+              {loading ? "Cargando…" : `Sin datos para el período ${periodo}. Cargá valores en "Carga de datos".`}
+            </div>
+          ) : (
+            <div style={{ position: "relative", minWidth: totalTableWidth }}>
+              {/* Guía de arrastre: 1px verde de punta a punta + etiqueta de ancho */}
+              {resizingCol && (
+                <>
+                  <div
+                    style={{
+                      position: "absolute", top: 0, bottom: 0, left: resizeOffsetX, width: 1,
+                      background: "var(--ido-accent)", pointerEvents: "none", zIndex: 30,
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: "absolute", top: 44, left: resizeOffsetX + 6, padding: "4px 8px",
+                      borderRadius: 6, background: "var(--ido-surface-hover)", border: "1px solid var(--ido-line)",
+                      fontFamily: MONO, fontSize: 11, color: "var(--ido-text)", whiteSpace: "nowrap",
+                      pointerEvents: "none", zIndex: 31,
+                    }}
+                  >
+                    {colW[resizingCol] ?? defW[resizingCol]} px
+                  </div>
+                </>
+              )}
+
+              {/* Header: 2 filas de grid (grupo FMIK/DMIK + métricas hoja) */}
+              <div
+                className="grid"
+                style={{ gridTemplateColumns, gridTemplateRows: "24px 34px", background: "var(--ido-surface)", borderBottom: "1px solid var(--ido-line-strong)" }}
+              >
+                <div
+                  className="relative sticky left-0 z-10 flex items-end"
+                  style={{ gridRow: "1 / 3", gridColumn: `${colIndex("zona")}`, background: "var(--ido-surface)", padding: "0 12px 6px 16px", ...HEADER_LABEL_STYLE }}
+                >
+                  Zona
+                  <Resizer id="zona" />
+                </div>
+
+                <div className="ido-band-group relative" style={{ gridRow: "1", gridColumn: `${fmikStart} / ${fmikEnd + 1}`, borderLeft: "1px solid var(--ido-line-strong)" }}>FMIK</div>
+                <div className="ido-band-group relative" style={{ gridRow: "1", gridColumn: `${dmikStart} / ${dmikEnd + 1}`, borderLeft: "1px solid var(--ido-line-strong)" }}>DMIK</div>
+
+                <div
+                  className="relative flex items-end justify-center text-center"
+                  style={{ gridRow: "1 / 3", gridColumn: `${colIndex("tecnico")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px 6px", ...HEADER_LABEL_STYLE }}
+                >
+                  Result.<br />Técnico
+                  <Resizer id="tecnico" />
+                </div>
+                <div
+                  className="relative flex items-end justify-center text-center"
+                  style={{ gridRow: "1 / 3", gridColumn: `${colIndex("pova")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px 6px", ...HEADER_LABEL_STYLE }}
+                >
+                  POVA
+                  <Resizer id="pova" />
+                </div>
+                <div
+                  className="relative flex items-end justify-center text-center"
+                  style={{ gridRow: "1 / 3", gridColumn: `${colIndex("mant")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px 6px", ...HEADER_LABEL_STYLE }}
+                >
+                  Manten.
+                  <Resizer id="mant" />
+                </div>
+                <div
+                  className="relative flex items-end justify-center text-center"
+                  style={{ gridRow: "1 / 3", gridColumn: `${colIndex("ido")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px 6px", color: "var(--ido-text)", fontSize: 10, fontWeight: 500, letterSpacing: ".1em", textTransform: "uppercase" }}
+                >
+                  IDO
+                  <Resizer id="ido" />
+                </div>
+
+                <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("fmik_s1")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", ...HEADER_LABEL_STYLE }}>S1<Resizer id="fmik_s1" /></div>
+                <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("fmik_kpi_s1")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI S1<Resizer id="fmik_kpi_s1" /></div>
+                {hasS2 && <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("fmik_s2")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>S2<Resizer id="fmik_s2" /></div>}
+                {hasS2 && <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("fmik_kpi_s2")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI S2<Resizer id="fmik_kpi_s2" /></div>}
+                <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("fmik_kpi")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI<Resizer id="fmik_kpi" /></div>
+
+                <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("dmik_s1")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", ...HEADER_LABEL_STYLE }}>S1<Resizer id="dmik_s1" /></div>
+                <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("dmik_kpi_s1")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI S1<Resizer id="dmik_kpi_s1" /></div>
+                {hasS2 && <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("dmik_s2")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>S2<Resizer id="dmik_s2" /></div>}
+                {hasS2 && <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("dmik_kpi_s2")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI S2<Resizer id="dmik_kpi_s2" /></div>}
+                <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("dmik_kpi")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI<Resizer id="dmik_kpi" /></div>
+              </div>
+
+              {/* Filas */}
+              <div>
+                {calc.map((c) => {
+                  const ido = idoStyle(c.ido);
+                  return (
+                    <div key={c.zona} className="ido-table-row grid" style={{ gridTemplateColumns, height: 36, borderBottom: "1px solid var(--ido-row-line)" }}>
+                      <div className="sticky left-0 z-10 flex items-center truncate font-semibold" style={{ background: "inherit", padding: "0 12px 0 16px" }}>
+                        <span className="ido-zona">{c.zona}</span>
+                      </div>
+                      <div className="flex items-center justify-end truncate" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", fontFamily: MONO, color: "var(--ido-text)", fontVariantNumeric: "tabular-nums" }}>{fmtNum(c.fmikS1)}</div>
+                      <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiFmikS1), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiFmikS1)}</div>
+                      {hasS2 && <div className="flex items-center justify-end truncate" style={{ padding: "0 12px", fontFamily: MONO, color: "var(--ido-text)", fontVariantNumeric: "tabular-nums" }}>{fmtNum(c.fmikS2)}</div>}
+                      {hasS2 && <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiFmikS2), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiFmikS2)}</div>}
+                      <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiFmik), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiFmik)}</div>
+
+                      <div className="flex items-center justify-end truncate" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", fontFamily: MONO, color: "var(--ido-text)", fontVariantNumeric: "tabular-nums" }}>{fmtNum(c.dmikS1)}</div>
+                      <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiDmikS1), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiDmikS1)}</div>
+                      {hasS2 && <div className="flex items-center justify-end truncate" style={{ padding: "0 12px", fontFamily: MONO, color: "var(--ido-text)", fontVariantNumeric: "tabular-nums" }}>{fmtNum(c.dmikS2)}</div>}
+                      {hasS2 && <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiDmikS2), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiDmikS2)}</div>}
+                      <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiDmik), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiDmik)}</div>
+
+                      <div className="flex items-center justify-end font-semibold" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", fontFamily: MONO, color: kpiColor(c.resultadoTecnico), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.resultadoTecnico)}</div>
+                      <div className="flex items-center justify-end" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", fontFamily: MONO, color: "var(--ido-accent)", fontStyle: "italic", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.pova)}</div>
+                      <div className="flex items-center justify-end" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", fontFamily: MONO, color: "var(--ido-accent)", fontStyle: "italic", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.mantenimiento)}</div>
+                      <div className="flex items-center justify-end" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px" }}>
+                        <span className="inline-block font-semibold" style={{ padding: "2px 10px", borderRadius: 999, fontFamily: MONO, color: ido.color, background: ido.bg, fontVariantNumeric: "tabular-nums" }}>
+                          {fmtPct(c.ido, 1)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

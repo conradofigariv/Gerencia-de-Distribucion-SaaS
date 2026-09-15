@@ -309,6 +309,7 @@ input[type="number"] { -moz-appearance: textfield; }
   --ido-accent: #3fcf8e;
   --ido-accent-hover: #57dba0;
   --ido-accent-ink: #07130d;
+  --ido-warning: #f5a524;
   --ido-danger: #ff8a8a;
   --ido-ease: cubic-bezier(0.16, 1, 0.3, 1);
 
@@ -671,4 +672,78 @@ input[type="number"] { -moz-appearance: textfield; }
   height: 1px;
   margin: 5px 6px;
   background: var(--ido-line);
+}
+
+/* ── Resumen — tarjeta de estadística (IDO promedio) ───────────────────────── */
+.ido-stat {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 18px;
+  background: var(--ido-surface-hover);
+  border: 1px solid var(--ido-line);
+  border-radius: 12px;
+}
+.ido-stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ido-text-dim);
+}
+.ido-stat-value {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Resumen — fila colapsable (criterios / metas) ─────────────────────────── */
+.ido-chevron-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 20px;
+  background: transparent;
+  border: 0;
+  color: var(--ido-text);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.ido-chevron-btn {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: var(--ido-surface-hover);
+  color: var(--ido-text-dim);
+  transition: color 120ms var(--ido-ease), border-color 120ms var(--ido-ease), background 120ms var(--ido-ease);
+}
+.ido-chevron-row:hover .ido-chevron-btn {
+  color: var(--ido-text);
+  border-color: var(--ido-accent);
+  background: rgba(255, 255, 255, 0.08);
+}
+.ido-chevron-btn > svg {
+  transition: transform 220ms var(--ido-ease);
+}
+.ido-chevron-btn[data-open="true"] > svg {
+  transform: rotate(180deg);
+}
+
+/* ── Resumen — tabla calculada (CSS grid) ──────────────────────────────────── */
+.ido-table-row {
+  background: var(--ido-surface);
+  transition: background 120ms var(--ido-ease);
+}
+.ido-table-row:hover {
+  background: var(--ido-surface-hover);
+}
+.ido-table-row:hover .ido-zona {
+  color: var(--ido-accent);
 }
