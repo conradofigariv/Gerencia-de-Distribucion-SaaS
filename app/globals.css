@@ -739,6 +739,7 @@ input[type="number"] { -moz-appearance: textfield; }
 /* ── Resumen — tabla calculada (CSS grid) ──────────────────────────────────── */
 .ido-table-row {
   background: var(--ido-surface);
+  cursor: pointer;
   transition: background 120ms var(--ido-ease);
 }
 .ido-table-row:hover {
@@ -746,4 +747,66 @@ input[type="number"] { -moz-appearance: textfield; }
 }
 .ido-table-row:hover .ido-zona {
   color: var(--ido-accent);
+}
+
+/* ── Resumen — selección de fila (simple exclusiva / múltiple acumulativa) ─── */
+.ido-row-selected {
+  background: var(--ido-surface-hover);
+  box-shadow: inset 2px 0 0 0 var(--ido-accent);
+}
+.ido-row-selected-multi {
+  background: rgba(63, 207, 142, 0.06);
+  box-shadow: inset 2px 0 0 0 var(--ido-accent);
+}
+
+/* ── Resumen — barra flotante de acciones en lote ──────────────────────────── */
+.ido-selbar {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 8px 0 16px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--ido-surface-hover);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  animation: ido-selbar-in 180ms var(--ido-ease) both;
+  z-index: 15;
+}
+@keyframes ido-selbar-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.ido-selbar-count {
+  font-size: 13px;
+  color: var(--ido-text);
+  white-space: nowrap;
+}
+.ido-selbar-count b {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.ido-selbar-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--ido-line);
+}
+.ido-selbar-close {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ido-text-dim);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: color 120ms var(--ido-ease);
+}
+.ido-selbar-close:hover {
+  color: var(--ido-text);
 }

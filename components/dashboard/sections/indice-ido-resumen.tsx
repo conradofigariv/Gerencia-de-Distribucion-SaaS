@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
-  Gauge, Loader2, RefreshCw, Calendar, SlidersHorizontal, ChevronDown,
+  Gauge, Loader2, RefreshCw, Calendar, SlidersHorizontal, ChevronDown, Download, X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { getRows, computeIdo, getMetas, listPeriodos, DEFAULT_METAS } from "@/lib/idoStorage";
 import type { IdoRow, IdoCalc, IdoMetas } from "@/lib/idoStorage";
 
@@ -35,6 +36,27 @@ const HEADER_LABEL_STYLE: React.CSSProperties = {
   fontSize: 10, fontWeight: 500, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--ido-text-dim)",
 };
 
+// Ajuste de ancho al viewport: columnas fijas (no absorben sobrante) y columna
+// de cierre (absorbe el doble). Ver design-system.md — sección 06.
+const FIXED_IDS = new Set(["sel", "zona", "fmik_s1", "fmik_s2", "dmik_s1", "dmik_s2"]);
+const CLOSING_ID = "ido";
+
+// ─── Export CSV ──────────────────────────────────────────────────────────────
+// Mismo formato que matriculas.tsx: tabulador + UTF-16LE con BOM, el único que
+// Excel reconoce siempre sin ambigüedad de codificación regional.
+const CSV_SEP = "\t";
+function csvCell(v: unknown): string {
+  const s = String(v ?? "");
+  return /["\t\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function toUtf16LeBytes(text: string): ArrayBuffer {
+  const withBom = "﻿" + text;
+  const buf = new ArrayBuffer(withBom.length * 2);
+  const view = new DataView(buf);
+  for (let i = 0; i < withBom.length; i++) view.setUint16(i * 2, withBom.charCodeAt(i), true);
+  return buf;
+}
+
 export function IndiceIdoResumenSection() {
   const [periodo, setPeriodo] = useState(String(new Date().getFullYear()));
   const [periodos, setPeriodos] = useState<string[]>([]);
@@ -44,10 +66,30 @@ export function IndiceIdoResumenSection() {
   const [metas, setMetas] = useState<IdoMetas>(DEFAULT_METAS);
   const [metasOpen, setMetasOpen] = useState(false);
 
-  // Anchos de columna ajustables
+  // Anchos de columna ajustables (manuales — salen del reparto automático)
   const [colW, setColW] = useState<Record<string, number>>({});
   const [resizingCol, setResizingCol] = useState<string | null>(null);
   const resizing = useRef<{ id: string; startX: number; startW: number } | null>(null);
+
+  // Selección de fila
+  const [selMode, setSelMode] = useState<"simple" | "multi">("simple");
+  const [selIds, setSelIds] = useState<string[]>([]);
+  const [selAnchor, setSelAnchor] = useState<number | null>(null);
+
+  // Ancho real del contenedor (para el reparto automático de columnas)
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerW, setContainerW] = useState(0);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w) setContainerW(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   useEffect(() => {
     function onMove(e: MouseEvent) {
       const r = resizing.current;
@@ -94,9 +136,9 @@ export function IndiceIdoResumenSection() {
   const idosValidos = calc.map((c) => c.ido).filter((x): x is number => x !== null);
   const idoPromedio = idosValidos.length ? idosValidos.reduce((a, b) => a + b, 0) / idosValidos.length : null;
 
-  // Columnas hoja (para grid-template-columns + resize). w = ancho por defecto.
+  // Columnas hoja (para grid-template-columns + resize). w = ancho natural/mínimo.
   const leafCols = useMemo(() => {
-    const c: { id: string; w: number }[] = [{ id: "zona", w: 56 }];
+    const c: { id: string; w: number }[] = [{ id: "sel", w: 44 }, { id: "zona", w: 56 }];
     c.push({ id: "fmik_s1", w: 72 }, { id: "fmik_kpi_s1", w: 64 });
     if (hasS2) c.push({ id: "fmik_s2", w: 72 }, { id: "fmik_kpi_s2", w: 64 });
     c.push({ id: "fmik_kpi", w: 64 });
@@ -109,29 +151,64 @@ export function IndiceIdoResumenSection() {
   const defW = useMemo(() => Object.fromEntries(leafCols.map((c) => [c.id, c.w])), [leafCols]);
 
   const colIndex = useCallback((id: string) => leafCols.findIndex((c) => c.id === id) + 1, [leafCols]);
+
+  // Columnas redimensionadas a mano: fijas, salen del reparto automático.
+  const manualCols = useMemo(() => new Set(Object.keys(colW)), [colW]);
+  const isAbsorber = useCallback((id: string) => !FIXED_IDS.has(id) && !manualCols.has(id), [manualCols]);
+
+  // Reparto del sobrante: identificadora/checkbox/referencias cortas fijas; el resto
+  // (las columnas calculadas) absorbe en partes iguales, IDO (columna de cierre) al
+  // doble; ninguna crece más de 2× su ancho natural; el excedente pasa a padding.
+  const fitted = useMemo(() => {
+    const natural: Record<string, number> = {};
+    for (const c of leafCols) natural[c.id] = manualCols.has(c.id) ? colW[c.id] : c.w;
+    const pool = leafCols.filter((c) => isAbsorber(c.id)).map((c) => c.id);
+    const weight = (id: string) => (id === CLOSING_ID ? 2 : 1);
+    const out: Record<string, number> = { ...natural };
+    const sumNatural = leafCols.reduce((a, c) => a + natural[c.id], 0);
+    let rest = Math.max(0, containerW - sumNatural);
+    let active = [...pool];
+    while (rest > 0.5 && active.length) {
+      const tw = active.reduce((a, id) => a + weight(id), 0);
+      let used = 0;
+      const next: string[] = [];
+      for (const id of active) {
+        const cap = natural[id] * 2 - out[id];
+        const add = Math.min((rest * weight(id)) / tw, cap);
+        out[id] += add; used += add;
+        if (cap - add > 0.5) next.push(id);
+      }
+      if (used < 0.5) break;
+      rest -= used;
+      active = next;
+    }
+    return { widths: out, pad: Math.max(0, Math.round(rest / 2)) };
+  }, [leafCols, colW, manualCols, isAbsorber, containerW]);
+
   const gridTemplateColumns = useMemo(
-    () => leafCols.map((c) => `${colW[c.id] ?? c.w}px`).join(" "),
-    [leafCols, colW]
+    () => leafCols.map((c) => `${Math.round(fitted.widths[c.id])}px`).join(" "),
+    [leafCols, fitted]
   );
-  const totalTableWidth = useMemo(
-    () => leafCols.reduce((a, c) => a + (colW[c.id] ?? c.w), 0),
-    [leafCols, colW]
+  const fittedTotalWidth = useMemo(
+    () => leafCols.reduce((a, c) => a + fitted.widths[c.id], 0),
+    [leafCols, fitted]
   );
   // Guía de arrastre: offset acumulado hasta (e incluyendo) la columna que se está redimensionando.
   const resizeOffsetX = useMemo(() => {
     if (!resizingCol) return 0;
     let x = 0;
     for (const c of leafCols) {
-      x += colW[c.id] ?? c.w;
+      x += fitted.widths[c.id] ?? c.w;
       if (c.id === resizingCol) break;
     }
     return x;
-  }, [resizingCol, leafCols, colW]);
+  }, [resizingCol, leafCols, fitted]);
 
   function startResize(e: React.MouseEvent, id: string) {
     e.preventDefault();
     e.stopPropagation();
-    resizing.current = { id, startX: e.clientX, startW: colW[id] ?? defW[id] };
+    const startW = colW[id] ?? fitted.widths[id] ?? defW[id];
+    resizing.current = { id, startX: e.clientX, startW };
     setResizingCol(id);
   }
   const Resizer = ({ id }: { id: string }) => {
@@ -148,16 +225,86 @@ export function IndiceIdoResumenSection() {
       </span>
     );
   };
+  // Marca de "absorbe sobrante" (§06): barra verde bajo el encabezado — el doble de
+  // opacidad para la columna de cierre, que además absorbe el doble de proporción.
+  const AbsorbBar = ({ id }: { id: string }) => {
+    if (!isAbsorber(id)) return null;
+    const closing = id === CLOSING_ID;
+    return (
+      <span
+        title={closing ? "Absorbe el doble de proporción" : "Absorbe el sobrante"}
+        style={{ position: "absolute", bottom: 0, left: 12, right: 12, height: 2, background: "var(--ido-accent)", opacity: closing ? 1 : 0.5, pointerEvents: "none" }}
+      />
+    );
+  };
 
   const periodoOptions = useMemo(
     () => [...new Set([periodo, ...periodos])].sort().reverse(),
     [periodo, periodos]
   );
 
+  // Selección de fila: clic simple exclusivo · ⌘/Ctrl clic acumula · ⇧ clic rango.
+  function handleRowClick(i: number, e: React.MouseEvent) {
+    const id = calc[i].zona;
+    if (e.shiftKey) {
+      const a = selAnchor ?? i;
+      const lo = Math.min(a, i), hi = Math.max(a, i);
+      setSelMode("multi");
+      setSelIds(calc.slice(lo, hi + 1).map((c) => c.zona));
+      setSelAnchor(a);
+    } else if (e.metaKey || e.ctrlKey) {
+      setSelMode("multi");
+      setSelIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+      setSelAnchor(i);
+    } else {
+      setSelMode("simple");
+      setSelIds([id]);
+      setSelAnchor(i);
+    }
+  }
+  function clearSelection() {
+    setSelIds([]);
+    setSelAnchor(null);
+  }
+
+  // Exporta a CSV las zonas seleccionadas (único botón real de la barra en
+  // lote — Bloquear/Eliminar no aplican: esta tabla es de solo lectura).
+  function exportSelected() {
+    const selected = calc.filter((c) => selIds.includes(c.zona));
+    if (selected.length === 0) return;
+    const header = [
+      "Zona", "FMIK S1", "FMIK KPI S1", ...(hasS2 ? ["FMIK S2", "FMIK KPI S2"] : []), "FMIK KPI",
+      "DMIK S1", "DMIK KPI S1", ...(hasS2 ? ["DMIK S2", "DMIK KPI S2"] : []), "DMIK KPI",
+      "Resultado Técnico", "POVA", "Mantenimiento", "IDO",
+    ];
+    const lines = [header.map(csvCell).join(CSV_SEP)];
+    for (const c of selected) {
+      const row = [
+        c.zona, fmtNum(c.fmikS1), fmtPct(c.kpiFmikS1),
+        ...(hasS2 ? [fmtNum(c.fmikS2), fmtPct(c.kpiFmikS2)] : []), fmtPct(c.kpiFmik),
+        fmtNum(c.dmikS1), fmtPct(c.kpiDmikS1),
+        ...(hasS2 ? [fmtNum(c.dmikS2), fmtPct(c.kpiDmikS2)] : []), fmtPct(c.kpiDmik),
+        fmtPct(c.resultadoTecnico), fmtPct(c.pova), fmtPct(c.mantenimiento), fmtPct(c.ido, 1),
+      ];
+      lines.push(row.map(csvCell).join(CSV_SEP));
+    }
+    const blob = new Blob([toUtf16LeBytes(lines.join("\r\n"))], { type: "text/csv;charset=utf-16le;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ido_resumen_${periodo}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success(`${selected.length} zona(s) exportada(s)`);
+  }
+
   const fmikStart = colIndex("fmik_s1");
   const fmikEnd = colIndex("fmik_kpi");
   const dmikStart = colIndex("dmik_s1");
   const dmikEnd = colIndex("dmik_kpi");
+  const showSelBar = selMode === "multi" && selIds.length >= 2;
 
   return (
     <div className="ido-terminal">
@@ -256,127 +403,177 @@ export function IndiceIdoResumenSection() {
           )}
         </div>
 
-        {/* ── Tabla calculada (CSS grid) ───────────────────────────────── */}
-        <div style={{ overflowX: "auto", marginTop: 16, borderTop: "1px solid var(--ido-line)" }}>
-          {calc.length === 0 ? (
-            <div className="ido-loading" style={{ height: 140 }}>
-              {loading ? "Cargando…" : `Sin datos para el período ${periodo}. Cargá valores en "Carga de datos".`}
-            </div>
-          ) : (
-            <div style={{ position: "relative", minWidth: totalTableWidth }}>
-              {/* Guía de arrastre: 1px verde de punta a punta + etiqueta de ancho */}
-              {resizingCol && (
-                <>
+        {/* ── Tabla calculada (CSS grid, ancho ajustado al viewport) ──────── */}
+        <div style={{ position: "relative", marginTop: 16, borderTop: "1px solid var(--ido-line)" }}>
+          <div ref={containerRef} style={{ overflowX: "auto" }}>
+            {calc.length === 0 ? (
+              <div className="ido-loading" style={{ height: 140 }}>
+                {loading ? "Cargando…" : `Sin datos para el período ${periodo}. Cargá valores en "Carga de datos".`}
+              </div>
+            ) : (
+              <div style={{ padding: `0 ${fitted.pad}px`, transition: "padding 200ms var(--ido-ease)" }}>
+                <div style={{ position: "relative", minWidth: fittedTotalWidth }}>
+                  {/* Guía de arrastre: 1px verde de punta a punta + etiqueta de ancho */}
+                  {resizingCol && (
+                    <>
+                      <div
+                        style={{
+                          position: "absolute", top: 0, bottom: 0, left: resizeOffsetX, width: 1,
+                          background: "var(--ido-accent)", pointerEvents: "none", zIndex: 30,
+                        }}
+                      />
+                      <div
+                        style={{
+                          position: "absolute", top: 44, left: resizeOffsetX + 6, padding: "4px 8px",
+                          borderRadius: 6, background: "var(--ido-surface-hover)", border: "1px solid var(--ido-line)",
+                          fontFamily: MONO, fontSize: 11, color: "var(--ido-text)", whiteSpace: "nowrap",
+                          pointerEvents: "none", zIndex: 31,
+                        }}
+                      >
+                        {Math.round(fitted.widths[resizingCol] ?? defW[resizingCol])} px
+                      </div>
+                    </>
+                  )}
+
+                  {/* Header: 2 filas de grid (grupo FMIK/DMIK + métricas hoja) */}
                   <div
-                    style={{
-                      position: "absolute", top: 0, bottom: 0, left: resizeOffsetX, width: 1,
-                      background: "var(--ido-accent)", pointerEvents: "none", zIndex: 30,
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: "absolute", top: 44, left: resizeOffsetX + 6, padding: "4px 8px",
-                      borderRadius: 6, background: "var(--ido-surface-hover)", border: "1px solid var(--ido-line)",
-                      fontFamily: MONO, fontSize: 11, color: "var(--ido-text)", whiteSpace: "nowrap",
-                      pointerEvents: "none", zIndex: 31,
-                    }}
+                    className="grid"
+                    style={{ gridTemplateColumns, gridTemplateRows: "24px 34px", background: "var(--ido-surface)", borderBottom: "1px solid var(--ido-line-strong)", transition: "grid-template-columns 200ms var(--ido-ease)" }}
                   >
-                    {colW[resizingCol] ?? defW[resizingCol]} px
-                  </div>
-                </>
-              )}
-
-              {/* Header: 2 filas de grid (grupo FMIK/DMIK + métricas hoja) */}
-              <div
-                className="grid"
-                style={{ gridTemplateColumns, gridTemplateRows: "24px 34px", background: "var(--ido-surface)", borderBottom: "1px solid var(--ido-line-strong)" }}
-              >
-                <div
-                  className="relative sticky left-0 z-10 flex items-end"
-                  style={{ gridRow: "1 / 3", gridColumn: `${colIndex("zona")}`, background: "var(--ido-surface)", padding: "0 12px 6px 16px", ...HEADER_LABEL_STYLE }}
-                >
-                  Zona
-                  <Resizer id="zona" />
-                </div>
-
-                <div className="ido-band-group relative" style={{ gridRow: "1", gridColumn: `${fmikStart} / ${fmikEnd + 1}`, borderLeft: "1px solid var(--ido-line-strong)" }}>FMIK</div>
-                <div className="ido-band-group relative" style={{ gridRow: "1", gridColumn: `${dmikStart} / ${dmikEnd + 1}`, borderLeft: "1px solid var(--ido-line-strong)" }}>DMIK</div>
-
-                <div
-                  className="relative flex items-end justify-center text-center"
-                  style={{ gridRow: "1 / 3", gridColumn: `${colIndex("tecnico")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px 6px", ...HEADER_LABEL_STYLE }}
-                >
-                  Result.<br />Técnico
-                  <Resizer id="tecnico" />
-                </div>
-                <div
-                  className="relative flex items-end justify-center text-center"
-                  style={{ gridRow: "1 / 3", gridColumn: `${colIndex("pova")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px 6px", ...HEADER_LABEL_STYLE }}
-                >
-                  POVA
-                  <Resizer id="pova" />
-                </div>
-                <div
-                  className="relative flex items-end justify-center text-center"
-                  style={{ gridRow: "1 / 3", gridColumn: `${colIndex("mant")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px 6px", ...HEADER_LABEL_STYLE }}
-                >
-                  Manten.
-                  <Resizer id="mant" />
-                </div>
-                <div
-                  className="relative flex items-end justify-center text-center"
-                  style={{ gridRow: "1 / 3", gridColumn: `${colIndex("ido")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px 6px", color: "var(--ido-text)", fontSize: 10, fontWeight: 500, letterSpacing: ".1em", textTransform: "uppercase" }}
-                >
-                  IDO
-                  <Resizer id="ido" />
-                </div>
-
-                <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("fmik_s1")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", ...HEADER_LABEL_STYLE }}>S1<Resizer id="fmik_s1" /></div>
-                <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("fmik_kpi_s1")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI S1<Resizer id="fmik_kpi_s1" /></div>
-                {hasS2 && <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("fmik_s2")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>S2<Resizer id="fmik_s2" /></div>}
-                {hasS2 && <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("fmik_kpi_s2")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI S2<Resizer id="fmik_kpi_s2" /></div>}
-                <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("fmik_kpi")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI<Resizer id="fmik_kpi" /></div>
-
-                <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("dmik_s1")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", ...HEADER_LABEL_STYLE }}>S1<Resizer id="dmik_s1" /></div>
-                <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("dmik_kpi_s1")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI S1<Resizer id="dmik_kpi_s1" /></div>
-                {hasS2 && <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("dmik_s2")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>S2<Resizer id="dmik_s2" /></div>}
-                {hasS2 && <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("dmik_kpi_s2")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI S2<Resizer id="dmik_kpi_s2" /></div>}
-                <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("dmik_kpi")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI<Resizer id="dmik_kpi" /></div>
-              </div>
-
-              {/* Filas */}
-              <div>
-                {calc.map((c) => {
-                  const ido = idoStyle(c.ido);
-                  return (
-                    <div key={c.zona} className="ido-table-row grid" style={{ gridTemplateColumns, height: 36, borderBottom: "1px solid var(--ido-row-line)" }}>
-                      <div className="sticky left-0 z-10 flex items-center truncate font-semibold" style={{ background: "inherit", padding: "0 12px 0 16px" }}>
-                        <span className="ido-zona">{c.zona}</span>
-                      </div>
-                      <div className="flex items-center justify-end truncate" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", fontFamily: MONO, color: "var(--ido-text)", fontVariantNumeric: "tabular-nums" }}>{fmtNum(c.fmikS1)}</div>
-                      <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiFmikS1), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiFmikS1)}</div>
-                      {hasS2 && <div className="flex items-center justify-end truncate" style={{ padding: "0 12px", fontFamily: MONO, color: "var(--ido-text)", fontVariantNumeric: "tabular-nums" }}>{fmtNum(c.fmikS2)}</div>}
-                      {hasS2 && <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiFmikS2), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiFmikS2)}</div>}
-                      <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiFmik), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiFmik)}</div>
-
-                      <div className="flex items-center justify-end truncate" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", fontFamily: MONO, color: "var(--ido-text)", fontVariantNumeric: "tabular-nums" }}>{fmtNum(c.dmikS1)}</div>
-                      <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiDmikS1), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiDmikS1)}</div>
-                      {hasS2 && <div className="flex items-center justify-end truncate" style={{ padding: "0 12px", fontFamily: MONO, color: "var(--ido-text)", fontVariantNumeric: "tabular-nums" }}>{fmtNum(c.dmikS2)}</div>}
-                      {hasS2 && <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiDmikS2), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiDmikS2)}</div>}
-                      <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiDmik), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiDmik)}</div>
-
-                      <div className="flex items-center justify-end font-semibold" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", fontFamily: MONO, color: kpiColor(c.resultadoTecnico), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.resultadoTecnico)}</div>
-                      <div className="flex items-center justify-end" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", fontFamily: MONO, color: "var(--ido-accent)", fontStyle: "italic", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.pova)}</div>
-                      <div className="flex items-center justify-end" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", fontFamily: MONO, color: "var(--ido-accent)", fontStyle: "italic", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.mantenimiento)}</div>
-                      <div className="flex items-center justify-end" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px" }}>
-                        <span className="inline-block font-semibold" style={{ padding: "2px 10px", borderRadius: 999, fontFamily: MONO, color: ido.color, background: ido.bg, fontVariantNumeric: "tabular-nums" }}>
-                          {fmtPct(c.ido, 1)}
-                        </span>
-                      </div>
+                    <div
+                      className="sticky left-0 z-10 flex items-center justify-center"
+                      style={{ gridRow: "1 / 3", gridColumn: `${colIndex("sel")}`, background: "var(--ido-surface)" }}
+                    >
+                      <span style={{ width: 16, height: 16, border: "1px solid rgba(255,255,255,.16)", borderRadius: 4, display: "inline-block" }} />
                     </div>
-                  );
-                })}
+                    <div
+                      className="relative sticky z-10 flex items-end"
+                      style={{ gridRow: "1 / 3", gridColumn: `${colIndex("zona")}`, left: 44, background: "var(--ido-surface)", padding: "0 12px 6px 12px", ...HEADER_LABEL_STYLE }}
+                    >
+                      Zona
+                      <Resizer id="zona" />
+                    </div>
+
+                    <div className="ido-band-group relative" style={{ gridRow: "1", gridColumn: `${fmikStart} / ${fmikEnd + 1}`, borderLeft: "1px solid var(--ido-line-strong)" }}>FMIK</div>
+                    <div className="ido-band-group relative" style={{ gridRow: "1", gridColumn: `${dmikStart} / ${dmikEnd + 1}`, borderLeft: "1px solid var(--ido-line-strong)" }}>DMIK</div>
+
+                    <div
+                      className="relative flex items-end justify-center text-center"
+                      style={{ gridRow: "1 / 3", gridColumn: `${colIndex("tecnico")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px 6px", ...HEADER_LABEL_STYLE }}
+                    >
+                      Result.<br />Técnico
+                      <Resizer id="tecnico" />
+                      <AbsorbBar id="tecnico" />
+                    </div>
+                    <div
+                      className="relative flex items-end justify-center text-center"
+                      style={{ gridRow: "1 / 3", gridColumn: `${colIndex("pova")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px 6px", ...HEADER_LABEL_STYLE }}
+                    >
+                      POVA
+                      <Resizer id="pova" />
+                      <AbsorbBar id="pova" />
+                    </div>
+                    <div
+                      className="relative flex items-end justify-center text-center"
+                      style={{ gridRow: "1 / 3", gridColumn: `${colIndex("mant")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px 6px", ...HEADER_LABEL_STYLE }}
+                    >
+                      Manten.
+                      <Resizer id="mant" />
+                      <AbsorbBar id="mant" />
+                    </div>
+                    <div
+                      className="relative flex items-end justify-center text-center"
+                      style={{ gridRow: "1 / 3", gridColumn: `${colIndex("ido")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px 6px", color: "var(--ido-text)", fontSize: 10, fontWeight: 500, letterSpacing: ".1em", textTransform: "uppercase" }}
+                    >
+                      IDO
+                      <Resizer id="ido" />
+                      <AbsorbBar id="ido" />
+                    </div>
+
+                    <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("fmik_s1")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", ...HEADER_LABEL_STYLE }}>S1<Resizer id="fmik_s1" /></div>
+                    <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("fmik_kpi_s1")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI S1<Resizer id="fmik_kpi_s1" /><AbsorbBar id="fmik_kpi_s1" /></div>
+                    {hasS2 && <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("fmik_s2")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>S2<Resizer id="fmik_s2" /></div>}
+                    {hasS2 && <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("fmik_kpi_s2")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI S2<Resizer id="fmik_kpi_s2" /><AbsorbBar id="fmik_kpi_s2" /></div>}
+                    <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("fmik_kpi")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI<Resizer id="fmik_kpi" /><AbsorbBar id="fmik_kpi" /></div>
+
+                    <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("dmik_s1")}`, borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", ...HEADER_LABEL_STYLE }}>S1<Resizer id="dmik_s1" /></div>
+                    <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("dmik_kpi_s1")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI S1<Resizer id="dmik_kpi_s1" /><AbsorbBar id="dmik_kpi_s1" /></div>
+                    {hasS2 && <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("dmik_s2")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>S2<Resizer id="dmik_s2" /></div>}
+                    {hasS2 && <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("dmik_kpi_s2")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI S2<Resizer id="dmik_kpi_s2" /><AbsorbBar id="dmik_kpi_s2" /></div>}
+                    <div className="relative flex items-center justify-end" style={{ gridRow: "2", gridColumn: `${colIndex("dmik_kpi")}`, padding: "0 12px", ...HEADER_LABEL_STYLE }}>KPI<Resizer id="dmik_kpi" /><AbsorbBar id="dmik_kpi" /></div>
+                  </div>
+
+                  {/* Filas */}
+                  <div>
+                    {calc.map((c, i) => {
+                      const ido = idoStyle(c.ido);
+                      const on = selIds.includes(c.zona);
+                      const selClass = on ? (selMode === "multi" ? "ido-row-selected-multi" : "ido-row-selected") : "";
+                      const checked = on && selMode === "multi";
+                      return (
+                        <div
+                          key={c.zona}
+                          className={`ido-table-row grid ${selClass}`}
+                          style={{ gridTemplateColumns, height: 36, borderBottom: "1px solid var(--ido-row-line)", cursor: "pointer", transition: "grid-template-columns 200ms var(--ido-ease), background 120ms var(--ido-ease), box-shadow 120ms var(--ido-ease)" }}
+                          onClick={(e) => handleRowClick(i, e)}
+                        >
+                          <div className="sticky left-0 z-10 flex items-center justify-center" style={{ background: "inherit" }}>
+                            <span
+                              style={{
+                                width: 16, height: 16, borderRadius: 4, display: "grid", placeItems: "center",
+                                border: `1px solid ${checked ? "var(--ido-accent)" : "rgba(255,255,255,.16)"}`,
+                                background: checked ? "var(--ido-accent)" : "transparent",
+                                transition: "all 100ms var(--ido-ease)",
+                              }}
+                            >
+                              {checked && (
+                                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--ido-accent-ink)" strokeWidth="2.5"><path d="M3 8l3.5 3.5L13 4.5" /></svg>
+                              )}
+                            </span>
+                          </div>
+                          <div className="sticky z-10 flex items-center truncate font-semibold" style={{ left: 44, background: "inherit", padding: "0 12px 0 12px" }}>
+                            <span className="ido-zona">{c.zona}</span>
+                          </div>
+                          <div className="flex items-center justify-end truncate" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", fontFamily: MONO, color: "var(--ido-text)", fontVariantNumeric: "tabular-nums" }}>{fmtNum(c.fmikS1)}</div>
+                          <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiFmikS1), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiFmikS1)}</div>
+                          {hasS2 && <div className="flex items-center justify-end truncate" style={{ padding: "0 12px", fontFamily: MONO, color: "var(--ido-text)", fontVariantNumeric: "tabular-nums" }}>{fmtNum(c.fmikS2)}</div>}
+                          {hasS2 && <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiFmikS2), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiFmikS2)}</div>}
+                          <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiFmik), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiFmik)}</div>
+
+                          <div className="flex items-center justify-end truncate" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", fontFamily: MONO, color: "var(--ido-text)", fontVariantNumeric: "tabular-nums" }}>{fmtNum(c.dmikS1)}</div>
+                          <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiDmikS1), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiDmikS1)}</div>
+                          {hasS2 && <div className="flex items-center justify-end truncate" style={{ padding: "0 12px", fontFamily: MONO, color: "var(--ido-text)", fontVariantNumeric: "tabular-nums" }}>{fmtNum(c.dmikS2)}</div>}
+                          {hasS2 && <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiDmikS2), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiDmikS2)}</div>}
+                          <div className="flex items-center justify-end font-semibold" style={{ padding: "0 12px", fontFamily: MONO, color: kpiColor(c.kpiDmik), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.kpiDmik)}</div>
+
+                          <div className="flex items-center justify-end font-semibold" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", fontFamily: MONO, color: kpiColor(c.resultadoTecnico), fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.resultadoTecnico)}</div>
+                          <div className="flex items-center justify-end" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", fontFamily: MONO, color: "var(--ido-accent)", fontStyle: "italic", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.pova)}</div>
+                          <div className="flex items-center justify-end" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px", fontFamily: MONO, color: "var(--ido-accent)", fontStyle: "italic", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>{fmtPct(c.mantenimiento)}</div>
+                          <div className="flex items-center justify-end" style={{ borderLeft: "1px solid var(--ido-line-strong)", padding: "0 12px" }}>
+                            <span className="inline-block font-semibold" style={{ padding: "2px 10px", borderRadius: 999, fontFamily: MONO, color: ido.color, background: ido.bg, fontVariantNumeric: "tabular-nums" }}>
+                              {fmtPct(c.ido, 1)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
+            )}
+          </div>
+
+          {/* Barra flotante de selección en lote */}
+          {showSelBar && (
+            <div className="ido-selbar">
+              <span className="ido-selbar-count"><b>{selIds.length}</b> seleccionadas</span>
+              <span className="ido-selbar-sep" />
+              <button className="ido-btn ido-btn-ghost" onClick={exportSelected}>
+                <Download className="w-3.5 h-3.5" /> Exportar
+              </button>
+              <button className="ido-selbar-close" title="Liberar selección" onClick={clearSelection}>
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
         </div>
