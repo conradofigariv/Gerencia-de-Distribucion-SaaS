@@ -5,6 +5,7 @@ import {
   Gauge, Loader2, RefreshCw, Calendar, SlidersHorizontal, ChevronDown, Download, X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabaseClient";
 import { getRows, computeIdo, getMetas, listPeriodos, DEFAULT_METAS } from "@/lib/idoStorage";
 import type { IdoRow, IdoCalc, IdoMetas } from "@/lib/idoStorage";
 
@@ -57,6 +58,39 @@ function toUtf16LeBytes(text: string): ArrayBuffer {
   return buf;
 }
 
+// ─── Persistencia de layout (design-system.md — sección 07) ─────────────────
+// Por usuario y por id estable de tabla: `ds.tableLayout.v1.<userId>.<tableId>`.
+// Solo lo que existe hoy en este módulo: anchos de columna redimensionados a
+// mano (no hay orden por arrastre, grupos colapsables ni selector de columnas
+// en IDO Resumen). Selección de fila, celda activa, scroll y filtros quedan
+// fuera — son estado de sesión.
+const LAYOUT_NS = "ds.tableLayout.v1";
+const TABLE_ID = "indiceIdoResumen";
+const KNOWN_COL_IDS = new Set([
+  "sel", "zona", "fmik_s1", "fmik_kpi_s1", "fmik_s2", "fmik_kpi_s2", "fmik_kpi",
+  "dmik_s1", "dmik_kpi_s1", "dmik_s2", "dmik_kpi_s2", "dmik_kpi",
+  "tecnico", "pova", "mant", "ido",
+]);
+interface TableLayout {
+  colW?: Record<string, number> | null;
+}
+function loadLayout(userId: string): TableLayout {
+  try {
+    const raw = localStorage.getItem(`${LAYOUT_NS}.${userId}.${TABLE_ID}`);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+function saveLayout(userId: string, patch: TableLayout) {
+  try {
+    const current = loadLayout(userId);
+    localStorage.setItem(`${LAYOUT_NS}.${userId}.${TABLE_ID}`, JSON.stringify({ ...current, ...patch }));
+  } catch {
+    // localStorage puede no estar disponible (modo privado, cuota) — se ignora.
+  }
+}
+
 export function IndiceIdoResumenSection() {
   const [periodo, setPeriodo] = useState(String(new Date().getFullYear()));
   const [periodos, setPeriodos] = useState<string[]>([]);
@@ -66,10 +100,25 @@ export function IndiceIdoResumenSection() {
   const [metas, setMetas] = useState<IdoMetas>(DEFAULT_METAS);
   const [metasOpen, setMetasOpen] = useState(false);
 
+  // Usuario actual (para namespacear la persistencia de layout por cuenta)
+  const [userId, setUserId] = useState<string | null>(null);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+  }, []);
+  const userIdRef = useRef(userId);
+  useEffect(() => { userIdRef.current = userId; }, [userId]);
+
   // Anchos de columna ajustables (manuales — salen del reparto automático)
   const [colW, setColW] = useState<Record<string, number>>({});
+  const colWRef = useRef(colW);
+  useEffect(() => { colWRef.current = colW; }, [colW]);
   const [resizingCol, setResizingCol] = useState<string | null>(null);
   const resizing = useRef<{ id: string; startX: number; startW: number } | null>(null);
+
+  // "Restablecer vista": confirmación temporal (1.5 s)
+  const [resetMsg, setResetMsg] = useState(false);
+  const resetMsgT = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (resetMsgT.current) clearTimeout(resetMsgT.current); }, []);
 
   // Selección de fila
   const [selMode, setSelMode] = useState<"simple" | "multi">("simple");
@@ -97,11 +146,36 @@ export function IndiceIdoResumenSection() {
       const w = Math.max(64, r.startW + (e.clientX - r.startX));
       setColW((p) => ({ ...p, [r.id]: w }));
     }
-    function onUp() { resizing.current = null; setResizingCol(null); }
+    function onUp() {
+      resizing.current = null;
+      setResizingCol(null);
+      if (userIdRef.current) saveLayout(userIdRef.current, { colW: colWRef.current });
+    }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
   }, []);
+
+  // Hidrata el ancho de columnas guardado para este usuario y esta tabla.
+  // Referencias a columnas que ya no existen se descartan en silencio.
+  useEffect(() => {
+    if (!userId) return;
+    const saved = loadLayout(userId).colW;
+    if (!saved) return;
+    const known: Record<string, number> = {};
+    for (const [k, v] of Object.entries(saved)) {
+      if (KNOWN_COL_IDS.has(k) && typeof v === "number") known[k] = v;
+    }
+    if (Object.keys(known).length) setColW(known);
+  }, [userId]);
+
+  function resetLayout() {
+    setColW({});
+    if (userId) saveLayout(userId, { colW: null });
+    setResetMsg(true);
+    if (resetMsgT.current) clearTimeout(resetMsgT.current);
+    resetMsgT.current = setTimeout(() => setResetMsg(false), 1500);
+  }
 
   // Cierre del desplegable de años al hacer click afuera
   const dropRef = useRef<HTMLDivElement>(null);
@@ -317,6 +391,18 @@ export function IndiceIdoResumenSection() {
           <span className="ido-subtitle">KPIs, Resultado Técnico, POVA, Mantenimiento e IDO por zona</span>
 
           <div style={{ flex: 1 }} />
+
+          <span className="ido-reset-confirm" style={{ opacity: resetMsg ? 1 : 0 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12.5l5 5L20 6.5" /></svg>
+            Vista restablecida
+          </span>
+          <button
+            className="ido-btn ido-btn-text"
+            onClick={resetLayout}
+            title="Restaura el ancho de columnas a su valor por defecto"
+          >
+            Restablecer vista
+          </button>
 
           <div className="flex items-center gap-2">
             <Calendar className="w-3.5 h-3.5" style={{ color: "var(--ido-text-dim)" }} />

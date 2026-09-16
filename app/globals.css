@@ -416,6 +416,28 @@ input[type="number"] { -moz-appearance: textfield; }
   border-color: rgba(63, 207, 142, 0.4);
   background: rgba(63, 207, 142, 0.08);
 }
+/* Terciario: solo texto, sin borde ni fondo (ej. "Restablecer vista") */
+.ido-btn-text {
+  background: transparent;
+  border: 0;
+  color: var(--ido-text-dim);
+  padding: 0 8px;
+}
+.ido-btn-text:hover:not(:disabled) {
+  color: var(--ido-text);
+}
+
+/* Confirmación temporal junto a "Restablecer vista" (1.5 s) */
+.ido-reset-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ido-accent);
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 150ms var(--ido-ease);
+}
 
 /* ── Criterios ───────────────────────────────────────────────────────────── */
 .ido-criterios {
