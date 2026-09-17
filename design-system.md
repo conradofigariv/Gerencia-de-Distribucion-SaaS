@@ -219,8 +219,36 @@ Menú de columnas (dropdown, 216px): igual patrón que el menú contextual (esca
 
 ### 4.16 Selección de fila + barra de acción flotante
 - Interacción: clic simple exclusivo · ⌘/Ctrl clic acumula · ⇧ clic selecciona rango · clic en vacío libera.
-- Barra flotante (aparece con selección activa): centrada abajo, `background:#16181B; border:1px solid rgba(255,255,255,.16); border-radius:10px; box-shadow:0 16px 40px rgba(0,0,0,.6)`. Contiene: contador de seleccionadas, separador, botón Exportar (secundario), botón Bloquear (secundario), botón Eliminar (texto `#E5484D`, hover `background:rgba(229,72,77,.12)`), botón cerrar/liberar (ícono, hover `color:#E4E7EB`).
-- Transición de aparición/desaparición: opacity + transform, 180ms.
+- Clic simple (exclusiva): `background:#16181B` (bg.elevated) + borde izquierdo `2px solid #3FCF8E`, checkbox **sin marcar** — es inspección de detalle, no selección en lote.
+- ⌘/Ctrl clic o ⇧ clic (múltiple): `background:rgba(63,207,142,.06)` + mismo borde izquierdo, checkbox **marcado** (`border/background:#3FCF8E`, check `#0A0B0D`).
+- Barra flotante (aparece con 2+ filas en modo múltiple): centrada abajo, `background:#16181B; border:1px solid rgba(255,255,255,.16); border-radius:10px; box-shadow:0 16px 40px rgba(0,0,0,.6)`. Contiene: contador de seleccionadas, separador, botón Exportar (secundario), botón Bloquear (secundario), botón Eliminar (texto `#E5484D`, hover `background:rgba(229,72,77,.12)`), botón cerrar/liberar (ícono, hover `color:#E4E7EB`).
+- Transición de aparición/desaparición: opacity + `translateY` 12px→0, 180ms. Clic en área vacía libera todo, fade 120ms.
+- **Nota de implementación:** en una grilla de *edición* (no de solo-lectura) con su propio motor de selección de celdas/rango (pegado, navegación por teclado), este patrón puede no aplicar — no hay una acción de "exportar selección" con sentido cuando el punto de la pantalla es cargar/editar datos, no inspeccionar un listado. Evaluar caso por caso antes de sumarlo.
+
+### 4.17 Ajuste de ancho al viewport (toda tabla)
+Ocupa el ancho completo del área de contenido, sin scroll horizontal mientras alcance el espacio.
+- **Identificadora fija** y **referencias cortas** (columnas editables) quedan en su ancho mínimo — nunca absorben.
+- El sobrante lo absorben primero las **columnas de texto largo**; si no hay ninguna, lo absorben las **calculadas** en partes iguales, y la **columna de cierre** (la última, que resume/totaliza) al doble de proporción.
+- Si nadie absorbe, el sobrante pasa a **padding lateral** (mitad a cada lado).
+- Ninguna columna absorbente crece más de **2× su ancho natural** — el excedente por encima de ese tope también pasa a padding.
+- Una columna redimensionada a mano queda **fija** y sale del reparto automático.
+- Recalculo ante resize de ventana o del sidebar, `200ms` con la curva del sistema.
+- Indicador visual: barra verde de `2px` bajo el encabezado de cada columna absorbente (`opacity:.5`; `opacity:1` en la de cierre), con tooltip "Absorbe el sobrante" / "Absorbe el doble de proporción".
+
+### 4.18 Resolución de desborde (se evalúa ANTES del reparto de §4.17)
+Reemplaza el piso genérico de 64px quinorable — insuficiente para mostrar el número completo en una columna editable — por **pisos reales por tipo de dato**, y solo si eso tampoco alcanza, escala en 3 pasos:
+
+1. **Pisos reales por tipo:** `76px` numérica corta sin decimales · `88px` numérica con decimales · `84px` porcentaje calculado. (Se evalúan antes que el reparto de sobrante de §4.17 — son el nuevo punto de partida, no un mínimo absoluto genérico.)
+2. **Si la suma de los pisos reales sigue superando el viewport → modo compacto automático:** fila `32px` (vs. 40px normal), encabezado `32px`, padding de celda `8px` (vs. 12px) — cada columna se angosta ~8px por el padding reducido. Encabezados truncados con el nombre completo en `title`/tooltip.
+3. **Si aun compacto sigue superando el viewport → scroll horizontal solo para las columnas editables del medio**, con la(s) columna(s) identificadora(s) ancladas (`sticky`) a la izquierda y el grupo de calculadas anclado a la derecha. Sombra de scroll de `16px` (gradiente `rgba(0,0,0,.55)→transparent`) en cada extremo activo, espejadas, `opacity` 0→1 con transición `140ms`.
+
+Ningún paso se salta: primero se prueba con los pisos reales (sin compactar), luego compacto, luego scroll anclado — cada uno es una capa adicional sobre la anterior, no una alternativa excluyente.
+
+### 4.19 Persistencia de layout de tabla
+- Se guarda **por usuario y por id estable de tabla** (`ds.tableLayout.v1.<userId>.<idTabla>`): ancho de columna redimensionado a mano, orden de columnas por arrastre del encabezado, expandido/colapsado de cada grupo de columnas, columnas visibles del selector de columnas.
+- **No se guarda** (estado de sesión, vuelve a su valor inicial en cada entrada a la pantalla): selección de fila, celda activa o en edición, posición de scroll, filtros y búsqueda.
+- **Evolución del esquema:** una columna nueva entra en su posición por defecto sin alterar el orden guardado; las referencias a columnas eliminadas se descartan en silencio, sin aviso ni error — solo se aplica lo que existe hoy, el resto del layout guardado queda intacto.
+- **"Restablecer vista":** acción terciaria de solo texto en la barra de herramientas. Restaura todos los valores por defecto; las columnas animan de vuelta a su posición en `200ms` con la curva del sistema; confirmación visible `1.5s` ("Vista restablecida", ícono de check, `color:#3FCF8E`).
 
 ---
 
@@ -251,14 +279,6 @@ cualquier implementación debe pedir esta definición antes de construirse:
   clickeables). Los badges de estado (Activo/Pendiente/Error) no tienen
   variantes de interacción — parecen puramente informativos, pero no se
   aclara en el archivo.
-- **Selección de fila — valores concretos de `ring`/hover/checkbox**: la
-  sección 05 ("Selección de fila") referencia en el HTML variables como
-  `r.bg`, `r.ring`, `r.checkBorder`, `r.checkBg`, `r.checked`, `d.barOp`,
-  `d.barY`, `d.count`, pero el bloque de script del archivo **no** incluye
-  la función que genera `selDemos` (sí incluye `rzDemos`, `groupDemos`,
-  `colors`, `menu`) — por lo tanto los valores exactos de color/sombra para
-  fila seleccionada (fuera del patrón general "anillo verde" de §1) no están
-  concretamente definidos en este export.
 - **Estado de celda `loading`**: las 6 variantes documentadas son Hover,
   Selección, Edición, Bloqueada, Error y Modificada — no hay una variante de
   celda en estado de carga.

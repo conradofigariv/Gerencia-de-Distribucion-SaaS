@@ -52,34 +52,42 @@ const EDITABLE_FIELDS: (keyof DsgRow)[] = [
 
 const POVA_OBJ = 95;
 
-// ── Layout de columnas (anchos fijos, como el diseño) ─────────────────────────
+// ── Layout de columnas — pisos reales por tipo (design-system.md §4.18) ───────
 // `sep` marca el inicio de un bloque (línea vertical + etiqueta de grupo arriba).
-const ZONA_W = 72;
+// `width` es el PISO real por tipo de dato, no un ancho fijo arbitrario:
+// 88px numérica con decimales (FMIK/DMIK/poda/termografía) · 76px numérica
+// corta sin decimales (conteos de obras) · 84px porcentaje calculado.
+const ZONA_W = 56;
 type ColSpec = {
   key: keyof DsgRow; label: string; width: number;
   group?: string; sep?: boolean; calc?: boolean;
 };
 const COLS: ColSpec[] = [
-  { key: "fmik_s1", label: "FMIK S1", width: 96, group: "Técnico", sep: true },
-  { key: "fmik_s2", label: "FMIK S2", width: 96 },
-  { key: "dmik_s1", label: "DMIK S1", width: 96 },
-  { key: "dmik_s2", label: "DMIK S2", width: 96 },
-  { key: "pova_transferido", label: "Transferido", width: 120, group: "POVA", sep: true },
-  { key: "pova_fin_obra", label: "Fin de obra", width: 116 },
-  { key: "pova_creadas", label: "Creadas", width: 96 },
-  { key: "pova_total", label: "Total obras", width: 116 },
-  { key: "_pova_ejecutado", label: "Ejecutado", width: 108, calc: true },
-  { key: "_pova_resultado", label: "Result. s/ Obj", width: 124, calc: true },
-  { key: "mant_poda_bt", label: "Poda BT", width: 96, group: "Mantenimiento", sep: true },
-  { key: "mant_poda_mt", label: "Poda MT", width: 96 },
-  { key: "mant_termografia", label: "Termografía", width: 120 },
-  { key: "_mant_promedio", label: "Mantenimiento", width: 156, calc: true },
+  { key: "fmik_s1", label: "FMIK S1", width: 88, group: "Técnico", sep: true },
+  { key: "fmik_s2", label: "FMIK S2", width: 88 },
+  { key: "dmik_s1", label: "DMIK S1", width: 88 },
+  { key: "dmik_s2", label: "DMIK S2", width: 88 },
+  { key: "pova_transferido", label: "Transferido", width: 76, group: "POVA", sep: true },
+  { key: "pova_fin_obra", label: "Fin de obra", width: 76 },
+  { key: "pova_creadas", label: "Creadas", width: 76 },
+  { key: "pova_total", label: "Total obras", width: 76 },
+  { key: "_pova_ejecutado", label: "Ejecutado", width: 84, calc: true },
+  { key: "_pova_resultado", label: "Result. s/ Obj", width: 84, calc: true },
+  { key: "mant_poda_bt", label: "Poda BT", width: 88, group: "Mantenimiento", sep: true },
+  { key: "mant_poda_mt", label: "Poda MT", width: 88 },
+  { key: "mant_termografia", label: "Termografía", width: 88 },
+  { key: "_mant_promedio", label: "Mantenimiento", width: 84, calc: true },
 ];
 
-const ROW_H = 52;
-const HEADER_H = 34;
+const ROW_H_NORMAL = 52;
+const HEADER_H_NORMAL = 34;
+const ROW_H_COMPACT = 32;
+const HEADER_H_COMPACT = 32;
+// Modo compacto (design-system.md §4.18, paso 2): cada columna se angosta
+// ~8px (padding de celda 12px→8px) cuando la suma de pisos reales no entra.
+const COMPACT_SHRINK = 8;
 
-// ─── Ajuste de ancho al viewport (design-system.md — sección 06) ────────────
+// ─── Ajuste de ancho al viewport (design-system.md §4.17) ────────────────────
 // Identificadora (Zona) y columnas editables (referencias cortas) quedan
 // fijas; las 3 calculadas absorben el sobrante en partes iguales, y
 // Mantenimiento (columna de cierre del bloque) al doble. Ninguna crece más
@@ -88,6 +96,8 @@ const ALL_COL_KEYS: (keyof DsgRow)[] = ["zona", ...COLS.map((c) => c.key)];
 const NATURAL_W: Record<string, number> = { zona: ZONA_W, ...Object.fromEntries(COLS.map((c) => [c.key, c.width])) };
 const POOL_KEYS = new Set(["_pova_ejecutado", "_pova_resultado", "_mant_promedio"]);
 const CLOSING_KEY = "_mant_promedio";
+const SUM_REAL = ALL_COL_KEYS.reduce((a, k) => a + NATURAL_W[k], 0);
+const SUM_COMPACT = SUM_REAL - ALL_COL_KEYS.length * COMPACT_SHRINK;
 
 // ─── Persistencia de layout (design-system.md — sección 07) ─────────────────
 // Solo lo que existe hoy en este módulo: ancho de columna redimensionado a
@@ -236,6 +246,22 @@ export function IndiceIdoCargaSection() {
     return () => ro.disconnect();
   }, []);
 
+  // Resolución de desborde (design-system.md §4.18): se evalúa ANTES del
+  // reparto de sobrante. Paso 1, pisos reales, ya está en NATURAL_W/COLS.
+  // Paso 2: si ni así entra, modo compacto (fila/header más bajos, cada
+  // columna ~8px más angosta). Paso 3: si ni compacto entra, la columna de
+  // cierre (Mantenimiento) se ancla a la derecha vía stickyRightColumn de la
+  // librería y solo las columnas del medio scrollean.
+  const compact = containerW > 0 && containerW < SUM_REAL;
+  const scrollAnchored = compact && containerW < SUM_COMPACT;
+  const ROW_H = compact ? ROW_H_COMPACT : ROW_H_NORMAL;
+  const HEADER_H = compact ? HEADER_H_COMPACT : HEADER_H_NORMAL;
+  // Columnas que renderiza la grilla "del medio" — excluye la de cierre
+  // cuando está anclada a la derecha (stickyRightColumn).
+  const midCols = useMemo(() => (scrollAnchored ? COLS.filter((c) => c.key !== CLOSING_KEY) : COLS), [scrollAnchored]);
+
+  const [scrolledRight, setScrolledRight] = useState(true);
+
   useEffect(() => {
     function onMove(e: MouseEvent) {
       const r = resizing.current;
@@ -288,7 +314,9 @@ export function IndiceIdoCargaSection() {
 
   const fitted = useMemo(() => {
     const natural: Record<string, number> = {};
-    for (const key of ALL_COL_KEYS) natural[key] = manualCols.has(key) ? colW[key] : NATURAL_W[key];
+    for (const key of ALL_COL_KEYS) {
+      natural[key] = manualCols.has(key) ? colW[key] : NATURAL_W[key] - (compact ? COMPACT_SHRINK : 0);
+    }
     const pool: string[] = ALL_COL_KEYS.filter((k) => isAbsorber(k));
     const weight = (k: string) => (k === CLOSING_KEY ? 2 : 1);
     const out: Record<string, number> = { ...natural };
@@ -310,7 +338,7 @@ export function IndiceIdoCargaSection() {
       active = next;
     }
     return { widths: out, pad: Math.max(0, Math.round(rest / 2)) };
-  }, [manualCols, isAbsorber, colW, containerW]);
+  }, [manualCols, isAbsorber, colW, containerW, compact]);
 
   function startResize(e: React.MouseEvent, id: string) {
     e.preventDefault();
@@ -344,11 +372,12 @@ export function IndiceIdoCargaSection() {
       />
     );
   };
-  // Offset acumulado (dentro de la región de columnas, sin contar Zona) hasta
-  // el borde derecho de `key`.
+  // Offset acumulado (dentro de la región de columnas del medio, sin contar
+  // Zona ni la columna de cierre si está anclada a la derecha) hasta el
+  // borde derecho de `key`.
   function colOffset(key: string): number {
     let x = 0;
-    for (const c of COLS) {
+    for (const c of midCols) {
       x += fitted.widths[c.key] ?? c.width;
       if (c.key === key) break;
     }
@@ -443,13 +472,22 @@ export function IndiceIdoCargaSection() {
     load(periodo);
   }
 
+  // Encabezado con nombre completo en tooltip (design-system.md §4.18: los
+  // encabezados truncan en modo compacto/desborde, el nombre completo queda
+  // disponible al hover).
+  function headerTitle(label: string) {
+    return <span title={label} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>{label}</span>;
+  }
+
   // El ancho de cada columna sale de `fitted` (reparto automático + resize a
   // mano), no de flex nativo de la librería: con grow/shrink en 0 en todas,
-  // el ancho que calculamos es el que se renderiza, sin ambigüedad.
+  // el ancho que calculamos es el que se renderiza, sin ambigüedad. Cuando
+  // hay desborde incluso en modo compacto, la columna de cierre sale de acá
+  // y se sirve por `stickyRightColumn` (ver JSX).
   const columns = useMemo((): Column<DsgRow>[] =>
-    COLS.map((c) => ({
+    midCols.map((c) => ({
       ...(keyColumn(c.key, numColumn as never) as object),
-      title: c.label,
+      title: headerTitle(c.label),
       basis: Math.round(fitted.widths[c.key] ?? c.width),
       grow: 0,
       shrink: 0,
@@ -457,22 +495,39 @@ export function IndiceIdoCargaSection() {
       headerClassName: c.sep ? "ido-col-sep" : undefined,
       cellClassName: [c.sep ? "ido-col-sep" : "", c.calc ? "ido-calc-cell" : ""].filter(Boolean).join(" ") || undefined,
     }) as Column<DsgRow>),
-  [fitted]);
+  [fitted, midCols]);
+
+  // Columna de cierre anclada a la derecha (design-system.md §4.18, paso 3):
+  // solo se usa cuando ni el modo compacto alcanza — el resto del tiempo
+  // viaja como una columna más dentro de `columns`.
+  const stickyRightW = Math.round(fitted.widths[CLOSING_KEY] ?? NATURAL_W[CLOSING_KEY]);
+  const closingSpec = COLS.find((c) => c.key === CLOSING_KEY)!;
+  const stickyRightColumn = scrollAnchored
+    ? {
+        title: headerTitle(closingSpec.label),
+        basis: stickyRightW, grow: 0, shrink: 0,
+        component: ({ rowData }: { rowData: DsgRow }) => (
+          <span style={{ width: "100%", textAlign: "right", padding: "0 8px", fontFamily: "var(--font-mono, ui-monospace, monospace)", color: "var(--ido-accent)", fontStyle: "italic", fontWeight: 500 }}>
+            {rowData._mant_promedio}
+          </span>
+        ),
+      }
+    : undefined;
 
   // Bandas de grupo (Técnico/POVA/Mantenimiento) con ancho dinámico.
   const groupBands = useMemo(() => {
     const acc: { label: string; width: number }[] = [];
-    for (const c of COLS) {
+    for (const c of midCols) {
       const w = Math.round(fitted.widths[c.key] ?? c.width);
       if (c.group) acc.push({ label: c.group, width: w });
       else if (acc.length) acc[acc.length - 1].width += w;
     }
     return acc;
-  }, [fitted]);
+  }, [fitted, midCols]);
   const zonaW = Math.round(fitted.widths.zona ?? ZONA_W);
   const nonGutterW = useMemo(
-    () => COLS.reduce((a, c) => a + Math.round(fitted.widths[c.key] ?? c.width), 0),
-    [fitted]
+    () => midCols.reduce((a, c) => a + Math.round(fitted.widths[c.key] ?? c.width), 0),
+    [fitted, midCols]
   );
   const gridPixelHeight = grid.length * ROW_H + HEADER_H + 2;
 
@@ -480,7 +535,7 @@ export function IndiceIdoCargaSection() {
   const ContextMenu = useCallback(({ clientX, clientY, items, cursorIndex, close }: ContextMenuComponentProps) => {
     const run = (fn: () => void) => () => { fn(); close(); };
     const find = (t: ContextMenuItem["type"]) => items.find((i) => i.type === t);
-    const col = COLS[cursorIndex.col];
+    const col = midCols[cursorIndex.col];
     const editable = !!col && !col.calc;
 
     // Limpiar celda y rellenar hacia abajo se resuelven contra nuestro estado:
@@ -514,7 +569,7 @@ export function IndiceIdoCargaSection() {
         {del && <MenuRow icon="del" label="Eliminar zona" shortcut="⌘⌫" danger onClick={run(del.action)} />}
       </div>
     );
-  }, []);
+  }, [midCols]);
 
   // Estadísticas del pie (mismos números que muestra la tabla).
   const promEjec = useMemo(() => {
@@ -644,6 +699,7 @@ export function IndiceIdoCargaSection() {
                   title: <span className="ido-zona-head">Zona</span>,
                   component: ({ rowData }) => <span className="ido-zona">{rowData.zona}</span>,
                 }}
+                stickyRightColumn={stickyRightColumn}
                 contextMenuComponent={ContextMenu}
                 createRow={() => emptyDsgRow(nextZona())}
                 duplicateRow={({ rowData }) => ({ ...rowData, zona: nextZona() })}
@@ -652,12 +708,27 @@ export function IndiceIdoCargaSection() {
                 headerRowHeight={HEADER_H}
                 height={gridPixelHeight}
                 onScroll={(e) => {
-                  const x = (e.target as HTMLElement).scrollLeft;
+                  const el = e.target as HTMLElement;
+                  const x = el.scrollLeft;
+                  const max = el.scrollWidth - el.clientWidth;
                   if (bandRef.current) bandRef.current.style.transform = `translateX(${-x}px)`;
                   if (resizeScrollRef.current) resizeScrollRef.current.style.transform = `translateX(${-x}px)`;
                   setScrolled(x > 1);
+                  setScrolledRight(max - x > 1);
                 }}
               />
+
+              {/* Sombra de scroll a la derecha (design-system.md §4.18, paso 3) —
+                  espejo de la sombra izquierda ya provista por .dsg-cell-gutter */}
+              {scrollAnchored && (
+                <div
+                  style={{
+                    position: "absolute", top: 0, bottom: 0, right: stickyRightW, width: 16, pointerEvents: "none", zIndex: 11,
+                    background: "linear-gradient(to left, rgba(0,0,0,.55), rgba(0,0,0,0))",
+                    opacity: scrolledRight ? 1 : 0, transition: "opacity 140ms var(--ido-ease)",
+                  }}
+                />
+              )}
 
               {/* ── Redimensionado de columna (§4.15) — overlay sobre el header ── */}
               <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 10 }}>
@@ -670,7 +741,7 @@ export function IndiceIdoCargaSection() {
                   ref={resizeScrollRef}
                   style={{ position: "absolute", top: 0, left: zonaW, right: 0, height: gridPixelHeight, overflow: "visible" }}
                 >
-                  {COLS.map((c) => {
+                  {midCols.map((c) => {
                     const w = Math.round(fitted.widths[c.key] ?? c.width);
                     const left = colOffset(c.key) - w;
                     return (
