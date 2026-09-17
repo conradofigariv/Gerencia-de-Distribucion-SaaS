@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabaseClient";
+import { loadTableLayout, saveTableLayout } from "@/lib/tableLayout";
 import { getRows, computeIdo, getMetas, listPeriodos, DEFAULT_METAS } from "@/lib/idoStorage";
 import type { IdoRow, IdoCalc, IdoMetas } from "@/lib/idoStorage";
 
@@ -59,37 +60,16 @@ function toUtf16LeBytes(text: string): ArrayBuffer {
 }
 
 // ─── Persistencia de layout (design-system.md — sección 07) ─────────────────
-// Por usuario y por id estable de tabla: `ds.tableLayout.v1.<userId>.<tableId>`.
 // Solo lo que existe hoy en este módulo: anchos de columna redimensionados a
 // mano (no hay orden por arrastre, grupos colapsables ni selector de columnas
 // en IDO Resumen). Selección de fila, celda activa, scroll y filtros quedan
 // fuera — son estado de sesión.
-const LAYOUT_NS = "ds.tableLayout.v1";
 const TABLE_ID = "indiceIdoResumen";
 const KNOWN_COL_IDS = new Set([
   "sel", "zona", "fmik_s1", "fmik_kpi_s1", "fmik_s2", "fmik_kpi_s2", "fmik_kpi",
   "dmik_s1", "dmik_kpi_s1", "dmik_s2", "dmik_kpi_s2", "dmik_kpi",
   "tecnico", "pova", "mant", "ido",
 ]);
-interface TableLayout {
-  colW?: Record<string, number> | null;
-}
-function loadLayout(userId: string): TableLayout {
-  try {
-    const raw = localStorage.getItem(`${LAYOUT_NS}.${userId}.${TABLE_ID}`);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-function saveLayout(userId: string, patch: TableLayout) {
-  try {
-    const current = loadLayout(userId);
-    localStorage.setItem(`${LAYOUT_NS}.${userId}.${TABLE_ID}`, JSON.stringify({ ...current, ...patch }));
-  } catch {
-    // localStorage puede no estar disponible (modo privado, cuota) — se ignora.
-  }
-}
 
 export function IndiceIdoResumenSection() {
   const [periodo, setPeriodo] = useState(String(new Date().getFullYear()));
@@ -149,7 +129,7 @@ export function IndiceIdoResumenSection() {
     function onUp() {
       resizing.current = null;
       setResizingCol(null);
-      if (userIdRef.current) saveLayout(userIdRef.current, { colW: colWRef.current });
+      if (userIdRef.current) saveTableLayout(userIdRef.current, TABLE_ID, { colW: colWRef.current });
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -160,7 +140,7 @@ export function IndiceIdoResumenSection() {
   // Referencias a columnas que ya no existen se descartan en silencio.
   useEffect(() => {
     if (!userId) return;
-    const saved = loadLayout(userId).colW;
+    const saved = loadTableLayout(userId, TABLE_ID).colW;
     if (!saved) return;
     const known: Record<string, number> = {};
     for (const [k, v] of Object.entries(saved)) {
@@ -171,7 +151,7 @@ export function IndiceIdoResumenSection() {
 
   function resetLayout() {
     setColW({});
-    if (userId) saveLayout(userId, { colW: null });
+    if (userId) saveTableLayout(userId, TABLE_ID, { colW: null });
     setResetMsg(true);
     if (resetMsgT.current) clearTimeout(resetMsgT.current);
     resetMsgT.current = setTimeout(() => setResetMsg(false), 1500);

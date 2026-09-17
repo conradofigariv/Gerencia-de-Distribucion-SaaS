@@ -12,6 +12,8 @@ import {
 import "react-datasheet-grid/dist/style.css";
 import { Loader2, Save, RefreshCw, Plus, SlidersHorizontal, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabaseClient";
+import { loadTableLayout, saveTableLayout } from "@/lib/tableLayout";
 import {
   parseNum, getRows, saveRows, deleteRow, getMetas, saveMetas, DEFAULT_METAS,
 } from "@/lib/idoStorage";
@@ -74,18 +76,25 @@ const COLS: ColSpec[] = [
   { key: "_mant_promedio", label: "Mantenimiento", width: 156, calc: true },
 ];
 
-// Bloques (Técnico / POVA / Mantenimiento) con su ancho total, para la banda
-// de grupos que va arriba del header.
-const GROUPS = COLS.reduce<{ label: string; width: number }[]>((acc, c) => {
-  if (c.group) acc.push({ label: c.group, width: c.width });
-  else if (acc.length) acc[acc.length - 1].width += c.width;
-  return acc;
-}, []);
-
-const GRID_W = ZONA_W + COLS.reduce((a, c) => a + c.width, 0);
-
 const ROW_H = 52;
 const HEADER_H = 34;
+
+// ─── Ajuste de ancho al viewport (design-system.md — sección 06) ────────────
+// Identificadora (Zona) y columnas editables (referencias cortas) quedan
+// fijas; las 3 calculadas absorben el sobrante en partes iguales, y
+// Mantenimiento (columna de cierre del bloque) al doble. Ninguna crece más
+// del doble de su ancho natural — el excedente pasa a padding lateral.
+const ALL_COL_KEYS: (keyof DsgRow)[] = ["zona", ...COLS.map((c) => c.key)];
+const NATURAL_W: Record<string, number> = { zona: ZONA_W, ...Object.fromEntries(COLS.map((c) => [c.key, c.width])) };
+const POOL_KEYS = new Set(["_pova_ejecutado", "_pova_resultado", "_mant_promedio"]);
+const CLOSING_KEY = "_mant_promedio";
+
+// ─── Persistencia de layout (design-system.md — sección 07) ─────────────────
+// Solo lo que existe hoy en este módulo: ancho de columna redimensionado a
+// mano. Selección/celda activa/scroll/filtros no aplican aquí (grilla de
+// edición, no de selección de filas) y quedan fuera de todos modos.
+const TABLE_ID = "indiceIdoCarga";
+const KNOWN_COL_IDS = new Set<string>(ALL_COL_KEYS);
 
 const numColumn = createTextColumn({});
 
@@ -189,8 +198,156 @@ export function IndiceIdoCargaSection() {
   const [scrolled, setScrolled] = useState(false);
   const [syncAt, setSyncAt] = useState<Date | null>(null);
   const bandRef = useRef<HTMLDivElement>(null);
+  const resizeScrollRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<DsgRow[]>([]);
   gridRef.current = grid;
+
+  // Usuario actual (namespacea la persistencia de layout por cuenta)
+  const [userId, setUserId] = useState<string | null>(null);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+  }, []);
+  const userIdRef = useRef(userId);
+  useEffect(() => { userIdRef.current = userId; }, [userId]);
+
+  // Anchos de columna ajustables a mano — salen del reparto automático
+  const [colW, setColW] = useState<Record<string, number>>({});
+  const colWRef = useRef(colW);
+  useEffect(() => { colWRef.current = colW; }, [colW]);
+  const [resizingCol, setResizingCol] = useState<string | null>(null);
+  const resizing = useRef<{ id: string; startX: number; startW: number } | null>(null);
+
+  // "Restablecer vista": confirmación temporal (1.5 s)
+  const [resetMsg, setResetMsg] = useState(false);
+  const resetMsgT = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (resetMsgT.current) clearTimeout(resetMsgT.current); }, []);
+
+  // Ancho real del contenedor de la grilla (para el reparto automático)
+  const gridWrapRef = useRef<HTMLDivElement>(null);
+  const [containerW, setContainerW] = useState(0);
+  useEffect(() => {
+    const el = gridWrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w) setContainerW(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      const r = resizing.current;
+      if (!r) return;
+      const w = Math.max(64, r.startW + (e.clientX - r.startX));
+      setColW((p) => ({ ...p, [r.id]: w }));
+    }
+    function onUp() {
+      resizing.current = null;
+      setResizingCol(null);
+      if (userIdRef.current) saveTableLayout(userIdRef.current, TABLE_ID, { colW: colWRef.current });
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, []);
+
+  // Hidrata el ancho guardado para este usuario y esta tabla. Referencias a
+  // columnas que ya no existen se descartan en silencio.
+  useEffect(() => {
+    if (!userId) return;
+    const saved = loadTableLayout(userId, TABLE_ID).colW;
+    if (!saved) return;
+    const known: Record<string, number> = {};
+    for (const [k, v] of Object.entries(saved)) {
+      if (KNOWN_COL_IDS.has(k) && typeof v === "number") known[k] = v;
+    }
+    if (Object.keys(known).length) setColW(known);
+  }, [userId]);
+
+  function resetLayout() {
+    setColW({});
+    if (userId) saveTableLayout(userId, TABLE_ID, { colW: null });
+    setResetMsg(true);
+    if (resetMsgT.current) clearTimeout(resetMsgT.current);
+    resetMsgT.current = setTimeout(() => setResetMsg(false), 1500);
+  }
+
+  // Columnas manuales (fuera del reparto automático) y reparto del sobrante:
+  // las 3 calculadas absorben en partes iguales, Mantenimiento (cierre) al
+  // doble; ninguna crece más de 2× su ancho natural; el resto va a padding.
+  const manualCols = useMemo(() => new Set(Object.keys(colW)), [colW]);
+  const isAbsorber = useCallback((key: string) => POOL_KEYS.has(key) && !manualCols.has(key), [manualCols]);
+
+  const fitted = useMemo(() => {
+    const natural: Record<string, number> = {};
+    for (const key of ALL_COL_KEYS) natural[key] = manualCols.has(key) ? colW[key] : NATURAL_W[key];
+    const pool: string[] = ALL_COL_KEYS.filter((k) => isAbsorber(k));
+    const weight = (k: string) => (k === CLOSING_KEY ? 2 : 1);
+    const out: Record<string, number> = { ...natural };
+    const sumNatural = ALL_COL_KEYS.reduce((a, k) => a + natural[k], 0);
+    let rest = Math.max(0, containerW - sumNatural);
+    let active: string[] = [...pool];
+    while (rest > 0.5 && active.length) {
+      const tw = active.reduce((a, k) => a + weight(k), 0);
+      let used = 0;
+      const next: string[] = [];
+      for (const k of active) {
+        const cap = natural[k] * 2 - out[k];
+        const add = Math.min((rest * weight(k)) / tw, cap);
+        out[k] += add; used += add;
+        if (cap - add > 0.5) next.push(k);
+      }
+      if (used < 0.5) break;
+      rest -= used;
+      active = next;
+    }
+    return { widths: out, pad: Math.max(0, Math.round(rest / 2)) };
+  }, [manualCols, isAbsorber, colW, containerW]);
+
+  function startResize(e: React.MouseEvent, id: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const startW = colW[id] ?? fitted.widths[id] ?? NATURAL_W[id];
+    resizing.current = { id, startX: e.clientX, startW };
+    setResizingCol(id);
+  }
+  const Resizer = ({ id }: { id: string }) => {
+    const active = resizingCol === id;
+    return (
+      <span
+        onMouseDown={(e) => startResize(e, id)}
+        className="group absolute top-0 bottom-0 w-2 cursor-col-resize flex justify-center"
+        style={{ right: -4, pointerEvents: "auto", zIndex: 20 }}
+      >
+        <span
+          className={`w-[2px] h-full transition-opacity ${active ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+          style={{ background: "var(--ido-accent)", transitionDuration: "100ms", transitionTimingFunction: "var(--ido-ease)" }}
+        />
+      </span>
+    );
+  };
+  const AbsorbBar = ({ id }: { id: string }) => {
+    if (!isAbsorber(id)) return null;
+    const closing = id === CLOSING_KEY;
+    return (
+      <span
+        title={closing ? "Absorbe el doble de proporción" : "Absorbe el sobrante"}
+        style={{ position: "absolute", bottom: 0, left: 8, right: 8, height: 2, background: "var(--ido-accent)", opacity: closing ? 1 : 0.5, pointerEvents: "none" }}
+      />
+    );
+  };
+  // Offset acumulado (dentro de la región de columnas, sin contar Zona) hasta
+  // el borde derecho de `key`.
+  function colOffset(key: string): number {
+    let x = 0;
+    for (const c of COLS) {
+      x += fitted.widths[c.key] ?? c.width;
+      if (c.key === key) break;
+    }
+    return x;
+  }
 
   const load = useCallback(async (p: string) => {
     setLoading(true);
@@ -275,22 +432,38 @@ export function IndiceIdoCargaSection() {
     load(periodo);
   }
 
+  // El ancho de cada columna sale de `fitted` (reparto automático + resize a
+  // mano), no de flex nativo de la librería: con grow/shrink en 0 en todas,
+  // el ancho que calculamos es el que se renderiza, sin ambigüedad.
   const columns = useMemo((): Column<DsgRow>[] =>
-    COLS.map((c, i) => ({
+    COLS.map((c) => ({
       ...(keyColumn(c.key, numColumn as never) as object),
       title: c.label,
-      basis: c.width,
-      // Anchos fijos salvo la última, que absorbe el espacio sobrante para que
-      // las filas lleguen siempre hasta el borde de la card. Con `shrink: 0`,
-      // si la pantalla es más angosta que la tabla aparece scroll horizontal
-      // en vez de apretar las columnas.
-      grow: i === COLS.length - 1 ? 1 : 0,
+      basis: Math.round(fitted.widths[c.key] ?? c.width),
+      grow: 0,
       shrink: 0,
       disabled: !!c.calc,
       headerClassName: c.sep ? "ido-col-sep" : undefined,
       cellClassName: [c.sep ? "ido-col-sep" : "", c.calc ? "ido-calc-cell" : ""].filter(Boolean).join(" ") || undefined,
     }) as Column<DsgRow>),
-  []);
+  [fitted]);
+
+  // Bandas de grupo (Técnico/POVA/Mantenimiento) con ancho dinámico.
+  const groupBands = useMemo(() => {
+    const acc: { label: string; width: number }[] = [];
+    for (const c of COLS) {
+      const w = Math.round(fitted.widths[c.key] ?? c.width);
+      if (c.group) acc.push({ label: c.group, width: w });
+      else if (acc.length) acc[acc.length - 1].width += w;
+    }
+    return acc;
+  }, [fitted]);
+  const zonaW = Math.round(fitted.widths.zona ?? ZONA_W);
+  const nonGutterW = useMemo(
+    () => COLS.reduce((a, c) => a + Math.round(fitted.widths[c.key] ?? c.width), 0),
+    [fitted]
+  );
+  const gridPixelHeight = grid.length * ROW_H + HEADER_H + 2;
 
   // Menú contextual del botón secundario, con el diseño del terminal.
   const ContextMenu = useCallback(({ clientX, clientY, items, cursorIndex, close }: ContextMenuComponentProps) => {
@@ -358,6 +531,18 @@ export function IndiceIdoCargaSection() {
 
           <div style={{ flex: 1 }} />
 
+          <span className="ido-reset-confirm" style={{ opacity: resetMsg ? 1 : 0 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12.5l5 5L20 6.5" /></svg>
+            Vista restablecida
+          </span>
+          <button
+            className="ido-btn ido-btn-text"
+            onClick={resetLayout}
+            title="Restaura el ancho de columnas a su valor por defecto"
+          >
+            Restablecer vista
+          </button>
+
           <button
             className={`ido-btn ido-btn-ghost${metasOpen ? " is-on" : ""}`}
             onClick={() => setMetasOpen((o) => !o)}
@@ -419,10 +604,10 @@ export function IndiceIdoCargaSection() {
 
         {/* ── Banda de grupos (scrollea junto con la grilla) ─────────────── */}
         <div className="ido-band">
-          <div className="ido-band-zona" style={{ width: ZONA_W }} />
+          <div className="ido-band-zona" style={{ width: zonaW }} />
           <div className="ido-band-scroll">
-            <div ref={bandRef} className="ido-band-track" style={{ width: GRID_W - ZONA_W }}>
-              {GROUPS.map((g) => (
+            <div ref={bandRef} className="ido-band-track" style={{ width: nonGutterW }}>
+              {groupBands.map((g) => (
                 <div key={g.label} className="ido-band-group" style={{ width: g.width }}>{g.label}</div>
               ))}
             </div>
@@ -433,29 +618,96 @@ export function IndiceIdoCargaSection() {
         {loading ? (
           <div className="ido-loading"><Loader2 className="w-4 h-4 animate-spin" /> Cargando…</div>
         ) : (
-          <div className={`ido-grid${scrolled ? " is-scrolled" : ""}`}>
-            <DataSheetGrid<DsgRow>
-              value={grid}
-              onChange={handleChange}
-              columns={columns}
-              gutterColumn={{
-                basis: ZONA_W, grow: 0, shrink: 0,
-                title: <span className="ido-zona-head">Zona</span>,
-                component: ({ rowData }) => <span className="ido-zona">{rowData.zona}</span>,
-              }}
-              contextMenuComponent={ContextMenu}
-              createRow={() => emptyDsgRow(nextZona())}
-              duplicateRow={({ rowData }) => ({ ...rowData, zona: nextZona() })}
-              addRowsComponent={false}
-              rowHeight={ROW_H}
-              headerRowHeight={HEADER_H}
-              height={grid.length * ROW_H + HEADER_H + 2}
-              onScroll={(e) => {
-                const x = (e.target as HTMLElement).scrollLeft;
-                if (bandRef.current) bandRef.current.style.transform = `translateX(${-x}px)`;
-                setScrolled(x > 1);
-              }}
-            />
+          <div ref={gridWrapRef} className={`ido-grid${scrolled ? " is-scrolled" : ""}`}>
+            <div style={{ position: "relative", padding: `0 ${fitted.pad}px`, transition: "padding 200ms var(--ido-ease)" }}>
+              <DataSheetGrid<DsgRow>
+                value={grid}
+                onChange={handleChange}
+                columns={columns}
+                gutterColumn={{
+                  basis: zonaW, grow: 0, shrink: 0,
+                  title: <span className="ido-zona-head">Zona</span>,
+                  component: ({ rowData }) => <span className="ido-zona">{rowData.zona}</span>,
+                }}
+                contextMenuComponent={ContextMenu}
+                createRow={() => emptyDsgRow(nextZona())}
+                duplicateRow={({ rowData }) => ({ ...rowData, zona: nextZona() })}
+                addRowsComponent={false}
+                rowHeight={ROW_H}
+                headerRowHeight={HEADER_H}
+                height={gridPixelHeight}
+                onScroll={(e) => {
+                  const x = (e.target as HTMLElement).scrollLeft;
+                  if (bandRef.current) bandRef.current.style.transform = `translateX(${-x}px)`;
+                  if (resizeScrollRef.current) resizeScrollRef.current.style.transform = `translateX(${-x}px)`;
+                  setScrolled(x > 1);
+                }}
+              />
+
+              {/* ── Redimensionado de columna (§4.15) — overlay sobre el header ── */}
+              <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 10 }}>
+                {/* Zona: columna fija (sticky), no scrollea */}
+                <div style={{ position: "absolute", top: 0, left: 0, width: zonaW, height: HEADER_H }}>
+                  <Resizer id="zona" />
+                </div>
+                {/* Resto: scrollea en sincro con la grilla */}
+                <div
+                  ref={resizeScrollRef}
+                  style={{ position: "absolute", top: 0, left: zonaW, right: 0, height: gridPixelHeight, overflow: "visible" }}
+                >
+                  {COLS.map((c) => {
+                    const w = Math.round(fitted.widths[c.key] ?? c.width);
+                    const left = colOffset(c.key) - w;
+                    return (
+                      <div key={c.key} style={{ position: "absolute", left, top: 0, width: w, height: HEADER_H }}>
+                        <Resizer id={c.key} />
+                        <AbsorbBar id={c.key} />
+                      </div>
+                    );
+                  })}
+                  {resizingCol && resizingCol !== "zona" && (
+                    <>
+                      <div
+                        style={{
+                          position: "absolute", top: 0, left: colOffset(resizingCol), width: 1, height: gridPixelHeight,
+                          background: "var(--ido-accent)", zIndex: 30,
+                        }}
+                      />
+                      <div
+                        style={{
+                          position: "absolute", top: HEADER_H + 8, left: colOffset(resizingCol) + 6, padding: "4px 8px",
+                          borderRadius: 6, background: "var(--ido-surface-hover)", border: "1px solid var(--ido-line)",
+                          fontFamily: "var(--font-mono, ui-monospace, monospace)", fontSize: 11, color: "var(--ido-text)",
+                          whiteSpace: "nowrap", zIndex: 31,
+                        }}
+                      >
+                        {Math.round(fitted.widths[resizingCol] ?? NATURAL_W[resizingCol])} px
+                      </div>
+                    </>
+                  )}
+                </div>
+                {resizingCol === "zona" && (
+                  <>
+                    <div
+                      style={{
+                        position: "absolute", top: 0, left: zonaW, width: 1, height: gridPixelHeight,
+                        background: "var(--ido-accent)", zIndex: 30,
+                      }}
+                    />
+                    <div
+                      style={{
+                        position: "absolute", top: HEADER_H + 8, left: zonaW + 6, padding: "4px 8px",
+                        borderRadius: 6, background: "var(--ido-surface-hover)", border: "1px solid var(--ido-line)",
+                        fontFamily: "var(--font-mono, ui-monospace, monospace)", fontSize: 11, color: "var(--ido-text)",
+                        whiteSpace: "nowrap", zIndex: 31,
+                      }}
+                    >
+                      {zonaW} px
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
