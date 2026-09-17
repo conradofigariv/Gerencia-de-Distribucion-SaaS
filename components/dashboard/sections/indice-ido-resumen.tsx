@@ -131,9 +131,13 @@ export function IndiceIdoResumenSection() {
       setResizingCol(null);
       if (userIdRef.current) saveTableLayout(userIdRef.current, TABLE_ID, { colW: colWRef.current });
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    // Captura, no burbujeo: mismo criterio que en indice-ido-carga.tsx —
+    // más robusto ante cualquier elemento intermedio que frene la
+    // propagación del mouseup (esta tabla no tiene ninguno hoy, pero evita
+    // que el resize quede "trabado" si eso cambia).
+    window.addEventListener("mousemove", onMove, true);
+    window.addEventListener("mouseup", onUp, true);
+    return () => { window.removeEventListener("mousemove", onMove, true); window.removeEventListener("mouseup", onUp, true); };
   }, []);
 
   // Hidrata el ancho de columnas guardado para este usuario y esta tabla.
@@ -372,10 +376,12 @@ export function IndiceIdoResumenSection() {
 
           <div style={{ flex: 1 }} />
 
-          <span className="ido-reset-confirm" style={{ opacity: resetMsg ? 1 : 0 }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12.5l5 5L20 6.5" /></svg>
-            Vista restablecida
-          </span>
+          {resetMsg && (
+            <span className="ido-reset-confirm">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12.5l5 5L20 6.5" /></svg>
+              Vista restablecida
+            </span>
+          )}
           <button
             className="ido-btn ido-btn-text"
             onClick={resetLayout}

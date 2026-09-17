@@ -248,9 +248,15 @@ export function IndiceIdoCargaSection() {
       setResizingCol(null);
       if (userIdRef.current) saveTableLayout(userIdRef.current, TABLE_ID, { colW: colWRef.current });
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    // Captura, no burbujeo: react-datasheet-grid tiene su propio manejo de
+    // mouse para la selección de celdas y puede frenar la propagación del
+    // mouseup si soltás el clic sobre una celda de la grilla (muy fácil con
+    // un handle de 8px). En fase de captura, este handler se dispara antes
+    // de que la librería tenga chance de interceptarlo — si no, el resize
+    // queda "trabado" con la guía verde pegada en pantalla.
+    window.addEventListener("mousemove", onMove, true);
+    window.addEventListener("mouseup", onUp, true);
+    return () => { window.removeEventListener("mousemove", onMove, true); window.removeEventListener("mouseup", onUp, true); };
   }, []);
 
   // Hidrata el ancho guardado para este usuario y esta tabla. Referencias a
@@ -531,10 +537,12 @@ export function IndiceIdoCargaSection() {
 
           <div style={{ flex: 1 }} />
 
-          <span className="ido-reset-confirm" style={{ opacity: resetMsg ? 1 : 0 }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12.5l5 5L20 6.5" /></svg>
-            Vista restablecida
-          </span>
+          {resetMsg && (
+            <span className="ido-reset-confirm">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12.5l5 5L20 6.5" /></svg>
+              Vista restablecida
+            </span>
+          )}
           <button
             className="ido-btn ido-btn-text"
             onClick={resetLayout}
@@ -559,17 +567,19 @@ export function IndiceIdoCargaSection() {
             {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             Recargar
           </button>
-          <input
-            className="ido-field"
-            value={newZona}
-            onChange={(e) => setNewZona(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addZona()}
-            placeholder="Zona"
-            style={{ width: 66 }}
-          />
-          <button className="ido-btn ido-btn-ghost" onClick={addZona}>
-            <Plus className="w-3.5 h-3.5" /> Agregar
-          </button>
+          <div className="flex items-center gap-2" style={{ flex: "none" }}>
+            <input
+              className="ido-field"
+              value={newZona}
+              onChange={(e) => setNewZona(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addZona()}
+              placeholder="Zona"
+              style={{ width: 66 }}
+            />
+            <button className="ido-btn ido-btn-ghost" onClick={addZona}>
+              <Plus className="w-3.5 h-3.5" /> Agregar
+            </button>
+          </div>
         </div>
 
         {/* ── Criterios (colapsable) ─────────────────────────────────────── */}
