@@ -262,17 +262,29 @@ export function IndiceIdoCargaSection() {
 
   const [scrolledRight, setScrolledRight] = useState(true);
 
+  // react-datasheet-grid no re-renderiza sus columnas cuando `basis` cambia
+  // en caliente (solo lo toma en cuenta al montar) — confirmado con la
+  // grilla en vivo: el estado de React se actualiza perfecto, pero el DOM
+  // de la librería queda con el ancho viejo. Única salida sin tocar la
+  // librería: forzar un remount (key) cuando el ancho efectivo cambia.
+  const [dsgKey, setDsgKey] = useState(0);
+  const bumpDsgKey = useCallback(() => setDsgKey((k) => k + 1), []);
+
   useEffect(() => {
     function onMove(e: MouseEvent) {
       const r = resizing.current;
       if (!r) return;
-      const w = Math.max(64, r.startW + (e.clientX - r.startX));
+      // Piso real por columna (§4.18), no el genérico de 64px.
+      const floor = NATURAL_W[r.id] ?? 64;
+      const w = Math.max(floor, r.startW + (e.clientX - r.startX));
       setColW((p) => ({ ...p, [r.id]: w }));
     }
     function onUp() {
+      if (!resizing.current) return;
       resizing.current = null;
       setResizingCol(null);
       if (userIdRef.current) saveTableLayout(userIdRef.current, TABLE_ID, { colW: colWRef.current });
+      bumpDsgKey();
     }
     // Captura, no burbujeo: react-datasheet-grid tiene su propio manejo de
     // mouse para la selección de celdas y puede frenar la propagación del
@@ -283,7 +295,16 @@ export function IndiceIdoCargaSection() {
     window.addEventListener("mousemove", onMove, true);
     window.addEventListener("mouseup", onUp, true);
     return () => { window.removeEventListener("mousemove", onMove, true); window.removeEventListener("mouseup", onUp, true); };
-  }, []);
+  }, [bumpDsgKey]);
+
+  // Ídem para el resize de ventana/sidebar (§4.17): el ancho efectivo puede
+  // cambiar sin que haya un mouseup de por medio. Debounced para no
+  // remontar la grilla en cada tick del ResizeObserver durante un drag de
+  // ventana en vivo.
+  useEffect(() => {
+    const t = setTimeout(bumpDsgKey, 200);
+    return () => clearTimeout(t);
+  }, [containerW, bumpDsgKey]);
 
   // Hidrata el ancho guardado para este usuario y esta tabla. Referencias a
   // columnas que ya no existen se descartan en silencio.
@@ -304,6 +325,7 @@ export function IndiceIdoCargaSection() {
     setResetMsg(true);
     if (resetMsgT.current) clearTimeout(resetMsgT.current);
     resetMsgT.current = setTimeout(() => setResetMsg(false), 1500);
+    bumpDsgKey();
   }
 
   // Columnas manuales (fuera del reparto automático) y reparto del sobrante:
@@ -691,6 +713,7 @@ export function IndiceIdoCargaSection() {
           <div ref={gridWrapRef} className={`ido-grid${scrolled ? " is-scrolled" : ""}`}>
             <div style={{ position: "relative", padding: `0 ${fitted.pad}px`, transition: "padding 200ms var(--ido-ease)" }}>
               <DataSheetGrid<DsgRow>
+                key={dsgKey}
                 value={grid}
                 onChange={handleChange}
                 columns={columns}
@@ -730,8 +753,16 @@ export function IndiceIdoCargaSection() {
                 />
               )}
 
-              {/* ── Redimensionado de columna (§4.15) — overlay sobre el header ── */}
-              <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 10 }}>
+              {/* ── Redimensionado de columna (§4.15) — overlay sobre el header ──
+                  `inset:0` en un hijo absoluto se resuelve contra el borde de la
+                  padding box del ancestro posicionado (el div `position:relative`
+                  con `padding: 0 fitted.pad px`), es decir ANTES del padding. La
+                  grilla real (hija normal, no posicionada) arranca después del
+                  padding — en la content box. Sin compensar `fitted.pad` acá el
+                  overlay entero (guía, handles, etiqueta de ancho) queda corrido
+                  a la izquierda exactamente `fitted.pad` px respecto de las
+                  columnas reales. */}
+              <div style={{ position: "absolute", top: 0, bottom: 0, left: fitted.pad, right: fitted.pad, pointerEvents: "none", zIndex: 10 }}>
                 {/* Zona: columna fija (sticky), no scrollea */}
                 <div style={{ position: "absolute", top: 0, left: 0, width: zonaW, height: HEADER_H }}>
                   <Resizer id="zona" />
