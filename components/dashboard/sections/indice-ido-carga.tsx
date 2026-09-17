@@ -225,7 +225,8 @@ export function IndiceIdoCargaSection() {
   const colWRef = useRef(colW);
   useEffect(() => { colWRef.current = colW; }, [colW]);
   const [resizingCol, setResizingCol] = useState<string | null>(null);
-  const resizing = useRef<{ id: string; startX: number; startW: number } | null>(null);
+  const resizing = useRef<{ id: string; startX: number; startW: number; moved: boolean } | null>(null);
+  const autoFitCanvas = useRef<HTMLCanvasElement | null>(null);
 
   // "Restablecer vista": confirmación temporal (1.5 s)
   const [resetMsg, setResetMsg] = useState(false);
@@ -277,12 +278,20 @@ export function IndiceIdoCargaSection() {
       // Piso real por columna (§4.18), no el genérico de 64px.
       const floor = NATURAL_W[r.id] ?? 64;
       const w = Math.max(floor, r.startW + (e.clientX - r.startX));
+      if (w !== r.startW) r.moved = true;
       setColW((p) => ({ ...p, [r.id]: w }));
     }
     function onUp() {
-      if (!resizing.current) return;
+      const r = resizing.current;
+      if (!r) return;
       resizing.current = null;
       setResizingCol(null);
+      // Un clic sin arrastre (delta 0) no es un resize: no hay que remontar
+      // la grilla. Si se remonta igual, el segundo clic de un doble clic
+      // sobre el mismo handle (auto-ajustar al contenido) golpea un nodo del
+      // DOM recién reemplazado y el navegador nunca llega a disparar
+      // `dblclick`.
+      if (!r.moved) return;
       if (userIdRef.current) saveTableLayout(userIdRef.current, TABLE_ID, { colW: colWRef.current });
       bumpDsgKey();
     }
@@ -366,14 +375,40 @@ export function IndiceIdoCargaSection() {
     e.preventDefault();
     e.stopPropagation();
     const startW = colW[id] ?? fitted.widths[id] ?? NATURAL_W[id];
-    resizing.current = { id, startX: e.clientX, startW };
+    resizing.current = { id, startX: e.clientX, startW, moved: false };
     setResizingCol(id);
+  }
+  // Doble clic ajusta al contenido más ancho (design-system.md, «Redimensionado
+  // de columna»). Se mide con canvas en vez de tocar el DOM de la grilla
+  // (react-datasheet-grid virtualiza filas fuera de vista, así que no todas
+  // están montadas para medir su ancho real).
+  function autoFitWidth(e: React.MouseEvent, id: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const canvas = autoFitCanvas.current ?? (autoFitCanvas.current = document.createElement("canvas"));
+    const ctx = canvas.getContext("2d");
+    const floor = NATURAL_W[id] ?? 64;
+    if (!ctx) return;
+    ctx.font = "13px var(--font-mono, ui-monospace, monospace)";
+    const label = id === "zona" ? "Zona" : COLS.find((c) => c.key === id)?.label ?? id;
+    let widest = ctx.measureText(label).width;
+    for (const row of gridRef.current) {
+      const v = (row as Record<string, string>)[id] ?? "";
+      if (!v) continue;
+      const w = ctx.measureText(v).width;
+      if (w > widest) widest = w;
+    }
+    const fitW = Math.max(floor, Math.round(widest) + 24);
+    setColW((p) => ({ ...p, [id]: fitW }));
+    if (userIdRef.current) saveTableLayout(userIdRef.current, TABLE_ID, { colW: { ...colWRef.current, [id]: fitW } });
+    bumpDsgKey();
   }
   const Resizer = ({ id }: { id: string }) => {
     const active = resizingCol === id;
     return (
       <span
         onMouseDown={(e) => startResize(e, id)}
+        onDoubleClick={(e) => autoFitWidth(e, id)}
         className="group absolute top-0 bottom-0 w-2 cursor-col-resize flex justify-center"
         style={{ right: -4, pointerEvents: "auto", zIndex: 20 }}
       >
