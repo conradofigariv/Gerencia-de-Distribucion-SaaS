@@ -357,18 +357,23 @@ export function IndiceIdoCargaSection() {
 
   const load = useCallback(async (p: string) => {
     setLoading(true);
-    getMetas(p).then((m) => setMetaInputs(metaToInputs(m)));
-    const rows = await getRows(p);
-    const byZona = new Map<string, IdoRow>();
-    for (const r of rows) byZona.set(r.zona, r);
-    const zonas = [...DEFAULT_ZONAS];
-    for (const z of byZona.keys()) if (!zonas.includes(z)) zonas.push(z);
-    setGrid(zonas.map((zona) => {
-      const r = byZona.get(zona);
-      return r ? idoRowToDsg(r) : emptyDsgRow(zona);
-    }));
-    setSyncAt(new Date());
-    setLoading(false);
+    try {
+      getMetas(p).then((m) => setMetaInputs(metaToInputs(m)));
+      const rows = await getRows(p);
+      const byZona = new Map<string, IdoRow>();
+      for (const r of rows) byZona.set(r.zona, r);
+      const zonas = [...DEFAULT_ZONAS];
+      for (const z of byZona.keys()) if (!zonas.includes(z)) zonas.push(z);
+      setGrid(zonas.map((zona) => {
+        const r = byZona.get(zona);
+        return r ? idoRowToDsg(r) : emptyDsgRow(zona);
+      }));
+      setSyncAt(new Date());
+    } catch (e) {
+      toast.error(`Error al cargar: ${e instanceof Error ? e.message : "Error"}`);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(periodo); }, [periodo, load]);
