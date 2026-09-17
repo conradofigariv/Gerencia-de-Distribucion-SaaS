@@ -79,13 +79,27 @@ const COLS: ColSpec[] = [
   { key: "_mant_promedio", label: "Mantenimiento", width: 84, calc: true },
 ];
 
-const ROW_H_NORMAL = 52;
 const HEADER_H_NORMAL = 34;
 const ROW_H_COMPACT = 32;
 const HEADER_H_COMPACT = 32;
 // Modo compacto (design-system.md §4.18, paso 2): cada columna se angosta
 // ~8px (padding de celda 12px→8px) cuando la suma de pisos reales no entra.
 const COMPACT_SHRINK = 8;
+
+// ─── Altura de fila / densidad (design-system.md §4.19) ──────────────────────
+// Tres modos fijos, sin valores intermedios. El encabezado NO escala con la
+// densidad (queda en HEADER_H_NORMAL en los tres) — a diferencia del modo
+// compacto forzado por desborde de §4.18, que sí lo achica: son dos
+// mecanismos independientes que comparten el valor 32px de fila por
+// coincidencia, no por regla compartida. Default acá: "cómoda" (52px) — esta
+// pantalla es carga y edición manual sostenida, el caso de uso que el propio
+// design-system.md marca para ese modo; "normal" (40px) es el default para
+// tablas nuevas en general, no una obligación para esta.
+type Density = "compacta" | "normal" | "comoda";
+const DENSITY_ROW_H: Record<Density, number> = { compacta: 32, normal: 40, comoda: 52 };
+const DENSITY_LABEL: Record<Density, string> = { compacta: "Compacta", normal: "Normal", comoda: "Cómoda" };
+const DENSITY_ORDER: Density[] = ["compacta", "normal", "comoda"];
+const isDensity = (v: unknown): v is Density => v === "compacta" || v === "normal" || v === "comoda";
 
 // ─── Ajuste de ancho al viewport (design-system.md §4.17) ────────────────────
 // Identificadora (Zona) y columnas editables (referencias cortas) quedan
@@ -228,6 +242,10 @@ export function IndiceIdoCargaSection() {
   const resizing = useRef<{ id: string; startX: number; startW: number; moved: boolean } | null>(null);
   const autoFitCanvas = useRef<HTMLCanvasElement | null>(null);
 
+  // Densidad de fila (design-system.md §4.19) — default "cómoda" en esta
+  // pantalla (carga y edición manual sostenida).
+  const [density, setDensity] = useState<Density>("comoda");
+
   // "Restablecer vista": confirmación temporal (1.5 s)
   const [resetMsg, setResetMsg] = useState(false);
   const resetMsgT = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -255,7 +273,11 @@ export function IndiceIdoCargaSection() {
   // librería y solo las columnas del medio scrollean.
   const compact = containerW > 0 && containerW < SUM_REAL;
   const scrollAnchored = compact && containerW < SUM_COMPACT;
-  const ROW_H = compact ? ROW_H_COMPACT : ROW_H_NORMAL;
+  // El desborde de columnas (§4.18) fuerza compacta por encima de la
+  // densidad elegida a mano — es una respuesta de emergencia para que la
+  // tabla entre, no una preferencia. El encabezado, en cambio, no escala con
+  // la densidad (§4.19): solo el modo compacto forzado lo achica.
+  const ROW_H = compact ? ROW_H_COMPACT : DENSITY_ROW_H[density];
   const HEADER_H = compact ? HEADER_H_COMPACT : HEADER_H_NORMAL;
   // Columnas que renderiza la grilla "del medio" — excluye la de cierre
   // cuando está anclada a la derecha (stickyRightColumn).
@@ -319,18 +341,27 @@ export function IndiceIdoCargaSection() {
   // columnas que ya no existen se descartan en silencio.
   useEffect(() => {
     if (!userId) return;
-    const saved = loadTableLayout(userId, TABLE_ID).colW;
-    if (!saved) return;
-    const known: Record<string, number> = {};
-    for (const [k, v] of Object.entries(saved)) {
-      if (KNOWN_COL_IDS.has(k) && typeof v === "number") known[k] = v;
+    const saved = loadTableLayout(userId, TABLE_ID);
+    if (saved.colW) {
+      const known: Record<string, number> = {};
+      for (const [k, v] of Object.entries(saved.colW)) {
+        if (KNOWN_COL_IDS.has(k) && typeof v === "number") known[k] = v;
+      }
+      if (Object.keys(known).length) setColW(known);
     }
-    if (Object.keys(known).length) setColW(known);
+    if (isDensity(saved.density)) setDensity(saved.density);
   }, [userId]);
+
+  function cycleDensity() {
+    const next = DENSITY_ORDER[(DENSITY_ORDER.indexOf(density) + 1) % DENSITY_ORDER.length];
+    setDensity(next);
+    if (userId) saveTableLayout(userId, TABLE_ID, { density: next });
+  }
 
   function resetLayout() {
     setColW({});
-    if (userId) saveTableLayout(userId, TABLE_ID, { colW: null });
+    setDensity("comoda");
+    if (userId) saveTableLayout(userId, TABLE_ID, { colW: null, density: null });
     setResetMsg(true);
     if (resetMsgT.current) clearTimeout(resetMsgT.current);
     resetMsgT.current = setTimeout(() => setResetMsg(false), 1500);
@@ -654,6 +685,14 @@ export function IndiceIdoCargaSection() {
 
           <div style={{ flex: 1 }} />
 
+          <button
+            className="ido-btn ido-btn-text"
+            onClick={cycleDensity}
+            title="Altura de fila: compacta 32px · normal 40px · cómoda 52px"
+          >
+            Densidad: {DENSITY_LABEL[density]}
+          </button>
+
           {resetMsg && (
             <span className="ido-reset-confirm">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12.5l5 5L20 6.5" /></svg>
@@ -663,7 +702,7 @@ export function IndiceIdoCargaSection() {
           <button
             className="ido-btn ido-btn-text"
             onClick={resetLayout}
-            title="Restaura el ancho de columnas a su valor por defecto"
+            title="Restaura el ancho de columnas y la densidad a su valor por defecto"
           >
             Restablecer vista
           </button>

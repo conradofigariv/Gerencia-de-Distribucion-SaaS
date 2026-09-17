@@ -1,13 +1,14 @@
-// Persistencia de layout de tabla (design-system.md — sección 07).
+// Persistencia de layout de tabla (design-system.md §4.19–4.20).
 // Por usuario y por id estable de tabla: `ds.tableLayout.v1.<userId>.<tableId>`.
 // Solo lo que exista realmente en cada módulo (hoy: ancho de columna
-// redimensionado a mano). Selección de fila, celda activa, scroll y filtros
-// quedan fuera — son estado de sesión.
+// redimensionado a mano, densidad de fila). Selección de fila, celda activa,
+// scroll y filtros quedan fuera — son estado de sesión.
 
 const LAYOUT_NS = "ds.tableLayout.v1";
 
 export interface TableLayout {
   colW?: Record<string, number> | null;
+  density?: string | null;
 }
 
 export function loadTableLayout(userId: string, tableId: string): TableLayout {

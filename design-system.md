@@ -244,7 +244,22 @@ Reemplaza el piso genérico de 64px quinorable — insuficiente para mostrar el 
 
 Ningún paso se salta: primero se prueba con los pisos reales (sin compactar), luego compacto, luego scroll anclado — cada uno es una capa adicional sobre la anterior, no una alternativa excluyente.
 
-### 4.19 Persistencia de layout de tabla
+### 4.19 Altura de fila (densidad)
+Tabla única de referencia — tres modos, sin valores intermedios:
+
+| Modo | Fila | Encabezado | Cuándo se usa |
+|---|---|---|---|
+| Compacta | `32px` | `38px` | Desborde de columnas (§4.18 paso 2) o revisión de volumen. |
+| Normal | `40px` | `38px` | **Default de toda tabla nueva** del sistema. |
+| Cómoda | `52px` | `38px` | Carga y edición manual sostenida. |
+
+- El **encabezado queda fijo en 38–40px en los tres modos** — no escala con la densidad (a diferencia del modo compacto forzado por desborde de §4.18, que sí lo achica a 32px como parte de esa respuesta de emergencia: son dos mecanismos distintos que comparten el valor `32px` de fila por coincidencia, no por regla compartida).
+- Ninguna fila crece por contenido largo: se trunca con puntos suspensivos + `title`/tooltip. Una fila, una línea — nunca texto envuelto en varias líneas. Si un dato necesita más espacio, va al panel de detalle de la fila, no a la celda.
+- Compacta se activa por dos caminos independientes: el sistema, por desborde de columnas (§4.18), o el usuario, a mano. Normal es el default de toda tabla nueva; una tabla ya existente puede tener otro default si su caso de uso lo justifica (p. ej. carga de datos sostenida → cómoda).
+- Control: botón terciario "Cambiar densidad" en la barra de herramientas, cicla entre los tres modos y muestra el modo activo. Transición de altura de fila `200ms` con la curva del sistema.
+- Persistido por usuario y por tabla (mismo mecanismo que §4.20).
+
+### 4.20 Persistencia de layout de tabla
 - Se guarda **por usuario y por id estable de tabla** (`ds.tableLayout.v1.<userId>.<idTabla>`): ancho de columna redimensionado a mano, orden de columnas por arrastre del encabezado, expandido/colapsado de cada grupo de columnas, columnas visibles del selector de columnas.
 - **No se guarda** (estado de sesión, vuelve a su valor inicial en cada entrada a la pantalla): selección de fila, celda activa o en edición, posición de scroll, filtros y búsqueda.
 - **Evolución del esquema:** una columna nueva entra en su posición por defecto sin alterar el orden guardado; las referencias a columnas eliminadas se descartan en silencio, sin aviso ni error — solo se aplica lo que existe hoy, el resto del layout guardado queda intacto.
