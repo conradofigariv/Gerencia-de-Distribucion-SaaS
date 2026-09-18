@@ -832,3 +832,67 @@ input[type="number"] { -moz-appearance: textfield; }
 .ido-selbar-close:hover {
   color: var(--ido-text);
 }
+
+/* ── Chips / badges (design-system.md §4.3) ─────────────────────────────────── */
+.ido-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ido-chip-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* ── Tabs (design-system.md §4.7) ────────────────────────────────────────────── */
+.ido-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--ido-surface-hover);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.ido-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--ido-text-dim);
+  transition: color 150ms var(--ido-ease);
+}
+.ido-tab.is-active {
+  color: var(--ido-text);
+}
+.ido-tab:not(.is-active):hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+.ido-tab-bubble {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.ido-tab > * {
+  position: relative;
+  z-index: 1;
+}

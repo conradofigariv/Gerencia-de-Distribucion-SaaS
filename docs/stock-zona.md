@@ -1,7 +1,7 @@
 # Sección Stock por Zona (`components/dashboard/sections/stock-zona.tsx`)
 
 - **Propósito:** Ver y cargar el stock de materiales (con matrícula) agrupado por zona de depósito, clasificarlos en familias y consultar su tipo (Material/Servicio).
-- **UI "beast pure":** unificada con Informe Técnico — header con ícono verde, tabs pill con flechas `→`, contenedor `oklch(0.235 0.005 270)`, paneles internos `oklch(0.205 0.005 270)`. Dropdowns con el componente local `BeastSelect` (mismo estilo que Informe Técnico, soporta `portal` para escapar contenedores con overflow).
+- **UI:** sistema de diseño dark de `design-system.md` (el mismo de IDO Carga/Resumen) — `.ido-terminal`/`.ido-card`, tabla en **CSS grid** (nunca `<table>`), tabs propios con burbuja deslizante (`.ido-tabs`), dropdowns propios (`IdoSelect`/`IdoMultiSelect`) reusando `.ido-menu`. Dejó de estar unificada visualmente con Informe Técnico ("beast pure"/oklch) — decisión explícita, no accidental: dos lenguajes visuales conviven en la app hasta que se decida migrar el resto.
 
 ## Tres fuentes de datos (independientes)
 | Fuente (sección) | Tabla | Aporta | Frescura |
@@ -31,14 +31,15 @@ El stock y las familias son enriquecimientos sobre la lista maestra de matrícul
 `tipoOf(articulo)` = override manual (`matricula_tipo.tipo`) si existe, si no el `mat_serv` del catálogo `matriculas`.
 
 ## Rendimiento
-- **Tablas virtualizadas** con `@tanstack/react-virtual` (técnica de filas espaciadoras + header sticky). Solo se renderizan las filas visibles → fluidez con miles de filas.
-- **Header sticky opaco:** los `<th>` usan `background: oklch(0.255 0.006 270)` (opaco) — en la práctica, la clase `bg-panel-header`. ⚠ NO usar `bg-secondary` / `hsl(var(--secondary))` para el fondo del header: `--secondary` está definida en oklch **con alpha** (`oklch(0.18 0.005 260 / 0.85)`), así que queda semitransparente y el contenido de las filas se transparenta debajo al hacer scroll (bug real, visto en Matrículas → Catálogo, PR #58).
+- **Filas virtualizadas** con `@tanstack/react-virtual`. El header vive FUERA del contenedor que scrollea verticalmente (`resumenScrollRef` solo envuelve las filas), así que no necesita `position:sticky` ni tokens con alpha — evita de raíz el bug de header semitransparente que sí aplica en tablas `<table>` con `<th>` sticky (visto en Matrículas → Catálogo, PR #58).
+- **Densidad de fila (§4.19):** cambiar de modo (compacta/normal/cómoda) no remonta la grilla — a diferencia de `react-datasheet-grid` (IDO Carga), `useVirtualizer` sí reacciona a un `estimateSize` distinto, pero cachea el tamaño ya medido por índice: hace falta llamar a `virtualizer.measure()` en un efecto atado a `density`, si no una fila ya medida no se mueve.
 - **Catálogo cacheado:** `getMatriculasInfo` se cachea en `sessionStorage` (`MATRICULAS_CACHE_KEY`) → 2ª carga instantánea; se refresca en segundo plano (no bloquea la vista de stock; hay indicador "catálogo…").
-- **Ancho de columnas persistido** en `localStorage` (`COLWIDTHS_KEY`) → se restaura al volver a abrir.
+- **Ancho de columna + densidad persistidos** vía `lib/tableLayout.ts` (`ds.tableLayout.v1.<userId>.stockZonaResumen`, mismo mecanismo que IDO Carga/Resumen) — reemplazó el `localStorage` suelto (`COLWIDTHS_KEY`) que usaba antes. Ajuste de ancho al viewport (§4.17): solo Descripción absorbe sobrante (es la única columna de texto largo); el resto (Matrícula, UDM, Tipo, Total, columnas de zona) queda en su piso real. Doble clic en un borde de columna ajusta al contenido (§4.15).
+- **`containerRef` (para medir el ancho disponible) va en un `<div>` que se monta SIEMPRE que `tab==="resumen"`**, no solo cuando hay datos — si el ref solo existiera dentro de la rama "hay datos", el `ResizeObserver` (que se conecta una sola vez al montar, deps `[]`) nunca vería un elemento real y el ancho quedaría en 0 para siempre (mismo tipo de bug que el offset del overlay de resize en IDO Carga: algo que solo se mide/conecta una vez y después queda mudo).
 - Animación colapso/expansión de zonas: keyframes `sz-zone-in` / `sz-zone-out` en `app/globals.css`.
 
 ## Botón "Ayuda" (`StockHelpModal`)
-Centro de ayuda con el **mismo diseño y concepto que el `HelpModal` de Informe Técnico** (overlay oscuro, card `oklch(0.15)`, sidebar de temas con íconos de color + subtítulo, header de tema, footer Anterior/puntos/Siguiente/Entendido). Temas: **Cargar datos** (guía SIGA con capturas en `public/ayuda-stock/paso1-5.png`), **Resumen de stock**, **Familias**. Helpers replicados: `HelpSection`, `HelpAction`, `HelpTip`.
+Centro de ayuda con el **mismo concepto que el `HelpModal` de Informe Técnico** (overlay oscuro, sidebar de temas con íconos de color + subtítulo, header de tema, footer Anterior/puntos/Siguiente/Entendido), reskineado a tokens `--ido-*` en vez de `oklch()`. Temas: **Cargar datos** (guía SIGA con capturas en `public/ayuda-stock/paso1-5.png`), **Resumen de stock**. Helpers replicados: `HelpSection`, `HelpAction`, `HelpTip`.
 
 ## Eliminado / histórico
 - Se eliminó el importador "Mat/Ser desde Excel" (tercera planilla con formato distinto que rompía el cruce). El tipo ahora sale del catálogo (`matriculas.mat_serv`).
