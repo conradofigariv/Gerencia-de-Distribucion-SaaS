@@ -445,6 +445,18 @@ function ZonasCargadasMenu({
 
 // ─── Redimensionado de columna (design-system.md §4.15) ────────────────────────
 
+// OJO: `ctx.font` es una cadena CSS que NO resuelve custom properties — poner
+// "13px var(--font-mono)" es inválido y el navegador lo ignora en silencio,
+// dejando la fuente por defecto (10px sans-serif) y midiendo de menos. Hay que
+// resolver la familia real antes de armar la cadena.
+function monoFont(px: number): string {
+  let family = "";
+  try {
+    family = getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim();
+  } catch { /* SSR o entorno sin DOM */ }
+  return `${px}px ${family ? `${family}, ` : ""}ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+}
+
 function autoFitTextWidth(ctx: CanvasRenderingContext2D, values: string[], floor: number): number {
   let widest = 0;
   for (const v of values) {
@@ -653,7 +665,7 @@ export function StockZonaSection() {
     const canvas = autoFitCanvas.current ?? (autoFitCanvas.current = document.createElement("canvas"));
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    ctx.font = "13px var(--font-mono, ui-monospace, monospace)";
+    ctx.font = monoFont(13);
     const floor = NATURAL_W[id] ?? 64;
     const fitW = autoFitTextWidth(ctx, values, floor);
     setColW((p) => ({ ...p, [id]: fitW }));
@@ -910,12 +922,46 @@ export function StockZonaSection() {
   const manualCols = useMemo(() => new Set(Object.keys(colW)), [colW]);
   const manualColsRef = useRef(manualCols);
   manualColsRef.current = manualCols;
-  const zoneW = colW.zone ?? NATURAL_W.zone;
+
+  // Piso de las columnas numéricas medido contra los DATOS REALES, no un ancho
+  // fijo elegido a ojo: con cantidades grandes ("1.222.450,75") un 88px fijo
+  // recorta el número. Se mide el valor más grande de cada columna y se acota
+  // para que no se desborde la tabla cuando hay muchas zonas.
+  // Se mide DESPUÉS del montaje, no durante el render: `document` no existe en
+  // el servidor (esto tiraba un 500 en SSR) y, además, medir en render daría
+  // anchos distintos entre servidor y cliente → mismatch de hidratación.
+  const [dataFloors, setDataFloors] = useState({ zone: NATURAL_W.zone, total: NATURAL_W.total });
+  useEffect(() => {
+    const canvas = autoFitCanvas.current ?? (autoFitCanvas.current = document.createElement("canvas"));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    let maxZona = 0, maxTotal = 0, hayDecimalZona = false, hayDecimalTotal = false;
+    for (const r of pivotRows) {
+      if (r.total > maxTotal) maxTotal = r.total;
+      if (!hayDecimalTotal && !Number.isInteger(r.total)) hayDecimalTotal = true;
+      for (const z of visibleZonas) {
+        const v = r.byZona[z];
+        if (v == null) continue;
+        if (v > maxZona) maxZona = v;
+        if (!hayDecimalZona && !Number.isInteger(v)) hayDecimalZona = true;
+      }
+    }
+    const fmt = (v: number, dec: boolean) => v.toLocaleString("es-AR", { minimumFractionDigits: dec ? 2 : 0, maximumFractionDigits: 2 });
+    ctx.font = monoFont(12);
+    const zone = Math.min(140, Math.max(NATURAL_W.zone, Math.ceil(ctx.measureText(fmt(maxZona, hayDecimalZona)).width) + 20));
+    ctx.font = monoFont(13);
+    const total = Math.min(160, Math.max(NATURAL_W.total, Math.ceil(ctx.measureText(fmt(maxTotal, hayDecimalTotal)).width) + 28));
+    setDataFloors((prev) => (prev.zone === zone && prev.total === total ? prev : { zone, total }));
+  }, [pivotRows, visibleZonas]);
+
+  const zoneW = colW.zone ?? dataFloors.zone;
 
   const fitted = useMemo(() => {
     const natural: Record<string, number> = {};
     for (const k of ["articulo", "descArticulo", "udmPrimaria", "tipo", "total"]) {
-      natural[k] = manualCols.has(k) ? colW[k] : NATURAL_W[k];
+      // "total" arranca del piso medido contra los datos (no del genérico).
+      const base = k === "total" ? dataFloors.total : NATURAL_W[k];
+      natural[k] = manualCols.has(k) ? colW[k] : base;
     }
     const toggleW = zonesExpanded ? 36 : 96;
     const zonesW = zonesExpanded ? visibleZonas.length * zoneW : 0;
@@ -930,7 +976,18 @@ export function StockZonaSection() {
     }
     const widths: Record<string, number> = { ...natural, descArticulo: descW };
     return { widths, pad: Math.max(0, Math.round(rest / 2)), toggleW };
-  }, [colW, manualCols, containerW, zonesExpanded, visibleZonas.length, zoneW]);
+  }, [colW, manualCols, containerW, zonesExpanded, visibleZonas.length, zoneW, dataFloors]);
+
+  // Ancho total del contenido. El contenedor de scroll lo usa como ancho
+  // explícito para que el encabezado (sticky) y las filas compartan la MISMA
+  // geometría: si las filas se quedaran con el ancho del viewport, las
+  // columnas de la derecha se recortarían y no habría forma de llegar a ellas.
+  const contentW = useMemo(() => (
+    SEL_W
+    + fitted.widths.articulo + fitted.widths.descArticulo + fitted.widths.udmPrimaria
+    + fitted.widths.tipo + fitted.widths.total + fitted.toggleW
+    + (zonesExpanded ? visibleZonas.length * zoneW : 0)
+  ), [fitted, zonesExpanded, visibleZonas.length, zoneW]);
 
   // ── Virtualización (rinde solo las filas visibles) ──────────────────────────
   const resumenScrollRef  = useRef<HTMLDivElement>(null);
@@ -1137,9 +1194,19 @@ export function StockZonaSection() {
 
                 {/* Tabla (CSS grid, ancho ajustado al viewport — §4.11/§4.17) */}
                 <div style={{ position: "relative" }}>
-                  <div style={{ overflowX: "auto" }}>
-                    <div style={{ padding: `0 ${fitted.pad}px`, transition: "padding 200ms var(--ido-ease)" }}>
-                      <div style={{ position: "relative" }}>
+                  <div style={{ padding: `0 ${fitted.pad}px`, transition: "padding 200ms var(--ido-ease)" }}>
+                    {/* UN SOLO contenedor de scroll para los dos ejes, con el
+                        encabezado sticky adentro (§4.11). Separar el header del
+                        área de filas (cada uno con su propio overflow) es lo que
+                        rompía la tabla: las filas quedaban recortadas a su propio
+                        ancho y las columnas de la derecha desaparecían, o
+                        scrolleaban desincronizadas del encabezado. */}
+                    <div
+                      ref={resumenScrollRef}
+                      key={density}
+                      style={{ maxHeight: "min(70vh, 640px)", overflow: "auto" }}
+                    >
+                      <div style={{ width: contentW, position: "relative" }}>
                         {resizingCol && (
                           <>
                             <div
@@ -1162,10 +1229,15 @@ export function StockZonaSection() {
                           </>
                         )}
 
-                        {/* Header */}
+                        {/* Header sticky (§4.11). El fondo TIENE que ser opaco:
+                            las filas pasan por debajo al scrollear. */}
                         <div
                           className="flex"
-                          style={{ height: HEADER_H, background: "var(--ido-surface)", borderBottom: "1px solid var(--ido-line-strong)", transition: "width 200ms var(--ido-ease)" }}
+                          style={{
+                            position: "sticky", top: 0, zIndex: 5,
+                            height: HEADER_H, background: "var(--ido-surface)",
+                            borderBottom: "1px solid var(--ido-line-strong)",
+                          }}
                         >
                           <div className="flex items-center justify-center" style={{ width: SEL_W, flexShrink: 0 }}>
                             <IdoCheckbox
@@ -1248,19 +1320,7 @@ export function StockZonaSection() {
                         {pivotRows.length === 0 ? (
                           <div className="ido-loading">No hay registros que coincidan con los filtros</div>
                         ) : (
-                          <div
-                            key={density}
-                            ref={resumenScrollRef}
-                            // overflowX:"hidden", no "visible": si un eje es auto/scroll y el
-                            // otro visible, el spec de CSS fuerza el "visible" a computar
-                            // como "auto" igual — este div volvería a tener SU PROPIO scroll
-                            // horizontal independiente del contenedor de afuera (exactamente
-                            // el bug de encabezado desincronizado de las filas que reportó
-                            // el usuario). "hidden" evita esa reconversión: el scroll
-                            // horizontal queda gobernado únicamente por el div de afuera.
-                            style={{ maxHeight: "min(70vh, 640px)", overflowY: "auto", overflowX: "hidden" }}
-                          >
-                            <div style={{ height: resumenVirtualizer.getTotalSize(), position: "relative" }}>
+                          <div style={{ height: resumenVirtualizer.getTotalSize(), position: "relative" }}>
                               {resumenVirtualizer.getVirtualItems().map((vi) => {
                                 const row = pivotRows[vi.index];
                                 const isSelected = selectedRow === row.articulo;
@@ -1291,7 +1351,7 @@ export function StockZonaSection() {
                                       </button>
                                       <span className="truncate">{row.articulo}</span>
                                     </div>
-                                    <div className="flex items-center truncate" style={{ width: fitted.widths.descArticulo, flexShrink: 0, padding: "0 12px", color: "var(--ido-text-dim)" }}>
+                                    <div className="flex items-center truncate" title={row.descArticulo || undefined} style={{ width: fitted.widths.descArticulo, flexShrink: 0, padding: "0 12px", color: "var(--ido-text-dim)" }}>
                                       {row.descArticulo}
                                     </div>
                                     <div className="flex items-center truncate" style={{ width: fitted.widths.udmPrimaria, flexShrink: 0, padding: "0 12px", color: "var(--ido-text-faint)" }}>
@@ -1303,20 +1363,29 @@ export function StockZonaSection() {
                                         return t ? <TipoPill tipo={t} /> : <span style={{ opacity: 0.25 }}>—</span>;
                                       })()}
                                     </div>
-                                    <div className="flex items-center justify-end" style={{ width: fitted.widths.total, flexShrink: 0, padding: "0 12px", fontWeight: 600, color: "var(--ido-text)", fontFamily: "var(--font-mono, ui-monospace, monospace)", fontVariantNumeric: "tabular-nums" }}>
+                                    <div
+                                      className="flex items-center justify-end"
+                                      title={row.total.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
+                                      style={{ width: fitted.widths.total, flexShrink: 0, padding: "0 12px", fontWeight: 600, color: "var(--ido-text)", fontFamily: "var(--font-mono, ui-monospace, monospace)", fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                                    >
                                       {row.total.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
                                     </div>
                                     <div style={{ width: fitted.toggleW, flexShrink: 0 }} />
                                     {zonesExpanded && visibleZonas.map((zona, i) => {
                                       const qty = row.byZona[zona];
+                                      const qtyText = qty != null && qty > 0 ? qty.toLocaleString("es-AR", { maximumFractionDigits: 2 }) : null;
                                       return (
                                         <div
                                           key={zona}
                                           className="flex items-center justify-center"
-                                          style={{ width: zoneW, flexShrink: 0, padding: "0 6px", color: "var(--ido-text-dim)", fontSize: 12, fontFamily: "var(--font-mono, ui-monospace, monospace)", fontVariantNumeric: "tabular-nums", borderLeft: i === 0 ? "1px solid var(--ido-line-strong)" : undefined }}
+                                          title={qtyText ?? undefined}
+                                          style={{ width: zoneW, flexShrink: 0, padding: "0 6px", color: "var(--ido-text-dim)", fontSize: 12, fontFamily: "var(--font-mono, ui-monospace, monospace)", fontVariantNumeric: "tabular-nums", borderLeft: i === 0 ? "1px solid var(--ido-line-strong)" : undefined, overflow: "hidden" }}
                                         >
-                                          <span className={zoneAnimClass}>
-                                            {qty != null && qty > 0 ? qty.toLocaleString("es-AR", { maximumFractionDigits: 2 }) : <span style={{ opacity: 0.25 }}>—</span>}
+                                          {/* Si el número no entra se trunca con puntos
+                                              suspensivos y queda completo en el tooltip
+                                              (§4.19) — nunca cortado a la mitad en silencio. */}
+                                          <span className={zoneAnimClass} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                            {qtyText ?? <span style={{ opacity: 0.25 }}>—</span>}
                                           </span>
                                         </div>
                                       );
@@ -1324,7 +1393,6 @@ export function StockZonaSection() {
                                   </div>
                                 );
                               })}
-                            </div>
                           </div>
                         )}
                       </div>
