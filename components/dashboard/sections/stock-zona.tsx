@@ -6,7 +6,7 @@ import { motion } from "motion/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Loader2, X, PackageOpen, RefreshCw,
-  ChevronDown, ChevronUp, ChevronsUpDown,
+  ChevronDown, ChevronUp,
   Download, Wrench, Package, Check, HelpCircle,
   ChevronLeft, ChevronRight, ArrowRight, Lightbulb, ListChecks, Pin, Filter, FileSpreadsheet, Search,
 } from "lucide-react";
@@ -124,6 +124,23 @@ function TipoPill({ tipo }: { tipo: ArticuloTipo }) {
       <Icon className="w-3 h-3" strokeWidth={2.2} />
       {m.label}
     </span>
+  );
+}
+
+// ─── Encabezado ordenable (design-system.md §4.11) — una sola flecha que rota
+// 180° según la dirección y se pone verde en la columna activa; no un ícono
+// distinto por estado (eso no es lo que documenta el sistema de diseño).
+function SortArrow({ active, dir, className }: { active: boolean; dir: SortDir; className?: string }) {
+  return (
+    <ChevronUp
+      className={className}
+      style={{
+        transition: "transform 160ms var(--ido-ease), color 120ms var(--ido-ease), opacity 120ms var(--ido-ease)",
+        transform: dir === "desc" ? "rotate(180deg)" : "none",
+        color: active ? "var(--ido-accent)" : "var(--ido-text-dim)",
+        opacity: active ? 1 : 0.4,
+      }}
+    />
   );
 }
 
@@ -1165,7 +1182,6 @@ export function StockZonaSection() {
                             { col: "tipo", label: "Tipo" },
                           ].map(({ col, label }) => {
                             const active = sortCol === col;
-                            const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
                             return (
                               <div
                                 key={col}
@@ -1178,7 +1194,7 @@ export function StockZonaSection() {
                                 }}
                               >
                                 {label}
-                                <SortIcon className="w-3 h-3 shrink-0" style={{ opacity: active ? 1 : 0.3 }} />
+                                <SortArrow active={active} dir={active ? sortDir : "asc"} className="w-3 h-3 shrink-0" />
                                 <Resizer id={col} onDoubleClick={(e) => autoFitWidth(e, col, pivotRows.map((r) => String(r[col as keyof Pick<PivotRow, "articulo" | "descArticulo" | "udmPrimaria">] ?? "")))} />
                                 <AbsorbBar id={col} />
                               </div>
@@ -1193,7 +1209,7 @@ export function StockZonaSection() {
                               color: sortCol === "total" ? "var(--ido-text)" : "var(--ido-text-dim)",
                             }}
                           >
-                            {(() => { const SortIcon = sortCol === "total" ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown; return <SortIcon className="w-3 h-3 shrink-0" style={{ opacity: sortCol === "total" ? 1 : 0.3 }} />; })()}
+                            <SortArrow active={sortCol === "total"} dir={sortCol === "total" ? sortDir : "asc"} className="w-3 h-3 shrink-0" />
                             Total
                             <Resizer id="total" onDoubleClick={(e) => autoFitWidth(e, "total", pivotRows.map((r) => r.total.toLocaleString("es-AR")))} />
                             <AbsorbBar id="total" />
@@ -1211,7 +1227,6 @@ export function StockZonaSection() {
                           </div>
                           {zonesExpanded && visibleZonas.map((zona, i) => {
                             const active = sortCol === zona;
-                            const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
                             return (
                               <div
                                 key={zona}
@@ -1220,7 +1235,7 @@ export function StockZonaSection() {
                                 style={{ width: zoneW, flexShrink: 0, padding: "0 8px", cursor: "pointer", userSelect: "none", borderLeft: i === 0 ? "1px solid var(--ido-line-strong)" : undefined }}
                               >
                                 <span className={zoneAnimClass}>
-                                  <SortIcon className="w-3.5 h-3.5 shrink-0" style={{ opacity: active ? 1 : 0.3, color: "var(--ido-text-dim)" }} />
+                                  <SortArrow active={active} dir={active ? sortDir : "asc"} className="w-3.5 h-3.5 shrink-0" />
                                 </span>
                                 <span className={zoneAnimClass}><ZonePill zona={zona} /></span>
                                 <Resizer id="zone" onDoubleClick={(e) => autoFitWidth(e, "zone", pivotRows.map((r) => (r.byZona[zona] ?? 0).toLocaleString("es-AR")))} />
@@ -1236,7 +1251,14 @@ export function StockZonaSection() {
                           <div
                             key={density}
                             ref={resumenScrollRef}
-                            style={{ maxHeight: "min(70vh, 640px)", overflow: "auto" }}
+                            // overflowX:"hidden", no "visible": si un eje es auto/scroll y el
+                            // otro visible, el spec de CSS fuerza el "visible" a computar
+                            // como "auto" igual — este div volvería a tener SU PROPIO scroll
+                            // horizontal independiente del contenedor de afuera (exactamente
+                            // el bug de encabezado desincronizado de las filas que reportó
+                            // el usuario). "hidden" evita esa reconversión: el scroll
+                            // horizontal queda gobernado únicamente por el div de afuera.
+                            style={{ maxHeight: "min(70vh, 640px)", overflowY: "auto", overflowX: "hidden" }}
                           >
                             <div style={{ height: resumenVirtualizer.getTotalSize(), position: "relative" }}>
                               {resumenVirtualizer.getVirtualItems().map((vi) => {
