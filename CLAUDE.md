@@ -47,6 +47,45 @@ shadcn: `components.json`, `cssVariables: true` → nuestros colores SON el tema
   `bg-secondary` / `hsl(var(--secondary))`: `--secondary` tiene alpha (`/ 0.85`),
   queda semitransparente y el contenido de filas se transparenta al hacer scroll.
 
+## Sistema de diseño (IDO / pantallas dark)
+
+El sistema de diseño del proyecto vive en `design-system.md`. Leelo antes de
+tocar cualquier estilo, componente visual, o layout, sin que haga falta que
+te lo pasen de nuevo en cada mensaje. Si el archivo tiene un changelog al
+principio o al final, revisalo para saber qué es lo más reciente antes de
+asumir que conocés todo el contenido.
+
+### Regla de aplicación
+Cuando se te pida implementar o actualizar el sistema de diseño en una
+sección de la app, nunca asumas que todos los componentes del documento
+aplican ahí. Antes de escribir o modificar código:
+
+1. Identificá qué tipo de contenido tiene esa sección: si tiene tablas de
+   datos, formularios, tarjetas, navegación, modales, o solo contenido
+   estático.
+2. Armá una lista numerada corta de qué componentes del sistema de diseño
+   corresponderían a esa sección según lo que identificaste, con una línea
+   breve de por qué cada uno aplica.
+3. Marcá con claridad si algún componente del documento no aplica a esta
+   sección y por qué lo excluiste.
+4. Preguntame explícitamente cuáles confirmo antes de tocar cualquier
+   archivo. No implementes nada hasta recibir esa confirmación.
+
+Si la sección ya tiene una implementación parcial del sistema de diseño de
+una sesión anterior, decime primero qué encontraste ya aplicado y qué
+falta, en vez de reaplicar todo desde cero.
+
+### Qué no hacer
+No agregues componentes del sistema de diseño "por las dudas" o "para que
+sea consistente" si no fueron confirmados en la lista. No reinterpretes un
+pedido genérico como "aplicá el sistema de diseño acá" como luz verde para
+todo el documento completo.
+
+Un detalle a tener en cuenta: Claude Code lee CLAUDE.md al arrancar la
+sesión, pero si ya tenés una sesión larga corriendo con contexto viejo,
+esta regla nueva no entra retroactivamente hasta que abras una sesión
+nueva o se lo recordés vos en el chat.
+
 ## Estructura de Archivos Clave
 - `app/`: Rutas y vistas principales (App Router).
 - `components/dashboard/sections/`: Secciones del dashboard (una por módulo).
