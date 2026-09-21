@@ -1297,10 +1297,13 @@ export function StockZonaSection() {
                           <div
                             onClick={toggleZones}
                             title={zonesExpanded ? "Colapsar zonas" : "Expandir zonas"}
-                            className="flex items-center gap-1"
-                            style={{ width: fitted.toggleW, flexShrink: 0, padding: "0 10px", cursor: "pointer", userSelect: "none", color: "var(--ido-text-dim)" }}
+                            className="ido-chevron-host flex items-center gap-1.5"
+                            style={{ width: fitted.toggleW, flexShrink: 0, padding: "0 8px", cursor: "pointer", userSelect: "none", color: "var(--ido-text-dim)" }}
                           >
-                            <ChevronDown className="w-3.5 h-3.5 shrink-0" style={{ transition: "transform 200ms var(--ido-ease)", transform: zonesExpanded ? "rotate(180deg)" : "none" }} />
+                            {/* Botón circular de 20px (§4.14), no un chevron pelado. */}
+                            <span className="ido-chevron-btn" data-open={zonesExpanded}>
+                              <ChevronDown className="w-3 h-3" />
+                            </span>
                             {!zonesExpanded && zonas.length > 0 && (
                               <span style={{ fontSize: 11, textTransform: "none", letterSpacing: "normal" }}>{zonas.length} zona{zonas.length !== 1 ? "s" : ""}</span>
                             )}

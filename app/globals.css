@@ -746,7 +746,11 @@ input[type="number"] { -moz-appearance: textfield; }
   color: var(--ido-text-dim);
   transition: color 120ms var(--ido-ease), border-color 120ms var(--ido-ease), background 120ms var(--ido-ease);
 }
-.ido-chevron-row:hover .ido-chevron-btn {
+/* `.ido-chevron-host` es para cuando el botón NO vive en una `.ido-chevron-row`
+   (p. ej. el colapso del grupo de columnas de zona, que va en una celda de
+   encabezado y no puede heredar el layout de la fila). */
+.ido-chevron-row:hover .ido-chevron-btn,
+.ido-chevron-host:hover .ido-chevron-btn {
   color: var(--ido-text);
   border-color: var(--ido-accent);
   background: rgba(255, 255, 255, 0.08);
