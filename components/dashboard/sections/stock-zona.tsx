@@ -212,6 +212,14 @@ function IdoTabsBar({ tabs, value, onChange, end }: {
 
 interface IdoOption { value: string; label: string; node?: React.ReactNode }
 
+// Los menús se portalean a <body>, es decir FUERA del contenedor `.ido-terminal`
+// que es donde se definen los tokens `--ido-*`. Si no se vuelve a aplicar esa
+// clase en el nodo portaleado, `var(--ido-menu-bg)` no resuelve, la declaración
+// queda inválida y `background` cae en su valor inicial: TRANSPARENTE — se ve la
+// tabla a través del menú. Los tokens se definen a propósito bajo `.ido-terminal`
+// y no en `:root` para no filtrar esta paleta al resto de la app.
+const MENU_CLASS = "ido-terminal ido-menu";
+
 function useMenuCoords(open: boolean, triggerRef: React.RefObject<HTMLElement | null>, minWidth: number) {
   const [coords, setCoords] = useState<{ top: number; left: number; minWidth: number } | null>(null);
   useEffect(() => {
@@ -275,7 +283,7 @@ function IdoSelect({
       </button>
 
       {open && coords && createPortal(
-        <div ref={menuRef} className="ido-menu" style={{ top: coords.top, left: coords.left, minWidth: coords.minWidth, maxHeight: 320, overflowY: "auto" }}>
+        <div ref={menuRef} className={MENU_CLASS} style={{ top: coords.top, left: coords.left, minWidth: coords.minWidth, maxHeight: 320, overflowY: "auto" }}>
           {clearable && (
             <div className="ido-menu-item" style={{ cursor: "pointer", justifyContent: "space-between" }} onClick={() => { onChange(""); setOpen(false); }}>
               {placeholder}
@@ -349,7 +357,7 @@ function IdoMultiSelect({
       </button>
 
       {open && coords && createPortal(
-        <div ref={menuRef} className="ido-menu" style={{ top: coords.top, left: coords.left, minWidth: coords.minWidth, maxHeight: 340, overflowY: "auto" }}>
+        <div ref={menuRef} className={MENU_CLASS} style={{ top: coords.top, left: coords.left, minWidth: coords.minWidth, maxHeight: 340, overflowY: "auto" }}>
           <div className="ido-menu-item" style={{ cursor: "pointer", justifyContent: "space-between" }} onClick={onClear}>
             Todas las zonas
             {count === 0 && <Check className="w-3.5 h-3.5" style={{ color: "var(--ido-accent)" }} />}
@@ -416,7 +424,7 @@ function ZonasCargadasMenu({
       </button>
 
       {open && coords && createPortal(
-        <div ref={menuRef} className="ido-menu" style={{ top: coords.top, left: coords.left, minWidth: coords.minWidth, maxHeight: 340, overflowY: "auto", padding: 8 }}>
+        <div ref={menuRef} className={MENU_CLASS} style={{ top: coords.top, left: coords.left, minWidth: coords.minWidth, maxHeight: 340, overflowY: "auto", padding: 8 }}>
           <p style={{ fontSize: 10, fontWeight: 500, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--ido-text-dim)", padding: "0 6px 8px" }}>Zonas cargadas</p>
           <div className="flex flex-col gap-1">
             {sorted.map((u) => (
