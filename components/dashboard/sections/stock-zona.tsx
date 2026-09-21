@@ -1300,9 +1300,13 @@ export function StockZonaSection() {
                             className="ido-chevron-host flex items-center gap-1.5"
                             style={{ width: fitted.toggleW, flexShrink: 0, padding: "0 8px", cursor: "pointer", userSelect: "none", color: "var(--ido-text-dim)" }}
                           >
-                            {/* Botón circular de 20px (§4.14), no un chevron pelado. */}
+                            {/* Botón circular de 20px (§4.14). Flecha horizontal, no
+                                vertical: acá se colapsan COLUMNAS (izq/der), no filas
+                                (arriba/abajo) — colapsado apunta hacia la derecha
+                                (hacia las columnas ocultas), expandido apunta hacia la
+                                izquierda (hacia donde se pliegan al colapsar). */}
                             <span className="ido-chevron-btn" data-open={zonesExpanded}>
-                              <ChevronDown className="w-3 h-3" />
+                              <ChevronRight className="w-3 h-3" />
                             </span>
                             {!zonesExpanded && zonas.length > 0 && (
                               <span style={{ fontSize: 11, textTransform: "none", letterSpacing: "normal" }}>{zonas.length} zona{zonas.length !== 1 ? "s" : ""}</span>
