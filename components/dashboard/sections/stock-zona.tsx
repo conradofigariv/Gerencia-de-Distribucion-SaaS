@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "motion/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -39,7 +39,17 @@ const DENSITY_ROW_H: Record<Density, number> = { compacta: 32, normal: 40, comod
 const DENSITY_LABEL: Record<Density, string> = { compacta: "Compacta", normal: "Normal", comoda: "Cómoda" };
 const DENSITY_ORDER: Density[] = ["compacta", "normal", "comoda"];
 const isDensity = (v: unknown): v is Density => v === "compacta" || v === "normal" || v === "comoda";
+// Comparadores reutilizados para ordenar ~5.000 filas. `a.localeCompare(b, "es",
+// {numeric:true})` crea un comparador nuevo en CADA llamada: con ~60.000
+// comparaciones eso tardaba ~330ms y congelaba la pantalla al llegar el
+// catálogo o al tipear en el buscador. Mismo orden, misma semántica.
+const COLLATOR_ES = new Intl.Collator("es");
+const COLLATOR_ES_NUM = new Intl.Collator("es", { numeric: true, sensitivity: "base" });
+
 const HEADER_H = 38;
+// Lo que queda debajo de la caja de scroll hasta el borde de la ventana: borde
+// inferior de la card (1px) + padding inferior de <main> (24px en sm+) + aire.
+const TABLE_BOTTOM_GAP = 28;
 
 // ─── Ajuste de ancho al viewport (design-system.md §4.17) — pisos reales por
 // tipo de dato (§4.18): descArticulo es la única columna de texto largo, así
@@ -172,36 +182,48 @@ function IdoCheckbox({
 
 // ─── Tabs (design-system.md §4.7) ──────────────────────────────────────────────
 
-function IdoTabsBar({ tabs, value, onChange, end }: {
-  tabs: { id: Tab; label: React.ReactNode }[];
+// Memoizado A PROPÓSITO: la burbuja usa `layoutId` de motion, que vuelve a medir
+// el layout de toda la página cada vez que el componente se re-renderiza. Sin
+// memo, cualquier cambio de estado de la sección (expandir/colapsar zonas,
+// tildar una fila…) disparaba esa medición y trababa la animación. Así solo se
+// re-renderiza cuando cambia la tab activa. Arma las etiquetas desde `TABS`
+// (constante de módulo) para no recibir JSX nuevo por props en cada render.
+const TabButtons = memo(function TabButtons({ value, onChange }: { value: Tab; onChange: (id: Tab) => void }) {
+  return (
+    <div className="ido-tabs">
+      {TABS.map((t) => {
+        const active = t.id === value;
+        const Icon = t.icon;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onChange(t.id)}
+            className={`ido-tab${active ? " is-active" : ""}`}
+          >
+            {active && (
+              <motion.span
+                layoutId="stock-zona-tab-bubble"
+                className="ido-tab-bubble"
+                transition={{ type: "spring", bounce: 0.2, duration: 0.35 }}
+              />
+            )}
+            <Icon className="w-3.5 h-3.5" strokeWidth={1.9} />{t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+});
+
+function IdoTabsBar({ value, onChange, end }: {
   value: Tab;
   onChange: (id: Tab) => void;
   end?: React.ReactNode;
 }) {
   return (
     <div className="ido-toolbar" style={{ justifyContent: "space-between" }}>
-      <div className="ido-tabs">
-        {tabs.map((t) => {
-          const active = t.id === value;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => onChange(t.id)}
-              className={`ido-tab${active ? " is-active" : ""}`}
-            >
-              {active && (
-                <motion.span
-                  layoutId="stock-zona-tab-bubble"
-                  className="ido-tab-bubble"
-                  transition={{ type: "spring", bounce: 0.2, duration: 0.35 }}
-                />
-              )}
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
+      <TabButtons value={value} onChange={onChange} />
       <div className="flex items-center gap-2.5">{end}</div>
     </div>
   );
@@ -457,12 +479,14 @@ function ZonasCargadasMenu({
 // "13px var(--font-mono)" es inválido y el navegador lo ignora en silencio,
 // dejando la fuente por defecto (10px sans-serif) y midiendo de menos. Hay que
 // resolver la familia real antes de armar la cadena.
-function monoFont(px: number): string {
+// `weight` importa: la columna Total va en negrita (600), que es más ancha que
+// el peso normal — medir en normal subestimaba el ancho y el número no entraba.
+function monoFont(px: number, weight = 400): string {
   let family = "";
   try {
     family = getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim();
   } catch { /* SSR o entorno sin DOM */ }
-  return `${px}px ${family ? `${family}, ` : ""}ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+  return `${weight} ${px}px ${family ? `${family}, ` : ""}ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
 }
 
 function autoFitTextWidth(ctx: CanvasRenderingContext2D, values: string[], floor: number): number {
@@ -680,7 +704,10 @@ export function StockZonaSection() {
     if (userIdRef.current) saveTableLayout(userIdRef.current, TABLE_ID, { colW: { ...colWRef.current, [id]: fitW } });
   }
 
-  const Resizer = ({ id, onDoubleClick }: { id: string; onDoubleClick?: (e: React.MouseEvent) => void }) => {
+  // Funciones que devuelven JSX, NO componentes: definidas dentro del render,
+  // un `<Resizer/>` sería un tipo de componente nuevo en cada render y React
+  // desmontaría y remontaría todos los handles cada vez (p. ej. en cada toggle).
+  const renderResizer = (id: string, onDoubleClick?: (e: React.MouseEvent) => void) => {
     const active = resizingCol === id;
     return (
       <span
@@ -695,7 +722,7 @@ export function StockZonaSection() {
       </span>
     );
   };
-  const AbsorbBar = ({ id }: { id: string }) => {
+  const renderAbsorbBar = (id: string) => {
     if (!ABSORBER_KEYS.has(id) || manualColsRef.current.has(id)) return null;
     return (
       <span
@@ -843,13 +870,13 @@ export function StockZonaSection() {
       if (sortCol === "tipo") {
         const va = tipoOf(a.articulo);
         const vb = tipoOf(b.articulo);
-        const cmp = va.localeCompare(vb, "es");
+        const cmp = COLLATOR_ES.compare(va, vb);
         return sortDir === "asc" ? cmp : -cmp;
       }
       if (sortCol === "articulo" || sortCol === "descArticulo" || sortCol === "udmPrimaria") {
         const va = a[sortCol as keyof Pick<PivotRow, "articulo" | "descArticulo" | "udmPrimaria">];
         const vb = b[sortCol as keyof Pick<PivotRow, "articulo" | "descArticulo" | "udmPrimaria">];
-        const cmp = String(va).localeCompare(String(vb), "es", { numeric: true, sensitivity: "base" });
+        const cmp = COLLATOR_ES_NUM.compare(String(va), String(vb));
         return sortDir === "asc" ? cmp : -cmp;
       }
       const va = a.byZona[sortCol] ?? 0;
@@ -939,6 +966,15 @@ export function StockZonaSection() {
   // el servidor (esto tiraba un 500 en SSR) y, además, medir en render daría
   // anchos distintos entre servidor y cliente → mismatch de hidratación.
   const [dataFloors, setDataFloors] = useState({ zone: NATURAL_W.zone, total: NATURAL_W.total });
+  // Canvas mide con la fuente que esté cargada EN ESE MOMENTO: si la web font
+  // todavía no llegó, mide con la de respaldo y el ancho sale mal. Se vuelve a
+  // medir cuando termina de cargar.
+  const [fontsReady, setFontsReady] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    document.fonts?.ready.then(() => { if (alive) setFontsReady(true); });
+    return () => { alive = false; };
+  }, []);
   useEffect(() => {
     const canvas = autoFitCanvas.current ?? (autoFitCanvas.current = document.createElement("canvas"));
     const ctx = canvas.getContext("2d");
@@ -957,12 +993,21 @@ export function StockZonaSection() {
     const fmt = (v: number, dec: boolean) => v.toLocaleString("es-AR", { minimumFractionDigits: dec ? 2 : 0, maximumFractionDigits: 2 });
     ctx.font = monoFont(12);
     const zone = Math.min(140, Math.max(NATURAL_W.zone, Math.ceil(ctx.measureText(fmt(maxZona, hayDecimalZona)).width) + 20));
-    ctx.font = monoFont(13);
+    ctx.font = monoFont(13, 600); // la celda de Total va en negrita
     const total = Math.min(160, Math.max(NATURAL_W.total, Math.ceil(ctx.measureText(fmt(maxTotal, hayDecimalTotal)).width) + 28));
     setDataFloors((prev) => (prev.zone === zone && prev.total === total ? prev : { zone, total }));
-  }, [pivotRows, visibleZonas]);
+  }, [pivotRows, visibleZonas, fontsReady]);
 
   const zoneW = colW.zone ?? dataFloors.zone;
+
+  // Medidas de la caja de scroll de la tabla (se llenan en un efecto más abajo,
+  // cuando la caja existe): `w` = ancho útil SIN la barra vertical, `maxH` =
+  // alto disponible desde donde arranca la tabla hasta el borde de la ventana.
+  const [scrollBox, setScrollBox] = useState<{ w: number; maxH: number }>({ w: 0, maxH: 600 });
+  // Ancho contra el que se reparte: el de la caja de scroll si ya se midió. Usar
+  // el del contenedor de afuera dejaría la tabla 10px más ancha que el área
+  // visible (la barra vertical) y aparecería un scroll horizontal fantasma.
+  const availW = scrollBox.w || containerW;
 
   const fitted = useMemo(() => {
     const natural: Record<string, number> = {};
@@ -974,17 +1019,17 @@ export function StockZonaSection() {
     const toggleW = zonesExpanded ? 36 : 96;
     const zonesW = zonesExpanded ? visibleZonas.length * zoneW : 0;
     const fixedSum = SEL_W + natural.articulo + natural.udmPrimaria + natural.tipo + natural.total + toggleW + zonesW;
-    let rest = Math.max(0, containerW - fixedSum - natural.descArticulo);
-    let descW = natural.descArticulo;
-    if (ABSORBER_KEYS.has("descArticulo") && !manualCols.has("descArticulo")) {
-      const cap = NATURAL_W.descArticulo * 2 - natural.descArticulo;
-      const add = Math.min(rest, cap);
-      descW += add;
-      rest -= add;
-    }
+    const rest = Math.max(0, availW - fixedSum - natural.descArticulo);
+    // Descripción absorbe TODO el sobrante, sin el tope de 2× de §4.17.
+    // Excepción deliberada: con el tope, al colapsar las zonas quedaban ~290px
+    // de hueco a cada lado MIENTRAS la descripción se veía cortada con "…" —
+    // espacio desperdiciado justo al lado del texto que lo necesitaba. Y
+    // animar ese relleno lateral al expandir era lo que trababa la animación.
+    const descW = natural.descArticulo
+      + (ABSORBER_KEYS.has("descArticulo") && !manualCols.has("descArticulo") ? rest : 0);
     const widths: Record<string, number> = { ...natural, descArticulo: descW };
-    return { widths, pad: Math.max(0, Math.round(rest / 2)), toggleW };
-  }, [colW, manualCols, containerW, zonesExpanded, visibleZonas.length, zoneW, dataFloors]);
+    return { widths, toggleW };
+  }, [colW, manualCols, availW, zonesExpanded, visibleZonas.length, zoneW, dataFloors]);
 
   // Ancho total del contenido. El contenedor de scroll lo usa como ancho
   // explícito para que el encabezado (sticky) y las filas compartan la MISMA
@@ -1005,11 +1050,40 @@ export function StockZonaSection() {
     count: pivotRows.length,
     getScrollElement: () => resumenScrollRef.current,
     estimateSize: () => ROW_H,
-    overscan: 14,
+    overscan: 6, // 14 montaba ~28 filas fuera de pantalla: ×9 zonas eran ~250 celdas extra al expandir
   });
   // react-virtual cachea el tamaño estimado por índice — sin este remeasure
   // forzado, cambiar de densidad no mueve una fila que ya se midió antes.
   useEffect(() => { resumenVirtualizer.measure(); }, [density]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Alto de la caja de scroll = espacio real que queda desde donde arranca la
+  // tabla hasta el borde inferior de la ventana. Antes era `min(70vh, 640px)`,
+  // un número fijo que no sabía dónde arrancaba la tabla: según la pantalla, el
+  // borde inferior de la caja —y con él la barra de scroll horizontal— quedaba
+  // debajo del pliegue y no se veía sin scrollear la página.
+  // Se usa la cadena de offsetTop (posición de layout) y no getBoundingClientRect:
+  // la sección entra con una animación de translateY y eso falsearía la medida.
+  const hasData = pivotMap.size > 0;
+  useEffect(() => {
+    const el = resumenScrollRef.current;
+    if (!el) return;
+    const measure = () => {
+      let top = 0;
+      for (let n: HTMLElement | null = el; n; n = n.offsetParent as HTMLElement | null) top += n.offsetTop;
+      const maxH = Math.max(260, Math.floor(window.innerHeight - top - TABLE_BOTTOM_GAP));
+      const w = el.clientWidth;
+      setScrollBox((p) => (p.w === w && p.maxH === maxH ? p : { w, maxH }));
+    };
+    measure();
+    // La caja cambia de ancho útil cuando aparece/desaparece su barra vertical;
+    // el contenedor de afuera, cuando la barra de filtros salta de línea (eso
+    // además corre hacia abajo el punto donde arranca la tabla).
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    if (containerRef.current) ro.observe(containerRef.current);
+    window.addEventListener("resize", measure);
+    return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
+  }, [density, tab, loading, hasData]);
 
   // Column detection for Cargar tab
   const REQUIRED_COLS = Object.values(COL_MAP) as string[];
@@ -1078,10 +1152,6 @@ export function StockZonaSection() {
         <IdoTabsBar
           value={tab}
           onChange={setTab}
-          tabs={TABS.map((t) => {
-            const Icon = t.icon;
-            return { id: t.id, label: <><Icon className="w-3.5 h-3.5" strokeWidth={1.9} />{t.label}</> };
-          })}
           end={
             <>
               <ZonasCargadasMenu uploads={uploads} lastUpload={lastUpload} deletingZona={deletingZona} onDelete={handleDelete} />
@@ -1202,7 +1272,10 @@ export function StockZonaSection() {
 
                 {/* Tabla (CSS grid, ancho ajustado al viewport — §4.11/§4.17) */}
                 <div style={{ position: "relative" }}>
-                  <div style={{ padding: `0 ${fitted.pad}px`, transition: "padding 200ms var(--ido-ease)" }}>
+                  {/* Sin relleno lateral: antes el sobrante iba a padding centrado
+                      (huecos a los costados) y ese padding se animaba al expandir,
+                      forzando recalcular el layout de toda la tabla en cada frame. */}
+                  <div>
                     {/* UN SOLO contenedor de scroll para los dos ejes, con el
                         encabezado sticky adentro (§4.11). Separar el header del
                         área de filas (cada uno con su propio overflow) es lo que
@@ -1212,9 +1285,12 @@ export function StockZonaSection() {
                     <div
                       ref={resumenScrollRef}
                       key={density}
-                      style={{ maxHeight: "min(70vh, 640px)", overflow: "auto" }}
+                      style={{ maxHeight: scrollBox.maxH, overflow: "auto" }}
                     >
-                      <div style={{ width: contentW, position: "relative" }}>
+                      {/* minWidth 100%: si Descripción no absorbe (la redimensionaste
+                          a mano), las filas igual llegan hasta el borde en vez de
+                          cortarse en el medio de la card. */}
+                      <div style={{ width: contentW, minWidth: "100%", position: "relative" }}>
                         {resizingCol && (
                           <>
                             <div
@@ -1275,8 +1351,8 @@ export function StockZonaSection() {
                               >
                                 {label}
                                 <SortArrow active={active} dir={active ? sortDir : "asc"} className="w-3 h-3 shrink-0" />
-                                <Resizer id={col} onDoubleClick={(e) => autoFitWidth(e, col, pivotRows.map((r) => String(r[col as keyof Pick<PivotRow, "articulo" | "descArticulo" | "udmPrimaria">] ?? "")))} />
-                                <AbsorbBar id={col} />
+                                {renderResizer(col, (e) => autoFitWidth(e, col, pivotRows.map((r) => String(r[col as keyof Pick<PivotRow, "articulo" | "descArticulo" | "udmPrimaria">] ?? ""))))}
+                                {renderAbsorbBar(col)}
                               </div>
                             );
                           })}
@@ -1291,8 +1367,8 @@ export function StockZonaSection() {
                           >
                             <SortArrow active={sortCol === "total"} dir={sortCol === "total" ? sortDir : "asc"} className="w-3 h-3 shrink-0" />
                             Total
-                            <Resizer id="total" onDoubleClick={(e) => autoFitWidth(e, "total", pivotRows.map((r) => r.total.toLocaleString("es-AR")))} />
-                            <AbsorbBar id="total" />
+                            {renderResizer("total", (e) => autoFitWidth(e, "total", pivotRows.map((r) => r.total.toLocaleString("es-AR"))))}
+                            {renderAbsorbBar("total")}
                           </div>
                           <div
                             onClick={toggleZones}
@@ -1312,23 +1388,28 @@ export function StockZonaSection() {
                               <span style={{ fontSize: 11, textTransform: "none", letterSpacing: "normal" }}>{zonas.length} zona{zonas.length !== 1 ? "s" : ""}</span>
                             )}
                           </div>
-                          {zonesExpanded && visibleZonas.map((zona, i) => {
-                            const active = sortCol === zona;
-                            return (
-                              <div
-                                key={zona}
-                                onClick={() => handleSort(zona)}
-                                className={`relative flex items-center justify-center gap-1.5 ${i === 0 ? "" : ""}`}
-                                style={{ width: zoneW, flexShrink: 0, padding: "0 8px", cursor: "pointer", userSelect: "none", borderLeft: i === 0 ? "1px solid var(--ido-line-strong)" : undefined }}
-                              >
-                                <span className={zoneAnimClass}>
-                                  <SortArrow active={active} dir={active ? sortDir : "asc"} className="w-3.5 h-3.5 shrink-0" />
-                                </span>
-                                <span className={zoneAnimClass}><ZonePill zona={zona} /></span>
-                                <Resizer id="zone" onDoubleClick={(e) => autoFitWidth(e, "zone", pivotRows.map((r) => (r.byZona[zona] ?? 0).toLocaleString("es-AR")))} />
-                              </div>
-                            );
-                          })}
+                          {/* Todas las columnas de zona en UN grupo, y la animación de
+                              entrada/salida va en el grupo, no en cada celda (ver la
+                              nota en las filas). */}
+                          {zonesExpanded && (
+                            <div className={`flex ${zoneAnimClass}`} style={{ flexShrink: 0 }}>
+                              {visibleZonas.map((zona, i) => {
+                                const active = sortCol === zona;
+                                return (
+                                  <div
+                                    key={zona}
+                                    onClick={() => handleSort(zona)}
+                                    className="relative flex items-center justify-center gap-1.5"
+                                    style={{ width: zoneW, flexShrink: 0, padding: "0 8px", cursor: "pointer", userSelect: "none", borderLeft: i === 0 ? "1px solid var(--ido-line-strong)" : undefined }}
+                                  >
+                                    <SortArrow active={active} dir={active ? sortDir : "asc"} className="w-3.5 h-3.5 shrink-0" />
+                                    <ZonePill zona={zona} />
+                                    {renderResizer("zone", (e) => autoFitWidth(e, "zone", pivotRows.map((r) => (r.byZona[zona] ?? 0).toLocaleString("es-AR"))))}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
 
                         {/* Filas (virtualizadas) */}
@@ -1348,7 +1429,11 @@ export function StockZonaSection() {
                                     className={`ido-table-row flex ${isChecked ? "ido-row-selected-multi" : isSelected ? "ido-row-selected" : ""}`}
                                     style={{
                                       position: "absolute", top: 0, left: 0, right: 0, transform: `translateY(${vi.start}px)`,
-                                      height: ROW_H, borderBottom: "1px solid var(--ido-row-line)",
+                                      // 13px = "cuerpo y celdas de tabla" (design-system.md §2).
+                                      // Sin esto las celdas heredaban los 16px del body, y el
+                                      // piso de Total (medido con canvas a 13px) quedaba corto:
+                                      // "13.019.725,05" salía truncado.
+                                      height: ROW_H, fontSize: 13, borderBottom: "1px solid var(--ido-row-line)",
                                       background: isChecked ? undefined : isSelected ? undefined : isPinned ? `${PIN_COLOR}12` : undefined,
                                     }}
                                   >
@@ -1366,8 +1451,8 @@ export function StockZonaSection() {
                                       </button>
                                       <span className="truncate">{row.articulo}</span>
                                     </div>
-                                    <div className="flex items-center truncate" title={row.descArticulo || undefined} style={{ width: fitted.widths.descArticulo, flexShrink: 0, padding: "0 12px", color: "var(--ido-text-dim)" }}>
-                                      {row.descArticulo}
+                                    <div className="flex items-center" title={row.descArticulo || undefined} style={{ width: fitted.widths.descArticulo, flexShrink: 0, padding: "0 12px", color: "var(--ido-text-dim)", overflow: "hidden" }}>
+                                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.descArticulo}</span>
                                     </div>
                                     <div className="flex items-center truncate" style={{ width: fitted.widths.udmPrimaria, flexShrink: 0, padding: "0 12px", color: "var(--ido-text-faint)" }}>
                                       {row.udmPrimaria}
@@ -1381,30 +1466,52 @@ export function StockZonaSection() {
                                     <div
                                       className="flex items-center justify-end"
                                       title={row.total.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
-                                      style={{ width: fitted.widths.total, flexShrink: 0, padding: "0 12px", fontWeight: 600, color: "var(--ido-text)", fontFamily: "var(--font-mono, ui-monospace, monospace)", fontVariantNumeric: "tabular-nums", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                                      style={{ width: fitted.widths.total, flexShrink: 0, padding: "0 12px", fontWeight: 600, color: "var(--ido-text)", fontFamily: "var(--font-mono, ui-monospace, monospace)", fontVariantNumeric: "tabular-nums", overflow: "hidden" }}
                                     >
-                                      {row.total.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
+                                      {/* El texto va en un span que puede encogerse (minWidth 0).
+                                          Con el ellipsis puesto directo en la celda —que es flex
+                                          alineada a la derecha— un número que no entraba se
+                                          recortaba por la IZQUIERDA sin "…": "11.002.056,75" se
+                                          veía ".1.002.056,75", una cifra que parece otra. */}
+                                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                        {row.total.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
+                                      </span>
                                     </div>
                                     <div style={{ width: fitted.toggleW, flexShrink: 0 }} />
-                                    {zonesExpanded && visibleZonas.map((zona, i) => {
-                                      const qty = row.byZona[zona];
-                                      const qtyText = qty != null && qty > 0 ? qty.toLocaleString("es-AR", { maximumFractionDigits: 2 }) : null;
-                                      return (
-                                        <div
-                                          key={zona}
-                                          className="flex items-center justify-center"
-                                          title={qtyText ?? undefined}
-                                          style={{ width: zoneW, flexShrink: 0, padding: "0 6px", color: "var(--ido-text-dim)", fontSize: 12, fontFamily: "var(--font-mono, ui-monospace, monospace)", fontVariantNumeric: "tabular-nums", borderLeft: i === 0 ? "1px solid var(--ido-line-strong)" : undefined, overflow: "hidden" }}
-                                        >
-                                          {/* Si el número no entra se trunca con puntos
-                                              suspensivos y queda completo en el tooltip
-                                              (§4.19) — nunca cortado a la mitad en silencio. */}
-                                          <span className={zoneAnimClass} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                            {qtyText ?? <span style={{ opacity: 0.25 }}>—</span>}
-                                          </span>
-                                        </div>
-                                      );
-                                    })}
+                                    {/* Las celdas de zona van en UN grupo por fila y la
+                                        animación de entrada/salida se aplica al grupo. Antes
+                                        iba en cada celda: ~300 elementos animándose a la vez
+                                        (9 zonas × ~30 filas visibles) → el navegador recalculaba
+                                        el estilo de cada uno en cada frame y la expansión se
+                                        trababa. Además el translateX estaba en un <span> inline,
+                                        donde transform no tiene efecto: el deslizamiento nunca
+                                        se veía. En un bloque sí anda, y va por la GPU. */}
+                                    {zonesExpanded && (
+                                      <div className={`flex ${zoneAnimClass}`} style={{ flexShrink: 0 }}>
+                                        {visibleZonas.map((zona, i) => {
+                                          const qty = row.byZona[zona];
+                                          const qtyText = qty != null && qty > 0 ? qty.toLocaleString("es-AR", { maximumFractionDigits: 2 }) : null;
+                                          return (
+                                            <div
+                                              key={zona}
+                                              className="flex items-center justify-center"
+                                              title={qtyText ?? undefined}
+                                              style={{ width: zoneW, flexShrink: 0, padding: "0 6px", color: "var(--ido-text-dim)", fontSize: 12, fontFamily: "var(--font-mono, ui-monospace, monospace)", fontVariantNumeric: "tabular-nums", borderLeft: i === 0 ? "1px solid var(--ido-line-strong)" : undefined, overflow: "hidden" }}
+                                            >
+                                              {/* Si el número no entra se trunca con puntos
+                                                  suspensivos y queda completo en el tooltip
+                                                  (§4.19) — nunca cortado a la mitad en silencio. */}
+                                              {/* minWidth 0: sin esto el span (ítem flex) no se encoge
+                                                  por debajo de su contenido, se desborda centrado y el
+                                                  número queda recortado por los dos lados. */}
+                                              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                                {qtyText ?? <span style={{ opacity: 0.25 }}>—</span>}
+                                              </span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })}
