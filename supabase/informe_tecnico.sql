@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS licitacion_renglones (
   licitacion_id   uuid NOT NULL REFERENCES licitaciones(id) ON DELETE CASCADE,
   numero          integer NOT NULL,
   condicion_adjudicacion text,
+  -- Lista común a todos los oferentes: [{ id, label }]. Ver informe_tecnico_especificaciones.sql
+  especificaciones jsonb NOT NULL DEFAULT '[]'::jsonb,
   created_at      timestamptz NOT NULL DEFAULT now(),
   UNIQUE (licitacion_id, numero)
 );

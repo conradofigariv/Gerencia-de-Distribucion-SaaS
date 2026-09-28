@@ -18,11 +18,36 @@ export interface Licitacion {
   updated_at: string;
 }
 
+/** Especificación técnica común a todos los oferentes de un renglón. */
+export interface EspecificacionRenglon {
+  id: string;
+  label: string;
+}
+
 export interface Renglon {
   id: string;
   licitacion_id: string;
   numero: number;
   condicion_adjudicacion: string | null;
+  /** Ausente si todavía no se corrió supabase/informe_tecnico_especificaciones.sql */
+  especificaciones?: EspecificacionRenglon[];
+}
+
+/** Normaliza el jsonb de especificaciones (tolera null, columna ausente o basura). */
+export function normalizarEspecificaciones(raw: unknown): EspecificacionRenglon[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((x): x is { id: unknown; label: unknown } => !!x && typeof x === "object" && "id" in x)
+    .map((x) => ({ id: String(x.id), label: typeof x.label === "string" ? x.label : "" }));
+}
+
+/**
+ * true si el error de Supabase se debe a que la columna `especificaciones`
+ * todavía no existe (falta correr la migración).
+ */
+export function esErrorColumnaEspecificaciones(e: unknown): boolean {
+  const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "";
+  return msg.includes("especificaciones");
 }
 
 export interface Item {
@@ -154,6 +179,7 @@ export async function createRenglon(input: {
   licitacion_id: string;
   numero: number;
   condicion_adjudicacion?: string | null;
+  especificaciones?: EspecificacionRenglon[];
 }): Promise<Renglon> {
   const { data, error } = await supabase
     .from("licitacion_renglones")
@@ -161,6 +187,11 @@ export async function createRenglon(input: {
       licitacion_id: input.licitacion_id,
       numero: input.numero,
       condicion_adjudicacion: input.condicion_adjudicacion ?? null,
+      // Solo si hay algo: así crear renglones sigue funcionando aunque todavía
+      // no se haya corrido la migración de la columna.
+      ...(input.especificaciones && input.especificaciones.length > 0
+        ? { especificaciones: input.especificaciones }
+        : {}),
     })
     .select("*")
     .single();
