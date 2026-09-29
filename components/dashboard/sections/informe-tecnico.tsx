@@ -1018,6 +1018,64 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
     setSpecsModal(null);
   };
 
+  // "Aplicar a todo el renglón": guarda este oferente y copia sus especificaciones
+  // con casilla (solo el texto: sin tildar y sin comentarios) a los demás oferentes
+  // del renglón. No borra ni modifica nada de lo que ya tienen: agrega solo las que
+  // les faltan (comparando por texto). Tampoco cambia su estado Cumple/No cumple.
+  const handleApplyAll = (renglonId: string, oferenteId: string, items: SpecItem[]) => {
+    const r = renglones.find((x) => x.id === renglonId);
+    if (!r) return;
+    const esCheck = (x: SpecItem): x is Extract<SpecItem, { kind: "check" }> => x.kind === "check";
+    const norm = (t: string) => t.trim().replace(/\s+/g, " ").toLowerCase();
+    const checks = items.filter(esCheck).filter((c) => c.label.trim());
+    if (checks.length === 0) {
+      toast.error("No hay especificaciones con casilla para aplicar.");
+      return;
+    }
+
+    // Los oferentes en "No oferta" no tienen botón de especificaciones: no se incluyen.
+    const destinos = oferentes.filter((o) => o.id !== oferenteId && cellStatus(r, o.id) !== "noOferta");
+    const omitidos = oferentes.filter((o) => o.id !== oferenteId && cellStatus(r, o.id) === "noOferta");
+    const plan = destinos
+      .map((o) => {
+        const current = evals.get(cellKey(renglonId, o.id));
+        const existentes = parseSpecs(current?.observaciones ?? null);
+        const ya = new Set(existentes.filter(esCheck).map((c) => norm(c.label)));
+        const nuevos: SpecItem[] = checks
+          .filter((c) => !ya.has(norm(c.label)))
+          .map((c) => ({ id: specSid(), kind: "check", label: c.label.trim(), checked: false }));
+        return { o, current, existentes, nuevos };
+      })
+      .filter((p) => p.nuevos.length > 0);
+
+    if (plan.length === 0) {
+      handleSaveSpecs(renglonId, oferenteId, items);
+      toast.info("Los demás oferentes del renglón ya tienen todas estas especificaciones.");
+      return;
+    }
+
+    const detalle = plan.map((p) => `• ${p.o.nombre}: ${p.nuevos.length}`).join("\n");
+    const aviso = omitidos.length > 0
+      ? `\n\nNo se incluyen (No oferta): ${omitidos.map((o) => o.nombre).join(", ")}.`
+      : "";
+    if (!window.confirm(
+      `Se van a agregar especificaciones, sin tildar y sin comentarios, a estos oferentes del renglón ${r.numero}:\n\n${detalle}` +
+      `\n\nNo se borra ni se modifica nada de lo que ya tienen.${aviso}\n\n¿Continuar?`,
+    )) return;
+
+    handleSaveSpecs(renglonId, oferenteId, items); // guarda el oferente actual y cierra el modal
+    for (const p of plan) {
+      const key = cellKey(renglonId, p.o.id);
+      const obs = serializeSpecs([...p.existentes, ...p.nuevos]);
+      const cumple = p.current?.cumple ?? null; // el estado de cada oferente no se toca
+      setEvals((prev) =>
+        new Map(prev).set(key, { id: p.current?.id ?? "", oferente_id: p.o.id, renglon_id: renglonId, cumple, observaciones: obs }),
+      );
+      doSave(renglonId, p.o.id, cumple, obs);
+    }
+    toast.success(`Especificaciones aplicadas a ${plan.length} oferente${plan.length === 1 ? "" : "s"} del renglón ${r.numero}`);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center gap-2 py-8 justify-center text-muted-foreground text-sm">
@@ -1238,6 +1296,7 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
           initial={parseSpecs(evals.get(cellKey(specsModal.renglonId, specsModal.oferenteId))?.observaciones ?? null)}
           onClose={() => setSpecsModal(null)}
           onSave={(items) => handleSaveSpecs(specsModal.renglonId, specsModal.oferenteId, items)}
+          onApplyAll={oferentes.length > 1 ? (items) => handleApplyAll(specsModal.renglonId, specsModal.oferenteId, items) : undefined}
         />
       )}
     </div>
@@ -1247,13 +1306,15 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
 // ─── Modal de especificaciones técnicas ──────────────────────────────
 
 function SpecsModal({
-  renglonNumero, oferenteNombre, initial, onClose, onSave,
+  renglonNumero, oferenteNombre, initial, onClose, onSave, onApplyAll,
 }: {
   renglonNumero: number;
   oferenteNombre: string;
   initial: SpecItem[];
   onClose: () => void;
   onSave: (items: SpecItem[]) => void;
+  /** Guarda y copia las especificaciones con casilla al resto de los oferentes del renglón. */
+  onApplyAll?: (items: SpecItem[]) => void;
 }) {
   const [items, setItems] = useState<SpecItem[]>(initial);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -1454,6 +1515,16 @@ function SpecsModal({
 
         {/* Footer */}
         <div style={{ padding: "14px 22px", borderTop: "1px solid var(--hairline)", display: "flex", justifyContent: "flex-end", gap: 10, flexShrink: 0 }}>
+          {onApplyAll && (
+            <button
+              onClick={() => onApplyAll(items)}
+              disabled={!items.some((x) => x.kind === "check" && x.label.trim())}
+              title="Guarda y copia estas especificaciones (sin tildar) a los demás oferentes del renglón"
+              className="mr-auto inline-flex items-center gap-2 rounded-[9px] border border-accent-green/40 px-4 py-2.5 text-sm font-semibold text-accent-green transition-colors hover:bg-accent-green/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Copy className="size-3.5" /> Aplicar a todo el renglón
+            </button>
+          )}
           <button onClick={onClose}
             style={{ padding: "10px 20px", borderRadius: 9, border: "1px solid oklch(1 0 0 / 0.10)", background: "transparent", color: "oklch(0.65 0 0)", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
             Cancelar
