@@ -1136,53 +1136,6 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                     (status === "cumple" || status === "noCumple" || status === "pendiente") &&
                     status !== derivado;
 
-                  // Siempre accesible, también en "No oferta": ahí suele estar la nota
-                  // que explica por qué (p. ej. "NO PRESENTA").
-                  const primeraNota =
-                    ev.items.find((x): x is Extract<SpecItem, { kind: "text" }> => x.kind === "text" && !!x.text.trim())?.text ??
-                    Object.values(ev.resultados).find((x) => x.nota?.trim())?.nota ??
-                    ev.items.find((x): x is Extract<SpecItem, { kind: "check" }> => x.kind === "check" && !!x.nota?.trim())?.nota;
-                  const botonSpecs = (
-                    <>
-                    {primeraNota && (
-                      <p className="line-clamp-3 whitespace-pre-line rounded-md border border-hairline bg-panel-input/40 px-2 py-1.5 text-[11.5px] leading-snug text-foreground/85" title={primeraNota}>
-                        {primeraNota}
-                      </p>
-                    )}
-                    <button
-                      onClick={() => setSpecsModal({ renglonId: r.id, oferenteId: of.id })}
-                      style={{
-                        width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                        padding: "7px 8px", borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: "pointer",
-                        background: "oklch(0.18 0.005 270)", border: "1px solid oklch(1 0 0 / 0.08)",
-                        color: prog.evaluadas > 0 || propios > 0 ? "var(--accent-green)" : "oklch(0.62 0 0)",
-                      }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.18)"; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.08)"; }}
-                    >
-                      <ListChecks className="w-3.5 h-3.5" />
-                      Especificaciones
-                      {prog.total > 0 ? (
-                        <span
-                          title={`${prog.evaluadas} de ${prog.total} especificaciones del renglón evaluadas`}
-                          className={cn(
-                            "rounded-full border px-1.5 font-mono text-[11px] font-bold tabular-nums",
-                            prog.evaluadas === prog.total
-                              ? "border-accent-green/50 bg-accent-green/15 text-accent-green"
-                              : "border-accent-amber/50 bg-accent-amber/15 text-accent-amber",
-                          )}
-                        >
-                          {prog.evaluadas}/{prog.total}
-                        </span>
-                      ) : propios > 0 ? (
-                        <span className="rounded-full border border-accent-green/50 bg-accent-green/15 px-1.5 font-mono text-[11px] font-bold tabular-nums text-accent-green">
-                          {propios}
-                        </span>
-                      ) : null}
-                    </button>
-                    </>
-                  );
-
                   return (
                     <div
                       key={of.id}
@@ -1201,8 +1154,7 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                       </div>
 
                       {status === "noOferta" ? (
-                        <>
-                        {(() => {
+                        (() => {
                           const cob = coberturaDe(r, of.id);
                           return (
                             <div
@@ -1218,9 +1170,7 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                               </span>
                             </div>
                           );
-                        })()}
-                        {botonSpecs}
-                        </>
+                        })()
                       ) : (
                         <>
                           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1271,7 +1221,37 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                             </p>
                           )}
 
-                          {botonSpecs}
+                          <button
+                            onClick={() => setSpecsModal({ renglonId: r.id, oferenteId: of.id })}
+                            style={{
+                              width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                              padding: "7px 8px", borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: "pointer",
+                              background: "oklch(0.18 0.005 270)", border: "1px solid oklch(1 0 0 / 0.08)",
+                              color: prog.evaluadas > 0 || propios > 0 ? "var(--accent-green)" : "oklch(0.62 0 0)",
+                            }}
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.18)"; }}
+                            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.08)"; }}
+                          >
+                            <ListChecks className="w-3.5 h-3.5" />
+                            Especificaciones
+                            {prog.total > 0 ? (
+                              <span
+                                title={`${prog.evaluadas} de ${prog.total} especificaciones del renglón evaluadas`}
+                                className={cn(
+                                  "rounded-full border px-1.5 font-mono text-[11px] font-bold tabular-nums",
+                                  prog.evaluadas === prog.total
+                                    ? "border-accent-green/50 bg-accent-green/15 text-accent-green"
+                                    : "border-accent-amber/50 bg-accent-amber/15 text-accent-amber",
+                                )}
+                              >
+                                {prog.evaluadas}/{prog.total}
+                              </span>
+                            ) : propios > 0 ? (
+                              <span className="rounded-full border border-accent-green/50 bg-accent-green/15 px-1.5 font-mono text-[11px] font-bold tabular-nums text-accent-green">
+                                {propios}
+                              </span>
+                            ) : null}
+                          </button>
                         </>
                       )}
                     </div>
