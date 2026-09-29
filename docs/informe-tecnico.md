@@ -12,8 +12,7 @@ type Divisa = "USD" | "ARS"
 type LicitacionEstado = "borrador" | "en_evaluacion" | "adjudicada" | "archivada"
 
 interface Licitacion        // id, numero_sic, titulo, fd_sic_fecha, fd_sic_valor, fd_op_fecha, fd_op_valor, umbral_economico_pct, exclusividad_renglones, estado
-interface Renglon           // id, licitacion_id, numero, condicion_adjudicacion, especificaciones? (EspecificacionRenglon[])
-interface EspecificacionRenglon // id, label — lista común a todos los oferentes del renglón
+interface Renglon           // id, licitacion_id, numero, condicion_adjudicacion
 interface Item              // id, renglon_id, numero_item, matricula, descripcion, cantidad, precio_sic_pesos, precio_sic_divisa
 interface RenglonConItems   // Renglon & { items: Item[] }
 interface Oferente          // id, licitacion_id, nombre
@@ -31,10 +30,6 @@ interface Adjudicacion      // id, renglon_id, oferente_id, confirmado_por, conf
 - `listOfertas / upsertOferta / deleteOferta`
 - `listEvaluaciones / upsertEvaluacion / deleteEvaluacion`
 - `listAdjudicaciones / upsertAdjudicacion / deleteAdjudicacion`
-- `normalizarEspecificaciones(raw)` / `esErrorColumnaEspecificaciones(e)` — helpers de la lista común
-
-**Lógica pura de especificaciones:** `lib/informeTecnicoSpecs.ts` (sin Supabase) —
-`parseEvalOferente`, `serializeEvalOferente`, `derivarCumple`, `progresoComunes`.
 
 ## Estructura del componente (informe-tecnico.tsx)
 
@@ -69,19 +64,11 @@ InformeTecnicoSection (export)
 │   └── Contador de celdas completadas
 │
 ├── EvaluacionTab
-│   ├── Un card por renglón, con una tarjeta por oferente (tamaño fijo; se achican con >3 oferentes)
-│   ├── Header del renglón: botón "Especificaciones del renglón (N)" → ListaSpecsModal
-│   ├── Tres botones por tarjeta: ✓ Cumple (verde) | ⏳ Pendiente (amarillo) | ✗ No cumple (rojo)
-│   ├── Botón "Especificaciones" por tarjeta → EvaluacionSpecsModal, con badge evaluadas/total
-│   ├── Aviso "Forzado a mano" si el estado elegido no coincide con lo que surge de las especificaciones
+│   ├── Tabla: filas=renglones, columnas=oferentes
+│   ├── Tres botones por celda: ✓ Cumple (verde) | ⏳ Pendiente (amarillo) | ✗ No cumple (rojo)
+│   ├── Textarea de observaciones por celda
 │   ├── Lógica de estado: sin registro = sin evaluar | cumple=true = cumple | cumple=false = no cumple | cumple=null con registro = pendiente
 │   └── Resumen al pie con conteos por renglón
-│
-├── ListaSpecsModal — edita la lista COMÚN del renglón (agregar, Enter agrega la siguiente,
-│   reordenar arrastrando, borrar con confirmación si ya hay oferentes que la evaluaron)
-│
-├── EvaluacionSpecsModal — por oferente: marca cada especificación común como
-│   Cumple / No cumple (click de nuevo = sin evaluar) + comentario, y las notas propias del oferente
 │
 └── AdjudicacionTab
     ├── Un card por renglón con header: "RENGLÓN N  [Total SIC del Renglón: X ARS]  [Adjudicado — NOMBRE]"
@@ -94,35 +81,6 @@ InformeTecnicoSection (export)
     │   └── Botón Adjudicar (toggle, persiste en licitacion_adjudicaciones)
     └── Resumen de adjudicación al pie
 ```
-
-## Especificaciones técnicas (Evaluación técnica)
-
-**La lista es común al renglón, el resultado es por oferente.**
-
-- **Lista:** `licitacion_renglones.especificaciones` (jsonb, `[{ id, label }]`).
-  Requiere correr `supabase/informe_tecnico_especificaciones.sql` una vez
-  (idempotente). Si la columna no existe, al guardar la lista se avisa con un
-  toast que falta la migración; el resto de la sección sigue funcionando.
-  Al duplicar un renglón, la lista se copia (las evaluaciones no).
-- **Resultado por oferente:** `licitacion_evaluaciones_tecnicas.observaciones`
-  (texto con JSON). Formatos, todos se siguen leyendo:
-  1. Texto plano (muy viejo) → una nota de texto.
-  2. **v1** — array de `SpecItem` (`check` / `text`): especificaciones cargadas
-     por oferente antes de que la lista fuera común. **Se conservan tal cual** y
-     siguen contando para el estado (binario: tildada = cumple).
-  3. **v2** — `{ v: 2, resultados: { [specId]: { estado?, nota? } }, items: SpecItem[] }`.
-  Si un oferente no tiene resultados sobre la lista común se guarda en v1, así
-  los datos viejos quedan byte a byte iguales. Un resultado de una
-  especificación borrada de la lista queda guardado (huérfano, ignorado).
-- **Estado derivado** (`derivarCumple`), se aplica al guardar el modal del oferente:
-  alguna no cumple → No cumple · todas cumplen → Cumple · evaluación parcial →
-  Pendiente · nada evaluado → no toca el estado actual. Agregar una
-  especificación nueva a la lista NO recalcula a nadie (quedan en Pendiente
-  recién cuando se guarda su evaluación).
-- **Forzar a mano:** los botones Cumple/Pendiente/No cumple siempre pisan el
-  estado. La tarjeta muestra "Forzado a mano · según especificaciones: X" si no coinciden.
-- **Destildar no borra datos:** volver a tocar el estado activo borra el registro
-  solo si no hay especificaciones/notas; si las hay, queda en Pendiente.
 
 ## Lógica de cálculo en AdjudicacionTab
 
@@ -175,8 +133,7 @@ licitaciones(id uuid PK, numero_sic text, titulo text, fecha_apertura date,
   estado text DEFAULT 'borrador', created_at timestamptz, updated_at timestamptz)
 
 -- Renglones e ítems
-licitacion_renglones(id uuid PK, licitacion_id uuid FK, numero int, condicion_adjudicacion text,
-  especificaciones jsonb NOT NULL DEFAULT '[]')  -- migración: supabase/informe_tecnico_especificaciones.sql
+licitacion_renglones(id uuid PK, licitacion_id uuid FK, numero int, condicion_adjudicacion text)
 licitacion_items(id uuid PK, renglon_id uuid FK, numero_item int, matricula text,
   descripcion text, cantidad numeric DEFAULT 1, precio_sic_pesos numeric,
   precio_sic_divisa text DEFAULT 'ARS')

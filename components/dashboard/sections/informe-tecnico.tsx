@@ -38,26 +38,7 @@ import {
   deleteEvaluacion,
   type EvaluacionTecnica,
   type Adjudicacion,
-  type EspecificacionRenglon,
-  normalizarEspecificaciones,
-  esErrorColumnaEspecificaciones,
 } from "@/lib/informeTecnico";
-import {
-  type SpecItem,
-  type EvalOferente,
-  type EstadoSpec,
-  type ResultadoSpec,
-  specSid,
-  parseEvalOferente,
-  serializeEvalOferente,
-  derivarCumple,
-  progresoComunes,
-} from "@/lib/informeTecnicoSpecs";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { FloatingInput, SearchInput } from "@/components/ui/floating-input";
 import { DirectionAwareTabs } from "@/components/ui/direction-aware-tabs";
@@ -861,32 +842,54 @@ function FormField({ label, children, className = "" }: { label: string; childre
 }
 
 // ─── Tab: Evaluación técnica ─────────────────────────────────────
-//
-// Especificaciones técnicas:
-//  - La LISTA es común al renglón (`licitacion_renglones.especificaciones`) y
-//    se edita una sola vez desde el encabezado del renglón (ListaSpecsModal).
-//  - El RESULTADO es por oferente (cumple / no cumple + comentario por
-//    especificación, más sus notas propias) y vive en `observaciones`.
-//  - La lógica pura (formatos, derivación del estado) está en
-//    lib/informeTecnicoSpecs.ts.
-// El estado Cumple / Pendiente / No cumple se recalcula al guardar las
-// especificaciones de un oferente, pero siempre se puede forzar a mano con los
-// botones de la tarjeta.
 
-type EstadoCelda = "noOferta" | "cumple" | "noCumple" | "pendiente" | "sinEval";
+// ─── Especificaciones técnicas (specs) ──────────────────────────────
 
-function estadoDeDerivado(d: boolean | null | undefined): EstadoCelda | null {
-  if (d === undefined) return null;
-  return d === true ? "cumple" : d === false ? "noCumple" : "pendiente";
+type SpecItem =
+  | { id: string; kind: "check"; label: string; checked: boolean; nota?: string }
+  | { id: string; kind: "text"; text: string };
+
+const specSid = () => Math.random().toString(36).slice(2, 9);
+
+function parseSpecs(raw: string | null): SpecItem[] {
+  if (!raw) return [];
+  const t = raw.trim();
+  if (!t) return [];
+  if (t.startsWith("[")) {
+    try {
+      const arr = JSON.parse(t);
+      if (Array.isArray(arr)) {
+        return arr
+          .filter((x) => x && (x.kind === "check" || x.kind === "text"))
+          .map((x) =>
+            x.kind === "check"
+              ? {
+                  id: String(x.id ?? specSid()),
+                  kind: "check",
+                  label: String(x.label ?? ""),
+                  checked: !!x.checked,
+                  ...(x.nota ? { nota: String(x.nota) } : {}),
+                }
+              : { id: String(x.id ?? specSid()), kind: "text", text: String(x.text ?? "") },
+          ) as SpecItem[];
+      }
+    } catch { /* fall through to legacy */ }
+  }
+  // Legacy plain-text observación → una sola nota
+  return [{ id: specSid(), kind: "text", text: raw }];
 }
 
-const ETIQUETA_ESTADO: Record<EstadoCelda, string> = {
-  noOferta: "No oferta",
-  cumple: "Cumple",
-  noCumple: "No cumple",
-  pendiente: "Pendiente",
-  sinEval: "Sin evaluar",
-};
+function serializeSpecs(items: SpecItem[]): string | null {
+  return items.length === 0 ? null : JSON.stringify(items);
+}
+
+// Deriva el estado técnico a partir de los checkboxes.
+// undefined = no hay checkboxes → no influye (se mantiene el estado manual).
+function deriveCumpleFromSpecs(items: SpecItem[]): boolean | null | undefined {
+  const checks = items.filter((x): x is Extract<SpecItem, { kind: "check" }> => x.kind === "check");
+  if (checks.length === 0) return undefined;
+  return checks.every((c) => c.checked);
+}
 
 function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
   const [loading, setLoading] = useState(true);
@@ -896,8 +899,6 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
   const [ofertaSet, setOfertaSet] = useState<Set<string>>(new Set()); // `${itemId}|${oferenteId}`
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const [specsModal, setSpecsModal] = useState<{ renglonId: string; oferenteId: string } | null>(null);
-  const [listaModal, setListaModal] = useState<string | null>(null); // renglonId
-  const [savingLista, setSavingLista] = useState(false);
 
   const cellKey = (renglonId: string, oferenteId: string) => `${renglonId}|${oferenteId}`;
 
@@ -932,10 +933,6 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
     return () => { cancelled = true; };
   }, [licitacionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const comunesDe = (r: RenglonConItems) => normalizarEspecificaciones(r.especificaciones);
-  const evalDe = (renglonId: string, oferenteId: string) =>
-    parseEvalOferente(evals.get(cellKey(renglonId, oferenteId))?.observaciones ?? null);
-
   // Cobertura de un oferente en un renglón
   const coberturaDe = (r: RenglonConItems, oferenteId: string): number =>
     r.items.reduce((n, it) => n + (ofertaSet.has(`${it.id}|${oferenteId}`) ? 1 : 0), 0);
@@ -944,7 +941,8 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
   const esNoOferta = (r: RenglonConItems, oferenteId: string): boolean =>
     r.items.length > 0 && coberturaDe(r, oferenteId) < r.items.length;
 
-  const cellStatus = (r: RenglonConItems, oferenteId: string): EstadoCelda => {
+  type CellStatus = "noOferta" | "cumple" | "noCumple" | "pendiente" | "sinEval";
+  const cellStatus = (r: RenglonConItems, oferenteId: string): CellStatus => {
     if (esNoOferta(r, oferenteId)) return "noOferta";
     const key = cellKey(r.id, oferenteId);
     if (!evals.has(key)) return "sinEval";
@@ -971,31 +969,18 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
     }
   };
 
-  // Destildar el estado manual. Si el oferente tiene especificaciones o notas
-  // cargadas, NO se borra el registro (se perderían): queda en Pendiente.
-  const limpiarEstado = (renglonId: string, oferenteId: string) => {
-    const key = cellKey(renglonId, oferenteId);
-    const current = evals.get(key);
-    if (current?.observaciones) {
-      if (current.cumple === null) {
-        toast.info("Tiene especificaciones cargadas: queda en Pendiente para no perderlas.");
-        return;
-      }
-      setEvals((prev) => new Map(prev).set(key, { ...current, cumple: null }));
-      doSave(renglonId, oferenteId, null, current.observaciones);
-      return;
-    }
-    setEvals((prev) => { const n = new Map(prev); n.delete(key); return n; });
-    setSaving((prev) => new Set(prev).add(key));
-    deleteEvaluacion(oferenteId, renglonId)
-      .catch((e) => { console.error(e); toast.error("No se pudo guardar"); })
-      .finally(() => setSaving((prev) => { const n = new Set(prev); n.delete(key); return n; }));
-  };
-
   const handleToggle = (renglonId: string, oferenteId: string, value: boolean) => {
     const key = cellKey(renglonId, oferenteId);
     const current = evals.get(key);
-    if (current?.cumple === value) { limpiarEstado(renglonId, oferenteId); return; }
+    // If already set to this value, clear the record entirely
+    if (current?.cumple === value) {
+      setEvals((prev) => { const n = new Map(prev); n.delete(key); return n; });
+      setSaving((prev) => new Set(prev).add(key));
+      deleteEvaluacion(oferenteId, renglonId)
+        .catch((e) => { console.error(e); toast.error("No se pudo guardar"); })
+        .finally(() => setSaving((prev) => { const n = new Set(prev); n.delete(key); return n; }));
+      return;
+    }
     setEvals((prev) =>
       new Map(prev).set(key, { id: current?.id ?? "", oferente_id: oferenteId, renglon_id: renglonId, cumple: value, observaciones: current?.observaciones ?? null }),
     );
@@ -1005,57 +990,32 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
   const handlePendiente = (renglonId: string, oferenteId: string) => {
     const key = cellKey(renglonId, oferenteId);
     const current = evals.get(key);
-    if (evals.has(key) && current?.cumple === null) { limpiarEstado(renglonId, oferenteId); return; }
+    // If already pending (record exists with cumple=null), clear it
+    if (evals.has(key) && current?.cumple === null) {
+      setEvals((prev) => { const n = new Map(prev); n.delete(key); return n; });
+      setSaving((prev) => new Set(prev).add(key));
+      deleteEvaluacion(oferenteId, renglonId)
+        .catch((e) => { console.error(e); toast.error("No se pudo guardar"); })
+        .finally(() => setSaving((prev) => { const n = new Set(prev); n.delete(key); return n; }));
+      return;
+    }
     setEvals((prev) =>
       new Map(prev).set(key, { id: current?.id ?? "", oferente_id: oferenteId, renglon_id: renglonId, cumple: null, observaciones: current?.observaciones ?? null }),
     );
     doSave(renglonId, oferenteId, null, current?.observaciones ?? null);
   };
 
-  const handleSaveSpecs = (renglonId: string, oferenteId: string, ev: EvalOferente) => {
+  const handleSaveSpecs = (renglonId: string, oferenteId: string, items: SpecItem[]) => {
     const key = cellKey(renglonId, oferenteId);
     const current = evals.get(key);
-    const r = renglones.find((x) => x.id === renglonId);
-    const obs = serializeEvalOferente(ev);
-    const derived = derivarCumple(r ? comunesDe(r) : [], ev);
+    const obs = serializeSpecs(items);
+    const derived = deriveCumpleFromSpecs(items);
     const cumple = derived === undefined ? (current?.cumple ?? null) : derived;
     setEvals((prev) =>
       new Map(prev).set(key, { id: current?.id ?? "", oferente_id: oferenteId, renglon_id: renglonId, cumple, observaciones: obs }),
     );
     doSave(renglonId, oferenteId, cumple, obs);
     setSpecsModal(null);
-  };
-
-  const handleSaveLista = async (renglonId: string, lista: EspecificacionRenglon[]) => {
-    setSavingLista(true);
-    try {
-      const updated = await updateRenglon(renglonId, { especificaciones: lista });
-      const guardada = updated.especificaciones !== undefined ? normalizarEspecificaciones(updated.especificaciones) : lista;
-      setRenglones((prev) => prev.map((r) => (r.id === renglonId ? { ...r, especificaciones: guardada } : r)));
-      setListaModal(null);
-      toast.success("Especificaciones del renglón guardadas");
-    } catch (e) {
-      console.error(e);
-      toast.error(
-        esErrorColumnaEspecificaciones(e)
-          ? "Falta crear la columna en Supabase: corré supabase/informe_tecnico_especificaciones.sql en el editor SQL."
-          : "No se pudieron guardar las especificaciones del renglón",
-      );
-    } finally {
-      setSavingLista(false);
-    }
-  };
-
-  // Cuántos oferentes ya evaluaron cada especificación común del renglón.
-  const usosDe = (r: RenglonConItems): Record<string, number> => {
-    const usos: Record<string, number> = {};
-    for (const of of oferentes) {
-      const ev = evalDe(r.id, of.id);
-      for (const [id, res] of Object.entries(ev.resultados)) {
-        if (res.estado) usos[id] = (usos[id] ?? 0) + 1;
-      }
-    }
-    return usos;
   };
 
   if (loading) {
@@ -1084,7 +1044,6 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
 
   const modalRenglon = specsModal ? renglones.find((r) => r.id === specsModal.renglonId) ?? null : null;
   const modalOferente = specsModal ? oferentes.find((o) => o.id === specsModal.oferenteId) ?? null : null;
-  const listaRenglon = listaModal ? renglones.find((r) => r.id === listaModal) ?? null : null;
 
   const manyCards = oferentes.length > 3;
 
@@ -1093,7 +1052,6 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {renglones.map((r) => {
           const nombreRenglon = r.items[0]?.descripcion?.trim() || r.items[0]?.matricula || `Renglón ${r.numero}`;
-          const comunes = comunesDe(r);
 
           return (
             <div key={r.id} style={{ background: "var(--panel-2)", border: "1px solid var(--hairline)", borderRadius: 14, padding: "16px 18px 18px" }}>
@@ -1103,38 +1061,17 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                   RENGLÓN {r.numero}
                 </div>
                 <div style={{ fontSize: 14.5, fontWeight: 700, color: "oklch(0.97 0 0)", minWidth: 0, flex: 1 }}>{nombreRenglon}</div>
-                <button
-                  type="button"
-                  onClick={() => setListaModal(r.id)}
-                  title="Lista de especificaciones común a todos los oferentes de este renglón"
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-hairline bg-panel px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-accent-green/40 hover:text-foreground"
-                >
-                  <ListChecks className="size-3.5" />
-                  Especificaciones del renglón
-                  {comunes.length > 0 ? (
-                    <span className="rounded-full bg-accent-green/15 px-1.5 font-mono text-[11px] font-semibold tabular-nums text-accent-green">
-                      {comunes.length}
-                    </span>
-                  ) : (
-                    <Plus className="size-3" />
-                  )}
-                </button>
               </div>
 
               {/* Tarjetas de oferente */}
               <div style={{ display: "flex", gap: 10, alignItems: "stretch", flexWrap: "wrap" }}>
                 {oferentes.map((of) => {
                   const key = cellKey(r.id, of.id);
+                  const ev = evals.get(key);
                   const status = cellStatus(r, of.id);
                   const isSaving = saving.has(key);
-                  const ev = evalDe(r.id, of.id);
-                  const prog = progresoComunes(comunes, ev);
-                  const propios = ev.items.length;
-                  const derivado = estadoDeDerivado(derivarCumple(comunes, ev));
-                  const forzado =
-                    derivado !== null &&
-                    (status === "cumple" || status === "noCumple" || status === "pendiente") &&
-                    status !== derivado;
+                  const specs = parseSpecs(ev?.observaciones ?? null);
+                  const specsCount = specs.length;
 
                   return (
                     <div
@@ -1215,42 +1152,24 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
                             </button>
                           </div>
 
-                          {forzado && derivado && (
-                            <p className="text-[11px] leading-snug text-accent-amber" title="El estado se eligió a mano y no coincide con lo que surge de las especificaciones">
-                              Forzado a mano · según especificaciones: {ETIQUETA_ESTADO[derivado]}
-                            </p>
-                          )}
-
                           <button
                             onClick={() => setSpecsModal({ renglonId: r.id, oferenteId: of.id })}
                             style={{
                               width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
                               padding: "7px 8px", borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: "pointer",
                               background: "oklch(0.18 0.005 270)", border: "1px solid oklch(1 0 0 / 0.08)",
-                              color: prog.evaluadas > 0 || propios > 0 ? "var(--accent-green)" : "oklch(0.62 0 0)",
+                              color: specsCount > 0 ? "var(--accent-green)" : "oklch(0.62 0 0)",
                             }}
                             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.18)"; }}
                             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.08)"; }}
                           >
                             <ListChecks className="w-3.5 h-3.5" />
                             Especificaciones
-                            {prog.total > 0 ? (
-                              <span
-                                title={`${prog.evaluadas} de ${prog.total} especificaciones del renglón evaluadas`}
-                                className={cn(
-                                  "rounded-full border px-1.5 font-mono text-[11px] font-bold tabular-nums",
-                                  prog.evaluadas === prog.total
-                                    ? "border-accent-green/50 bg-accent-green/15 text-accent-green"
-                                    : "border-accent-amber/50 bg-accent-amber/15 text-accent-amber",
-                                )}
-                              >
-                                {prog.evaluadas}/{prog.total}
+                            {specsCount > 0 && (
+                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700, background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 50%, transparent)", borderRadius: 20, padding: "1px 6px", color: "var(--accent-green)" }}>
+                                {specsCount}
                               </span>
-                            ) : propios > 0 ? (
-                              <span className="rounded-full border border-accent-green/50 bg-accent-green/15 px-1.5 font-mono text-[11px] font-bold tabular-nums text-accent-green">
-                                {propios}
-                              </span>
-                            ) : null}
+                            )}
                           </button>
                         </>
                       )}
@@ -1313,213 +1232,39 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
       </div>
 
       {specsModal && modalRenglon && modalOferente && (
-        <EvaluacionSpecsModal
+        <SpecsModal
           renglonNumero={modalRenglon.numero}
           oferenteNombre={modalOferente.nombre}
-          comunes={comunesDe(modalRenglon)}
-          initial={evalDe(specsModal.renglonId, specsModal.oferenteId)}
+          initial={parseSpecs(evals.get(cellKey(specsModal.renglonId, specsModal.oferenteId))?.observaciones ?? null)}
           onClose={() => setSpecsModal(null)}
-          onSave={(ev) => handleSaveSpecs(specsModal.renglonId, specsModal.oferenteId, ev)}
-          onEditarLista={() => { setSpecsModal(null); setListaModal(modalRenglon.id); }}
-        />
-      )}
-
-      {listaRenglon && (
-        <ListaSpecsModal
-          renglonNumero={listaRenglon.numero}
-          nombre={listaRenglon.items[0]?.descripcion?.trim() || listaRenglon.items[0]?.matricula || ""}
-          initial={comunesDe(listaRenglon)}
-          usos={usosDe(listaRenglon)}
-          totalOferentes={oferentes.length}
-          saving={savingLista}
-          onClose={() => setListaModal(null)}
-          onSave={(lista) => handleSaveLista(listaRenglon.id, lista)}
+          onSave={(items) => handleSaveSpecs(specsModal.renglonId, specsModal.oferenteId, items)}
         />
       )}
     </div>
   );
 }
 
-// ─── Modal: lista común de especificaciones del renglón ──────────────
+// ─── Modal de especificaciones técnicas ──────────────────────────────
 
-function ListaSpecsModal({
-  renglonNumero, nombre, initial, usos, totalOferentes, saving, onClose, onSave,
-}: {
-  renglonNumero: number;
-  nombre: string;
-  initial: EspecificacionRenglon[];
-  /** Oferentes que ya evaluaron cada especificación (por id). */
-  usos: Record<string, number>;
-  totalOferentes: number;
-  saving: boolean;
-  onClose: () => void;
-  onSave: (lista: EspecificacionRenglon[]) => void;
-}) {
-  const [items, setItems] = useState<EspecificacionRenglon[]>(() =>
-    initial.length > 0 ? initial : [{ id: specSid(), label: "" }],
-  );
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const [overIdx, setOverIdx] = useState<number | null>(null);
-  const [focusId, setFocusId] = useState<string | null>(null);
-  const inputs = useRef<Map<string, HTMLInputElement>>(new Map());
-
-  useEffect(() => {
-    if (!focusId) return;
-    inputs.current.get(focusId)?.focus();
-    setFocusId(null);
-  }, [focusId, items]);
-
-  const addAfter = (idx?: number) => {
-    const nuevo: EspecificacionRenglon = { id: specSid(), label: "" };
-    setItems((p) => {
-      const n = [...p];
-      n.splice(idx === undefined ? n.length : idx + 1, 0, nuevo);
-      return n;
-    });
-    setFocusId(nuevo.id);
-  };
-
-  const remove = (s: EspecificacionRenglon) => {
-    const n = usos[s.id] ?? 0;
-    if (
-      n > 0 &&
-      !window.confirm(
-        `"${s.label.trim() || "Sin texto"}" ya está evaluada en ${n} oferente${n === 1 ? "" : "s"}.\n` +
-          "Si la eliminás deja de contar para su estado técnico. ¿Eliminar igual?",
-      )
-    ) return;
-    setItems((p) => p.filter((x) => x.id !== s.id));
-  };
-
-  const reorder = (from: number, to: number) => {
-    if (from === to) return;
-    setItems((p) => {
-      const n = [...p];
-      const [moved] = n.splice(from, 1);
-      n.splice(to, 0, moved);
-      return n;
-    });
-  };
-
-  const limpios = items.map((s) => ({ ...s, label: s.label.trim() })).filter((s) => s.label);
-
-  return (
-    <Dialog open onOpenChange={(o) => { if (!o && !saving) onClose(); }}>
-      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden border-hairline bg-panel-2 p-0 sm:max-w-2xl">
-        <DialogHeader className="border-b border-hairline px-5 py-4 text-left">
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <ListChecks className="size-4 text-accent-green" />
-            Especificaciones del renglón
-            <span className="font-mono text-accent-green">{renglonNumero}</span>
-          </DialogTitle>
-          <DialogDescription>
-            {nombre && <span className="block truncate text-foreground/80">{nombre}</span>}
-            Lista común a todos los oferentes del renglón. En cada oferente se marca si cumple o no. Enter agrega la siguiente.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="flex-1 space-y-2 overflow-y-auto px-5 py-4">
-          {items.map((s, idx) => {
-            const n = usos[s.id] ?? 0;
-            return (
-              <div
-                key={s.id}
-                onDragOver={(e) => { e.preventDefault(); setOverIdx(idx); }}
-                onDrop={(e) => { e.preventDefault(); if (dragIdx !== null) reorder(dragIdx, idx); setDragIdx(null); setOverIdx(null); }}
-                className={cn(
-                  "flex items-center gap-2 rounded-lg border px-2 py-1.5 transition-colors",
-                  overIdx === idx && dragIdx !== null ? "border-accent-green/50 bg-panel" : "border-hairline bg-panel-input/40",
-                  dragIdx === idx && "opacity-40",
-                )}
-              >
-                <div
-                  draggable
-                  onDragStart={() => setDragIdx(idx)}
-                  onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
-                  title="Arrastrar para reordenar"
-                  className="shrink-0 cursor-grab text-muted-foreground"
-                >
-                  <GripVertical className="size-4" />
-                </div>
-                <span className="w-6 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">{idx + 1}.</span>
-                <Input
-                  ref={(el) => { if (el) inputs.current.set(s.id, el); else inputs.current.delete(s.id); }}
-                  value={s.label}
-                  onChange={(e) => setItems((p) => p.map((x) => (x.id === s.id ? { ...x, label: e.target.value } : x)))}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addAfter(idx); } }}
-                  placeholder="Especificación (ej: Tensión nominal 13,2 kV)"
-                  className="h-8 flex-1 border-hairline bg-panel-input"
-                />
-                {n > 0 && (
-                  <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground" title="Oferentes que ya la evaluaron">
-                    {n}/{totalOferentes}
-                  </span>
-                )}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => remove(s)}
-                  title="Eliminar"
-                  className="shrink-0 text-muted-foreground hover:bg-accent-red/10 hover:text-accent-red"
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
-              </div>
-            );
-          })}
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => addAfter()}
-            className="mt-1 border-dashed border-accent-green/40 bg-transparent text-accent-green hover:bg-accent-green/10 hover:text-accent-green"
-          >
-            <Plus className="size-3.5" /> Especificación
-          </Button>
-        </div>
-
-        <DialogFooter className="border-t border-hairline px-5 py-3">
-          <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
-          <Button type="button" variant="accent" loading={saving} onClick={() => onSave(limpios)}>
-            Guardar ({limpios.length})
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ─── Modal: evaluación de especificaciones de un oferente ────────────
-
-function EvaluacionSpecsModal({
-  renglonNumero, oferenteNombre, comunes, initial, onClose, onSave, onEditarLista,
+function SpecsModal({
+  renglonNumero, oferenteNombre, initial, onClose, onSave,
 }: {
   renglonNumero: number;
   oferenteNombre: string;
-  comunes: EspecificacionRenglon[];
-  initial: EvalOferente;
+  initial: SpecItem[];
   onClose: () => void;
-  onSave: (ev: EvalOferente) => void;
-  onEditarLista: () => void;
+  onSave: (items: SpecItem[]) => void;
 }) {
-  const [resultados, setResultados] = useState<Record<string, ResultadoSpec>>(initial.resultados);
-  const [items, setItems] = useState<SpecItem[]>(initial.items);
+  const [items, setItems] = useState<SpecItem[]>(initial);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
 
-  const setEstado = (id: string, estado: EstadoSpec | undefined) =>
-    setResultados((p) => ({ ...p, [id]: { ...p[id], estado } }));
-  const toggleNota = (id: string) =>
-    setResultados((p) => ({ ...p, [id]: { ...p[id], nota: p[id]?.nota === undefined ? "" : undefined } }));
-  const setNota = (id: string, nota: string) =>
-    setResultados((p) => ({ ...p, [id]: { ...p[id], nota } }));
-
+  const addCheck = () => setItems((p) => [...p, { id: specSid(), kind: "check", label: "", checked: false }]);
   const addText = () => setItems((p) => [...p, { id: specSid(), kind: "text", text: "" }]);
-  const removeItem = (id: string) => setItems((p) => p.filter((x) => x.id !== id));
-  const updateItem = (id: string, patch: Partial<SpecItem>) =>
+  const remove = (id: string) => setItems((p) => p.filter((x) => x.id !== id));
+  const update = (id: string, patch: Partial<SpecItem>) =>
     setItems((p) => p.map((x) => (x.id === id ? ({ ...x, ...patch } as SpecItem) : x)));
+
   const reorder = (from: number, to: number) => {
     if (from === to) return;
     setItems((p) => {
@@ -1530,241 +1275,197 @@ function EvaluacionSpecsModal({
     });
   };
 
-  const actual: EvalOferente = { resultados, items };
-  const derived = derivarCumple(comunes, actual);
-  const prog = progresoComunes(comunes, actual);
-  const hayLegado = items.some((x) => x.kind === "check");
+  const derived = deriveCumpleFromSpecs(items);
 
-  return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden border-hairline bg-panel-2 p-0 sm:max-w-2xl">
-        <DialogHeader className="border-b border-hairline px-5 py-4 text-left">
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <ListChecks className="size-4 text-accent-green" />
-            Especificaciones técnicas
-          </DialogTitle>
-          <DialogDescription>
-            Renglón <span className="font-mono font-semibold text-accent-green">{renglonNumero}</span> · {oferenteNombre}
-          </DialogDescription>
-        </DialogHeader>
+  return createPortal(
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 9000, background: "oklch(0 0 0 / 0.65)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        style={{ width: "100%", maxWidth: 600, maxHeight: "90vh", display: "flex", flexDirection: "column", borderRadius: 16, overflow: "hidden", background: "oklch(0.15 0.005 270)", border: "1px solid oklch(1 0 0 / 0.09)", boxShadow: "0 24px 64px -20px oklch(0 0 0 / 0.8)" }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 22px", borderBottom: "1px solid var(--hairline)", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 8, background: "color-mix(in oklab, var(--accent-emerald-deep) 35%, transparent)", border: "1px solid color-mix(in oklab, var(--accent-emerald) 45%, transparent)", color: "var(--accent-green)" }}>
+              <ListChecks className="w-4 h-4" />
+            </div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "oklch(0.95 0 0)", letterSpacing: -0.3 }}>Especificaciones técnicas</div>
+              <div style={{ fontSize: 12.5, color: "oklch(0.55 0 0)", marginTop: 1 }}>
+                Renglón <span style={{ fontFamily: "var(--font-mono)", color: "var(--accent-green)", fontWeight: 600 }}>{renglonNumero}</span> · {oferenteNombre}
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 7, background: "transparent", border: "1px solid oklch(1 0 0 / 0.08)", color: "oklch(0.60 0 0)", cursor: "pointer" }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
-        {/* Estado que surge de las especificaciones */}
-        <div className="border-b border-hairline px-5 py-2.5 text-[12.5px] text-muted-foreground">
+        {/* Derived state hint */}
+        <div style={{ padding: "10px 22px", borderBottom: "1px solid oklch(1 0 0 / 0.05)", flexShrink: 0 }}>
           {derived === undefined ? (
-            comunes.length === 0 && !hayLegado
-              ? "Sin especificaciones — el estado técnico se define a mano con los botones de la tarjeta."
-              : "Todavía no hay especificaciones evaluadas — al guardar se mantiene el estado actual."
+            <span style={{ fontSize: 12.5, color: "oklch(0.50 0 0)" }}>
+              Sin checkboxes — el estado técnico se define manualmente con los botones.
+            </span>
           ) : (
-            <>
+            <span style={{ fontSize: 12.5, color: "oklch(0.55 0 0)" }}>
               Según las especificaciones, al guardar el estado quedará:{" "}
-              <strong className={cn(derived === true ? "text-accent-green" : derived === false ? "text-accent-red" : "text-accent-amber")}>
-                {derived === true ? "✓ Cumple" : derived === false ? "✗ No cumple" : "⏳ Pendiente"}
-              </strong>
-              <span className="text-muted-foreground/80"> · después se puede forzar a mano.</span>
-            </>
+              <strong style={{ color: derived ? "var(--accent-green)" : "var(--accent-red)" }}>{derived ? "✓ Cumple" : "✗ No cumple"}</strong>
+            </span>
           )}
         </div>
 
-        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
-          {/* Lista común del renglón */}
-          <section className="space-y-2">
-            <div className="flex items-center gap-2">
-              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Especificaciones del renglón</h3>
-              {comunes.length > 0 && (
-                <span className="font-mono text-[11px] tabular-nums text-muted-foreground">{prog.evaluadas}/{prog.total} evaluadas</span>
-              )}
-              <button type="button" onClick={onEditarLista} className="ml-auto text-xs font-medium text-accent-green hover:underline">
-                {comunes.length > 0 ? "Editar lista" : "Cargar lista"}
-              </button>
+        {/* Body: list */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px" }}>
+          {items.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "28px 0", fontSize: 13.5, color: "oklch(0.45 0 0)" }}>
+              No hay especificaciones. Agregá un checkbox o una nota abajo.
             </div>
-
-            {comunes.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-hairline px-4 py-6 text-center text-[13px] text-muted-foreground">
-                Este renglón todavía no tiene especificaciones comunes.
-                <div className="mt-3">
-                  <Button type="button" variant="outline" size="sm" onClick={onEditarLista}>
-                    <Plus className="size-3.5" /> Cargar especificaciones del renglón
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              comunes.map((s, i) => {
-                const res = resultados[s.id];
-                return (
-                  <div key={s.id} className="rounded-lg border border-hairline bg-panel-input/40 px-3 py-2">
-                    <div className="flex items-start gap-2">
-                      <span className="mt-1 w-6 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">{i + 1}.</span>
-                      <p className="min-w-0 flex-1 break-words pt-0.5 text-sm leading-snug text-foreground">{s.label}</p>
-                      <ToggleGroup
-                        type="single"
-                        variant="outline"
-                        size="sm"
-                        value={res?.estado ?? ""}
-                        onValueChange={(v) => setEstado(s.id, v === "cumple" || v === "no_cumple" ? v : undefined)}
-                        className="shrink-0"
-                      >
-                        <ToggleGroupItem
-                          value="cumple"
-                          aria-label="Cumple"
-                          className="h-7 gap-1 border-hairline px-2 text-xs text-muted-foreground hover:bg-panel hover:text-foreground data-[state=on]:bg-accent-green/15 data-[state=on]:text-accent-green"
-                        >
-                          <Check className="size-3.5" /> Cumple
-                        </ToggleGroupItem>
-                        <ToggleGroupItem
-                          value="no_cumple"
-                          aria-label="No cumple"
-                          className="h-7 gap-1 border-hairline px-2 text-xs text-muted-foreground hover:bg-panel hover:text-foreground data-[state=on]:bg-accent-red/15 data-[state=on]:text-accent-red"
-                        >
-                          <X className="size-3.5" /> No cumple
-                        </ToggleGroupItem>
-                      </ToggleGroup>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => toggleNota(s.id)}
-                        title={res?.nota === undefined ? "Agregar comentario" : "Quitar comentario"}
-                        className={cn(
-                          "size-7 shrink-0",
-                          res?.nota !== undefined
-                            ? "bg-accent-green/10 text-accent-green hover:bg-accent-green/15 hover:text-accent-green"
-                            : "text-muted-foreground hover:bg-panel hover:text-foreground",
-                        )}
-                      >
-                        <MessageSquare className="size-3.5" />
-                      </Button>
-                    </div>
-                    {res?.nota !== undefined && (
-                      <Textarea
-                        value={res.nota}
-                        onChange={(e) => setNota(s.id, e.target.value)}
-                        placeholder="Comentario: por qué cumple o no cumple, link de referencia…"
-                        autoFocus
-                        className="mt-2 ml-8 min-h-14 w-[calc(100%-2rem)] border-hairline border-l-2 border-l-accent-green/60 bg-panel-input text-[13px]"
-                      />
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </section>
-
-          {/* Propias de este oferente: notas + especificaciones de legado */}
-          <section className="space-y-2">
-            <div>
-              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Notas de este oferente</h3>
-              {hayLegado && (
-                <p className="mt-0.5 text-[11.5px] text-muted-foreground/80">
-                  Las especificaciones con casilla se cargaron cuando la lista era por oferente: se conservan y siguen contando para el estado.
-                </p>
-              )}
-            </div>
-
-            {items.map((it, idx) => (
-              <div
-                key={it.id}
-                onDragOver={(e) => { e.preventDefault(); setOverIdx(idx); }}
-                onDrop={(e) => { e.preventDefault(); if (dragIdx !== null) reorder(dragIdx, idx); setDragIdx(null); setOverIdx(null); }}
-                className={cn(
-                  "flex items-start gap-2 rounded-lg border px-2 py-2 transition-colors",
-                  overIdx === idx && dragIdx !== null ? "border-accent-green/50 bg-panel" : "border-hairline bg-panel-input/40",
-                  dragIdx === idx && "opacity-40",
-                )}
-              >
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {items.map((it, idx) => (
                 <div
-                  draggable
-                  onDragStart={() => setDragIdx(idx)}
-                  onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
-                  title="Arrastrar para reordenar"
-                  className="shrink-0 cursor-grab pt-2 text-muted-foreground"
+                  key={it.id}
+                  onDragOver={(e) => { e.preventDefault(); setOverIdx(idx); }}
+                  onDrop={(e) => { e.preventDefault(); if (dragIdx !== null) reorder(dragIdx, idx); setDragIdx(null); setOverIdx(null); }}
+                  style={{
+                    display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px", borderRadius: 10,
+                    background: overIdx === idx && dragIdx !== null ? "oklch(0.24 0.005 270)" : "oklch(0.18 0.005 270)",
+                    border: `1px solid ${overIdx === idx && dragIdx !== null ? "color-mix(in oklab, var(--accent-emerald) 50%, transparent)" : "var(--hairline)"}`,
+                    opacity: dragIdx === idx ? 0.4 : 1,
+                    transition: "background .12s, border-color .12s, opacity .12s",
+                  }}
                 >
-                  <GripVertical className="size-4" />
-                </div>
+                  <div
+                    draggable
+                    onDragStart={() => setDragIdx(idx)}
+                    onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
+                    title="Arrastrar para reordenar"
+                    style={{ cursor: "grab", color: "oklch(0.42 0 0)", paddingTop: it.kind === "text" ? 8 : 6, flexShrink: 0 }}
+                  >
+                    <GripVertical className="w-4 h-4" />
+                  </div>
 
-                {it.kind === "check" ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => updateItem(it.id, { checked: !it.checked } as Partial<SpecItem>)}
-                      aria-pressed={it.checked}
-                      className={cn(
-                        "mt-1.5 grid size-5 shrink-0 place-items-center rounded border transition-colors",
-                        it.checked ? "border-accent-green bg-accent-green text-primary-foreground" : "border-hairline bg-panel-input",
-                      )}
-                    >
-                      {it.checked && <Check className="size-3.5" strokeWidth={3} />}
-                    </button>
-                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                      <Input
-                        value={it.label}
-                        onChange={(e) => updateItem(it.id, { label: e.target.value } as Partial<SpecItem>)}
-                        className="h-8 border-hairline bg-panel-input"
-                      />
-                      {it.nota !== undefined && (
-                        <Textarea
-                          value={it.nota}
-                          onChange={(e) => updateItem(it.id, { nota: e.target.value } as Partial<SpecItem>)}
-                          placeholder="Comentario: por qué cumple o no cumple, link de referencia…"
-                          className="min-h-14 border-hairline border-l-2 border-l-accent-green/60 bg-panel-input text-[13px]"
+                  {it.kind === "check" ? (
+                    <>
+                      <button
+                        onClick={() => update(it.id, { checked: !it.checked } as Partial<SpecItem>)}
+                        style={{
+                          flexShrink: 0, width: 22, height: 22, borderRadius: 6, marginTop: 5, cursor: "pointer",
+                          display: "grid", placeItems: "center",
+                          background: it.checked ? "var(--accent-green)" : "oklch(0.14 0.005 270)",
+                          border: `1px solid ${it.checked ? "var(--accent-green)" : "oklch(1 0 0 / 0.15)"}`,
+                          color: "oklch(0.10 0.02 155)",
+                          transition: "background .12s, border-color .12s",
+                        }}
+                      >
+                        {it.checked && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+                      </button>
+                      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                        <input
+                          type="text"
+                          value={it.label}
+                          onChange={(e) => update(it.id, { label: e.target.value } as Partial<SpecItem>)}
+                          placeholder="Especificación (ej: Tensión nominal 13.2 kV)"
+                          style={{
+                            width: "100%", height: 34, padding: "0 10px", borderRadius: 7,
+                            background: "oklch(0.14 0.005 270)", border: "1px solid var(--hairline)",
+                            color: it.checked ? "oklch(0.92 0 0)" : "oklch(0.78 0 0)", fontSize: 14, outline: "none",
+                          }}
                         />
-                      )}
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => updateItem(it.id, { nota: it.nota === undefined ? "" : undefined } as Partial<SpecItem>)}
-                      title={it.nota === undefined ? "Agregar comentario" : "Quitar comentario"}
-                      className={cn(
-                        "size-7 shrink-0",
-                        it.nota !== undefined
-                          ? "bg-accent-green/10 text-accent-green hover:bg-accent-green/15 hover:text-accent-green"
-                          : "text-muted-foreground hover:bg-panel hover:text-foreground",
-                      )}
-                    >
-                      <MessageSquare className="size-3.5" />
-                    </Button>
-                  </>
-                ) : (
-                  <Textarea
-                    value={it.text}
-                    onChange={(e) => updateItem(it.id, { text: e.target.value } as Partial<SpecItem>)}
-                    placeholder="Nota / observación sobre este oferente…"
-                    className="min-h-14 flex-1 border-hairline bg-panel-input text-[13px]"
-                  />
-                )}
+                        {it.nota !== undefined && (
+                          <textarea
+                            value={it.nota}
+                            onChange={(e) => update(it.id, { nota: e.target.value } as Partial<SpecItem>)}
+                            placeholder="Comentario: por qué cumple o no cumple, link de referencia…"
+                            rows={2}
+                            autoFocus
+                            style={{
+                              width: "100%", padding: "7px 10px", borderRadius: 7, resize: "vertical",
+                              background: "oklch(0.12 0.005 270)",
+                              border: "1px solid color-mix(in oklab, var(--accent-emerald) 28%, transparent)",
+                              borderLeft: "2px solid color-mix(in oklab, var(--accent-emerald) 60%, transparent)",
+                              color: "oklch(0.82 0 0)", fontSize: 13, outline: "none", lineHeight: 1.5,
+                            }}
+                          />
+                        )}
+                      </div>
+                      <button
+                        onClick={() => update(it.id, { nota: it.nota === undefined ? "" : undefined } as Partial<SpecItem>)}
+                        title={it.nota === undefined ? "Agregar comentario" : "Quitar comentario"}
+                        style={{
+                          flexShrink: 0, display: "grid", placeItems: "center", width: 28, height: 28, marginTop: 3,
+                          borderRadius: 7, cursor: "pointer",
+                          background: it.nota !== undefined ? "color-mix(in oklab, var(--accent-emerald) 16%, transparent)" : "transparent",
+                          border: `1px solid ${it.nota !== undefined ? "color-mix(in oklab, var(--accent-emerald) 45%, transparent)" : "oklch(1 0 0 / 0.06)"}`,
+                          color: it.nota !== undefined ? "var(--accent-green)" : "oklch(0.50 0 0)",
+                        }}
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  ) : (
+                    <textarea
+                      value={it.text}
+                      onChange={(e) => update(it.id, { text: e.target.value } as Partial<SpecItem>)}
+                      placeholder="Nota / observación libre…"
+                      rows={2}
+                      style={{
+                        flex: 1, minWidth: 0, padding: "7px 10px", borderRadius: 7, resize: "vertical",
+                        background: "oklch(0.14 0.005 270)", border: "1px solid var(--hairline)",
+                        color: "oklch(0.85 0 0)", fontSize: 14, outline: "none", lineHeight: 1.5,
+                      }}
+                    />
+                  )}
 
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => removeItem(it.id)}
-                  title="Eliminar"
-                  className="size-7 shrink-0 text-muted-foreground hover:bg-accent-red/10 hover:text-accent-red"
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
-              </div>
-            ))}
+                  <button
+                    onClick={() => remove(it.id)}
+                    title="Eliminar"
+                    style={{ flexShrink: 0, display: "grid", placeItems: "center", width: 28, height: 28, marginTop: 3, borderRadius: 7, background: "transparent", border: "1px solid oklch(1 0 0 / 0.06)", color: "oklch(0.50 0 0)", cursor: "pointer" }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--accent-red)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(0.55 0.15 25 / 0.4)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "oklch(0.50 0 0)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(1 0 0 / 0.06)"; }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={addText}
-              className="border-dashed border-hairline bg-transparent text-muted-foreground hover:bg-panel hover:text-foreground"
+          {/* Add buttons */}
+          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            <button
+              onClick={addCheck}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, background: "oklch(0.20 0.005 270)", border: "1px dashed color-mix(in oklab, var(--accent-emerald) 40%, transparent)", color: "var(--accent-green)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
             >
-              <Plus className="size-3.5" /> Nota de texto
-            </Button>
-          </section>
+              <Plus className="w-3.5 h-3.5" /> Especificación
+            </button>
+            <button
+              onClick={addText}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, background: "oklch(0.20 0.005 270)", border: "1px dashed oklch(1 0 0 / 0.14)", color: "oklch(0.70 0 0)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+            >
+              <Plus className="w-3.5 h-3.5" /> Nota de texto
+            </button>
+          </div>
         </div>
 
-        <DialogFooter className="border-t border-hairline px-5 py-3">
-          <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button type="button" variant="accent" onClick={() => onSave(actual)}>Guardar</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        {/* Footer */}
+        <div style={{ padding: "14px 22px", borderTop: "1px solid var(--hairline)", display: "flex", justifyContent: "flex-end", gap: 10, flexShrink: 0 }}>
+          <button onClick={onClose}
+            style={{ padding: "10px 20px", borderRadius: 9, border: "1px solid oklch(1 0 0 / 0.10)", background: "transparent", color: "oklch(0.65 0 0)", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
+            Cancelar
+          </button>
+          <button onClick={() => onSave(items)}
+            style={{ padding: "10px 24px", borderRadius: 9, border: "none", background: "var(--accent-green)", color: "oklch(0.12 0.02 155)", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            Guardar
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -2527,9 +2228,6 @@ function RenglonesTab({
         licitacion_id: licitacionId,
         numero,
         condicion_adjudicacion: r.condicion_adjudicacion,
-        // La lista común de especificaciones viaja con el renglón (las
-        // evaluaciones de cada oferente no: son del renglón original).
-        especificaciones: normalizarEspecificaciones(r.especificaciones),
       });
       const newItems: Item[] = [];
       for (const it of r.items) {
@@ -3786,12 +3484,12 @@ function HelpStepContent({ step }: { step: number }) {
             <HelpAction label="Sin evaluar" desc="Ofertó completo pero no se registró ninguna evaluación." />
           </HelpSection>
           <HelpSection title="Especificaciones técnicas">
-            <HelpAction label="Del renglón" desc="Botón en el encabezado de cada renglón: la lista de especificaciones se carga una sola vez y es común a todos sus oferentes. Enter agrega la siguiente; se reordena arrastrando." />
-            <HelpAction label="Por oferente" desc="Botón «Especificaciones» de cada tarjeta: marcás cada especificación como Cumple o No cumple (clic de nuevo = sin evaluar) y podés dejar un comentario." />
-            <HelpAction label="Notas" desc="Observaciones propias de cada oferente, aparte de la lista común." />
+            <HelpAction label="Especificaciones" desc="Abre una ventana para cargar una lista mixta de checkboxes (requisitos) y notas de texto." />
+            <HelpAction label="Drag" desc="Reordená los elementos arrastrándolos por el ícono de la izquierda." />
+            <HelpAction label="Checkbox" desc="Cada requisito se tilda o no. Editás el texto y agregás/quitás los que necesites." />
           </HelpSection>
-          <HelpTip>Al guardar las especificaciones de un oferente se calcula su estado: alguna <strong>No cumple</strong> → No cumple; todas <strong>Cumple</strong> → Cumple; faltan evaluar → <strong>Pendiente</strong>. Siempre podés forzarlo a mano con los botones de la tarjeta.</HelpTip>
-          <HelpTip>Hacé clic en el <strong>mismo botón activo</strong> para quitar la evaluación. Si el oferente tiene especificaciones cargadas, queda en Pendiente para no perderlas.</HelpTip>
+          <HelpTip>Si la ventana tiene <strong>checkboxes</strong>, al guardar definen el estado: todos tildados → <strong>Cumple</strong>; alguno sin tildar → <strong>No cumple</strong>. Sin checkboxes, el estado es 100% manual.</HelpTip>
+          <HelpTip>Hacé clic en el <strong>mismo botón activo</strong> para quitar la evaluación y dejarla en estado "Sin evaluar".</HelpTip>
           <HelpWarning>El estado <strong>No oferta</strong> se detecta solo desde la pestaña Ofertas: si falta cargar el precio de algún ítem del renglón, la celda queda bloqueada hasta completarlo.</HelpWarning>
         </>
       );
