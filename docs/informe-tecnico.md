@@ -73,7 +73,8 @@ InformeTecnicoSection (export)
 └── AdjudicacionTab  →  informe-tecnico-adjudicacion.tsx (archivo aparte)
     ├── Sistema de diseño IDO, design-system.md §4.21–§4.22 (sección 10 del Design)
     ├── KPIs arriba + resumen al pie (solo tokens IDO)
-    ├── Por renglón: cabecera (chip, descripción, bloque SIC — clic cambia ARS/USD)
+    ├── Por renglón: cabecera (chip, descripción, bloque SIC que ocupa el resto y reparte
+    │   SIC unitario / SIC total centrados — space-evenly)
     │   + fila de tarjetas de oferente ordenadas por PRECIO TOTAL (×cantidad)
     │   ├── Visibles: ⌊(ancho−120)/222⌋ entre 3 y 5; el resto en «N oferentes más»
     │   │   (los que no cotizaron ese renglón van SIEMPRE al resumen, no ocupan lugar)
@@ -81,10 +82,11 @@ InformeTecnicoSection (export)
     │   ├── Arrastrar tarjetas para reordenar (se conservó a pedido del usuario)
     │   └── Botón Adjudicar en todas; la adjudicada queda «✓ Adjudicada» (clic = desadjudica)
     │       y el resto al 50%
-    ├── Conmutador tarjetas/tabla al lado del chip del renglón, sin etiqueta «N de M visibles»
-    │   (pedido del usuario); el bloque SIC va pegado a la descripción, no al borde derecho.
-    │   Es global (persistido por usuario en lib/tableLayout.ts,
-    │   id `informeAdjudicacion`, campo `view`). En tabla se adjudica con clic derecho.
+    ├── Conmutadores ARS/USD y tarjetas/tabla en la barra SUPERIOR, al lado de «Ayuda»
+    │   (AdjudicacionControls). Su estado vive en InformeTecnicoSection vía
+    │   useAdjudicacionPrefs() y se pasa a la pestaña por `prefs`. La vista se persiste por
+    │   usuario (lib/tableLayout.ts, id `informeAdjudicacion`, campo `view`); la divisa no.
+    │   Sin «N de M visibles». En tabla se adjudica con clic derecho.
     └── El contenedor de la pestaña (en informe-tecnico.tsx) toma `.ido-terminal` + bg.base
         solo en esta pestaña.
 ```

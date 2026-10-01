@@ -870,6 +870,11 @@ textarea.ido-input {
   transition: background 120ms var(--ido-ease), color 120ms var(--ido-ease);
 }
 .ido-viewsw button:hover { color: var(--ido-text); }
+.ido-viewsw button:disabled { opacity: 0.4; cursor: not-allowed; }
+.ido-viewsw button:disabled:hover { color: var(--ido-text-2); }
+/* Variante de 38px para la barra superior (alinea con «Ayuda»). */
+.ido-viewsw.is-lg { padding: 3px; }
+.ido-viewsw.is-lg button { width: auto; min-width: 30px; height: 30px; padding: 0 9px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; }
 .ido-viewsw button.is-on { background: var(--ido-elevated); color: var(--ido-text); }
 /* Vista de tabla de oferentes */
 .ido-bidtable {

@@ -38,7 +38,7 @@ import {
 import { toast } from "sonner";
 import { FloatingInput, SearchInput } from "@/components/ui/floating-input";
 import { DirectionAwareTabs } from "@/components/ui/direction-aware-tabs";
-import { AdjudicacionTab } from "@/components/dashboard/sections/informe-tecnico-adjudicacion";
+import { AdjudicacionTab, AdjudicacionControls, useAdjudicacionPrefs } from "@/components/dashboard/sections/informe-tecnico-adjudicacion";
 
 type WizardTab = "datos" | "renglones" | "oferentes" | "ofertas" | "evaluacion" | "adjudicacion";
 
@@ -59,6 +59,9 @@ export function InformeTecnicoSection() {
   const [showCreate, setShowCreate] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [tab, setTab] = useState<WizardTab>("datos");
+  // Vista (tarjetas/tabla) y divisa de Adjudicación: sus controles van en esta
+  // barra, al lado de «Ayuda», así que el estado vive acá.
+  const adjPrefs = useAdjudicacionPrefs();
 
   const refresh = async () => {
     setLoading(true);
@@ -94,6 +97,9 @@ export function InformeTecnicoSection() {
           selectedId={selectedId}
           onSelect={setSelectedId}
         />
+      )}
+      {tab === "adjudicacion" && selected && (
+        <AdjudicacionControls prefs={adjPrefs} canShowUSD={!!selected.fd_op_valor} />
       )}
       <button
         onClick={() => setShowHelp(true)}
@@ -239,7 +245,7 @@ export function InformeTecnicoSection() {
             ) : tab === "evaluacion" ? (
               <EvaluacionTab licitacionId={selected.id} />
             ) : tab === "adjudicacion" ? (
-              <AdjudicacionTab licitacion={selected} />
+              <AdjudicacionTab licitacion={selected} prefs={adjPrefs} />
             ) : (
               <PlaceholderTab tab={tab} />
             )}

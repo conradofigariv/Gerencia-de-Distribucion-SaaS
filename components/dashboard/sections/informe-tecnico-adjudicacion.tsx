@@ -8,7 +8,9 @@
 // - Banner de KPIs, aviso de dólar y resumen del pie: solo tokens IDO.
 // - Tarjeta adjudicada: el botón queda en «✓ Adjudicada»; clic de nuevo desadjudica.
 // - Vista de tabla: se adjudica con clic derecho en la fila (§4.5).
-// - Se conservan: cambio ARS/USD al clic en el bloque SIC, arrastrar tarjetas
+// - Conmutadores de vista (tarjetas/tabla) y divisa (ARS/USD) en la barra de
+//   arriba, al lado de «Ayuda» (AdjudicacionControls, estado en el padre).
+// - Se conservan: cambio ARS/USD, arrastrar tarjetas
 //   para reordenar y la alerta de umbral económico en el % vs SIC.
 // - Se eliminó la barra de ahorro.
 
@@ -136,9 +138,81 @@ interface BidRow {
   warnText: string;
 }
 
+// ─── Preferencias de vista (vista tarjetas/tabla + divisa) ──────────────────
+// Viven en el padre (InformeTecnicoSection) porque sus controles van en la
+// barra de arriba, al lado de «Ayuda», no dentro de la pestaña.
+
+export interface AdjudicacionPrefs {
+  view: View;
+  viewFade: boolean;
+  changeView: (v: View) => void;
+  showUSD: boolean;
+  setShowUSD: (v: boolean) => void;
+}
+
+export function useAdjudicacionPrefs(): AdjudicacionPrefs {
+  const [view, setView] = useState<View>("cards");
+  const [viewFade, setViewFade] = useState(false);
+  const [showUSD, setShowUSD] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const viewT = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+    return () => { if (viewT.current) clearTimeout(viewT.current); };
+  }, []);
+  // La vista se persiste por usuario (§10); la divisa no (es estado de sesión).
+  useEffect(() => {
+    if (!userId) return;
+    const v = loadTableLayout(userId, LAYOUT_ID).view;
+    if (v === "cards" || v === "table") setView(v);
+  }, [userId]);
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const changeView = useCallback((v: View) => {
+    if (viewRef.current === v) return;
+    if (userId) saveTableLayout(userId, LAYOUT_ID, { view: v });
+    // Fade cruzado de 120ms (§10): se apaga, cambia, se prende.
+    setViewFade(true);
+    if (viewT.current) clearTimeout(viewT.current);
+    viewT.current = setTimeout(() => { setView(v); setViewFade(false); }, 120);
+  }, [userId]);
+  return { view, viewFade, changeView, showUSD, setShowUSD };
+}
+
+/** Conmutador de vista + divisa, para la barra superior de Informe Técnico.
+ *  Lleva `.ido-terminal` propio: esa barra todavía está en el estilo viejo. */
+export function AdjudicacionControls({ prefs, canShowUSD }: { prefs: AdjudicacionPrefs; canShowUSD: boolean }) {
+  const { view, changeView, showUSD, setShowUSD } = prefs;
+  const usd = showUSD && canShowUSD;
+  return (
+    <div className="ido-terminal" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div className="ido-viewsw is-lg" role="group" aria-label="Divisa">
+        <button type="button" className={!usd ? "is-on" : ""} onClick={() => setShowUSD(false)} title="Ver montos en pesos">ARS</button>
+        <button
+          type="button"
+          className={usd ? "is-on" : ""}
+          onClick={() => canShowUSD && setShowUSD(true)}
+          disabled={!canShowUSD}
+          title={canShowUSD ? "Ver montos en dólares (dólar OP)" : "Cargá el Dólar OP en Datos generales para ver en USD"}
+        >
+          USD
+        </button>
+      </div>
+      <div className="ido-viewsw is-lg" role="group" aria-label="Vista">
+        <button type="button" title="Vista de tarjetas" className={view === "cards" ? "is-on" : ""} onClick={() => changeView("cards")}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" /></svg>
+        </button>
+        <button type="button" title="Vista de tabla" className={view === "table" ? "is-on" : ""} onClick={() => changeView("table")}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round"><path d="M4 4h16v16H4zM4 9.5h16M4 15h16M9 4v16" /></svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Componente ─────────────────────────────────────────────────────────────
 
-export function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
+export function AdjudicacionTab({ licitacion, prefs }: { licitacion: Licitacion; prefs: AdjudicacionPrefs }) {
   const licitacionId = licitacion.id;
   const [loading, setLoading] = useState(true);
   const [renglones, setRenglones] = useState<RenglonConItems[]>([]);
@@ -147,34 +221,12 @@ export function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
   const [evalsMap, setEvalsMap] = useState<Map<string, { cumple: boolean | null }>>(new Map());
   const [adjMap, setAdjMap] = useState<Map<string, string>>(new Map()); // renglonId → oferenteId
   const [saving, setSaving] = useState<Set<string>>(new Set());
-  const [showUSD, setShowUSD] = useState(false);
   const [ordersOverride, setOrdersOverride] = useState<Map<string, string[]>>(new Map());
   const [dragInfo, setDragInfo] = useState<{ renglonId: string; oferenteId: string } | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [scrolled, setScrolled] = useState<Set<string>>(new Set()); // filas desplegadas con scroll > 0
 
-  // ── Vista tarjetas/tabla (persistida por usuario) ──────────────────────────
-  const [view, setView] = useState<View>("cards");
-  const [viewFade, setViewFade] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
-  const viewT = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
-    return () => { if (viewT.current) clearTimeout(viewT.current); };
-  }, []);
-  useEffect(() => {
-    if (!userId) return;
-    const v = loadTableLayout(userId, LAYOUT_ID).view;
-    if (v === "cards" || v === "table") setView(v);
-  }, [userId]);
-  const changeView = (v: View) => {
-    if (v === view) return;
-    if (userId) saveTableLayout(userId, LAYOUT_ID, { view: v });
-    // Fade cruzado de 120ms (§10).
-    setViewFade(true);
-    if (viewT.current) clearTimeout(viewT.current);
-    viewT.current = setTimeout(() => { setView(v); setViewFade(false); }, 120);
-  };
+  const { view, viewFade } = prefs;
 
   // ── Ancho disponible → cuántas tarjetas entran ─────────────────────────────
   const rootRef = useRef<HTMLDivElement>(null);
@@ -238,6 +290,9 @@ export function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
   const fdSic = licitacion.fd_sic_valor;
   const umbral = licitacion.umbral_economico_pct;
   const canShowUSD = !!fdOp;
+  // Si esta licitación no tiene dólar OP, se muestra en ARS aunque se haya
+  // elegido USD en otra.
+  const showUSD = prefs.showUSD && canShowUSD;
 
   // SIC del renglón: unitario y ×cantidad, en ARS (dólar SIC) y USD (dólar OP).
   const calcSicTotals = useCallback((r: RenglonConItems): Totals | null => {
@@ -427,7 +482,7 @@ export function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
         <div className="ido-mono" style={{ alignSelf: "flex-end", fontSize: 11, color: "var(--ido-text-2)" }}>
           {!canShowUSD
             ? "Cargá el Dólar OP para ver en USD"
-            : `1 USD = ${fdOp!.toLocaleString("es-AR")} ARS ref. · clic en el bloque SIC cambia la divisa`}
+            : `1 USD = ${fdOp!.toLocaleString("es-AR")} ARS ref.`}
         </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           {kpis.map((k) => (
@@ -473,21 +528,10 @@ export function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
         const restPriced = rest.filter((b) => b.complete).map((b) => pick(b.tot.arsQty, b.tot.usdQty)!).filter((v) => v != null);
         return (
           <section key={r.id} style={{ display: "flex", flexDirection: "column", gap: 12, animation: "ido-block-in 200ms var(--ido-ease) both", animationDelay: `${(ri + 1) * 40}ms` }}>
-            {/* Cabecera de renglón: chip + conmutador de vista juntos a la
-                izquierda; el bloque SIC va pegado a la descripción (la
-                descripción no crece — antes empujaba el SIC al borde derecho). */}
+            {/* Cabecera de renglón. El bloque SIC ocupa el espacio que queda y
+                reparte SIC unitario / SIC total centrados en él. */}
             <div className="ido-ren-head">
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
-                <span className="ido-ren-chip ido-mono">Renglón {String(r.numero).padStart(2, "0")}</span>
-                <div className="ido-viewsw">
-                  <button type="button" title="Vista de tarjetas" className={view === "cards" ? "is-on" : ""} onClick={() => changeView("cards")}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" /></svg>
-                  </button>
-                  <button type="button" title="Vista de tabla" className={view === "table" ? "is-on" : ""} onClick={() => changeView("table")}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round"><path d="M4 4h16v16H4zM4 9.5h16M4 15h16M9 4v16" /></svg>
-                  </button>
-                </div>
-              </div>
+              <span className="ido-ren-chip ido-mono" style={{ flex: "none" }}>Renglón {String(r.numero).padStart(2, "0")}</span>
               <div style={{ flex: "0 1 auto", minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ido-text)" }}>
                   {nombreRenglon} · {cantidad} · {rows.length} oferente{rows.length === 1 ? "" : "s"}
@@ -495,13 +539,7 @@ export function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                 {condicion && <div style={{ fontSize: 12, color: "var(--ido-text-2)", marginTop: 2 }}>{condicion}</div>}
               </div>
               {sic && (
-                <button
-                  type="button"
-                  className="ido-ren-sic"
-                  onClick={() => canShowUSD && setShowUSD((v) => !v)}
-                  title={canShowUSD ? `Clic para ver en ${showUSD ? "ARS" : "USD"}` : "Cargá el Dólar OP para ver en USD"}
-                  style={{ cursor: canShowUSD ? "pointer" : "default" }}
-                >
+                <div className="ido-ren-sic" style={{ flex: "1 1 260px", justifyContent: "space-evenly" }}>
                   <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                     <span className="ido-ren-sic-label">SIC unitario</span>
                     <span className="ido-mono" style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap" }}>{sym} {fmt2(sic.arsUnit, sic.usdUnit) ?? "—"}</span>
@@ -510,7 +548,7 @@ export function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                     <span className="ido-ren-sic-label">SIC total</span>
                     <span className="ido-mono" style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap" }}>{sym} {fmt2(sic.arsQty, sic.usdQty) ?? "—"}</span>
                   </span>
-                </button>
+                </div>
               )}
               {adjOf && (
                 <span className="ido-pill-tag" title="Oferente adjudicado en este renglón">
@@ -522,7 +560,7 @@ export function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                 <button
                   type="button"
                   className="ido-btn ido-btn-text"
-                  style={{ height: 32, marginLeft: "auto" }}
+                  style={{ height: 32 }}
                   onClick={() => { setExpanded((p) => { const n = new Set(p); n.delete(r.id); return n; }); setScrolled((p) => { const n = new Set(p); n.delete(r.id); return n; }); }}
                 >
                   Ver solo {fitN === 5 ? "cinco" : fitN === 4 ? "cuatro" : "tres"}
