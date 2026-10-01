@@ -81,7 +81,9 @@ InformeTecnicoSection (export)
     │   ├── Arrastrar tarjetas para reordenar (se conservó a pedido del usuario)
     │   └── Botón Adjudicar en todas; la adjudicada queda «✓ Adjudicada» (clic = desadjudica)
     │       y el resto al 50%
-    ├── Conmutador tarjetas/tabla (global, persistido por usuario en lib/tableLayout.ts,
+    ├── Conmutador tarjetas/tabla al lado del chip del renglón, sin etiqueta «N de M visibles»
+    │   (pedido del usuario); el bloque SIC va pegado a la descripción, no al borde derecho.
+    │   Es global (persistido por usuario en lib/tableLayout.ts,
     │   id `informeAdjudicacion`, campo `view`). En tabla se adjudica con clic derecho.
     └── El contenedor de la pestaña (en informe-tecnico.tsx) toma `.ido-terminal` + bg.base
         solo en esta pestaña.

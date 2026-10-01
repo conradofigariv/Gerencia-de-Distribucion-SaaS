@@ -471,27 +471,29 @@ export function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
         const shown = isExp ? cardRows : offered.slice(0, fit);
         const rest = cardRows.filter((b) => !shown.includes(b));
         const restPriced = rest.filter((b) => b.complete).map((b) => pick(b.tot.arsQty, b.tot.usdQty)!).filter((v) => v != null);
-        const stateLabel = view === "table"
-          ? `${rows.length} oferentes · uno por fila`
-          : isExp ? `${rows.length} de ${rows.length} · scroll con snap` : `${shown.length} de ${rows.length} visibles`;
-
         return (
           <section key={r.id} style={{ display: "flex", flexDirection: "column", gap: 12, animation: "ido-block-in 200ms var(--ido-ease) both", animationDelay: `${(ri + 1) * 40}ms` }}>
-            {/* Cabecera de renglón */}
+            {/* Cabecera de renglón: chip + conmutador de vista juntos a la
+                izquierda; el bloque SIC va pegado a la descripción (la
+                descripción no crece — antes empujaba el SIC al borde derecho). */}
             <div className="ido-ren-head">
-              <span className="ido-ren-chip ido-mono">Renglón {String(r.numero).padStart(2, "0")}</span>
-              <div style={{ flex: "1 1 240px", minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
+                <span className="ido-ren-chip ido-mono">Renglón {String(r.numero).padStart(2, "0")}</span>
+                <div className="ido-viewsw">
+                  <button type="button" title="Vista de tarjetas" className={view === "cards" ? "is-on" : ""} onClick={() => changeView("cards")}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" /></svg>
+                  </button>
+                  <button type="button" title="Vista de tabla" className={view === "table" ? "is-on" : ""} onClick={() => changeView("table")}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round"><path d="M4 4h16v16H4zM4 9.5h16M4 15h16M9 4v16" /></svg>
+                  </button>
+                </div>
+              </div>
+              <div style={{ flex: "0 1 auto", minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ido-text)" }}>
                   {nombreRenglon} · {cantidad} · {rows.length} oferente{rows.length === 1 ? "" : "s"}
                 </div>
                 {condicion && <div style={{ fontSize: 12, color: "var(--ido-text-2)", marginTop: 2 }}>{condicion}</div>}
               </div>
-              {adjOf && (
-                <span className="ido-pill-tag" title="Oferente adjudicado en este renglón">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flex: "none" }}><path d="M4 12.5l5 5L20 6.5" /></svg>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>Adjudicado · {adjOf.nombre}</span>
-                </span>
-              )}
               {sic && (
                 <button
                   type="button"
@@ -510,32 +512,22 @@ export function AdjudicacionTab({ licitacion }: { licitacion: Licitacion }) {
                   </span>
                 </button>
               )}
-            </div>
-
-            {/* Barra: estado + «Ver solo cinco» + conmutador */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span style={{ height: 20, padding: "0 8px", display: "inline-flex", alignItems: "center", borderRadius: 999, background: "rgba(255,255,255,.06)", fontSize: 11, fontWeight: 500, color: "var(--ido-text-2)", whiteSpace: "nowrap" }}>
-                {stateLabel}
-              </span>
-              <div style={{ flex: 1 }} />
+              {adjOf && (
+                <span className="ido-pill-tag" title="Oferente adjudicado en este renglón">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flex: "none" }}><path d="M4 12.5l5 5L20 6.5" /></svg>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>Adjudicado · {adjOf.nombre}</span>
+                </span>
+              )}
               {view === "cards" && isExp && (
                 <button
                   type="button"
                   className="ido-btn ido-btn-text"
-                  style={{ height: 32 }}
+                  style={{ height: 32, marginLeft: "auto" }}
                   onClick={() => { setExpanded((p) => { const n = new Set(p); n.delete(r.id); return n; }); setScrolled((p) => { const n = new Set(p); n.delete(r.id); return n; }); }}
                 >
                   Ver solo {fitN === 5 ? "cinco" : fitN === 4 ? "cuatro" : "tres"}
                 </button>
               )}
-              <div className="ido-viewsw">
-                <button type="button" title="Vista de tarjetas" className={view === "cards" ? "is-on" : ""} onClick={() => changeView("cards")}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" /></svg>
-                </button>
-                <button type="button" title="Vista de tabla" className={view === "table" ? "is-on" : ""} onClick={() => changeView("table")}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round"><path d="M4 4h16v16H4zM4 9.5h16M4 15h16M9 4v16" /></svg>
-                </button>
-              </div>
             </div>
 
             <div style={{ opacity: viewFade ? 0 : 1, minWidth: 0, transition: "opacity 120ms var(--ido-ease)" }}>
