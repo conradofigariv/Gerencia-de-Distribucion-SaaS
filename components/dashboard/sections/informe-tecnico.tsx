@@ -89,6 +89,27 @@ export function InformeTecnicoSection() {
     );
   }
 
+  // Controles de la derecha de la barra. Van en una GRILLA a propósito: la
+  // columna del selector es minmax(150px, max-content) → usa el ancho del
+  // título si hay lugar y, si no, se achica hasta 150px cortando el título con
+  // "…". Con flex, el título sin cortes contaba entero como ancho mínimo y la
+  // barra saltaba de línea con cualquier SIC de nombre largo.
+  const renderControls = (withNueva: boolean) => {
+    const hasSelector = licitaciones.length > 0;
+    return (
+      <div
+        style={{
+          display: "grid", gridAutoFlow: "column", alignItems: "center", columnGap: 10,
+          gridTemplateColumns: hasSelector ? "minmax(150px, max-content)" : undefined,
+          gridAutoColumns: "max-content", justifyContent: "end", minWidth: 0,
+        }}
+      >
+        {headerControls}
+        {withNueva && nuevaLicitacionBtn}
+      </div>
+    );
+  };
+
   const headerControls = (
     <>
       {licitaciones.length > 0 && (
@@ -132,9 +153,8 @@ export function InformeTecnicoSection() {
     <div className="space-y-4">
       {/* Sin licitación seleccionada: no hay tabs, los controles van en una fila propia */}
       {!selected && (
-        <div className="flex items-center justify-end gap-2.5 flex-wrap">
-          {headerControls}
-          {nuevaLicitacionBtn}
+        <div className="flex items-center justify-end">
+          {renderControls(true)}
         </div>
       )}
 
@@ -173,7 +193,7 @@ export function InformeTecnicoSection() {
           value={tab}
           onChange={(id) => setTab(id as WizardTab)}
           contentClassName="mt-4"
-          end={tab === "datos" ? <>{headerControls}{nuevaLicitacionBtn}</> : headerControls}
+          end={renderControls(tab === "datos")}
           tabs={TABS.map((t) => {
             const Icon = t.icon;
             return {
@@ -337,12 +357,15 @@ function LicitacionSelector({
   }, []);
 
   return (
-    <div ref={ref} className="relative">
+    // Su ancho lo decide la grilla de controles (ver renderControls): el
+    // título se corta con "…" y queda completo en el tooltip.
+    <div ref={ref} className="relative" style={{ minWidth: 0 }}>
       <button
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2"
+        title={selected ? `SIC ${selected.numero_sic} · ${selected.titulo}` : undefined}
         style={{
-          height: 38, padding: "0 12px", borderRadius: 9, minWidth: 260,
+          height: 38, padding: "0 12px", borderRadius: 9, width: "100%", minWidth: 0,
           background: "var(--panel-input)",
           border: `1px solid ${open ? "color-mix(in oklab, var(--accent-violet) 55%, transparent)" : "var(--hairline)"}`,
           color: "oklch(0.97 0 0)", fontSize: 13,
@@ -350,11 +373,11 @@ function LicitacionSelector({
           boxShadow: open ? "0 0 0 3px color-mix(in oklab, var(--accent-violet) 15%, transparent)" : "none",
         }}
       >
-        <span className="truncate flex-1 text-left flex items-center gap-2">
+        <span className="truncate flex-1 min-w-0 text-left flex items-center gap-2">
           {selected ? (
             <>
               <span
-                className="font-mono"
+                className="font-mono shrink-0 whitespace-nowrap"
                 style={{
                   padding: "2px 7px", borderRadius: 6, fontSize: 11.5, fontWeight: 600,
                   background: "color-mix(in oklab, var(--accent-emerald-deep) 45%, transparent)",
@@ -364,7 +387,7 @@ function LicitacionSelector({
               >
                 SIC {selected.numero_sic}
               </span>
-              <span className="truncate" style={{ color: "oklch(0.85 0 0)" }}>{selected.titulo}</span>
+              <span className="truncate min-w-0" style={{ color: "oklch(0.85 0 0)" }}>{selected.titulo}</span>
             </>
           ) : (
             <span style={{ color: "oklch(0.50 0 0)" }}>Seleccionar licitación</span>

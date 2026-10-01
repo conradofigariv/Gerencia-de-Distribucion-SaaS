@@ -51,7 +51,7 @@ export function DirectionAwareTabs({
           // Mobile: ocupa todo el ancho en una sola fila (sin que ningún botón baje).
           // sm+: pill compacto alineado a la izquierda.
           "flex w-full flex-nowrap items-center gap-0.5 p-1 shadow-inner",
-          "sm:inline-flex sm:w-auto sm:self-start sm:gap-1",
+          "sm:inline-flex sm:w-auto sm:self-start sm:gap-1 sm:shrink-0",
           rounded ?? "rounded-full",
           className,
         )}
@@ -93,7 +93,11 @@ export function DirectionAwareTabs({
       {end ? (
         <div className="flex items-center justify-between gap-x-3 gap-y-2 flex-wrap">
           {bar}
-          <div className="flex items-center gap-2.5">{end}</div>
+          {/* flex-basis 0 + min-width automático (= su min-content): la fila
+              solo salta de línea si ni el MÍNIMO de `end` entra al lado de las
+              pestañas. Si no, `end` ocupa el resto y lo que sea achicable
+              adentro (ej. el nombre de la licitación) se trunca con "…". */}
+          <div className="flex items-center justify-end gap-2.5" style={{ flex: "1 1 0" }}>{end}</div>
         </div>
       ) : (
         bar
