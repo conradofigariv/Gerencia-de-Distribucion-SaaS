@@ -90,17 +90,18 @@ export function InformeTecnicoSection() {
   }
 
   // Controles de la derecha de la barra. Van en una GRILLA a propósito: la
-  // columna del selector es minmax(150px, max-content) → usa el ancho del
-  // título si hay lugar y, si no, se achica hasta 150px cortando el título con
-  // "…". Con flex, el título sin cortes contaba entero como ancho mínimo y la
-  // barra saltaba de línea con cualquier SIC de nombre largo.
+  // columna del selector tiene ancho FIJO (260px) — no depende del largo del
+  // título, así la barra no se mueve al cambiar de licitación — y el título se
+  // corta con "…". Solo si no hay lugar se angosta, hasta 150px, antes de que
+  // la barra salte de línea. (Con flex, un título largo contaba entero como
+  // ancho mínimo y la barra saltaba de línea.)
   const renderControls = (withNueva: boolean) => {
     const hasSelector = licitaciones.length > 0;
     return (
       <div
         style={{
           display: "grid", gridAutoFlow: "column", alignItems: "center", columnGap: 10,
-          gridTemplateColumns: hasSelector ? "minmax(150px, max-content)" : undefined,
+          gridTemplateColumns: hasSelector ? `minmax(150px, ${SELECTOR_W}px)` : undefined,
           gridAutoColumns: "max-content", justifyContent: "end", minWidth: 0,
         }}
       >
@@ -338,6 +339,9 @@ function BeastPrimaryButton({
 }
 
 // ─── Selector de licitación ──────────────────────────────────────────
+
+/** Ancho fijo del selector en la barra (no cambia con el largo del título). */
+const SELECTOR_W = 260;
 
 function LicitacionSelector({
   licitaciones, selectedId, onSelect,
