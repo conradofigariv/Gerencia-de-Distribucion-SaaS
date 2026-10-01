@@ -464,6 +464,10 @@ export function StockZonaSection() {
   useEffect(() => { colWRef.current = colW; }, [colW]);
   const [resizingCol, setResizingCol] = useState<string | null>(null);
   const resizing = useRef<{ id: string; startX: number; startW: number } | null>(null);
+  // Al soltar un arrastre de redimensionado dentro del mismo encabezado, el
+  // navegador dispara un `click` sobre ese encabezado → ordenaba la columna.
+  // Se ignora el orden si un redimensionado terminó hace menos de 300ms.
+  const lastResizeEnd = useRef(0);
   const autoFitCanvas = useRef<HTMLCanvasElement | null>(null);
 
   const [density, setDensity] = useState<Density>("normal");
@@ -580,6 +584,7 @@ export function StockZonaSection() {
     function onUp() {
       if (!resizing.current) return;
       resizing.current = null;
+      lastResizeEnd.current = Date.now();
       setResizingCol(null);
       if (userIdRef.current) saveTableLayout(userIdRef.current, TABLE_ID, { colW: colWRef.current });
     }
@@ -619,6 +624,8 @@ export function StockZonaSection() {
       <span
         onMouseDown={(e) => startResize(e, id)}
         onDoubleClick={onDoubleClick}
+        // El clic en el agarre no puede llegar al encabezado (que ordena).
+        onClick={(e) => e.stopPropagation()}
         className="group absolute top-0 right-[-4px] bottom-0 w-2 cursor-col-resize z-20 flex justify-center"
       >
         <span
@@ -673,6 +680,7 @@ export function StockZonaSection() {
   // ── Sort ──────────────────────────────────────────────────────────────────
 
   const handleSort = (col: string) => {
+    if (resizing.current || Date.now() - lastResizeEnd.current < 300) return;
     if (col === sortCol) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else { setSortCol(col); setSortDir(col === "articulo" || col === "descArticulo" || col === "udmPrimaria" || col === "tipo" ? "asc" : "desc"); }
   };

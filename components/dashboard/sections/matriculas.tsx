@@ -389,7 +389,12 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
   const [sortKey, setSortKey] = useState<ColKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
+  // Al soltar un arrastre de redimensionado dentro del mismo encabezado, el
+  // navegador dispara un `click` sobre ese encabezado → ordenaba la columna.
+  // Se ignora el orden si un redimensionado terminó hace menos de 300ms.
+  const lastResizeEnd = useRef(0);
   const toggleSort = (key: ColKey) => {
+    if (Date.now() - lastResizeEnd.current < 300) return;
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else { setSortKey(key); setSortDir("asc"); }
   };
@@ -473,6 +478,7 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
     function onUp() {
       if (!resizing.current) return;
       resizing.current = null;
+      lastResizeEnd.current = Date.now();
       setResizingCol(null);
       if (userIdRef.current) saveTableLayout(userIdRef.current, TABLE_ID, { colW: colWRef.current as Record<string, number> });
     }
