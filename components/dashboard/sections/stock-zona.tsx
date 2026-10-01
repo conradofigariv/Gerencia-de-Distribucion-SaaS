@@ -6,13 +6,17 @@ import { motion } from "motion/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Loader2, X, PackageOpen, RefreshCw,
-  ChevronDown, ChevronUp,
-  Download, Wrench, Package, Check, HelpCircle,
+  ChevronDown,
+  Download, Check, HelpCircle,
   ChevronLeft, ChevronRight, ArrowRight, Lightbulb, ListChecks, Pin, Filter, FileSpreadsheet, Search,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { markUpdated } from "@/lib/notificaciones";
 import { loadTableLayout, saveTableLayout } from "@/lib/tableLayout";
+import {
+  type Density, type SortDir, DENSITY_ROW_H, DENSITY_LABEL, DENSITY_ORDER, isDensity,
+  SortArrow, IdoCheckbox, tipoMeta, TipoPill, monoFont, autoFitTextWidth,
+} from "@/components/dashboard/ido-kit";
 import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
 import type { ZonaUpload, CompraRow } from "@/lib/stockStorage";
 import { getMatriculasInfo } from "@/lib/stockFamilies";
@@ -21,8 +25,6 @@ import { getFamilyRowsCompat } from "@/lib/familias";
 import { toast } from "sonner";
 
 type Tab            = "resumen" | "cargar";
-type SortDir        = "asc" | "desc";
-type Density         = "compacta" | "normal" | "comoda";
 
 // Caché de sesión del catálogo maestro (para que la 2da carga sea instantánea)
 const MATRICULAS_CACHE_KEY = "stock-zona-matriculas-cache";
@@ -34,15 +36,6 @@ const RESUMEN_STATE_KEY = "stock-zona-resumen-state";
 const TABLE_ID = "stockZonaResumen";
 const KNOWN_COL_IDS = new Set(["articulo", "descArticulo", "udmPrimaria", "tipo", "total", "zone"]);
 
-// ─── Altura de fila / densidad (design-system.md §4.19) ───────────────────────
-const DENSITY_ROW_H: Record<Density, number> = { compacta: 32, normal: 40, comoda: 52 };
-const DENSITY_LABEL: Record<Density, string> = { compacta: "Compacta", normal: "Normal", comoda: "Cómoda" };
-const DENSITY_ORDER: Density[] = ["compacta", "normal", "comoda"];
-const isDensity = (v: unknown): v is Density => v === "compacta" || v === "normal" || v === "comoda";
-// Comparadores reutilizados para ordenar ~5.000 filas. `a.localeCompare(b, "es",
-// {numeric:true})` crea un comparador nuevo en CADA llamada: con ~60.000
-// comparaciones eso tardaba ~330ms y congelaba la pantalla al llegar el
-// catálogo o al tipear en el buscador. Mismo orden, misma semántica.
 const COLLATOR_ES = new Intl.Collator("es");
 const COLLATOR_ES_NUM = new Intl.Collator("es", { numeric: true, sensitivity: "base" });
 
@@ -118,67 +111,6 @@ const TIPO_OPTIONS: { value: Exclude<ArticuloTipo, "">; label: string }[] = [
   { value: "material", label: "Material" },
   { value: "servicio", label: "Servicio" },
 ];
-
-function tipoMeta(tipo: ArticuloTipo) {
-  if (tipo === "servicio") return { label: "Servicio", color: "var(--ido-text)", bg: "rgba(255,255,255,.06)", border: "rgba(255,255,255,.14)", Icon: Wrench };
-  if (tipo === "material") return { label: "Material", color: "var(--ido-accent)", bg: "rgba(63,207,142,.12)", border: "rgba(63,207,142,.35)", Icon: Package };
-  return null;
-}
-
-function TipoPill({ tipo }: { tipo: ArticuloTipo }) {
-  const m = tipoMeta(tipo);
-  if (!m) return null;
-  const Icon = m.Icon;
-  return (
-    <span className="ido-chip" style={{ background: m.bg, color: m.color, border: `1px solid ${m.border}` }}>
-      <Icon className="w-3 h-3" strokeWidth={2.2} />
-      {m.label}
-    </span>
-  );
-}
-
-// ─── Encabezado ordenable (design-system.md §4.11) — una sola flecha que rota
-// 180° según la dirección y se pone verde en la columna activa; no un ícono
-// distinto por estado (eso no es lo que documenta el sistema de diseño).
-function SortArrow({ active, dir, className }: { active: boolean; dir: SortDir; className?: string }) {
-  return (
-    <ChevronUp
-      className={className}
-      style={{
-        transition: "transform 160ms var(--ido-ease), color 120ms var(--ido-ease), opacity 120ms var(--ido-ease)",
-        transform: dir === "desc" ? "rotate(180deg)" : "none",
-        color: active ? "var(--ido-accent)" : "var(--ido-text-dim)",
-        opacity: active ? 1 : 0.4,
-      }}
-    />
-  );
-}
-
-// ─── Checkbox (design-system.md §4.16) ─────────────────────────────────────────
-
-function IdoCheckbox({
-  checked, indeterminate, onClick, label,
-}: { checked: boolean; indeterminate?: boolean; onClick: () => void; label: string }) {
-  const on = checked || indeterminate;
-  return (
-    <button
-      type="button"
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-      aria-label={label}
-      style={{
-        width: 16, height: 16, borderRadius: 4, display: "grid", placeItems: "center", flexShrink: 0,
-        border: `1px solid ${on ? "var(--ido-accent)" : "rgba(255,255,255,.16)"}`,
-        background: on ? "var(--ido-accent)" : "transparent",
-        transition: "all 100ms var(--ido-ease)", cursor: "pointer",
-      }}
-    >
-      {checked && !indeterminate && (
-        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--ido-accent-ink)" strokeWidth="2.5"><path d="M3 8l3.5 3.5L13 4.5" /></svg>
-      )}
-      {indeterminate && <span style={{ width: 8, height: 2, background: "var(--ido-accent-ink)", borderRadius: 1 }} />}
-    </button>
-  );
-}
 
 // ─── Tabs (design-system.md §4.7) ──────────────────────────────────────────────
 
@@ -471,32 +403,6 @@ function ZonasCargadasMenu({
       )}
     </div>
   );
-}
-
-// ─── Redimensionado de columna (design-system.md §4.15) ────────────────────────
-
-// OJO: `ctx.font` es una cadena CSS que NO resuelve custom properties — poner
-// "13px var(--font-mono)" es inválido y el navegador lo ignora en silencio,
-// dejando la fuente por defecto (10px sans-serif) y midiendo de menos. Hay que
-// resolver la familia real antes de armar la cadena.
-// `weight` importa: la columna Total va en negrita (600), que es más ancha que
-// el peso normal — medir en normal subestimaba el ancho y el número no entraba.
-function monoFont(px: number, weight = 400): string {
-  let family = "";
-  try {
-    family = getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim();
-  } catch { /* SSR o entorno sin DOM */ }
-  return `${weight} ${px}px ${family ? `${family}, ` : ""}ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
-}
-
-function autoFitTextWidth(ctx: CanvasRenderingContext2D, values: string[], floor: number): number {
-  let widest = 0;
-  for (const v of values) {
-    if (!v) continue;
-    const w = ctx.measureText(v).width;
-    if (w > widest) widest = w;
-  }
-  return Math.max(floor, Math.round(widest) + 24);
 }
 
 // ─── Main section ─────────────────────────────────────────────────────────────

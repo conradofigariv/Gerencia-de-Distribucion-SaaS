@@ -1,7 +1,7 @@
 # Sección Stock por Zona (`components/dashboard/sections/stock-zona.tsx`)
 
 - **Propósito:** Ver y cargar el stock de materiales (con matrícula) agrupado por zona de depósito, clasificarlos en familias y consultar su tipo (Material/Servicio).
-- **UI:** sistema de diseño dark de `design-system.md` (el mismo de IDO Carga/Resumen) — `.ido-terminal`/`.ido-card`, tabla en **CSS grid** (nunca `<table>`), tabs propios con burbuja deslizante (`.ido-tabs`), dropdowns propios (`IdoSelect`/`IdoMultiSelect`) reusando `.ido-menu`. Dejó de estar unificada visualmente con Informe Técnico ("beast pure"/oklch) — decisión explícita, no accidental: dos lenguajes visuales conviven en la app hasta que se decida migrar el resto.
+- **UI:** sistema de diseño dark de `design-system.md` (el mismo de IDO Carga/Resumen) — `.ido-terminal`/`.ido-card`, tabla en **CSS grid** (nunca `<table>`), tabs propios con burbuja deslizante (`.ido-tabs`), dropdowns propios (`IdoSelect`/`IdoMultiSelect`) reusando `.ido-menu`. `SortArrow`, `IdoCheckbox`, `TipoPill`, densidad y `monoFont` viven en `components/dashboard/ido-kit.tsx` (compartidos con Matrículas → Catálogo). Dejó de estar unificada visualmente con Informe Técnico ("beast pure"/oklch) — decisión explícita, no accidental: dos lenguajes visuales conviven en la app hasta que se decida migrar el resto.
 
 ## Tres fuentes de datos (independientes)
 | Fuente (sección) | Tabla | Aporta | Frescura |

@@ -110,6 +110,19 @@ export async function deleteMatricula(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Elimina varias matrículas por id (selección en lote del Catálogo). Va en
+ * tandas: los ids viajan en la URL del `in(...)` y miles de UUIDs juntos
+ * superan el largo máximo que acepta el gateway.
+ */
+export async function deleteMatriculasBulk(ids: string[]): Promise<void> {
+  const CHUNK = 150;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const { error } = await supabase.from("matriculas").delete().in("id", ids.slice(i, i + CHUNK));
+    if (error) throw new Error(error.message);
+  }
+}
+
 /** Tipo derivado de la columna Mat/Serv (material | servicio | ""). */
 export function tipoFromMatServ(raw: string | null | undefined): "material" | "servicio" | "" {
   const s = String(raw ?? "").trim().toLowerCase();

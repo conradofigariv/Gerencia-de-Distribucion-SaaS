@@ -311,6 +311,11 @@ input[type="number"] { -moz-appearance: textfield; }
   --ido-accent-ink: #07130d;
   --ido-warning: #f5a524;
   --ido-danger: #ff8a8a;
+  --ido-error: #e5484d; /* design-system.md §1 `error` — botón destructivo §4.1 */
+  --ido-elevated: #16181b; /* bg.elevated — inputs, menús (§1) */
+  --ido-border: #1e2226; /* border.default (§1) */
+  --ido-border-strong: rgba(255, 255, 255, 0.16); /* border.strong (§1) */
+  --ido-placeholder: #4a5057; /* text.tertiary (§1, §4.2) */
   --ido-ease: cubic-bezier(0.16, 1, 0.3, 1);
 
   color: var(--ido-text);
@@ -437,6 +442,169 @@ input[type="number"] { -moz-appearance: textfield; }
   white-space: nowrap;
   pointer-events: none;
   transition: opacity 150ms var(--ido-ease);
+}
+
+/* ── Input de formulario (design-system.md §4.2) ───────────────────────────
+   38px de alto (32px dentro de toolbars, §3). A diferencia de `.ido-field`
+   (30px, mono, para celdas de carga), este es el input de texto general. */
+.ido-input {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  background: var(--ido-elevated);
+  border: 1px solid var(--ido-border);
+  border-radius: 8px;
+  color: var(--ido-text);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 120ms var(--ido-ease), box-shadow 120ms var(--ido-ease);
+}
+textarea.ido-input {
+  height: auto;
+  padding: 9px 12px;
+  line-height: 1.5;
+  resize: none;
+}
+.ido-input:focus {
+  border-color: var(--ido-accent);
+  box-shadow: 0 0 0 3px rgba(63, 207, 142, 0.15);
+}
+.ido-input::placeholder {
+  color: var(--ido-placeholder);
+}
+.ido-input-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+}
+/* Etiqueta de campo (§2: 11·500 uppercase, text.secondary) */
+.ido-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ido-text-dim);
+}
+
+/* ── Botón destructivo (§4.1) ─────────────────────────────────────────────── */
+.ido-btn-danger {
+  background: transparent;
+  border: 0;
+  color: var(--ido-error);
+}
+.ido-btn-danger:hover:not(:disabled) {
+  background: rgba(229, 72, 77, 0.12);
+}
+
+/* ── Botón-ícono de fila (acciones por fila) ──────────────────────────────── */
+.ido-icon-btn {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ido-text-dim);
+  cursor: pointer;
+  transition: color 120ms var(--ido-ease), background 120ms var(--ido-ease);
+}
+.ido-icon-btn:hover {
+  color: var(--ido-text);
+  background: var(--ido-elevated);
+}
+.ido-icon-btn-danger:hover {
+  color: var(--ido-error);
+  background: rgba(229, 72, 77, 0.12);
+}
+
+/* Acciones por fila: atenuadas, plenas al pasar por la fila. */
+.ido-row-actions {
+  opacity: 0.55;
+  transition: opacity 120ms var(--ido-ease);
+}
+.ido-table-row:hover .ido-row-actions {
+  opacity: 1;
+}
+
+/* ── Badges de estado (§4.3) ──────────────────────────────────────────────── */
+.ido-badge-ok {
+  background: rgba(63, 207, 142, 0.12);
+  color: var(--ido-accent);
+}
+/* Valor sin badge definido en el sistema (ej. "Inactivo"): estilo de chip
+   contador §4.3 — neutro, sin color semántico. */
+.ido-badge-neutral {
+  background: var(--ido-elevated);
+  border: 1px solid var(--ido-border);
+  color: var(--ido-text-dim);
+}
+
+/* ── Aviso (warning) a lo ancho de la card ───────────────────────────────── */
+.ido-banner-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 13px;
+  color: var(--ido-warning);
+  background: rgba(245, 165, 36, 0.08);
+  border-bottom: 1px solid rgba(245, 165, 36, 0.2);
+}
+
+/* ── Modal (no definido en el sistema: superficie de card §3 + sombra de
+   menú §4.5). Se portalea a <body>, así que lleva también `.ido-terminal`. */
+.ido-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  animation: ido-modal-fade 140ms var(--ido-ease) both;
+}
+.ido-modal {
+  width: 100%;
+  overflow: hidden;
+  background: var(--ido-surface);
+  border: 1px solid var(--ido-border-strong);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+  animation: ido-modal-in 140ms var(--ido-ease) both;
+}
+.ido-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--ido-line);
+}
+.ido-modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ido-text);
+}
+.ido-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--ido-line);
+}
+@keyframes ido-modal-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ido-modal-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 /* ── Criterios ───────────────────────────────────────────────────────────── */
