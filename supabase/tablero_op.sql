@@ -1,38 +1,19 @@
 -- ============================================================================
--- Tablero OP — Control de Ingresos por Orden de Provisión
--- Reemplaza la planilla Excel que cruza la lista de SIC a seguir contra el
--- log de transacciones (Recibir / Aceptar / Entregar / Devoluciones) y el
--- stock por zona. La función gd_tablero() (ver tablero_op_funcion.sql) hace
--- el cruce y cálculo; estas tablas son las fuentes de datos.
+-- tablero_op_transaccion — log de movimientos de SIGA (Recibir / Aceptar /
+-- Entregar / Devoluciones / ...).
 --
--- Prefijo tablero_op_ para no chocar con la tabla `seguimiento` ya usada por
--- el módulo "Control de Servicios" (servicios-tabla / servicios-resumen).
+-- Se carga desde «Carga de datos → TRANSACCIONES» (servicios-planillas.tsx) y
+-- la usan el Buscador (índice busqueda_index y detalle de entregas, ver
+-- busqueda_global.sql / buscador_entregas.sql) y sic_precio_importe.sql.
+--
+-- Historia: nació para la sección «Tablero OP», que se eliminó (la reemplazó
+-- el Buscador). La tabla conserva el prefijo tablero_op_ porque renombrarla
+-- obligaría a migrar todas las funciones SQL que la leen. Las otras tablas
+-- del Tablero (tablero_op_seguimiento, tablero_op_stock, tablero_op_sic) y la
+-- función gd_tablero() ya no se usan desde la app.
 -- ============================================================================
 
--- Seguimiento: carga manual — lista de SIC (líneas) a seguir.
--- Una SIC (solicitud interna de compra) puede traer VARIAS líneas — distintos
--- artículos pedidos juntos (línea 1, línea 2, ...) — e incluso líneas
--- "ampliadas" cuando se vuelve a pedir/recontratar (notación 1,1 / 2,2).
--- numero_sic NO es único → PK uuid, clave real (numero_sic, linea).
--- numero_op puede ser null hasta que la SIC se apruebe y se genere la OP.
-CREATE TABLE IF NOT EXISTS tablero_op_seguimiento (
-  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  numero_sic     bigint NOT NULL,
-  linea          text,
-  articulo       text NOT NULL,   -- normalizado: sin sufijo .0, zero-padding original
-  descripcion    text,
-  cantidad       numeric,
-  udm            text,
-  ctd_entregada  numeric NOT NULL DEFAULT 0,
-  numero_op      bigint,
-  created_at     timestamptz NOT NULL DEFAULT now(),
-  updated_at     timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (numero_sic, linea)
-);
-
--- Transacción: log de movimientos, importado desde la pestaña "Transacciones".
--- Crece rápido (60k+ filas) — sin PK natural, se usa uuid + índices para que
--- la carga incremental y el cruce de gd_tablero() sean eficientes.
+-- Crece rápido (60k+ filas) — sin PK natural, se usa uuid + índices.
 CREATE TABLE IF NOT EXISTS tablero_op_transaccion (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tipo           text NOT NULL,      -- Recibir, Aceptar, Entregar, Rechazar, Devolver a Proveedor, Devolver a Recepción, Corregir, ...
@@ -45,60 +26,18 @@ CREATE TABLE IF NOT EXISTS tablero_op_transaccion (
   created_at     timestamptz NOT NULL DEFAULT now()
 );
 
--- Stock: saldo actual por artículo y zona, importado desde la pestaña "Stock".
-CREATE TABLE IF NOT EXISTS tablero_op_stock (
-  organizacion  text NOT NULL,       -- zona, ej. ZA
-  articulo      text NOT NULL,       -- normalizado: sin sufijo .0
-  en_mano       numeric NOT NULL DEFAULT 0,
-  updated_at    timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (organizacion, articulo)
-);
-
 -- ─── Índices ────────────────────────────────────────────────────────────────
--- El cruce de gd_tablero() agrupa transacciones por (numero_pedido, articulo)
--- y filtra por rango de fecha — este índice cubre ese acceso.
+-- Los cruces agrupan transacciones por (numero_pedido, articulo) y filtran por
+-- rango de fecha — este índice cubre ese acceso.
 CREATE INDEX IF NOT EXISTS idx_tablero_op_transaccion_pedido_articulo_fecha
   ON tablero_op_transaccion (numero_pedido, articulo, fecha);
 CREATE INDEX IF NOT EXISTS idx_tablero_op_transaccion_articulo
   ON tablero_op_transaccion (articulo);
-CREATE INDEX IF NOT EXISTS idx_tablero_op_seguimiento_numero_op
-  ON tablero_op_seguimiento (numero_op);
-CREATE INDEX IF NOT EXISTS idx_tablero_op_seguimiento_numero_sic
-  ON tablero_op_seguimiento (numero_sic);
-
--- ─── updated_at automático ──────────────────────────────────────────────────
--- Reutiliza/crea la función set_updated_at (ya definida en ido_datos.sql);
--- CREATE OR REPLACE la deja idempotente si este script corre solo.
-CREATE OR REPLACE FUNCTION public.set_updated_at()
-RETURNS trigger AS $$
-BEGIN
-  NEW.updated_at = now();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_tablero_op_seguimiento_updated_at ON tablero_op_seguimiento;
-CREATE TRIGGER trg_tablero_op_seguimiento_updated_at
-  BEFORE UPDATE ON tablero_op_seguimiento
-  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-DROP TRIGGER IF EXISTS trg_tablero_op_stock_updated_at ON tablero_op_stock;
-CREATE TRIGGER trg_tablero_op_stock_updated_at
-  BEFORE UPDATE ON tablero_op_stock
-  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 -- ─── RLS ────────────────────────────────────────────────────────────────────
 -- Policy permisiva, igual que el resto de las tablas que opera la app con la
 -- anon key (ver ido_datos.sql / stock_article_families).
-ALTER TABLE tablero_op_seguimiento ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tablero_op_transaccion ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tablero_op_stock       ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "tablero_op_seguimiento_all" ON tablero_op_seguimiento;
-CREATE POLICY "tablero_op_seguimiento_all" ON tablero_op_seguimiento FOR ALL USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "tablero_op_transaccion_all" ON tablero_op_transaccion;
 CREATE POLICY "tablero_op_transaccion_all" ON tablero_op_transaccion FOR ALL USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "tablero_op_stock_all" ON tablero_op_stock;
-CREATE POLICY "tablero_op_stock_all" ON tablero_op_stock FOR ALL USING (true) WITH CHECK (true);

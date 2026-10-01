@@ -23,7 +23,6 @@ import {
   Package,
   Gavel,
   Gauge,
-  ClipboardList,
   Tag,
   Search,
   ShoppingCart,
@@ -128,16 +127,6 @@ const navItems: NavItemDef[] = [
   },
   {
     kind: "group",
-    id: "tablero-op",
-    label: "Tablero OP",
-    icon: ClipboardList,
-    children: [
-      { id: "tablero-op-resumen", label: "Resumen",        icon: LayoutGrid },
-      { id: "tablero-op-carga",   label: "Carga de datos", icon: UploadCloud },
-    ],
-  },
-  {
-    kind: "group",
     id: "plan-compras",
     label: "Plan de Compras",
     icon: ShoppingCart,
@@ -181,11 +170,6 @@ const TRANSFORMADORES_SECTIONS: Section[] = [
 const INDICE_IDO_SECTIONS: Section[] = [
   "indice-ido-resumen",
   "indice-ido-carga",
-];
-
-const TABLERO_OP_SECTIONS: Section[] = [
-  "tablero-op-resumen",
-  "tablero-op-carga",
 ];
 
 const PLAN_COMPRAS_SECTIONS: Section[] = [
@@ -234,7 +218,6 @@ export function Sidebar({
     ...(SIC_SECTIONS.includes(activeSection)            ? ["sic"]            : []),
     ...(TRANSFORMADORES_SECTIONS.includes(activeSection)? ["transformadores"] : []),
     ...(INDICE_IDO_SECTIONS.includes(activeSection)     ? ["indice-ido"]      : []),
-    ...(TABLERO_OP_SECTIONS.includes(activeSection)     ? ["tablero-op"]      : []),
     ...(PLAN_COMPRAS_SECTIONS.includes(activeSection)   ? ["plan-compras"]    : []),
   ];
   const [expandedGroups, setExpandedGroups] = useState<string[]>(initialGroups);
@@ -273,9 +256,6 @@ export function Sidebar({
     }
     if (INDICE_IDO_SECTIONS.includes(activeSection)) {
       setExpandedGroups((prev) => prev.includes("indice-ido") ? prev : [...prev, "indice-ido"]);
-    }
-    if (TABLERO_OP_SECTIONS.includes(activeSection)) {
-      setExpandedGroups((prev) => prev.includes("tablero-op") ? prev : [...prev, "tablero-op"]);
     }
     if (PLAN_COMPRAS_SECTIONS.includes(activeSection)) {
       setExpandedGroups((prev) => prev.includes("plan-compras") ? prev : [...prev, "plan-compras"]);

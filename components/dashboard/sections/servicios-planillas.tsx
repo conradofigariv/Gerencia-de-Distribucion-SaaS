@@ -13,7 +13,7 @@ import { markUpdated } from "@/lib/notificaciones";
 import { DialogRecordatorios } from "@/components/dashboard/dialog-recordatorios";
 import { replaceSicSoler, upsertSicSoler, clearSicSoler, getSicSolerStatus, type SicSolerRow } from "@/lib/sicSoler";
 import { reconstruirIndiceEnSegundoPlano } from "@/lib/busqueda";
-import { normArticulo, parseNum, parseEntero, parseFechaArg } from "@/lib/tableroOp";
+import { normArticulo, parseNum, parseEntero, parseFechaArg } from "@/lib/parseo";
 
 // Modo de subida de la planilla de SICs: reemplazar todo o actualizar lo existente.
 type SicUploadMode = "replace" | "update";
@@ -613,8 +613,7 @@ export function ServiciosPlanillasSection() {
   // suelta): con cellDates:true llega como Date ya en hora local, así que
   // toISOString() da el instante correcto. Si por lo que sea la celda vino
   // como texto (columna mal formateada en el export), cae a parseFechaArg,
-  // que entiende "dd/mm/aaaa hh:mm:ss" — el mismo parser que ya usa Tablero
-  // OP para la carga por texto pegado.
+  // que entiende "dd/mm/aaaa hh:mm:ss" (lib/parseo.ts).
   const fechaHoraISO = (v: unknown): string | null =>
     v instanceof Date && !Number.isNaN(v.getTime()) ? v.toISOString() : parseFechaArg(v as string);
 
@@ -641,8 +640,7 @@ export function ServiciosPlanillasSection() {
         if (numero_pedido === null) {
           // Sin Número Pedido y el resto de la fila es válida → movimiento
           // interno (transferencia entre zonas, sin OP asociada). No se puede
-          // cruzar con ninguna SIC/OP → se omite a propósito, no es un error
-          // (mismo criterio que ya usa Tablero OP para este mismo caso).
+          // cruzar con ninguna SIC/OP → se omite a propósito, no es un error.
           sinPedido++;
           continue;
         }

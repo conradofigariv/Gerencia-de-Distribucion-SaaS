@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
-import { normArticulo } from "@/lib/tableroOp";
+import { normArticulo } from "@/lib/parseo";
 
 // ─── Construcción de filas de `seguimiento` ──────────────────────────────────
 //

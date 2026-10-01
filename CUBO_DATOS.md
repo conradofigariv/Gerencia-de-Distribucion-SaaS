@@ -2,7 +2,13 @@
 
 Contexto para Claude Code. Este documento explica el cubo de datos que cruza SIC, OP, Transacciones y Matrículas. El objetivo es que Claude Code entienda los granos, las claves y las reglas de cruce, para construir dos seguimientos: servicios por vencer e ingreso de transformadores por mes.
 
-Leelo antes de tocar `lib/tableroOp.ts`, `supabase/tablero_op*.sql` o las secciones `servicios-*` y `transformadores-*`.
+Leelo antes de tocar `lib/parseo.ts`, `supabase/tablero_op*.sql` o las secciones `servicios-*` y `transformadores-*`.
+
+> ⚠ **La sección «Tablero OP» se eliminó** (la reemplazó el Buscador), junto con
+> `lib/tableroOp.ts`. Desde la app ya no se usan `tablero_op_seguimiento`,
+> `tablero_op_stock`, `tablero_op_sic` ni la RPC `gd_tablero()` que este
+> documento menciona como fuentes. `tablero_op_transaccion` SÍ sigue en uso
+> (Carga de datos → TRANSACCIONES, Buscador).
 
 ---
 

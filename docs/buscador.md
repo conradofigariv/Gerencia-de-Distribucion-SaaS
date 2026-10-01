@@ -413,9 +413,9 @@ que lo llama; avisa por toast cuando termina (o si se pasó del timeout).
 
 **Enganchada en:**
 - `servicios-planillas.tsx` → `uploadOP`, `uploadSIC`, `uploadMatriculas`.
-- `tablero-op-carga.tsx` → `ImportPanel.handleReplace`, solo cuando
-  `table === "tablero_op_transaccion"` (la otra tabla de ese panel,
-  `tablero_op_stock`, alimenta Stock por Zona, no el Buscador).
+- `servicios-planillas.tsx` → carga y limpieza de TRANSACCIONES
+  (`tablero_op_transaccion`). Esa tabla conserva el prefijo del viejo
+  «Tablero OP», sección que se eliminó (la reemplazó este Buscador).
 
 **Deliberadamente NO enganchada en ediciones sueltas** (`setTipoOverride` de
 `matricula_tipo` desde Familias, ni el CRUD manual de `matriculas.tsx`): son

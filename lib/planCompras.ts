@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
-import { normArticulo, parseNum } from "@/lib/tableroOp";
+import { normArticulo, parseNum } from "@/lib/parseo";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Plan de Compras — capa de datos y cálculo.

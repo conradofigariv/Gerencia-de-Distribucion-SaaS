@@ -38,7 +38,7 @@ import {
 import { getStockZonaMap } from "@/lib/stockStorage";
 import { supabase } from "@/lib/supabaseClient";
 
-// ─── Estilos beast pure (alineados con Stock por Zona / Tablero OP) ─────────
+// ─── Estilos beast pure ──────────────────────────────────────────────────────
 
 const CARD_BG      = "oklch(0.235 0.005 270)";
 const PANEL_BG     = "oklch(0.205 0.005 270)";
