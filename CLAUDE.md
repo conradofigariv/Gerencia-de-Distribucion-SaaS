@@ -103,7 +103,7 @@ nueva o se lo recordés vos en el chat.
 | Section ID | Archivo | Grupo sidebar | Descripción | Doc profundo |
 |---|---|---|---|---|
 | `servicios-planillas` | servicios-planillas.tsx | (raíz) | Carga de planillas Excel: OP, QW, MATRICULAS | — |
-| `matriculas` | matriculas.tsx | Matrículas | Catálogo de matrículas (UI IDO): CRUD manual + borrado en lote, orden, export CSV | [`docs/matriculas.md`](docs/matriculas.md) |
+| `matriculas` | matriculas.tsx | Matrículas | Catálogo de matrículas (UI IDO): CRUD manual por clic derecho + borrado en lote, orden, export CSV | [`docs/matriculas.md`](docs/matriculas.md) |
 | `matriculas-familias` | matriculas-familias.tsx | Matrículas | Familias como entidad: carga masiva por pegado + selección del catálogo | [`docs/matriculas-familias.md`](docs/matriculas-familias.md) |
 | `servicios-resumen` | servicios-resumen.tsx | (raíz, ítem único — ya no es grupo) | KPIs/alertas de vencimiento y consumo, alimentado por lo marcado en la pestaña «Servicios» del Buscador (botón «Traer del Buscador») | — |
 | `stock-zona` | stock-zona.tsx | Control de servicios | Stock de materiales por zona (carga por texto) | [`docs/stock-zona.md`](docs/stock-zona.md) |

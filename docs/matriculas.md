@@ -14,9 +14,10 @@
 | §4.17 | Descripción absorbe TODO el sobrante (sin tope 2× — mismo desvío deliberado que Stock por Zona). |
 | §4.19 / §4.20 | Densidad (32/40/52) + ancho persistidos por usuario en `lib/tableLayout.ts` (`matriculasCatalogo`), con "Restablecer vista". La clave vieja `matriculas-colwidths` se borra al entrar. |
 | §4.16 | Selección: clic exclusivo · Ctrl/⌘ acumula · ⇧ rango · checkbox · clic en vacío libera. Barra flotante con 2+ filas: Exportar (CSV de la selección) y Eliminar (en lote, con confirmación). |
+| §4.5 | Menú de clic derecho (reemplaza la columna Acciones): sobre una fila → Editar / Eliminar (y la marca); sobre una selección múltiple de 2+ → Exportar / Eliminar N seleccionadas. Cierra con Esc, clic afuera, scroll o resize; se reubica para no salirse de la ventana. Sin atajos de teclado mostrados (no existen). |
 | §4.3 | Badges: Tipo (`TipoPill`) y Estado — "Activo…" = badge verde; cualquier otro valor (ej. Inactivo) = chip neutro (el sistema no define badge para inactivo). |
 
-**Excluido a propósito:** §4.4 estados de celda (no se edita en la celda), §4.5 menú contextual, §4.6 barra superior y §4.9/§4.12 conteo (ya están en el header global), §4.10 Guardar, §4.13, §4.14 (no hay grupos de columnas), §4.18 (5 columnas entran), "Bloquear" de la barra flotante (no hay celdas que bloquear), entrada de filas en cascada.
+**Excluido a propósito:** §4.4 estados de celda (no se edita en la celda), §4.6 barra superior y §4.9/§4.12 conteo (ya están en el header global), §4.10 Guardar, §4.13, §4.14 (no hay grupos de columnas), §4.18 (5 columnas entran), "Bloquear" de la barra flotante (no hay celdas que bloquear), entrada de filas en cascada.
 
 ## Detalles que importan
 - **La selección se recorta a lo visible** al buscar/filtrar: la barra en lote nunca exporta ni borra filas que no se ven.
@@ -24,4 +25,5 @@
 - **⇧ clic** corta el `mousedown` para que el navegador no pinte texto seleccionado.
 - **Borrado en lote:** `deleteMatriculasBulk` en `lib/matriculas.ts`, en tandas de 150 ids (el `in(...)` viaja en la URL). Si falla a mitad, se recarga la lista.
 - **Densidad:** las filas animan su posición 200ms SOLO al cambiar de densidad; si la transición quedara fija, también "nadarían" al filtrar u ordenar.
-- **Modales** se portalean a `<body>` con `.ido-terminal` re-aplicada (los tokens `--ido-*` solo existen debajo de esa clase).
+- **Celdas ancladas (checkbox + Matrícula):** fondo opaco por estado con `.ido-sticky-cell`. NO `background: inherit`: en selección múltiple el fondo de fila es semitransparente y se pintaba dos veces (tinte verde duplicado).
+- **Modales y menú contextual** se portalean a `<body>` con `.ido-terminal` re-aplicada (los tokens `--ido-*` solo existen debajo de esa clase).

@@ -52,7 +52,6 @@ const NATURAL_W: Record<ColKey, number> = {
 const ABSORBER: ColKey = "descripcion";
 const MIN_W = 64;     // §4.15
 const SEL_W = 36;     // columna de checkbox
-const ACC_W = 84;     // columna de acciones (no redimensionable)
 const HEADER_H = 38;  // §4.19: el encabezado no escala con la densidad
 
 const TABLE_ID = "matriculasCatalogo";
@@ -141,6 +140,25 @@ function EstadoBadge({ estado }: { estado: string }) {
           contenedor flex (el texto suelto es un ítem anónimo). */}
       <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{v}</span>
     </span>
+  );
+}
+
+// ─── Ítem del menú de clic derecho (§4.5) ─────────────────────────────────
+// Ícono en text.secondary que toma el color del ítem al hover; el destructivo
+// va en `error` también en reposo (no solo al pasar el mouse).
+function RowMenuItem({ icon: Icon, label, danger, onClick }: {
+  icon: React.ElementType; label: string; danger?: boolean; onClick: () => void;
+}) {
+  return (
+    <div
+      role="menuitem"
+      className="ido-menu-item ido-ctx-item"
+      onClick={onClick}
+      style={{ cursor: "pointer", ...(danger ? { color: "var(--ido-error)" } : null) }}
+    >
+      <Icon className="ido-ctx-icon w-3.5 h-3.5 shrink-0" style={danger ? { color: "var(--ido-error)" } : undefined} />
+      <span style={{ flex: 1 }}>{label}</span>
+    </div>
   );
 }
 
@@ -586,6 +604,50 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
   );
   const showSelBar = selMode === "multi" && selIds.size >= 2;
 
+  // ── Menú de clic derecho (§4.5) — reemplaza la columna de acciones ─────────
+  // Sobre una fila suelta: Editar / Eliminar esa fila (y la deja seleccionada,
+  // para que se vea a qué fila apunta el menú). Sobre una fila que forma parte
+  // de una selección múltiple de 2+: actúa sobre toda la selección, igual que
+  // la barra flotante.
+  const [rowMenu, setRowMenu] = useState<{ x: number; y: number; row: Matricula; bulk: boolean } | null>(null);
+  function openRowMenu(i: number, e: React.MouseEvent) {
+    e.preventDefault();
+    const r = filtered[i];
+    const k = rowKey(r);
+    const bulk = selMode === "multi" && selIds.size >= 2 && selIds.has(k);
+    if (!bulk) {
+      setSelMode("simple");
+      setSelIds(new Set([k]));
+      setSelAnchor(i);
+    }
+    // Que no se salga de la ventana (216px de ancho §4.5; alto aprox. del menú).
+    const MENU_W = 216, MENU_H = 92;
+    setRowMenu({
+      x: Math.min(e.clientX, window.innerWidth - MENU_W - 8),
+      y: e.clientY + MENU_H > window.innerHeight - 8 ? Math.max(8, e.clientY - MENU_H) : e.clientY,
+      row: r, bulk,
+    });
+  }
+  useEffect(() => {
+    if (!rowMenu) return;
+    const close = () => setRowMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    // mousedown (no click): cierra antes de que el clic llegue a otra fila.
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", close);
+    window.addEventListener("wheel", close, { passive: true });
+    const sc = scrollRef.current;
+    sc?.addEventListener("scroll", close);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("wheel", close);
+      sc?.removeEventListener("scroll", close);
+    };
+  }, [rowMenu]);
+
   // ── Ajuste de ancho al viewport (§4.17) ────────────────────────────────────
   // Se mide el ancho útil de la caja de scroll (sin su barra vertical): medir
   // el contenedor de afuera dejaría la tabla 10px más ancha que lo visible y
@@ -606,7 +668,7 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
     const w = {} as Record<ColKey, number>;
     for (const c of COLS) w[c.key] = colW[c.key] ?? NATURAL_W[c.key];
     if (colW[ABSORBER] == null) {
-      const used = SEL_W + ACC_W + COLS.reduce((s, c) => s + w[c.key], 0);
+      const used = SEL_W + COLS.reduce((s, c) => s + w[c.key], 0);
       // Descripción absorbe TODO el sobrante, sin el tope de 2× de §4.17
       // (mismo desvío deliberado que Stock por Zona): con el tope, en una
       // pantalla ancha quedaba un hueco vacío al costado de la tabla mientras
@@ -617,10 +679,10 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
   }, [colW, availW]);
 
   const gridTemplateColumns = useMemo(
-    () => `${SEL_W}px ${COLS.map((c) => `${widths[c.key]}px`).join(" ")} ${ACC_W}px`,
+    () => `${SEL_W}px ${COLS.map((c) => `${widths[c.key]}px`).join(" ")}`,
     [widths],
   );
-  const contentW = SEL_W + COLS.reduce((s, c) => s + widths[c.key], 0) + ACC_W;
+  const contentW = SEL_W + COLS.reduce((s, c) => s + widths[c.key], 0);
 
   // Borde derecho de una columna: dónde va la guía de redimensionado.
   const colRightX = (id: ColKey) => {
@@ -762,8 +824,8 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
     fontSize: 10, fontWeight: 500, letterSpacing: ".1em", textTransform: "uppercase",
   };
   // Celda con texto que se trunca con "…" (§4.19: una fila, una línea).
-  const textCell = (content: React.ReactNode, title: string | undefined, style?: React.CSSProperties) => (
-    <div className="flex items-center" title={title || undefined} style={{ padding: "0 12px", overflow: "hidden", ...style }}>
+  const textCell = (content: React.ReactNode, title: string | undefined, style?: React.CSSProperties, className = "") => (
+    <div className={`flex items-center ${className}`} title={title || undefined} style={{ padding: "0 12px", overflow: "hidden", ...style }}>
       <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{content}</span>
     </div>
   );
@@ -902,9 +964,6 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
                   </div>
                 );
               })}
-              <div className="flex items-center justify-end" style={{ padding: "0 14px", color: "var(--ido-text-dim)", ...headerLabelStyle }}>
-                Acciones
-              </div>
             </div>
 
             {/* Cuerpo */}
@@ -935,6 +994,7 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
                       // antes del click — hay que cortarlo acá o el rango queda
                       // pintado de azul encima de la selección de filas.
                       onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }}
+                      onContextMenu={(e) => openRowMenu(vi.index, e)}
                       className={`ido-table-row grid ${selClass}`}
                       style={{
                         gridTemplateColumns, position: "absolute", top: 0, left: 0, width: "100%",
@@ -946,16 +1006,17 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
                       }}
                     >
                       {/* Checkbox y Matrícula quedan ancladas a la izquierda
-                          con scroll horizontal (§4.11). boxShadow inherit: si
-                          no, el fondo de esta celda taparía el borde verde de
-                          fila seleccionada (que es un inset shadow de la fila). */}
-                      <div className="flex items-center justify-center" style={{ position: "sticky", left: 0, zIndex: 1, background: "inherit", boxShadow: "inherit" }}>
+                          con scroll horizontal (§4.11). Fondo opaco por estado
+                          vía `.ido-sticky-cell` (ver globals.css). boxShadow
+                          inherit: si no, el fondo de esta celda taparía el borde
+                          verde de fila seleccionada (un inset shadow de la fila). */}
+                      <div className="ido-sticky-cell flex items-center justify-center" style={{ position: "sticky", left: 0, zIndex: 1, boxShadow: "inherit" }}>
                         <IdoCheckbox checked={checked} onClick={(e) => handleCheck(vi.index, e)} label={`Seleccionar ${r.articulo}`} />
                       </div>
                       {textCell(r.articulo, r.articulo, {
-                        position: "sticky", left: SEL_W, zIndex: 1, background: "inherit",
+                        position: "sticky", left: SEL_W, zIndex: 1,
                         fontFamily: "var(--font-mono, ui-monospace, monospace)", fontVariantNumeric: "tabular-nums", color: "var(--ido-text)",
-                      })}
+                      }, "ido-sticky-cell")}
                       {textCell(
                         r.descripcion || <span style={{ color: "var(--ido-text-faint)" }}>—</span>,
                         r.descripcion, { color: "var(--ido-text)" },
@@ -969,24 +1030,6 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
                       <div className="flex items-center" style={{ padding: "0 12px", overflow: "hidden" }}>
                         <EstadoBadge estado={r.estado} />
                       </div>
-                      <div className="ido-row-actions flex items-center justify-end gap-1" style={{ padding: "0 10px" }}>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setModal({ mode: "edit", row: r }); }}
-                          title="Editar"
-                          className="ido-icon-btn"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setToDelete(r); }}
-                          title="Eliminar"
-                          className="ido-icon-btn ido-icon-btn-danger"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
                     </div>
                   );
                 })}
@@ -994,6 +1037,36 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
             )}
           </div>
         </div>
+
+        {rowMenu && createPortal(
+          <div
+            className="ido-terminal ido-menu"
+            style={{ left: rowMenu.x, top: rowMenu.y, width: 216 }}
+            // El mousedown de adentro no tiene que llegar al listener de
+            // window que cierra el menú (si no, se cierra antes del click).
+            onMouseDown={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            {rowMenu.bulk ? (
+              <>
+                <RowMenuItem icon={Download} label={`Exportar ${selIds.size.toLocaleString("es-AR")} seleccionadas`}
+                  onClick={() => { setRowMenu(null); exportSelected(); }} />
+                <div className="ido-menu-sep" />
+                <RowMenuItem icon={Trash2} danger label={`Eliminar ${selIds.size.toLocaleString("es-AR")} seleccionadas`}
+                  onClick={() => { setRowMenu(null); setBulkDeleteOpen(true); }} />
+              </>
+            ) : (
+              <>
+                <RowMenuItem icon={Pencil} label="Editar"
+                  onClick={() => { const r = rowMenu.row; setRowMenu(null); setModal({ mode: "edit", row: r }); }} />
+                <div className="ido-menu-sep" />
+                <RowMenuItem icon={Trash2} danger label="Eliminar"
+                  onClick={() => { const r = rowMenu.row; setRowMenu(null); setToDelete(r); }} />
+              </>
+            )}
+          </div>,
+          document.body,
+        )}
 
         {/* Barra flotante de selección en lote (§4.16): aparece con 2+ filas
             en modo múltiple. "Bloquear" no aplica: el catálogo no tiene

@@ -498,7 +498,7 @@ textarea.ido-input {
   background: rgba(229, 72, 77, 0.12);
 }
 
-/* ── Botón-ícono de fila (acciones por fila) ──────────────────────────────── */
+/* ── Botón-ícono (ej. cerrar modal) ──────────────────────────────── */
 .ido-icon-btn {
   width: 28px;
   height: 28px;
@@ -515,18 +515,31 @@ textarea.ido-input {
   color: var(--ido-text);
   background: var(--ido-elevated);
 }
-.ido-icon-btn-danger:hover {
-  color: var(--ido-error);
-  background: rgba(229, 72, 77, 0.12);
+
+/* Celdas ancladas (sticky left) de una fila: necesitan fondo OPACO para tapar
+   lo que pasa por debajo al scrollear en X. `background: inherit` no sirve en
+   la selección múltiple: ese fondo es semitransparente y la celda lo pintaba
+   OTRA VEZ encima del de la fila → tinte verde duplicado. Acá se replica cada
+   estado ya compuesto sobre la superficie. */
+.ido-sticky-cell {
+  background: var(--ido-surface);
+}
+.ido-row-selected-multi .ido-sticky-cell {
+  background: linear-gradient(rgba(63, 207, 142, 0.06), rgba(63, 207, 142, 0.06)), var(--ido-surface);
+}
+.ido-row-selected .ido-sticky-cell,
+.ido-table-row:hover .ido-sticky-cell {
+  background: var(--ido-surface-hover);
 }
 
-/* Acciones por fila: atenuadas, plenas al pasar por la fila. */
-.ido-row-actions {
-  opacity: 0.55;
-  transition: opacity 120ms var(--ido-ease);
+/* Ícono de ítem de menú contextual (§4.5): text.secondary en reposo, toma
+   el color del ítem al hover. */
+.ido-ctx-icon {
+  color: var(--ido-text-dim);
+  transition: color 120ms var(--ido-ease);
 }
-.ido-table-row:hover .ido-row-actions {
-  opacity: 1;
+.ido-ctx-item:hover .ido-ctx-icon {
+  color: inherit;
 }
 
 /* ── Badges de estado (§4.3) ──────────────────────────────────────────────── */
