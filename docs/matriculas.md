@@ -8,7 +8,7 @@
 |---|---|
 | §4.7 | Filtro Todos/Material/Servicio con burbuja deslizante (`IdoSegmented`, memoizado por `layoutId`). También en el modal (Tipo Mat/Serv). |
 | §4.2 | `.ido-input` (38px, foco verde + halo; 32px dentro de la toolbar). |
-| §4.1 | Agregar = primario · Exportar CSV = secundario · Actualizar / Densidad / Restablecer = terciario · Eliminar = `.ido-btn-danger`. |
+| §4.1 | Agregar = primario · Actualizar / Densidad / Restablecer = terciario · Eliminar = `.ido-btn-danger`. |
 | §4.11 | Tabla en CSS grid, un solo contenedor de scroll con header sticky opaco, flecha de orden verde. Checkbox + Matrícula anclados a la izquierda con scroll horizontal. |
 | §4.15 | Redimensionado (mín. 64px, guía de 1px + ancho) y doble clic → ajusta al contenido (mide con la fuente real de cada celda y nunca por debajo del título). |
 | §4.17 | Descripción absorbe TODO el sobrante (sin tope 2× — mismo desvío deliberado que Stock por Zona). |
@@ -20,6 +20,7 @@
 **Excluido a propósito:** §4.4 estados de celda (no se edita en la celda), §4.6 barra superior y §4.9/§4.12 conteo (ya están en el header global), §4.10 Guardar, §4.13, §4.14 (no hay grupos de columnas), §4.18 (5 columnas entran), "Bloquear" de la barra flotante (no hay celdas que bloquear), entrada de filas en cascada.
 
 ## Detalles que importan
+- **Exportar solo existe sobre la selección** (barra flotante / clic derecho). El botón "Exportar CSV" de la toolbar se sacó por redundante: para bajar todo lo visible se tilda el checkbox del encabezado.
 - **La selección se recorta a lo visible** al buscar/filtrar: la barra en lote nunca exporta ni borra filas que no se ven.
 - **El checkbox arranca una selección nueva** si venías de un clic simple (Ctrl/⌘ clic, en cambio, acumula sobre la fila inspeccionada).
 - **⇧ clic** corta el `mousedown` para que el navegador no pinte texto seleccionado.

@@ -807,15 +807,13 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
     }
   };
 
-  // Exporta la lista visible (respeta búsqueda y filtro).
-  const exportCsv = () => {
-    if (filtered.length === 0) { toast.error("No hay matrículas para exportar"); return; }
-    downloadCsv(filtered, "");
-    toast.success(`${filtered.length.toLocaleString("es-AR")} matrículas exportadas`);
-  };
+  // Única exportación de la pantalla: la de la selección (barra flotante o
+  // clic derecho). Para bajar todo lo visible se tilda el checkbox del
+  // encabezado — por eso se sacó el "Exportar CSV" de la toolbar, que hacía
+  // lo mismo. Si está todo el catálogo elegido, el archivo no lleva "_seleccion".
   const exportSelected = () => {
     if (selectedRows.length === 0) return;
-    downloadCsv(selectedRows, "_seleccion");
+    downloadCsv(selectedRows, selectedRows.length === rows.length ? "" : "_seleccion");
     toast.success(`${selectedRows.length.toLocaleString("es-AR")} matrículas exportadas`);
   };
 
@@ -869,9 +867,6 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
             <span style={{ width: 1, height: 20, background: "var(--ido-line)", margin: "0 4px" }} />
             <button type="button" className="ido-btn ido-btn-text" style={{ height: 32 }} onClick={load} disabled={loading}>
               <RefreshCw className={`w-3.5 h-3.5${loading ? " animate-spin" : ""}`} />Actualizar
-            </button>
-            <button type="button" className="ido-btn ido-btn-ghost" style={{ height: 32 }} onClick={exportCsv} disabled={loading || filtered.length === 0}>
-              <Download className="w-3.5 h-3.5" />Exportar CSV
             </button>
             <button type="button" className="ido-btn ido-btn-primary" style={{ height: 32 }} onClick={() => setModal({ mode: "create", row: null })}>
               <Plus className="w-4 h-4" />Agregar matrícula
