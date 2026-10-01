@@ -316,6 +316,15 @@ input[type="number"] { -moz-appearance: textfield; }
   --ido-border: #1e2226; /* border.default (§1) */
   --ido-border-strong: rgba(255, 255, 255, 0.16); /* border.strong (§1) */
   --ido-placeholder: #4a5057; /* text.tertiary (§1, §4.2) */
+  --ido-base: #0a0b0d; /* bg.base (§1) */
+  --ido-panel: #111316; /* bg.surface (§1) — tarjetas de oferente (§10) */
+  --ido-text-2: #7a828b; /* text.secondary (§1) */
+  /* Paleta categórica de identidad (zonas, avatares de oferente) — nunca el verde */
+  --ido-cat-1: #5b8def;
+  --ido-cat-2: #b07beb;
+  --ido-cat-3: #4fc3d9;
+  --ido-cat-4: #e8a33d;
+  --ido-cat-5: #e8788f;
   --ido-ease: cubic-bezier(0.16, 1, 0.3, 1);
 
   color: var(--ido-text);
@@ -618,6 +627,290 @@ textarea.ido-input {
 @keyframes ido-modal-in {
   from { opacity: 0; transform: scale(0.96); }
   to { opacity: 1; transform: scale(1); }
+}
+
+/* ── Tarjeta de oferente en licitación (design-system.md §10) ───────────── */
+@keyframes ido-block-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes ido-card-in { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+@keyframes ido-row-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.ido-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+}
+/* Cabecera de renglón */
+.ido-ren-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: var(--ido-panel);
+  border: 1px solid var(--ido-border);
+  border-radius: 12px;
+}
+.ido-ren-chip {
+  height: 22px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--ido-border-strong);
+  font-size: 11px;
+  color: var(--ido-text-2);
+  white-space: nowrap;
+}
+.ido-ren-sic {
+  display: flex;
+  gap: 20px;
+  padding: 0 0 0 16px;
+  border: 0;
+  border-left: 1px solid var(--ido-border-strong);
+  background: transparent;
+  color: var(--ido-text);
+  text-align: left;
+}
+.ido-ren-sic-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ido-text-2);
+}
+/* Tarjeta */
+.ido-bid {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--ido-border);
+  background: var(--ido-panel);
+  transition: opacity 200ms var(--ido-ease), background 120ms var(--ido-ease), border-color 120ms var(--ido-ease);
+}
+.ido-bid:hover {
+  background: var(--ido-elevated);
+  border-color: var(--ido-border-strong);
+}
+.ido-bid.is-best {
+  border-color: var(--ido-accent);
+  background: rgba(63, 207, 142, 0.04);
+}
+.ido-bid.is-best:hover {
+  background: rgba(63, 207, 142, 0.07);
+}
+.ido-bid.is-risk {
+  border-color: var(--ido-warning);
+  background: rgba(245, 165, 36, 0.04);
+}
+.ido-bid.is-risk:hover {
+  background: rgba(245, 165, 36, 0.07);
+}
+.ido-bid-rank {
+  height: 20px;
+  min-width: 24px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+  color: var(--ido-text-2);
+}
+.ido-bid-best {
+  height: 20px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: rgba(63, 207, 142, 0.12);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ido-accent);
+  white-space: nowrap;
+}
+.ido-bid-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ido-text-2);
+  white-space: nowrap;
+}
+.ido-bid-key {
+  font-size: 12px;
+  color: var(--ido-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.ido-bid-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: rgba(245, 165, 36, 0.1);
+  color: var(--ido-warning);
+  font-size: 12px;
+}
+.ido-bid-btn {
+  height: 38px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--ido-border-strong);
+  background: transparent;
+  color: var(--ido-text);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: filter 120ms var(--ido-ease), background 120ms var(--ido-ease);
+}
+.ido-bid-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+  background: var(--ido-elevated);
+}
+.ido-bid-btn.is-primary {
+  border: 0;
+  background: var(--ido-accent);
+  color: var(--ido-base);
+}
+.ido-bid-btn.is-primary:hover:not(:disabled) {
+  background: var(--ido-accent);
+}
+.ido-bid-btn:disabled {
+  cursor: wait;
+}
+/* Tarjeta resumen "N oferentes más" */
+.ido-bid-more {
+  flex: 0 0 120px;
+  width: 120px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: var(--ido-text);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px 12px;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 120ms var(--ido-ease), background 120ms var(--ido-ease);
+}
+.ido-bid-more:hover {
+  border-color: rgba(255, 255, 255, 0.32);
+  background: var(--ido-panel);
+}
+/* Chip de estado de cumplimiento (reutilizable): 22px, radio 6 */
+.ido-status {
+  height: 22px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ido-status.is-ok { background: rgba(63, 207, 142, 0.12); color: var(--ido-accent); }
+.ido-status.is-no { background: rgba(229, 72, 77, 0.12); color: var(--ido-error); }
+.ido-status.is-pend { background: rgba(245, 165, 36, 0.12); color: var(--ido-warning); }
+/* Chip % vs SIC */
+.ido-pct {
+  height: 22px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.ido-pct.is-down { background: rgba(63, 207, 142, 0.12); color: var(--ido-accent); }
+.ido-pct.is-up { background: rgba(229, 72, 77, 0.12); color: var(--ido-error); }
+.ido-pos { color: var(--ido-accent); }
+.ido-neg { color: var(--ido-error); }
+/* Conmutador tarjetas / tabla */
+.ido-viewsw {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--ido-border);
+  border-radius: 8px;
+  background: var(--ido-panel);
+}
+.ido-viewsw button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--ido-text-2);
+  cursor: pointer;
+  transition: background 120ms var(--ido-ease), color 120ms var(--ido-ease);
+}
+.ido-viewsw button:hover { color: var(--ido-text); }
+.ido-viewsw button.is-on { background: var(--ido-elevated); color: var(--ido-text); }
+/* Vista de tabla de oferentes */
+.ido-bidtable {
+  background: var(--ido-base);
+  border: 1px solid var(--ido-border);
+  border-radius: 12px;
+  overflow-x: auto;
+}
+.ido-bidtable-row {
+  display: grid;
+  height: 40px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--ido-base);
+  transition: background 100ms var(--ido-ease), opacity 200ms var(--ido-ease);
+  animation: ido-row-in 160ms var(--ido-ease) both;
+}
+.ido-bidtable-row:hover { background: var(--ido-elevated); }
+.ido-bidtable-row.is-best {
+  background: var(--ido-elevated);
+  box-shadow: inset 2px 0 0 0 var(--ido-accent);
+}
+/* KPIs y resumen de la pestaña Adjudicación (tokens IDO, §1/§2) */
+.ido-kpi {
+  background: var(--ido-panel);
+  border: 1px solid var(--ido-border);
+  border-radius: 12px;
+  padding: 12px 16px;
+}
+.ido-pill-tag {
+  height: 22px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  background: rgba(63, 207, 142, 0.12);
+  color: var(--ido-accent);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 /* ── Criterios ───────────────────────────────────────────────────────────── */

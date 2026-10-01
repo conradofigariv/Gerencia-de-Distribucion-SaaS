@@ -9,6 +9,8 @@ const LAYOUT_NS = "ds.tableLayout.v1";
 export interface TableLayout {
   colW?: Record<string, number> | null;
   density?: string | null;
+  /** Vista elegida en pantallas con conmutador tarjetas/tabla (§10). */
+  view?: string | null;
 }
 
 export function loadTableLayout(userId: string, tableId: string): TableLayout {

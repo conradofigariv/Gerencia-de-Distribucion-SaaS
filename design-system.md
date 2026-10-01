@@ -1,6 +1,6 @@
 # Sistema de diseño — Producto de datos interno (modo oscuro)
 
-> Extraído del import de Claude Design `Sistema de diseño.dc.html` (v1).
+> Extraído del import de Claude Design `Sistema de diseño.dc.html` (v1; §4.21–§4.22 agregados desde la v2, sección 10 «Tarjeta de oferente en licitación»).
 > Este documento es una **transcripción fiel** de lo que el archivo de Design
 > define explícitamente. Donde un componente no tiene todos sus estados
 > (hover / disabled / error / loading, etc.) definidos en el archivo fuente,
@@ -264,6 +264,30 @@ Tabla única de referencia — tres modos, sin valores intermedios:
 - **No se guarda** (estado de sesión, vuelve a su valor inicial en cada entrada a la pantalla): selección de fila, celda activa o en edición, posición de scroll, filtros y búsqueda.
 - **Evolución del esquema:** una columna nueva entra en su posición por defecto sin alterar el orden guardado; las referencias a columnas eliminadas se descartan en silencio, sin aviso ni error — solo se aplica lo que existe hoy, el resto del layout guardado queda intacto.
 - **"Restablecer vista":** acción terciaria de solo texto en la barra de herramientas. Restaura todos los valores por defecto; las columnas animan de vuelta a su posición en `200ms` con la curva del sistema; confirmación visible `1.5s` ("Vista restablecida", ícono de check, `color:#3FCF8E`).
+
+### 4.21 Chip de estado de cumplimiento (reutilizable)
+`height:22px; border-radius:6px; padding:0 8px`, ícono `12px`, texto `600 11px`, fondo al 12% del color:
+| Estado | Ícono | Color |
+|---|---|---|
+| Cumple | check | `#3FCF8E` |
+| No cumple | cruz | `#E5484D` |
+| Pendiente | reloj | `#F5A524` |
+
+### 4.22 Tarjeta de oferente en licitación (sección 10 del archivo de Design, v2)
+- **Fila horizontal ordenada por precio total ascendente**, bajo una **cabecera de renglón**: `background:#111316; border:1px solid #1E2226; radius:12px; padding:12px 16px` con chip de renglón (pill, borde `rgba(255,255,255,.16)`, mono 11, `#7A828B`), descripción `13·600` y bloque SIC unitario / SIC total (etiqueta 10 uppercase `.1em` `#7A828B` + monto mono 13·500), separado por `border-left:1px solid rgba(255,255,255,.16)`.
+- **Tarjeta** (`padding:16px; radius:12px; border:1px solid #1E2226; background:#111316`):
+  - Chip de ranking `#N` (mono 11, pill 20px, `rgba(255,255,255,.06)`), chip «Mejor oferta» en la #1 (`rgba(63,207,142,.12)`, `#3FCF8E`, 11·500).
+  - Avatar `28px`, radio 6, color fijo por oferente (paleta categórica `#5B8DEF #B07BEB #4FC3D9 #E8A33D #E8788F`, fondo al 15% + iniciales plenas `600 11px`). Nombre `14·600`, truncado con tooltip.
+  - «Precio total» (10 uppercase) con la moneda a la derecha (11, `#4A5057`); monto mono **24**, peso **600 solo en la ganadora** y 500 en el resto; debajo, línea reservada de 18px: «Mejor precio del renglón» (12px, verde al 70%) en la ganadora, «+$ N vs #1» (mono 12, `#7A828B`) en el resto — así todas las filas alinean entre tarjetas.
+  - «Unitario» (12, `#7A828B`) + monto mono 14·500.
+  - «Ahorro vs SIC» / «Sobrecosto vs SIC» con el mismo formato que Unitario: monto mono 14·500 verde o rojo (sobrecosto con signo menos) y **chip %** debajo alineado a la derecha (22px, radio 6, mono 11·500, triángulo 8px; verde 12% si es ≤ SIC, rojo 12% si es mayor).
+  - Divisoria `1px rgba(255,255,255,.08)` con `12px` de margen; cumplimiento con chips de §4.21 debajo de su etiqueta (Informe técnico, Cobertura «Cumple · 1/1»).
+  - Botón «Adjudicar» (38px, `600 12px` uppercase `.06em`) en **todas**: primario en la ganadora, secundario (`border:1px solid rgba(255,255,255,.16)`) en el resto.
+- **Ganadora:** borde `#3FCF8E` + fondo verde 4% (hover 7%). **Si su cumplimiento no es Cumple:** borde `#F5A524` + fondo ámbar 4% y franja ámbar 10% sobre el botón con el motivo (ej. «Informe técnico pendiente»). Adjudicar sigue habilitado: el riesgo se ve antes del clic.
+- **Interacción:** entrada en cascada 40ms; hover sube borde (`rgba(255,255,255,.16)`) y superficie (`#16181B`) en 120ms; adjudicar = check en el botón 1,5s y **el resto al 50% de opacidad** en 200ms.
+- **Tarjetas visibles según ancho:** cada tarjeta ≥210px y la tarjeta resumen de 120px siempre entra completa; se muestran `N = ⌊(ancho − 120) / 222⌋` acotado entre **3 y 5**, el resto pasa al conteo; sin scroll en plegado.
+- **Más de N oferentes:** tarjeta angosta de 120px con borde punteado al 20% («N oferentes más» + rango de precio total en mono 11). Al clic se despliegan en cascada hacia la derecha (fade + 6px, 200ms, 40ms) y la fila pasa a **scroll horizontal con snap** por tarjeta (240px c/u), con la mejor oferta **anclada a la izquierda** y sombra de scroll de 16px a su derecha en cuanto la fila se desplaza. Acción terciaria «Ver solo cinco» para volver.
+- **Conmutador tarjetas / tabla** (dos íconos, 28px, sobre la fila). La tabla (CSS grid, filas 40px, header 38px) tiene Ranking, Oferente, Precio total, Precio unitario, Porcentaje vs SIC, Ahorro, Informe técnico, Cobertura; la mejor oferta lleva el borde izquierdo verde de selección. Cambio de vista con fade cruzado 120ms; **la vista se persiste por usuario**.
 
 ---
 

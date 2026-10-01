@@ -70,16 +70,21 @@ InformeTecnicoSection (export)
 │   ├── Lógica de estado: sin registro = sin evaluar | cumple=true = cumple | cumple=false = no cumple | cumple=null con registro = pendiente
 │   └── Resumen al pie con conteos por renglón
 │
-└── AdjudicacionTab
-    ├── Un card por renglón con header: "RENGLÓN N  [Total SIC del Renglón: X ARS]  [Adjudicado — NOMBRE]"
-    ├── Tabla comparativa por oferente:
-    │   ├── Precio total ofertado = suma de precios unitarios × dólar SIC
-    │   ├── % vs. SIC = (ofertaARS / sicARS - 1) × 100 (2 decimales)
-    │   │   └── Coloreado por ranking: más barato=verde, siguiente=amarillo, resto=blanco, sobre umbral=rojo
-    │   ├── Técnica: Cumple / Pendiente / No cumple / Sin evaluar
-    │   ├── Cobertura: Completo / parcial / Sin ofertar
-    │   └── Botón Adjudicar (toggle, persiste en licitacion_adjudicaciones)
-    └── Resumen de adjudicación al pie
+└── AdjudicacionTab  →  informe-tecnico-adjudicacion.tsx (archivo aparte)
+    ├── Sistema de diseño IDO, design-system.md §4.21–§4.22 (sección 10 del Design)
+    ├── KPIs arriba + resumen al pie (solo tokens IDO)
+    ├── Por renglón: cabecera (chip, descripción, bloque SIC — clic cambia ARS/USD)
+    │   + fila de tarjetas de oferente ordenadas por PRECIO TOTAL (×cantidad)
+    │   ├── Visibles: ⌊(ancho−120)/222⌋ entre 3 y 5; el resto en «N oferentes más»
+    │   │   (los que no cotizaron ese renglón van SIEMPRE al resumen, no ocupan lugar)
+    │   ├── Desplegada: scroll horizontal con snap, mejor oferta anclada a la izquierda
+    │   ├── Arrastrar tarjetas para reordenar (se conservó a pedido del usuario)
+    │   └── Botón Adjudicar en todas; la adjudicada queda «✓ Adjudicada» (clic = desadjudica)
+    │       y el resto al 50%
+    ├── Conmutador tarjetas/tabla (global, persistido por usuario en lib/tableLayout.ts,
+    │   id `informeAdjudicacion`, campo `view`). En tabla se adjudica con clic derecho.
+    └── El contenedor de la pestaña (en informe-tecnico.tsx) toma `.ido-terminal` + bg.base
+        solo en esta pestaña.
 ```
 
 ## Lógica de cálculo en AdjudicacionTab
@@ -92,7 +97,10 @@ calcSicARS(r) = Σ items: precio_sic_pesos (si ARS) | precio_sic_pesos × fdSic 
 calcOferta(r, ofId) = Σ items con oferta: precio_unitario (si ARS) | precio_unitario × fdSic (si USD)
 
 // Porcentaje sobre/bajo la SIC
-calcPct(ofARS, sicARS) = (ofARS / sicARS - 1) × 100
+calcPct = (total ofertado ARS / SIC total ARS − 1) × 100   // sobre TOTALES (×cantidad)
+// Ranking y «Mejor oferta» = menor total (×cantidad) con cobertura completa;
+// cobertura incompleta → al final, sin número de ranking.
+// Alerta de umbral: ⚠ en el chip % cuando supera licitacion.umbral_economico_pct.
 
 // ⚠ Se usa fdSic (no fdOp) para AMBAS conversiones → comparación consistente
 ```
