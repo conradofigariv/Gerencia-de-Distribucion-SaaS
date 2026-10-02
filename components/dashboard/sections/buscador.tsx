@@ -29,7 +29,7 @@ import {
   fetchOpDatos, upsertOpDato, aplicarOpDatos, normOp, OP_MANUAL_COLS, type OpDato,
 } from "@/lib/opDatos";
 import {
-  fetchTabs, createTab, renameTab, deleteTab, fetchTabFilas, addFilas,
+  fetchTabs, createTab, renameTab, deleteTab, fetchTabFilas, addFilas, siguienteOrden,
   updateFilaDatos, deleteFilas, reorderFilas, updateTabConfig, marcarEnTarjeta,
   fetchMisPermisos, fetchColaboradores, compartirTab, descompartirTab, fetchEquipo,
   TRACK_KEYS, ESTADOS,
@@ -493,6 +493,104 @@ const TRACK_COLS: TrackColDef[] = [
   { key: TRACK_KEYS.responsable,   label: "Responsable",  tipo: "texto",  width: 160 },
   { key: TRACK_KEYS.fechaRevision, label: "F. revisión",  tipo: "fecha",  width: 130 },
 ];
+
+// ─── Editor de celda (§4.4) ─────────────────────────────────────────────────
+// Guarda su propio valor mientras se tipea: cuando vivía en la sección (más de
+// 3000 líneas), cada tecla re-renderizaba la tabla entera.
+// Enter o salir del campo guarda; Esc cancela — y NO guarda aunque el
+// navegador dispare `blur` al sacar el campo del DOM (Chrome lo hace).
+function CeldaEditor({
+  inicial, tipo = "texto", alinear = "left", onGuardar, onCancelar,
+}: {
+  inicial: string;
+  tipo?: "texto" | "fecha" | "estado";
+  alinear?: "left" | "right";
+  onGuardar: (valor: string) => void;
+  onCancelar: () => void;
+}) {
+  const [valor, setValor] = useState(inicial);
+  const cerrado = useRef(false);
+  const cancelar = () => { cerrado.current = true; onCancelar(); };
+
+  if (tipo === "estado") {
+    return (
+      <select
+        autoFocus
+        onClick={(e) => e.stopPropagation()}
+        value={valor}
+        onChange={(e) => { cerrado.current = true; setValor(e.target.value); onGuardar(e.target.value); }}
+        onBlur={() => { if (!cerrado.current) cancelar(); }}
+        onKeyDown={(e) => { if (e.key === "Escape") cancelar(); }}
+        className="ido-cell-edit"
+      >
+        <option value="">—</option>
+        {ESTADOS.map((x) => <option key={x} value={x}>{x}</option>)}
+      </select>
+    );
+  }
+  return (
+    <input
+      autoFocus
+      onClick={(e) => e.stopPropagation()}
+      type={tipo === "fecha" ? "date" : "text"}
+      value={valor}
+      onChange={(e) => setValor(e.target.value)}
+      onBlur={() => { if (!cerrado.current) { cerrado.current = true; onGuardar(valor); } }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") cancelar();
+      }}
+      className="ido-cell-edit"
+      style={{ textAlign: alinear }}
+    />
+  );
+}
+
+// ─── Valor de celda para exportar / copiar ──────────────────────────────────
+// Lo mismo que se ve en pantalla, pero con tipos que Excel entiende: las fechas
+// como fecha de verdad (antes salían como texto crudo y mezclado — "2024-07-23"
+// en unas filas, "Tue Jul 23 2024 …" en otras — y no se podían ordenar ni
+// filtrar), los números como número y el envío como «1/2».
+const COLS_FECHA = new Set<string>([
+  ...COLS.filter((c) => /fecha/.test(c.key as string)).map((c) => c.key as string),
+  ...TRACK_COLS.filter((c) => c.tipo === "fecha").map((c) => c.key),
+]);
+const COLS_NUM = new Set<string>(COLS.filter((c) => c.num).map((c) => c.key as string));
+
+/** Fecha a medianoche LOCAL (Excel no tiene zona horaria: así cae en el día que se ve). */
+function fechaLocal(v: unknown): Date | null {
+  const s = String(v);
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]);
+  const dmy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s);
+  if (dmy) return new Date(+dmy[3], +dmy[2] - 1, +dmy[1]);
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function valorExportable(key: string, f: Record<string, unknown>): string | number | Date {
+  const v = f[key];
+  if (v == null || v === "") return "";
+  if (COLS_FECHA.has(key)) return fechaLocal(v) ?? String(v);
+  if (key === "envio") {
+    const total = Number(f.envios_linea);
+    return total > 1 ? `${v}/${total}` : String(v);
+  }
+  if (key === "tipo") return /^s/i.test(String(v)) ? "Servicio" : "Material";
+  if (COLS_NUM.has(key)) {
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : String(v);
+  }
+  return String(v);
+}
+
+/** Igual que `valorExportable`, como texto para el portapapeles (pegar en Excel es-AR). */
+function valorCopiable(key: string, f: Record<string, unknown>): string {
+  const v = valorExportable(key, f);
+  if (v instanceof Date) return v.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  if (typeof v === "number") return String(v).replace(".", ",");
+  return v.replace(/[\t\r\n]+/g, " ");
+}
 
 // ─── Agrupado de pestañas ────────────────────────────────────────────────────
 // Una pestaña puede agruparse por distintos ejes de la jerarquía del dominio
@@ -1114,8 +1212,8 @@ export function BuscadorSection() {
   );
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   // Celda en edición dentro de una pestaña: { filaId, key }.
-  const [editing, setEditing]     = useState<{ filaId: string; key: string } | null>(null);
-  const [editValue, setEditValue] = useState("");
+  // `valor` = con qué arranca el campo; lo que se tipea vive en <CeldaEditor>.
+  const [editing, setEditing]     = useState<{ filaId: string; key: string; valor: string } | null>(null);
   // Vista de agrupado — `agrupar`/`agruparPor` viven en buscador_tabs.config
   // (ver más abajo, junto a tabLayouts/patchLayout): son valores DERIVADOS de
   // la pestaña activa, no estado propio, para que cada pestaña recuerde su
@@ -1132,6 +1230,8 @@ export function BuscadorSection() {
   const [colWidths, setColWidths] = useState<Record<string, number>>(DEFAULT_COL_WIDTHS);
   const colWidthsLoaded = useRef(false);
   const resizingRef = useRef<{ col: string; startX: number; startWidth: number } | null>(null);
+  // Columna que se está redimensionando (guía de 1px + ancho, ver más abajo).
+  const [resizingCol, setResizingCol] = useState<string | null>(null);
 
   // Orden y visibilidad de columnas (no borra datos, solo qué se ve y en qué orden).
   const [colOrder, setColOrder]   = useState<string[]>(DEFAULT_COL_ORDER);
@@ -1202,13 +1302,17 @@ export function BuscadorSection() {
   }, [userId]);
   useEffect(() => {
     if (!colWidthsLoaded.current) return;
+    // Mientras se arrastra el borde, `colWidths` cambia en cada mousemove: se
+    // guarda recién al soltar (el ref vuelve a null y este efecto corre de
+    // nuevo por `resizingCol`).
+    if (resizingRef.current) return;
     try { localStorage.setItem(COLWIDTHS_KEY, JSON.stringify(colWidths)); } catch { /* ignorar */ }
     if (!userId) return;
     if (saveWidthsTimer.current) clearTimeout(saveWidthsTimer.current);
     saveWidthsTimer.current = setTimeout(() => {
       setPreference(userId, COLWIDTHS_KEY, colWidths);
     }, 1000);
-  }, [colWidths, userId]);
+  }, [colWidths, userId, resizingCol]);
   // Snapshot del layout para los handlers que viven fuera del ciclo de render
   // (el listener de resize se registra una sola vez) y para no arrastrar medio
   // componente en las deps de cada callback.
@@ -1289,7 +1393,6 @@ export function BuscadorSection() {
   // Redimensionado (§4.15): mínimo 64px; `resizingCol` pinta la guía de 1px
   // con el ancho. `lastResizeEnd`: al soltar un arrastre dentro del mismo
   // encabezado el navegador dispara un click sobre él → ordenaba la columna.
-  const [resizingCol, setResizingCol] = useState<string | null>(null);
   const lastResizeEnd = useRef(0);
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -1615,37 +1718,52 @@ export function BuscadorSection() {
     }
   }, [confirmar, userId]);
 
-  const handleDeleteFila = useCallback(async (id: string) => {
-    const backup = tabFilas;
-    setTabFilas((p) => p.filter((f) => f.id !== id));   // optimista
-    try {
-      await deleteFilas([id]);
-    } catch (e) {
-      setTabFilas(backup);
-      toast.error(`No se pudo borrar: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }, [tabFilas]);
-
-  /** Borra todas las filas de un grupo entero (una OP, una matrícula, una SIC) de una vez. */
-  const handleDeleteGrupo = useCallback(async (filaIds: string[], titulo: string) => {
-    if (!filaIds.length) return;
-    const ok = await confirmar({
-      title: "Quitar filas de la pestaña",
-      children: <>Se quitan las <b className="ido-mono" style={{ color: "var(--ido-text)" }}>{filaIds.length}</b> fila{filaIds.length === 1 ? "" : "s"} de «{titulo}», con lo que hayas anotado en ellas. El índice maestro no se toca.</>,
-      confirmLabel: "Quitar",
+  // Saca de la selección (y de la inspección) filas que se acaban de borrar:
+  // si no, la barra seguía contándolas («N seleccionadas · 1 fuera de esta
+  // búsqueda» fantasma).
+  const olvidarSeleccion = useCallback((ids: Iterable<string>) => {
+    const fuera = new Set(ids);
+    setSelected((prev) => {
+      if (![...prev].some((k) => fuera.has(k))) return prev;
+      return new Set([...prev].filter((k) => !fuera.has(k)));
     });
-    if (!ok) return;
+    setInspeccionada((k) => (k && fuera.has(k) ? null : k));
+  }, []);
+
+  /**
+   * Quita filas de la pestaña. Una sola va directo (es lo que se ve bajo el
+   * mouse); varias piden confirmación, porque se llevan lo anotado en ellas.
+   * `titulo` = nombre del grupo cuando se quita uno entero.
+   */
+  const quitarFilas = useCallback(async (filaIds: string[], titulo?: string) => {
+    if (!filaIds.length) return;
+    if (filaIds.length > 1 || titulo) {
+      const n = filaIds.length;
+      const ok = await confirmar({
+        title: "Quitar filas de la pestaña",
+        children: <>Se quita{n === 1 ? "" : "n"} <b className="ido-mono" style={{ color: "var(--ido-text)" }}>{n}</b> fila{n === 1 ? "" : "s"}{titulo ? <> de «{titulo}»</> : null}, con lo que hayas anotado en {n === 1 ? "ella" : "ellas"}. El índice maestro no se toca.</>,
+        confirmLabel: "Quitar",
+      });
+      if (!ok) return;
+    }
     const backup = tabFilas;
     const ids = new Set(filaIds);
     setTabFilas((p) => p.filter((f) => !ids.has(f.id)));   // optimista
     try {
       await deleteFilas(filaIds);
-      toast.success(`${filaIds.length} fila(s) de «${titulo}» borradas.`);
+      olvidarSeleccion(ids);
+      if (filaIds.length > 1) toast.success(`${filaIds.length} filas quitadas${titulo ? ` de «${titulo}»` : ""}.`);
     } catch (e) {
       setTabFilas(backup);
       toast.error(`No se pudo borrar: ${e instanceof Error ? e.message : String(e)}`);
     }
-  }, [tabFilas, confirmar]);
+  }, [tabFilas, confirmar, olvidarSeleccion]);
+
+  /** Borra todas las filas de un grupo entero (una OP, una matrícula, una SIC) de una vez. */
+  const handleDeleteGrupo = useCallback(
+    (filaIds: string[], titulo: string) => quitarFilas(filaIds, titulo),
+    [quitarFilas],
+  );
 
   // Guarda una celda editada. `datos` es jsonb, así que se manda el objeto
   // entero con la clave ya aplicada.
@@ -1717,15 +1835,21 @@ export function BuscadorSection() {
     const [moved] = next.splice(fromIdx, 1);
     next.splice(toIdx, 0, moved);
     const renumeradas = next.map((f, i) => ({ ...f, orden: i }));
-    const backup = tabFilas;
+    // Solo se guardan las que cambiaron de `orden` (las que están entre el
+    // origen y el destino, salvo la primera vez después de borrar filas, que
+    // cierra los huecos).
+    const previos = new Map(tabFilas.map((f) => [f.id, f.orden]));
+    const aGuardar = renumeradas.filter((f) => previos.get(f.id) !== f.orden);
     setTabFilas(renumeradas);
     try {
-      await reorderFilas(renumeradas.map((f) => ({ id: f.id, orden: f.orden })));
+      await reorderFilas(aGuardar.map((f) => ({ id: f.id, orden: f.orden })));
     } catch (e) {
-      setTabFilas(backup);
-      toast.error(`No se pudo reordenar: ${e instanceof Error ? e.message : String(e)}`);
+      // Si falló a la mitad, parte del orden nuevo ya quedó guardado: volver al
+      // estado anterior en pantalla mentiría. Se recarga lo que hay en la base.
+      toast.error(`No se pudo reordenar del todo: ${e instanceof Error ? e.message : String(e)}`);
+      if (activeTab) fetchTabFilas(activeTab).then(setTabFilas).catch(() => {});
     }
-  }, [tabFilas]);
+  }, [tabFilas, activeTab]);
 
   const cargarEstado = useCallback(() => {
     estadoIndice().then(setIndice).catch(() => setIndice(null));
@@ -1867,10 +1991,15 @@ export function BuscadorSection() {
 
   const handleSort = useCallback((col: string) => {
     if (resizingRef.current || Date.now() - lastResizeEnd.current < 300) return;
-    setSort((prev) =>
-      prev.col === col ? { col, dir: prev.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" }
-    );
-  }, []);
+    setSort((prev) => {
+      if (prev.col !== col) return { col, dir: "asc" };
+      // En una pestaña, el tercer clic vuelve al orden manual (el de arrastrar):
+      // si no, una vez ordenada por columna no había forma de recuperarlo sin
+      // salir y volver a entrar.
+      if (isTabMode && prev.dir === "desc") return { col: null, dir: "asc" };
+      return { col, dir: prev.dir === "asc" ? "desc" : "asc" };
+    });
+  }, [isTabMode]);
 
   // Copia las filas tildadas del índice a una pestaña — TODAS, también las que
   // se tildaron en otra búsqueda (ver `filasSeleccionadas`). Las que ya están
@@ -1893,7 +2022,7 @@ export function BuscadorSection() {
         toast.info("Esas filas ya están en la pestaña.");
         return;
       }
-      const creadas = await addFilas(tabId, nuevas, rowKey, destinoFilas.length);
+      const creadas = await addFilas(tabId, nuevas, rowKey, siguienteOrden(destinoFilas));
       if (tabId === activeTab) setTabFilas((p) => [...p, ...creadas]);
       setSelected(new Set());
       const destino = tabs.find((t) => t.id === tabId)?.nombre ?? "la pestaña";
@@ -1915,7 +2044,7 @@ export function BuscadorSection() {
         toast.info(`Esa fila ya está en «${destino}».`);
         return;
       }
-      const creadas = await addFilas(tabId, [r], rowKey, destinoFilas.length);
+      const creadas = await addFilas(tabId, [r], rowKey, siguienteOrden(destinoFilas));
       if (tabId === activeTab) setTabFilas((p) => [...p, ...creadas]);
       toast.success(`Fila copiada a «${destino}».`);
     } catch (e) {
@@ -2068,11 +2197,23 @@ export function BuscadorSection() {
    *   3. Si nunca se tocó → todos cerrados, para ver de un vistazo qué hay sin
    *      scrollear cientos de filas.
    */
+  // Con una búsqueda activa los grupos arrancan todos abiertos, y plegar o
+  // desplegar vale SOLO para esa búsqueda: no se guarda. Antes se guardaba
+  // partiendo del Set vacío de la búsqueda, y al limpiarla aparecían abiertos
+  // todos los grupos que estaban cerrados (para todos, si era una pestaña
+  // compartida).
+  const hayBusqueda = !!query.trim();
+  const [colapsadosBusqueda, setColapsadosBusqueda] = useState<Set<string>>(new Set());
+  useEffect(() => { setColapsadosBusqueda(new Set()); }, [hayBusqueda, activeTab]);
   const colapsados = useMemo(() => {
-    if (query.trim()) return new Set<string>();
+    if (hayBusqueda) return colapsadosBusqueda;
     if (colapsadosGuardados) return colapsadosGuardados;
     return new Set(displayRows.map((r) => groupKeyOf(r.data, agruparPor)));
-  }, [query, colapsadosGuardados, displayRows, agruparPor]);
+  }, [hayBusqueda, colapsadosBusqueda, colapsadosGuardados, displayRows, agruparPor]);
+  const setColapsadosVista = useCallback((keys: string[]) => {
+    if (hayBusqueda) setColapsadosBusqueda(new Set(keys));
+    else patchLayout({ colapsados: keys });
+  }, [hayBusqueda, patchLayout]);
 
   // ── Agrupado (solo en pestañas) ──
   // Una matrícula tiene una fila por (OP, línea, envío), así que una familia
@@ -2103,7 +2244,9 @@ export function BuscadorSection() {
     return out;
   }, [displayRows, isTabMode, agrupar, agruparPor, colapsados]);
 
-  const puedeArrastrar = isTabMode && !agrupar && puedoEditar;
+  // Arrastrar reescribe el orden MANUAL: con la tabla ordenada por una columna
+  // no se ve ningún cambio y se guardaba igual un orden distinto al visible.
+  const puedeArrastrar = isTabMode && !agrupar && puedoEditar && !sortCol;
 
   // ── Selección por click, estilo explorador de archivos ────────────────────
   // Reemplaza a los checkboxes por fila: click selecciona sola, ctrl (o ⌘)
@@ -2184,8 +2327,8 @@ export function BuscadorSection() {
   const toggleGrupo = useCallback((gk: string) => {
     const s = new Set(colapsados);
     if (s.has(gk)) s.delete(gk); else s.add(gk);
-    patchLayout({ colapsados: [...s] });
-  }, [colapsados, patchLayout]);
+    setColapsadosVista([...s]);
+  }, [colapsados, setColapsadosVista]);
 
   /** Menú contextual del encabezado de un GRUPO (dentro de una pestaña). */
   const abrirMenuGrupo = useCallback((
@@ -2203,12 +2346,12 @@ export function BuscadorSection() {
       {
         label: "Abrir todos",
         icon: ChevronDown,
-        onClick: () => patchLayout({ colapsados: [] }),
+        onClick: () => setColapsadosVista([]),
       },
       {
         label: "Cerrar todos",
         icon: ChevronRight,
-        onClick: () => patchLayout({ colapsados: [...new Set(displayRows.map((r) => groupKeyOf(r.data, agruparPor)))] }),
+        onClick: () => setColapsadosVista([...new Set(displayRows.map((r) => groupKeyOf(r.data, agruparPor)))]),
       },
       {
         label: "Copiar nombre",
@@ -2232,7 +2375,7 @@ export function BuscadorSection() {
       });
     }
     setCtxMenu({ x: e.clientX, y: e.clientY, items });
-  }, [colapsados, displayRows, agruparPor, puedoEditar, toggleGrupo, handleDeleteGrupo, patchLayout]);
+  }, [colapsados, displayRows, agruparPor, puedoEditar, toggleGrupo, handleDeleteGrupo, setColapsadosVista]);
 
   // Cantidad de grupos distintos en la pestaña, según el criterio (para el contador).
   const gruposCount = useMemo(
@@ -2261,13 +2404,14 @@ export function BuscadorSection() {
       const XLSX = await import("xlsx");
       const aoa = [
         cols.map((c) => c.label),
-        ...filas.map((f) => cols.map((c) => {
-          const v = f[c.key];
-          return v == null ? "" : (typeof v === "number" ? v : String(v));
-        })),
+        ...filas.map((f) => cols.map((c) => valorExportable(c.key, f))),
       ];
+      // Las Date se escriben como fecha de Excel con formato dd/mm/aaaa.
+      const ws = XLSX.utils.aoa_to_sheet(aoa, { dateNF: "dd/mm/yyyy" });
+      // Ancho de columna aproximado: el del título o 10, lo que sea mayor.
+      ws["!cols"] = cols.map((c) => ({ wch: Math.max(10, c.label.length + 2) }));
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "Datos");
+      XLSX.utils.book_append_sheet(wb, ws, "Datos");
       XLSX.writeFile(wb, `${nombre.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, "-")}.xlsx`);
       toast.success(`${filas.length} fila(s) exportadas.`);
     } catch (e) {
@@ -2275,13 +2419,16 @@ export function BuscadorSection() {
     }
   }, []);
 
-  /** Columnas de la vista actual, en el orden en que se ven. */
+  /**
+   * Columnas de la vista actual, en el orden EXACTO en que se ven (sale de
+   * `mergedCols`). Antes las de seguimiento iban siempre al final del Excel
+   * aunque en pantalla estuvieran intercaladas.
+   */
   const colsVisibles = useMemo(
-    () => [
-      ...visibleCols.map((c) => ({ key: c.key as string, label: c.label })),
-      ...(isTabMode ? visibleTrackCols.map((c) => ({ key: c.key, label: c.label })) : []),
-    ],
-    [visibleCols, visibleTrackCols, isTabMode]
+    () => mergedCols.map((x) => (x.kind === "data"
+      ? { key: x.key, label: x.data.label }
+      : { key: x.key, label: x.track.label })),
+    [mergedCols]
   );
 
   const abrirMenuFila = useCallback((
@@ -2320,7 +2467,7 @@ export function BuscadorSection() {
         icon: Pencil,
         disabled: !editable,
         hint: esManual && editable ? "toda la OP" : undefined,
-        onClick: () => { setEditValue(valor); setEditing({ filaId: editKey!, key: colKey }); },
+        onClick: () => setEditing({ filaId: editKey!, key: colKey, valor }),
       });
       items.push({
         label: "Copiar valor",
@@ -2352,8 +2499,11 @@ export function BuscadorSection() {
       // cualquiera que venga de un explorador de archivos, y evita que un click
       // derecho descuidado sobre otra fila opere sobre la selección entera.
       const objetivo = enSeleccion ? [...selected] : ctx.filaId ? [ctx.filaId] : [];
+      // Map y no `find` por id: con miles de filas seleccionadas, abrir el menú
+      // era O(selección × filas).
+      const porId = new Map(tabFilas.map((f) => [f.id, f]));
       const enTarjeta = (id: string) =>
-        String(tabFilas.find((f) => f.id === id)?.datos[TRACK_KEYS.enTarjeta] ?? "") === "true";
+        String(porId.get(id)?.datos[TRACK_KEYS.enTarjeta] ?? "") === "true";
       // Solo se ofrece "Quitar" cuando TODO el objetivo ya está en la tarjeta:
       // con una selección mezclada, lo útil es terminar de mandarla entera.
       const todasEn = objetivo.length > 0 && objetivo.every(enTarjeta);
@@ -2366,12 +2516,16 @@ export function BuscadorSection() {
       });
 
       items.push("sep");
+      // Sobre una fila seleccionada actúa sobre TODA la selección, igual que
+      // «Enviar a Tarjeta» y «Exportar» (antes quitaba solo esa fila aunque
+      // hubiera 10 marcadas).
+      const aQuitar = enSeleccion ? [...selected] : ctx.filaId ? [ctx.filaId] : [];
       items.push({
-        label: "Quitar de la pestaña",
+        label: aQuitar.length > 1 ? `Quitar ${aQuitar.length} filas de la pestaña` : "Quitar de la pestaña",
         icon: Trash2,
         danger: true,
-        disabled: !puedoEditar || !ctx.filaId,
-        onClick: () => handleDeleteFila(ctx.filaId!),
+        disabled: !puedoEditar || !aQuitar.length,
+        onClick: () => quitarFilas(aQuitar),
       });
       if (agrupar) {
         const gk = groupKeyOf(ctx.data, agruparPor);
@@ -2446,7 +2600,7 @@ export function BuscadorSection() {
     setCtxMenu({ x: e.clientX, y: e.clientY, items });
   }, [
     isTabMode, puedoEditar, agrupar, agruparPor, tabFilas, pinnedKeys, selected,
-    tabs, permisoDe, togglePin, handleDeleteFila, handleDeleteGrupo, handleAddRowToTab,
+    tabs, permisoDe, togglePin, quitarFilas, handleDeleteGrupo, handleAddRowToTab,
     handleMarcarTarjeta, displayRows, colsVisibles, exportarAExcel, activeTab, query, filasSeleccionadas,
   ]);
 
@@ -2618,13 +2772,23 @@ export function BuscadorSection() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const GROUP_H = 40;
   const HEADER_H = 38;   // encabezado sticky de la tabla (mismo alto que abajo)
+  // Callbacks ESTABLES: con funciones nuevas en cada render el virtualizador
+  // recalculaba las posiciones de todas las filas (O(n)) en cada render —
+  // cada tecla, cada movimiento al redimensionar.
+  const estimateSize = useCallback(
+    (i: number) => (displayItems[i]?.tipo === "grupo" ? GROUP_H : ROW_H),
+    [displayItems, ROW_H],
+  );
+  const getItemKey = useCallback((i: number) => displayItems[i]?.key ?? i, [displayItems]);
   const rowVirtualizer = useVirtualizer({
     count: displayItems.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => (displayItems[i]?.tipo === "grupo" ? GROUP_H : ROW_H),
-    getItemKey: (i) => displayItems[i]?.key ?? i,
+    estimateSize,
+    getItemKey,
     overscan: 10,
   });
+  // Cambiar la densidad no cambia las claves: hay que pedirle que vuelva a medir.
+  useEffect(() => { rowVirtualizer.measure(); }, [ROW_H, rowVirtualizer]);
 
   // Selección: totales para la barra flotante.
   const seleccionVisibleKeys = useMemo(
@@ -2708,9 +2872,6 @@ export function BuscadorSection() {
   const teclado = useRef({ keysVisibles, displayItems, inspeccionada, selected, editing, ctxMenu, colsVisibles, filasSeleccionadas, displayRows });
   teclado.current = { keysVisibles, displayItems, inspeccionada, selected, editing, ctxMenu, colsVisibles, filasSeleccionadas, displayRows };
   useEffect(() => {
-    const valorCopiable = (v: unknown) =>
-      v == null ? "" : typeof v === "number" ? String(v).replace(".", ",") : String(v).replace(/[\t\r\n]+/g, " ");
-
     const onKey = (e: KeyboardEvent) => {
       const t = teclado.current;
       const el = e.target as HTMLElement | null;
@@ -2757,7 +2918,7 @@ export function BuscadorSection() {
           : t.displayRows.filter((r) => r.key === t.inspeccionada).map((r) => r.data);
         if (!filas.length) return;
         e.preventDefault();
-        const lineas = filas.map((f) => t.colsVisibles.map((c) => valorCopiable(f[c.key])).join("\t"));
+        const lineas = filas.map((f) => t.colsVisibles.map((c) => valorCopiable(c.key, f)).join("\t"));
         // Varias filas llevan encabezado (para pegarlas como tabla nueva); una
         // sola no, así se puede pegar debajo de una planilla que ya lo tiene.
         if (filas.length > 1) lineas.unshift(t.colsVisibles.map((c) => c.label).join("\t"));
@@ -2999,11 +3160,9 @@ export function BuscadorSection() {
               {agrupar && gruposCount > 0 && (
                 <button
                   type="button"
-                  onClick={() => patchLayout({
-                    colapsados: colapsados.size
-                      ? []
-                      : [...new Set(displayRows.map((r) => groupKeyOf(r.data, agruparPor)))],
-                  })}
+                  onClick={() => setColapsadosVista(
+                    colapsados.size ? [] : [...new Set(displayRows.map((r) => groupKeyOf(r.data, agruparPor)))]
+                  )}
                   title={colapsados.size ? "Abrir todos los grupos" : "Cerrar todos los grupos"}
                   className="ido-btn ido-btn-ghost"
                   style={{ height: TOOLBAR_H, width: TOOLBAR_H, padding: 0, justifyContent: "center" }}
@@ -3366,7 +3525,7 @@ export function BuscadorSection() {
                           {isTabMode && (
                             <span
                               className={cn("grid place-items-center", puedeArrastrar && "cursor-grab active:cursor-grabbing")}
-                              title={puedeArrastrar ? "Arrastrar para reordenar" : "Desactivá el agrupado para reordenar"}
+                              title={puedeArrastrar ? "Arrastrar para reordenar" : agrupar ? "Desactivá el agrupado para reordenar" : sortCol ? "Ordenada por columna — clic en el encabezado hasta volver al orden manual para reordenar" : "Solo lectura"}
                               style={{ color: "var(--ido-text-2)", opacity: puedeArrastrar ? 1 : 0.35 }}
                             >
                               <GripVertical className="w-3.5 h-3.5" />
@@ -3398,34 +3557,15 @@ export function BuscadorSection() {
                                 className={cn("ido-bs-cell", puedoEditar && !editando && "is-editable")}
                                 style={{ padding: editando ? "0 4px" : undefined, color: "var(--ido-text)" }}
                                 title={!puedoEditar ? "Solo lectura — pedile al dueño permiso de edición" : c.tipo === "texto" ? val : "Doble clic para editar"}
-                                onDoubleClick={puedoEditar ? () => { setEditValue(val); setEditing({ filaId: filaId!, key: c.key }); } : undefined}
+                                onDoubleClick={puedoEditar ? () => setEditing({ filaId: filaId!, key: c.key, valor: val }) : undefined}
                                 onContextMenu={(e) => abrirMenuFila(e, { key, filaId, data, colKey: c.key })}
                               >
-                                {editando && c.tipo === "estado" ? (
-                                  <select
-                                    autoFocus
-                                    onClick={(e) => e.stopPropagation()}
-                                    value={editValue}
-                                    onChange={(e) => { setEditValue(e.target.value); commitEdit(filaId!, c.key, e.target.value); }}
-                                    onBlur={() => setEditing(null)}
-                                    className="ido-cell-edit"
-                                  >
-                                    <option value="">—</option>
-                                    {ESTADOS.map((e) => <option key={e} value={e}>{e}</option>)}
-                                  </select>
-                                ) : editando ? (
-                                  <input
-                                    autoFocus
-                                    onClick={(e) => e.stopPropagation()}
-                                    type={c.tipo === "fecha" ? "date" : "text"}
-                                    value={editValue}
-                                    onChange={(e) => setEditValue(e.target.value)}
-                                    onBlur={() => commitEdit(filaId!, c.key, editValue)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") e.currentTarget.blur();
-                                      if (e.key === "Escape") setEditing(null);
-                                    }}
-                                    className="ido-cell-edit"
+                                {editando ? (
+                                  <CeldaEditor
+                                    inicial={editing.valor}
+                                    tipo={c.tipo}
+                                    onGuardar={(v) => commitEdit(filaId!, c.key, v)}
+                                    onCancelar={() => setEditing(null)}
                                   />
                                 ) : (
                                   // Hover de celda editable (§4.4) en CSS: `.is-editable`.
@@ -3476,25 +3616,15 @@ export function BuscadorSection() {
                                   : isTabMode ? (puedoEditar ? "Doble clic para editar" : "Solo lectura — pedile al dueño permiso de edición")
                                   : c.key === "descripcion" ? String(data.descripcion ?? "") : undefined
                               }
-                              onDoubleClick={editable ? () => {
-                                setEditValue(String(data[c.key] ?? ""));
-                                setEditing({ filaId: editKey!, key: c.key });
-                              } : undefined}
+                              onDoubleClick={editable ? () => setEditing({ filaId: editKey!, key: c.key, valor: String(data[c.key] ?? "") }) : undefined}
                               onContextMenu={(e) => abrirMenuFila(e, { key, filaId, data, colKey: c.key as string })}
                             >
                               {editando ? (
-                                <input
-                                  autoFocus
-                                  onClick={(e) => e.stopPropagation()}
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
-                                  onBlur={() => commitEdit(isTabMode ? filaId ?? null : null, c.key, editValue, numeroOp)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") e.currentTarget.blur();
-                                    if (e.key === "Escape") setEditing(null);
-                                  }}
-                                  className="ido-cell-edit"
-                                  style={{ textAlign: c.num ? "right" : "left" }}
+                                <CeldaEditor
+                                  inicial={editing.valor}
+                                  alinear={c.num ? "right" : "left"}
+                                  onGuardar={(v) => commitEdit(isTabMode ? filaId ?? null : null, c.key, v, numeroOp)}
+                                  onCancelar={() => setEditing(null)}
                                 />
                               ) : (
                                 <>

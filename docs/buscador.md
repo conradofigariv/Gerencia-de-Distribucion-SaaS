@@ -329,23 +329,49 @@ Botón "Al Buscador" en el panel de familia:
 
 ### Pestaña → Control de servicios
 
-`servicios-resumen` puede usar una pestaña como **universo de filtrado**: muestra
-solo las filas de `seguimiento` cuya `matricula` está en esa pestaña.
+«Traer del Buscador» (`servicios-resumen.tsx`) **escribe** en `seguimiento` las
+filas marcadas con «Enviar a Tarjeta» en una pestaña
+(`enviarMarcadasASeguimiento` en `lib/buscadorTabs.ts`), cruzándolas contra
+`planillas_op` con `buildSeguimientoRow` (`lib/seguimientoBuild.ts`).
 
-- Helper: `fetchTabMatriculas(tabId)` — devuelve las matrículas distintas y
-  normalizadas. Selecciona solo `datos->>articulo_key` / `datos->>articulo`, no
-  el `datos` entero (una pestaña grande son varios MB de jsonb).
-- Punto de inserción: el `useMemo` de `baseRows` en `servicios-resumen.tsx`.
-  Todos los KPIs y la tabla derivan de ahí, así que el filtro se propaga solo.
-- **Reemplaza** al filtro Material/Servicio, no se suma: si además se filtrara
-  por tipo, una matrícula mal clasificada en el catálogo desaparecería sin
-  explicación. El filtro «Abierto» sigue aplicando aparte.
-- La pestaña se usa **solo como conjunto de matrículas**, nunca como fuente de
-  números. Por eso el congelamiento de las filas copiadas no afecta a este
-  cruce: un código de matrícula no envejece.
-- El join funciona porque `normArticulo` de `lib/busqueda.ts` y la de
-  `lib/tableroOp.ts` hacen lo mismo (`.trim().replace(/\.0+$/, "")`), igual que
-  `gd_norm_articulo()` en SQL.
+- **De qué pestaña:** un selector al lado del botón, con las pestañas propias y
+  compartidas. Se guarda por usuario (`user_preferences`,
+  `servicios-resumen-tab-fuente`) y **por id**: renombrarla no la desconecta.
+  Sin elección, se usa la que se llama «Servicios».
+- **Cada pestaña reemplaza solo lo suyo:** `seguimiento.buscador_tab_id` dice
+  de qué pestaña vino cada fila. Las filas viejas sin pestaña (de antes de este
+  cambio) las reclama la primera pestaña que sincronice.
+- **Atómico, en la base:** la RPC `gd_seguimiento_traer_de_pestana(tab, filas)`
+  (`supabase/seguimiento_buscador_tab.sql`) rescata los `nombre_corto` cargados
+  a mano, borra lo de esa pestaña e inserta lo nuevo en UNA transacción, con
+  un advisory lock para que dos sincronizaciones simultáneas no dupliquen. Si
+  algo falla, no cambia nada. Antes era DELETE + INSERT desde el navegador: un
+  insert fallido dejaba el Resumen vacío y perdía los nombres cortos.
+- **Sin duplicados:** una OP/línea/matrícula que ya trajo otra pestaña no se
+  vuelve a insertar, y las repetidas dentro de la misma (una por envío) entran
+  una vez. El toast dice cuántas quedaron afuera por eso.
+- Si falta correr el SQL, el botón avisa («Falta correr …») y no toca nada.
+
+### Orden de filas en una pestaña
+- `orden` de una fila nueva = `siguienteOrden(filas)` (máximo + 1), no la
+  cantidad: borrar no renumera y con la cantidad las nuevas empataban con
+  órdenes en uso. `fetchTabFilas` desempata por `created_at` e `id`.
+- Arrastrar guarda solo las filas cuyo `orden` cambió (en tandas de 20); si
+  falla a la mitad se recarga lo que quedó en la base en vez de «volver atrás».
+- Con la tabla ordenada por una columna no se puede arrastrar (no se vería y
+  guardaba un orden distinto al visible). En una pestaña el tercer clic en el
+  encabezado vuelve al orden manual.
+
+### Exportar / copiar
+`valorExportable` / `valorCopiable` (en `buscador.tsx`): mismo valor que en
+pantalla pero tipado — fechas como fecha de Excel (`dd/mm/aaaa`, medianoche
+local), números como número, envío como «1/2», Tipo como Material/Servicio.
+Las columnas salen en el orden exacto de pantalla (`mergedCols`).
+
+### Edición de celdas
+`<CeldaEditor>` guarda lo que se tipea en su propio estado (antes vivía en la
+sección y cada tecla re-renderizaba la tabla entera). Enter/salir guarda, Esc
+cancela sin guardar aunque el navegador dispare `blur` al desmontar.
 
 ---
 

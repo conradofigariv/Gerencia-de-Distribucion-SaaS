@@ -16,7 +16,7 @@ import {
   type Familia, type MatriculaInfo, type ArticuloTipo,
 } from "@/lib/familias";
 import { buscarPorMatriculas, rowKey } from "@/lib/busqueda";
-import { fetchTabs, createTab, fetchTabFilas, addFilas, type BuscadorTab } from "@/lib/buscadorTabs";
+import { fetchTabs, createTab, fetchTabFilas, addFilas, siguienteOrden, type BuscadorTab } from "@/lib/buscadorTabs";
 import { supabase } from "@/lib/supabaseClient";
 
 // ─── Badge de tipo (Material / Servicio) ────────────────────────────────────
@@ -473,7 +473,8 @@ function EnviarABuscadorDialog({
       }
 
       // No duplicar lo que la pestaña ya tenga.
-      const existentes = new Set((await fetchTabFilas(tabId)).map((f) => f.row_key));
+      const filasDestino = await fetchTabFilas(tabId);
+      const existentes = new Set(filasDestino.map((f) => f.row_key));
       const nuevas = filas.filter((r) => !existentes.has(rowKey(r)));
       const repetidas = filas.length - nuevas.length;
 
@@ -482,7 +483,7 @@ function EnviarABuscadorDialog({
         return;
       }
 
-      await addFilas(tabId, nuevas, rowKey, existentes.size);
+      await addFilas(tabId, nuevas, rowKey, siguienteOrden(filasDestino));
       const matriculasDistintas = new Set(nuevas.map((r) => r.articulo_key)).size;
       toast.success(
         `${nuevas.length} línea(s) de ${matriculasDistintas} matrícula(s) enviadas al Buscador` +

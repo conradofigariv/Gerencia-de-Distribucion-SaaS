@@ -30,6 +30,11 @@ import {
   type ColumnLabelMap,
 } from "@/lib/columnLabels";
 import { fetchTabs, enviarMarcadasASeguimiento, type BuscadorTab } from "@/lib/buscadorTabs";
+import { getPreference, setPreference } from "@/lib/userPreferences";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+// Preferencia (por usuario) con el id de la pestaña de la que se trae.
+const PREF_TAB_FUENTE = "servicios-resumen-tab-fuente";
 
 // Scope de las etiquetas editables para esta sección.
 const LABELS_SCOPE = "servicios-resumen";
@@ -203,9 +208,16 @@ export function ServiciosResumenSection() {
   // la campana avisaría por un criterio y la tabla mostraría otro.
   const [umbrales, setUmbrales] = useState<ConfigServicios>(SERVICIOS_DEFAULT);
 
+  // Pestaña elegida como fuente (se recuerda por usuario). null = todavía no
+  // eligió: se usa la que se llama «Servicios».
+  const [userId, setUserId]         = useState<string | null>(null);
+  const [tabFuenteId, setTabFuenteId] = useState<string | null>(null);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) return;
+      setUserId(data.user.id);
+      getPreference<string>(data.user.id, PREF_TAB_FUENTE).then((id) => { if (id) setTabFuenteId(id); }).catch(() => {});
       fetchTabs(data.user.id).then(setTabs).catch(() => { /* sin pestañas, el botón queda deshabilitado */ });
       fetchReglas(data.user.id)
         .then((rs) => { const { activa: _a, ...cfg } = reglaServicios(rs); setUmbrales(cfg); })
@@ -213,10 +225,18 @@ export function ServiciosResumenSection() {
     });
   }, []);
 
+  // La elegida (por id: renombrarla no la desconecta) o, si no hay elección o
+  // ya no existe, la que se llama «Servicios».
   const tabActiva = useMemo(
-    () => tabs.find((t) => t.nombre.trim().toLowerCase() === "servicios") ?? null,
-    [tabs]
+    () => (tabFuenteId && tabs.find((t) => t.id === tabFuenteId))
+      || tabs.find((t) => t.nombre.trim().toLowerCase() === "servicios")
+      || null,
+    [tabs, tabFuenteId]
   );
+  const elegirTabFuente = (id: string) => {
+    setTabFuenteId(id);
+    if (userId) setPreference(userId, PREF_TAB_FUENTE, id);
+  };
 
   /**
    * Trae a `seguimiento` lo marcado en la pestaña «Servicios» del Buscador.
@@ -230,7 +250,7 @@ export function ServiciosResumenSection() {
     if (!tabActiva) return;
     setSincronizando(true);
     try {
-      const { escritas, errores, totalEnPestana } = await enviarMarcadasASeguimiento(tabActiva.id);
+      const { escritas, repetidas, errores, totalEnPestana } = await enviarMarcadasASeguimiento(tabActiva.id);
       await recargarSeguimiento();
       // Se reemplaza entero, no se acumula: son los errores de ESTA sincronización.
       // Antes solo se avisaban en un toast que se cierra solo a los 10s y corta
@@ -249,7 +269,10 @@ export function ServiciosResumenSection() {
             : `Ninguna de las ${totalEnPestana} fila${totalEnPestana === 1 ? "" : "s"} de «${tabActiva.nombre}» está marcada. Seleccionalas ahí y usá «Enviar a Tarjeta».`
         );
       } else {
-        toast.success(`${escritas} fila${escritas === 1 ? "" : "s"} traída${escritas === 1 ? "" : "s"} al seguimiento.`);
+        toast.success(
+          `${escritas} fila${escritas === 1 ? "" : "s"} traída${escritas === 1 ? "" : "s"} al seguimiento.` +
+          (repetidas > 0 ? ` ${repetidas} no se agregaron: ya las trajo otra pestaña o estaban repetidas (una por envío).` : "")
+        );
       }
       // Los errores de cruce no abortan el resto: se avisa cuáles quedaron sin
       // resolver contra planillas_op y se sigue con las que sí cruzaron.
@@ -732,8 +755,8 @@ export function ServiciosResumenSection() {
             disabled={!tabActiva || sincronizando}
             title={
               !tabActiva
-                ? 'No hay una pestaña «Servicios» en el Buscador todavía — creala ahí con ese nombre.'
-                : "Traer al seguimiento las filas marcadas con «Enviar a Tarjeta» en la pestaña Servicios"
+                ? "Elegí de qué pestaña del Buscador traer (o creá una llamada «Servicios»)."
+                : `Traer al seguimiento las filas marcadas con «Enviar a Tarjeta» en «${tabActiva.nombre}». Reemplaza solo lo que trajo esa pestaña.`
             }
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-hairline bg-panel text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-accent/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
@@ -743,11 +766,29 @@ export function ServiciosResumenSection() {
             Traer del Buscador
           </button>
 
+          {/* De qué pestaña se trae. Se guarda por id, así renombrarla no la
+              desconecta, y cada pestaña reemplaza solo lo que trajo ella. */}
+          {tabs.length > 0 && (
+            <Select value={tabActiva?.id ?? ""} onValueChange={elegirTabFuente}>
+              <SelectTrigger
+                className="h-[42px] min-w-[180px] max-w-[260px] rounded-xl border-hairline bg-panel text-sm"
+                title="Pestaña del Buscador de la que se traen las filas"
+              >
+                <SelectValue placeholder="Elegí una pestaña" />
+              </SelectTrigger>
+              <SelectContent>
+                {tabs.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
         </div>
         <p className="text-xs text-muted-foreground">
           {tabActiva
             ? <>Desde la pestaña <span className="text-foreground font-medium">{tabActiva.nombre}</span></>
-            : "Sin pestaña «Servicios» en el Buscador"}
+            : "Elegí de qué pestaña del Buscador traer"}
           {!loadingData && <> · <span className="text-foreground font-medium">{baseRows.length.toLocaleString("es-AR")}</span> líneas</>}
         </p>
       </div>

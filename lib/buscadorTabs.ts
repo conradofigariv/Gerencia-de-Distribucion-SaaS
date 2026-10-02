@@ -1,4 +1,5 @@
 import type { PostgrestError } from "@supabase/supabase-js";
+import type { SeguimientoRowNueva } from "@/lib/seguimientoBuild";
 import { supabase } from "@/lib/supabaseClient";
 import type { BusquedaRow } from "@/lib/busqueda";
 
@@ -147,9 +148,25 @@ export async function fetchTabFilas(tabId: string): Promise<TabFila[]> {
     .from("buscador_tab_filas")
     .select("*")
     .eq("tab_id", tabId)
-    .order("orden", { ascending: true });
+    .order("orden", { ascending: true })
+    // Desempate estable: con dos filas del mismo `orden` (datos viejos, o dos
+    // personas agregando a la vez) el orden al recargar era al azar.
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
   if (error) throw errorSupabase(error);
   return (data ?? []) as TabFila[];
+}
+
+/**
+ * `orden` para la próxima fila que se agregue al final: el máximo + 1, NO la
+ * cantidad de filas. Borrar no renumera, así que después de quitar filas la
+ * cantidad cae debajo de órdenes que siguen en uso: las agregadas empataban
+ * con las que ya estaban y al recargar aparecían mezcladas en el medio.
+ */
+export function siguienteOrden(filas: { orden: number }[]): number {
+  let max = -1;
+  for (const f of filas) if (f.orden > max) max = f.orden;
+  return max + 1;
 }
 
 /**
@@ -283,17 +300,18 @@ export async function marcarEnTarjeta(
  *   pestaña no la hacía aparecer en el Resumen: solo servía para recortar lo
  *   que ya estuviera cargado en `seguimiento`.
  *
- * Idempotente y no destructivo: borra únicamente las filas que este mismo
- * camino creó (`origen = 'buscador'`) y las vuelve a escribir. Las cargadas a
- * mano (`manual`) o por la masiva de SICs (`sic`) no se tocan — mismo criterio
- * que el «reemplazar solo las SICs» que ya existía en Crear seguimiento.
+ * Idempotente y no destructivo: reemplaza únicamente las filas que trajo ESTA
+ * pestaña (`origen = 'buscador'` + `buscador_tab_id`), en una transacción de
+ * la base (RPC `gd_seguimiento_traer_de_pestana`). Lo que trajo otra pestaña,
+ * lo cargado a mano (`manual`) y la masiva de SICs (`sic`) no se tocan. Una
+ * OP/línea/matrícula que ya trajo otra pestaña no se duplica (`repetidas`).
  *
  * Devuelve cuántas filas se escribieron y los errores de cruce, para poder
  * avisar cuáles no se pudieron resolver contra `planillas_op`.
  */
 export async function enviarMarcadasASeguimiento(
   tabId: string,
-): Promise<{ escritas: number; errores: string[]; totalEnPestana: number }> {
+): Promise<{ escritas: number; repetidas: number; errores: string[]; totalEnPestana: number }> {
   // Diagnóstico: además de las marcadas, se cuenta el total de filas de la
   // pestaña. Sin esto, un "0 filas" no distingue entre "la pestaña está
   // vacía", "tiene filas pero ninguna marcada" y "tabId apunta a la pestaña
@@ -313,27 +331,17 @@ export async function enviarMarcadasASeguimiento(
   const totalEnPestana = totalRes.count ?? 0;
 
   const filas = (data ?? []) as { id: string; datos: Record<string, unknown> }[];
-  if (!filas.length) return { escritas: 0, errores: [], totalEnPestana };
+  if (!filas.length) return { escritas: 0, repetidas: 0, errores: [], totalEnPestana };
 
   const { loadCrossMaps, buildSeguimientoRow, num, str } = await import("@/lib/seguimientoBuild");
   const { fetchOpDatos, normOp } = await import("@/lib/opDatos");
-  const [{ opMap, matMap }, opDatos, nombresPrevios] = await Promise.all([
+  const [{ opMap, matMap }, opDatos] = await Promise.all([
     loadCrossMaps(),
     fetchOpDatos(),
-    // `nombre_corto` es el ÚNICO campo de `seguimiento` que se carga a mano
-    // en el Resumen y no sale de ninguna fuente del Buscador (a diferencia de
-    // `observacion`, que sí viaja desde la nota de la pestaña). Como esta
-    // función borra y reinserta TODO lo que tiene origen='buscador', sin este
-    // rescate cada «Traer del Buscador» pisaba el nombre corto con null.
-    supabase.from("seguimiento").select("op, linea, matricula, nombre_corto").eq("origen", "buscador"),
   ]);
-  const nombreCortoPrevio = new Map<string, string>();
-  for (const r of (nombresPrevios.data ?? []) as { op: number; linea: number; matricula: string; nombre_corto: string | null }[]) {
-    if (r.nombre_corto) nombreCortoPrevio.set(`${r.op}|${r.linea}|${r.matricula}`, r.nombre_corto);
-  }
   const today = new Date();
 
-  const rows: Record<string, unknown>[] = [];
+  const rows: SeguimientoRowNueva[] = [];
   const errores: string[] = [];
   for (const f of filas) {
     const op = num(f.datos.numero_op);
@@ -364,18 +372,25 @@ export async function enviarMarcadasASeguimiento(
       opMap, matMap, today,
     );
     errores.push(...errors);
-    const nombreCorto = nombreCortoPrevio.get(`${op}|${row.linea}|${row.matricula}`) ?? null;
-    rows.push({ ...row, origen: "buscador", nombre_corto: nombreCorto });
+    rows.push(row);
   }
 
-  const { error: errDel } = await supabase.from("seguimiento").delete().eq("origen", "buscador");
-  if (errDel) throw errorSupabase(errDel);
-
-  for (let i = 0; i < rows.length; i += 500) {
-    const { error: errIns } = await supabase.from("seguimiento").insert(rows.slice(i, i + 500));
-    if (errIns) throw errorSupabase(errIns);
+  // Borrar lo que había traído ESTA pestaña y escribir lo nuevo va en una sola
+  // transacción del lado de la base (ver supabase/seguimiento_buscador_tab.sql):
+  // si algo falla no cambia nada, el `nombre_corto` cargado a mano se rescata
+  // ahí, y lo que trajo otra pestaña no se toca ni se duplica.
+  const { data: escritas, error: errRpc } = await supabase.rpc("gd_seguimiento_traer_de_pestana", {
+    p_tab_id: tabId,
+    p_filas: rows,
+  });
+  if (errRpc) {
+    if (errRpc.code === "PGRST202" || /gd_seguimiento_traer_de_pestana/.test(errRpc.message)) {
+      throw new Error("Falta correr supabase/seguimiento_buscador_tab.sql en Supabase — no se cambió nada.");
+    }
+    throw errorSupabase(errRpc);
   }
-  return { escritas: rows.length, errores, totalEnPestana };
+  const n = Number(escritas ?? 0);
+  return { escritas: n, repetidas: rows.length - n, errores, totalEnPestana };
 }
 
 /** Guarda el `datos` completo de una fila (una celda editada ya viene aplicada). */
@@ -393,16 +408,21 @@ export async function deleteFilas(ids: string[]): Promise<void> {
   if (error) throw errorSupabase(error);
 }
 
-/** Persiste el orden manual después de un drag. Una llamada por fila movida. */
+/**
+ * Persiste el orden manual después de un drag. Recibe SOLO las filas cuyo
+ * `orden` cambió (antes se mandaba la pestaña entera: 800 updates por mover
+ * una fila). Van en tandas de 20 para no abrir cientos de requests a la vez.
+ */
 export async function reorderFilas(filas: { id: string; orden: number }[]): Promise<void> {
-  if (!filas.length) return;
-  const results = await Promise.all(
-    filas.map((f) =>
-      supabase.from("buscador_tab_filas").update({ orden: f.orden }).eq("id", f.id)
-    )
-  );
-  const failed = results.find((r) => r.error);
-  if (failed?.error) throw new Error(failed.error.message);
+  for (let i = 0; i < filas.length; i += 20) {
+    const results = await Promise.all(
+      filas.slice(i, i + 20).map((f) =>
+        supabase.from("buscador_tab_filas").update({ orden: f.orden }).eq("id", f.id)
+      )
+    );
+    const failed = results.find((r) => r.error);
+    if (failed?.error) throw new Error(failed.error.message);
+  }
 }
 
 // ─── Compartir pestañas ──────────────────────────────────────────────────────

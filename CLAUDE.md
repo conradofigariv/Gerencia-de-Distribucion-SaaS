@@ -123,7 +123,7 @@ nueva o se lo recordés vos en el chat.
 | Sección | Tabla(s) |
 |---|---|
 | servicios-planillas | `planillas_op` (planilla «Envíos»), `planillas_qw`, `planillas_matriculas` |
-| servicios-resumen | `seguimiento` (lectura + edición inline; se reescribe desde `buscador_tab_filas` con `origen='buscador'` — ver `enviarMarcadasASeguimiento` en `lib/buscadorTabs.ts`) |
+| servicios-resumen | `seguimiento` (lectura + edición inline; «Traer del Buscador» reemplaza solo lo que trajo la pestaña elegida — `origen='buscador'` + `buscador_tab_id`, RPC atómica `gd_seguimiento_traer_de_pestana` en `supabase/seguimiento_buscador_tab.sql`; ver `enviarMarcadasASeguimiento` en `lib/buscadorTabs.ts`) |
 | matriculas | `matriculas` |
 | matriculas-familias | `familias`, `familia_matriculas`, `matricula_tipo`, `matriculas` (lectura del catálogo) — SQL en [`docs/matriculas-familias.md`](docs/matriculas-familias.md) |
 | stock-zona | `stock_uploads`, `familias` + `familia_matriculas` + `matricula_tipo` (lectura para el filtro), `matriculas` (lectura del catálogo) — SQL en [`docs/stock-zona.md`](docs/stock-zona.md) |
