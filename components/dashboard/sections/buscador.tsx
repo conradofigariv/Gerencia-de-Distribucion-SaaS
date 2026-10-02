@@ -38,7 +38,12 @@ import {
 } from "@/lib/buscadorTabs";
 import { getStockZonaMap } from "@/lib/stockStorage";
 import { supabase } from "@/lib/supabaseClient";
-import { IdoCheckbox } from "@/components/dashboard/ido-kit";
+import {
+  IdoCheckbox, SortArrow, TipoPill as IdoTipoPill, monoFont, sansFont, autoFitTextWidth,
+  type Density, DENSITY_ROW_H, DENSITY_LABEL, DENSITY_ORDER, isDensity,
+} from "@/components/dashboard/ido-kit";
+import { loadTableLayout, saveTableLayout } from "@/lib/tableLayout";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 // ─── Sistema de diseño IDO (design-system.md) ────────────────────────────────
 // Tokens --ido-*: solo existen debajo de `.ido-terminal`. La sección entera va
@@ -332,41 +337,20 @@ function ColumnsMenu({
   );
 }
 
-// Pill de tipo (material / servicio) — mismos colores que Stock por Zona.
+// Pill de tipo (material / servicio) — la misma de Stock por Zona y Matrículas.
 function TipoPill({ tipo }: { tipo: string | null }) {
-  if (!tipo) return <span style={{ color: "oklch(0.45 0 0)" }}>—</span>;
-  const esServicio = tipo.toLowerCase().startsWith("s");
-  const Icon = esServicio ? Wrench : Package;
-  return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: 5,
-      padding: "3px 9px", borderRadius: 999, whiteSpace: "nowrap",
-      background: esServicio ? "oklch(0.28 0.08 230 / 0.5)" : "oklch(0.30 0.10 155 / 0.45)",
-      color:      esServicio ? "#7dd3fc" : "#86efac",
-      border: `1px solid ${esServicio ? "oklch(0.70 0.10 230 / 0.45)" : "oklch(0.55 0.15 155 / 0.5)"}`,
-      fontSize: 11, fontWeight: 600, letterSpacing: 0.2,
-    }}>
-      <Icon className="w-3 h-3" strokeWidth={2.2} />
-      {esServicio ? "Servicio" : "Material"}
-    </span>
-  );
+  if (!tipo) return <span style={{ color: "var(--ido-text-faint)" }}>—</span>;
+  return <IdoTipoPill tipo={tipo.toLowerCase().startsWith("s") ? "servicio" : "material"} />;
 }
 
-// Estado de la matrícula: activo / inactivo. No filtra nada — sirve para saber
-// si la matrícula sigue vigente.
+// Estado de la matrícula: «Activo» = badge de estado del sistema (§4.3); el
+// resto (Inactivo, etc.) = chip neutro. No filtra nada — sirve para saber si
+// la matrícula sigue vigente.
 function EstadoPill({ estado }: { estado: string | null }) {
-  if (!estado) return <span style={{ color: "oklch(0.45 0 0)" }}>—</span>;
+  if (!estado) return <span style={{ color: "var(--ido-text-faint)" }}>—</span>;
   const activo = /activ/i.test(estado) && !/inactiv/i.test(estado);
   return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: 5,
-      padding: "3px 9px", borderRadius: 999, whiteSpace: "nowrap",
-      background: activo ? "oklch(0.30 0.10 155 / 0.45)" : "oklch(0.25 0.005 270)",
-      color:      activo ? "#86efac" : "oklch(0.6 0 0)",
-      border: `1px solid ${activo ? "oklch(0.55 0.15 155 / 0.5)" : "oklch(1 0 0 / 0.08)"}`,
-      fontSize: 11, fontWeight: 600, letterSpacing: 0.2,
-    }}>
-      <span style={{ width: 5, height: 5, borderRadius: 3, background: "currentColor" }} />
+    <span className={`ido-chip ${activo ? "ido-badge-ok" : "ido-badge-neutral"}`}>
       {activo ? "Activo" : estado}
     </span>
   );
@@ -425,7 +409,7 @@ const COLS: ColDef[] = [
       return (
         <span>
           {r.envio}
-          <span style={{ color: "oklch(0.5 0 0)" }}>/{r.envios_linea}</span>
+          <span style={{ color: "var(--ido-text-2)" }}>/{r.envios_linea}</span>
         </span>
       );
     },
@@ -446,7 +430,7 @@ const COLS: ColDef[] = [
       if (r.pendiente == null || r.fuente === "catalogo") return "";
       const pend = Number(r.pendiente);
       return (
-        <span style={{ color: pend > 0 ? "#fcd34d" : "#86efac", fontWeight: pend > 0 ? 600 : 400 }}>
+        <span style={{ color: pend > 0 ? "var(--ido-warning)" : "var(--ido-accent)", fontWeight: pend > 0 ? 600 : 400 }}>
           {fmtNum(pend)}
         </span>
       );
@@ -457,7 +441,7 @@ const COLS: ColDef[] = [
     render: (r) => {
       if (r.cantidad_vencida == null) return "";
       const v = Number(r.cantidad_vencida);
-      return <span style={{ color: v > 0 ? "#fca5a5" : undefined, fontWeight: v > 0 ? 600 : 400 }}>{fmtNum(v)}</span>;
+      return <span style={{ color: v > 0 ? "var(--ido-error)" : undefined, fontWeight: v > 0 ? 600 : 400 }}>{fmtNum(v)}</span>;
     },
   },
   { key: "cantidad_rechazada", label: "Rechazada",    group: "op", num: true },
@@ -483,7 +467,7 @@ const COLS: ColDef[] = [
     render: (r) => {
       if (r.tx_devoluciones == null) return "";
       const v = Number(r.tx_devoluciones);
-      return <span style={{ color: v > 0 ? "#fca5a5" : undefined, fontWeight: v > 0 ? 600 : 400 }}>{fmtNum(v)}</span>;
+      return <span style={{ color: v > 0 ? "var(--ido-error)" : undefined, fontWeight: v > 0 ? 600 : 400 }}>{fmtNum(v)}</span>;
     },
   },
   { key: "tx_movimientos",  label: "N° mov.",     group: "tx", num: true },
@@ -575,12 +559,13 @@ const LABEL_POR_COL: Record<string, string> = {
   ...Object.fromEntries(TRACK_COLS.map((c) => [c.key, c.label])),
 };
 
-const TRACK_BG = "oklch(0.225 0.012 300)";   // tinte violeta suave
-
-const ESTADO_STYLE: Record<string, { bg: string; fg: string; bd: string }> = {
-  "Pendiente": { bg: "oklch(0.30 0.09 85 / 0.45)",  fg: "#fcd34d", bd: "oklch(0.60 0.12 85 / 0.5)" },
-  "En curso":  { bg: "oklch(0.28 0.08 230 / 0.5)",  fg: "#7dd3fc", bd: "oklch(0.70 0.10 230 / 0.45)" },
-  "Resuelto":  { bg: "oklch(0.30 0.10 155 / 0.45)", fg: "#86efac", bd: "oklch(0.55 0.15 155 / 0.5)" },
+// Badges del estado de seguimiento (§4.3): Pendiente ámbar, Resuelto verde
+// (badges del sistema) y «En curso» azul de la paleta categórica — el sistema
+// no define un badge para «en curso» (confirmado con el usuario).
+const ESTADO_STYLE: Record<string, { bg: string; fg: string }> = {
+  "Pendiente": { bg: "rgba(245,165,36,.12)", fg: "var(--ido-warning)" },
+  "En curso":  { bg: "color-mix(in srgb, var(--ido-cat-1) 12%, transparent)", fg: "var(--ido-cat-1)" },
+  "Resuelto":  { bg: "rgba(63,207,142,.12)", fg: "var(--ido-accent)" },
 };
 
 const COLWIDTHS_KEY = "buscador-colwidths";
@@ -635,6 +620,8 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
 };
 
 const COLUMNS_KEY = "buscador-columns";
+// Densidad del índice maestro, por usuario (lib/tableLayout, §4.20).
+const INDICE_LAYOUT_ID = "buscadorIndice";
 const PINNED_KEY   = "buscador-pinned";
 // Las de seguimiento entran al orden persistido como cualquier otra: así el
 // selector puede ocultarlas y la elección sobrevive a recargas (`validKeys`
@@ -710,36 +697,34 @@ function RowContextMenu({ state, onClose }: { state: CtxState; onClose: () => vo
     };
   }, [onClose]);
 
+  // Menú contextual §4.5: 210–220px, ítems de 32px, destructivo en `error`
+  // también en reposo, separador de 1px con margen 4px 8px.
   return createPortal(
     <div
       ref={ref}
       onMouseDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
-      className="ido-terminal animate-in fade-in zoom-in-95 duration-100"
+      className="ido-terminal ido-pop"
       style={{
         position: "fixed", left: pos.x, top: pos.y, zIndex: 200,
-        minWidth: 210, padding: 5,
-        maxHeight: "min(70vh, 420px)", overflowY: "auto",
-        background: "oklch(0.205 0.005 270)", border: PANEL_BORDER, borderRadius: 10,
-        boxShadow: "0 18px 40px -18px rgba(0,0,0,0.75)",
+        minWidth: 216, maxWidth: 320, maxHeight: "min(70vh, 420px)", overflowY: "auto",
       }}
     >
       {state.items.map((it, i) =>
         it === "sep" ? (
-          <div key={`s${i}`} style={{ height: 1, background: "oklch(1 0 0 / 0.07)", margin: "4px 6px" }} />
+          <div key={`s${i}`} className="ido-pop-sep" />
         ) : (
           <button
             key={it.label}
+            type="button"
             disabled={it.disabled}
             onClick={() => { it.onClick(); onClose(); }}
-            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-[7px] text-left text-[13px] transition-colors disabled:opacity-35 disabled:cursor-default"
-            style={{ color: it.danger ? "#fca5a5" : "oklch(0.88 0 0)" }}
-            onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = it.danger ? "oklch(0.30 0.08 25 / 0.35)" : "oklch(0.27 0.005 270)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            className="ido-pop-item"
+            style={it.danger ? { color: "var(--ido-error)" } : undefined}
           >
-            <it.icon className="w-3.5 h-3.5 shrink-0" />
+            <it.icon className="w-3.5 h-3.5" style={it.danger ? { color: "var(--ido-error)" } : undefined} />
             <span className="flex-1 truncate">{it.label}</span>
-            {it.hint && <span className="text-[11px] shrink-0" style={{ color: "oklch(0.5 0 0)" }}>{it.hint}</span>}
+            {it.hint && <span className="ido-mono shrink-0" style={{ fontSize: 11, color: "var(--ido-text-2)" }}>{it.hint}</span>}
           </button>
         )
       )}
@@ -1106,8 +1091,15 @@ export function BuscadorSection() {
   const [misPermisos, setMisPermisos] = useState<Map<string, Permiso>>(new Map());
   // Pestaña cuyo diálogo "Compartir" está abierto (null = cerrado).
   const [shareTabId, setShareTabId] = useState<string | null>(null);
-  // Filas tildadas en el índice maestro, para copiarlas a una pestaña.
+  // Selección (design-system.md §4.16):
+  //  · `selected` = selección MÚLTIPLE (checkbox marcado): Ctrl/⌘ clic, ⇧ clic
+  //    o el checkbox. Es sobre lo que actúan las acciones en lote. En el índice
+  //    SOBREVIVE al cambiar la búsqueda (tildar en varias búsquedas es un caso
+  //    legítimo); la barra flotante avisa cuántas quedaron fuera.
+  //  · `inspeccionada` = clic simple: marca UNA fila para mirarla (bg.elevated +
+  //    borde verde, checkbox sin marcar). No es selección en lote.
   const [selected, setSelected]   = useState<Set<string>>(new Set());
+  const [inspeccionada, setInspeccionada] = useState<string | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   // Celda en edición dentro de una pestaña: { filaId, key }.
   const [editing, setEditing]     = useState<{ filaId: string; key: string } | null>(null);
@@ -1236,6 +1228,7 @@ export function BuscadorSection() {
         agrupar:    patch.agrupar    ?? base.agrupar     ?? true,
         agruparPor: patch.agruparPor ?? base.agruparPor  ?? "articulo",
         colapsados: patch.colapsados ?? base.colapsados  ?? [],
+        density:    patch.density    ?? base.density     ?? "normal",
       };
       setTabLayouts((p) => ({ ...p, [id]: next }));
       clearTimeout(saveTabCfgTimers.current[id]);
@@ -1281,15 +1274,25 @@ export function BuscadorSection() {
     });
   }, [patchLayout]);
 
+  // Redimensionado (§4.15): mínimo 64px; `resizingCol` pinta la guía de 1px
+  // con el ancho. `lastResizeEnd`: al soltar un arrastre dentro del mismo
+  // encabezado el navegador dispara un click sobre él → ordenaba la columna.
+  const [resizingCol, setResizingCol] = useState<string | null>(null);
+  const lastResizeEnd = useRef(0);
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!resizingRef.current) return;
       const { col, startX, startWidth } = resizingRef.current;
       const s = layoutRef.current;
       const base = (s.activeTab ? s.tabLayouts[s.activeTab]?.widths : null) ?? s.colWidths;
-      patchLayout({ widths: { ...base, [col]: Math.max(50, startWidth + e.clientX - startX) } });
+      patchLayout({ widths: { ...base, [col]: Math.max(64, startWidth + e.clientX - startX) } });
     };
-    const onUp = () => { resizingRef.current = null; };
+    const onUp = () => {
+      if (!resizingRef.current) return;
+      resizingRef.current = null;
+      lastResizeEnd.current = Date.now();
+      setResizingCol(null);
+    };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
     return () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
@@ -1497,6 +1500,7 @@ export function BuscadorSection() {
     // filaIds, en el índice son rowKeys, y arrastrar unas al otro contexto
     // dejaría marcadas filas que no son (o ninguna, en el mejor caso).
     setSelected(new Set());
+    setInspeccionada(null);
     if (!activeTab) { setTabFilas([]); return; }
     setLoadingTab(true);
     fetchTabFilas(activeTab)
@@ -1821,6 +1825,7 @@ export function BuscadorSection() {
   );
 
   const handleSort = useCallback((col: string) => {
+    if (resizingRef.current || Date.now() - lastResizeEnd.current < 300) return;
     setSort((prev) =>
       prev.col === col ? { col, dir: prev.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" }
     );
@@ -2053,28 +2058,55 @@ export function BuscadorSection() {
   );
   const ultimaClickeada = useRef<string | null>(null);
 
+  /** ⇧ clic: suma a la selección múltiple el rango visible desde la última fila tocada. */
+  const seleccionarRango = useCallback((key: string) => {
+    const a = ultimaClickeada.current ? keysVisibles.indexOf(ultimaClickeada.current) : -1;
+    const b = keysVisibles.indexOf(key);
+    if (a === -1 || b === -1) return false;
+    const [lo, hi] = a < b ? [a, b] : [b, a];
+    const rango = keysVisibles.slice(lo, hi + 1);
+    setSelected((prev) => new Set([...prev, ...rango]));
+    setInspeccionada(null);
+    return true;
+  }, [keysVisibles]);
+
   const handleRowClick = useCallback((e: React.MouseEvent, key: string) => {
-    if (e.shiftKey && ultimaClickeada.current) {
-      const a = keysVisibles.indexOf(ultimaClickeada.current);
-      const b = keysVisibles.indexOf(key);
-      if (a !== -1 && b !== -1) {
-        const [lo, hi] = a < b ? [a, b] : [b, a];
-        const rango = keysVisibles.slice(lo, hi + 1);
-        setSelected((prev) => new Set([...prev, ...rango]));
-        return;
-      }
-    }
+    if (e.shiftKey && seleccionarRango(key)) return;
     if (e.ctrlKey || e.metaKey) {
+      // Ctrl/⌘ acumula sobre lo que ya había — incluida la fila inspeccionada,
+      // que pasa a ser parte de la selección múltiple.
       setSelected((prev) => {
         const s = new Set(prev);
+        if (inspeccionada && inspeccionada !== key) s.add(inspeccionada);
         if (s.has(key)) s.delete(key); else s.add(key);
         return s;
       });
+      setInspeccionada(null);
     } else {
-      setSelected(new Set([key]));
+      // Clic simple: exclusivo (§4.16) — inspecciona esa fila y libera la
+      // selección múltiple.
+      setSelected(new Set());
+      setInspeccionada(key);
     }
     ultimaClickeada.current = key;
-  }, [keysVisibles]);
+  }, [seleccionarRango, inspeccionada]);
+
+  /** Checkbox de la fila: suma/saca de la selección múltiple (⇧ = rango). */
+  const handleCheck = useCallback((e: React.MouseEvent, key: string) => {
+    if (e.shiftKey && seleccionarRango(key)) return;
+    setSelected((prev) => {
+      const s = new Set(prev);
+      if (s.has(key)) s.delete(key); else s.add(key);
+      return s;
+    });
+    ultimaClickeada.current = key;
+  }, [seleccionarRango]);
+
+  const liberarSeleccion = useCallback(() => {
+    setSelected(new Set());
+    setInspeccionada(null);
+    setAddMenuOpen(false);
+  }, []);
 
   const toggleGrupo = useCallback((gk: string) => {
     const s = new Set(colapsados);
@@ -2189,10 +2221,15 @@ export function BuscadorSection() {
     // selección. Es lo que hace cualquier explorador de archivos, y evita el
     // error de creer que la acción del menú va a aplicarse a lo que estaba
     // seleccionado antes cuando en realidad aplica a otra fila.
-    if (!selected.has(ctx.key)) {
-      setSelected(new Set([ctx.key]));
+    // Si la fila no está en la selección múltiple, el menú actúa SOLO sobre
+    // ella (y queda inspeccionada, para que se vea a cuál apunta). Si está,
+    // actúa sobre toda la selección.
+    const enSeleccion = selected.has(ctx.key);
+    if (!enSeleccion) {
+      setInspeccionada(ctx.key);
       ultimaClickeada.current = ctx.key;
     }
+    const objetivoKeys = enSeleccion ? selected : new Set([ctx.key]);
 
     const items: (CtxItem | "sep")[] = [];
 
@@ -2241,7 +2278,7 @@ export function BuscadorSection() {
       // toda la selección; si no, sobre esa sola fila. Es lo que espera
       // cualquiera que venga de un explorador de archivos, y evita que un click
       // derecho descuidado sobre otra fila opere sobre la selección entera.
-      const objetivo = selected.has(ctx.key) ? [...selected] : ctx.filaId ? [ctx.filaId] : [];
+      const objetivo = enSeleccion ? [...selected] : ctx.filaId ? [ctx.filaId] : [];
       const enTarjeta = (id: string) =>
         String(tabFilas.find((f) => f.id === id)?.datos[TRACK_KEYS.enTarjeta] ?? "") === "true";
       // Solo se ofrece "Quitar" cuando TODO el objetivo ya está en la tarjeta:
@@ -2315,11 +2352,11 @@ export function BuscadorSection() {
     // botón «CSV» que estaba fijo en la barra. Al abrir el menú la fila
     // clickeada ya entró en la selección (ver arriba), así que nunca exporta
     // vacío ni algo distinto de lo que el usuario ve marcado.
-    const seleccionadas = displayRows.filter((r) => selected.has(r.key));
+    const seleccionadas = displayRows.filter((r) => objetivoKeys.has(r.key));
     if (seleccionadas.length) {
       items.push("sep");
       items.push({
-        label: `Exportar selección a Excel (${seleccionadas.length})`,
+        label: seleccionadas.length > 1 ? `Exportar selección a Excel (${seleccionadas.length})` : "Exportar fila a Excel",
         icon: Download,
         onClick: () => exportarAExcel(
           seleccionadas.map((r) => r.data),
@@ -2404,6 +2441,181 @@ export function BuscadorSection() {
   const soloCat  = sorted.filter((r) => r.fuente === "catalogo").length;
   const soloSic  = sorted.filter((r) => r.fuente === "sic").length;
 
+  // ── Densidad (§4.19) ───────────────────────────────────────────────────────
+  // Índice: por usuario (lib/tableLayout). Pestaña: en su config, igual que
+  // columnas y agrupado — la vista es la misma para todos los que la abren.
+  const [densityIndice, setDensityIndice] = useState<Density>("normal");
+  useEffect(() => {
+    if (!userId) return;
+    const d = loadTableLayout(userId, INDICE_LAYOUT_ID).density;
+    if (isDensity(d)) setDensityIndice(d);
+  }, [userId]);
+  const density: Density = isTabMode
+    ? (isDensity(tabCfg?.density) ? tabCfg!.density as Density : "normal")
+    : densityIndice;
+  const ROW_H = DENSITY_ROW_H[density];
+
+  const cycleDensity = () => {
+    const next = DENSITY_ORDER[(DENSITY_ORDER.indexOf(density) + 1) % DENSITY_ORDER.length];
+    if (isTabMode) { patchLayout({ density: next }); return; }
+    setDensityIndice(next);
+    if (userId) saveTableLayout(userId, INDICE_LAYOUT_ID, { density: next });
+  };
+
+  const [resetMsg, setResetMsg] = useState(false);
+  const resetMsgT = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (resetMsgT.current) clearTimeout(resetMsgT.current); }, []);
+  /** «Restablecer vista» (§4.20): columnas (orden, visibles, anchos) + densidad. */
+  const restablecerVista = () => {
+    patchLayout({ order: DEFAULT_COL_ORDER, hidden: [], widths: DEFAULT_COL_WIDTHS, ...(isTabMode ? { density: "normal" } : {}) });
+    if (!isTabMode) {
+      setDensityIndice("normal");
+      if (userId) saveTableLayout(userId, INDICE_LAYOUT_ID, { density: null });
+    }
+    setResetMsg(true);
+    if (resetMsgT.current) clearTimeout(resetMsgT.current);
+    resetMsgT.current = setTimeout(() => setResetMsg(false), 1500);
+  };
+
+  // Vista (§4.19 / §4.20): densidad y «Restablecer vista». Viven en la línea
+  // de contexto, pegadas a la tabla: en la barra de herramientas la hacían
+  // saltar a dos renglones. En una pestaña es la vista compartida, así que en
+  // solo lectura no se toca.
+  const vistaBloqueada = isTabMode && !puedoEditar;
+  const vistaControls = (
+    <span className="inline-flex items-center gap-0.5" style={{ borderLeft: "1px solid var(--ido-border)", paddingLeft: 8 }}>
+      {resetMsg && (
+        <span className="ido-reset-confirm" style={{ marginRight: 4 }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12.5l5 5L20 6.5" /></svg>
+          Vista restablecida
+        </span>
+      )}
+      <button
+        type="button"
+        className="ido-btn ido-btn-text"
+        style={{ height: 24, fontSize: 12 }}
+        onClick={restablecerVista}
+        disabled={vistaBloqueada}
+        title="Restaura columnas (orden, visibles y anchos) y densidad a su valor por defecto"
+      >
+        Restablecer vista
+      </button>
+      <button
+        type="button"
+        className="ido-btn ido-btn-text"
+        style={{ height: 24, fontSize: 12 }}
+        onClick={cycleDensity}
+        disabled={vistaBloqueada}
+        title="Altura de fila: compacta 32px · normal 40px · cómoda 52px"
+      >
+        Densidad: {DENSITY_LABEL[density]}
+      </button>
+    </span>
+  );
+
+  // ── Doble clic en el borde de una columna: ajusta al contenido (§4.15) ────
+  // Mide con canvas el valor más ancho de lo que se está viendo, con la fuente
+  // real de la celda (mono para números/códigos/fechas, sans para texto, la del
+  // badge para Tipo/Estado), y nunca por debajo de lo que pide el título.
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const autoFitCol = useCallback((key: string) => {
+    const canvas = canvasRef.current ?? (canvasRef.current = document.createElement("canvas"));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const def = COLS.find((c) => c.key === key);
+    const track = TRACK_COLS.find((c) => c.key === key);
+    const esPill = key === "tipo" || key === "estado_matricula" || track?.tipo === "estado";
+    const mono = def ? !!(def.num || def.mono) : track?.tipo === "fecha";
+    const textoDe = (d: Record<string, unknown>): string => {
+      const v = d[key];
+      if (v == null || v === "") return "";
+      if (key === "tipo") return String(v).toLowerCase().startsWith("s") ? "Servicio" : "Material";
+      if (key === "estado_matricula") return /activ/i.test(String(v)) && !/inactiv/i.test(String(v)) ? "Activo" : String(v);
+      if (key === "envio") return d.envios_linea && Number(d.envios_linea) > 1 ? `${v}/${d.envios_linea}` : String(v);
+      if (DATE_COLS.has(key)) return fmtFechaISO(String(v));
+      if (def?.num) return fmtNum(v as number);
+      return String(v);
+    };
+    ctx.font = esPill ? sansFont(11.5, 600) : mono ? monoFont(13) : sansFont(13);
+    // + padding del chip (9+9) + borde + ícono de Tipo
+    const extra = esPill ? (key === "tipo" ? 37 : 20) : 0;
+    const fit = autoFitTextWidth(ctx, displayRows.map((r) => textoDe(r.data)), 64) + extra;
+    ctx.font = sansFont(10, 500);
+    const label = (LABEL_POR_COL[key] ?? key).toUpperCase();
+    const labelW = Math.ceil(ctx.measureText(label).width + label.length * 1 + 18 + 24);
+    const w = Math.min(700, Math.max(fit, labelW));
+    patchLayout({ widths: { ...effWidths, [key]: w } });
+  }, [displayRows, effWidths, patchLayout]);
+
+  const startResize = (e: React.MouseEvent, key: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingRef.current = { col: key, startX: e.clientX, startWidth: effWidths[key] ?? DEFAULT_COL_WIDTHS[key] };
+    setResizingCol(key);
+  };
+
+  // ── Geometría de la grilla (§4.11) ─────────────────────────────────────────
+  const SEL_W = isTabMode ? 78 : 58;
+  const widthOf = (key: string) => effWidths[key] ?? DEFAULT_COL_WIDTHS[key] ?? 120;
+  const gridTemplateColumns = `${SEL_W}px ${mergedCols.map((x) => `${widthOf(x.key)}px`).join(" ")}`;
+  const contentW = SEL_W + mergedCols.reduce((sum, x) => sum + widthOf(x.key), 0);
+  const colRightX = (key: string) => {
+    let x = SEL_W;
+    for (const c of mergedCols) { x += widthOf(c.key); if (c.key === key) break; }
+    return x;
+  };
+
+  // ── Virtualización: solo se montan las filas visibles ──────────────────────
+  // Una pestaña no tiene límite de filas (el índice corta en 500). Encabezados
+  // de grupo y filas conviven en la misma lista con alturas distintas.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const GROUP_H = 40;
+  const rowVirtualizer = useVirtualizer({
+    count: displayItems.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (i) => (displayItems[i]?.tipo === "grupo" ? GROUP_H : ROW_H),
+    getItemKey: (i) => displayItems[i]?.key ?? i,
+    overscan: 10,
+  });
+
+  // Selección: totales para la barra flotante.
+  const seleccionVisibleKeys = useMemo(
+    () => displayRows.filter((r) => selected.has(r.key)).map((r) => r.key),
+    [displayRows, selected]
+  );
+  const fueraDeVista = selected.size - seleccionVisibleKeys.length;
+  const todosVisiblesSel = keysVisibles.length > 0 && keysVisibles.every((k) => selected.has(k));
+  const algunoVisibleSel = keysVisibles.some((k) => selected.has(k));
+  const toggleTodosVisibles = () => {
+    // Solo agrega/saca lo VISIBLE: lo seleccionado en otra búsqueda se conserva.
+    setSelected((prev) => {
+      const s = new Set(prev);
+      if (todosVisiblesSel) keysVisibles.forEach((k) => s.delete(k));
+      else keysVisibles.forEach((k) => s.add(k));
+      return s;
+    });
+    setInspeccionada(null);
+  };
+  const enTarjetaTodas = isTabMode && seleccionVisibleKeys.length > 0 && seleccionVisibleKeys.every(
+    (k) => String(tabFilas.find((f) => f.id === k)?.datos[TRACK_KEYS.enTarjeta] ?? "") === "true"
+  );
+  const exportarSeleccion = () => exportarAExcel(
+    displayRows.filter((r) => selected.has(r.key)).map((r) => r.data),
+    colsVisibles,
+    isTabMode
+      ? `${tabs.find((t) => t.id === activeTab)?.nombre ?? "pestana"}-seleccion`
+      : `busqueda-${query.trim().replace(/\s+/g, "-") || "todo"}`,
+  );
+
+  // Menú «Agregar a pestaña» de la barra flotante: cierra con clic afuera.
+  const addMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const h = (e: MouseEvent) => { if (!addMenuRef.current?.contains(e.target as Node)) setAddMenuOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [addMenuOpen]);
+
   // Handlers estables para la barra de pestañas memoizada.
   const selectIndice = useCallback(() => {
     // Vuelve al orden con el que abre el maestro (SIC más recientes), no al que
@@ -2421,7 +2633,7 @@ export function BuscadorSection() {
           acá va directo la barra de herramientas para que la tabla suba. */}
       <div
         className="p-3 overflow-hidden space-y-3"
-        style={{ background: CARD_BG, border: PANEL_BORDER, borderRadius: 12 }}
+        style={{ background: CARD_BG, border: PANEL_BORDER, borderRadius: 12, position: "relative" }}
       >
         {/* Barra de pestañas (§4.7). El índice maestro es la vista de siempre;
             las demás son listas de seguimiento propias o compartidas.
@@ -2638,85 +2850,9 @@ export function BuscadorSection() {
             </div>
           )}
 
-          {/* Enviar a la tarjeta — dentro de una pestaña, con filas tildadas.
-              (En la etapa 2 estas acciones de selección pasan a la barra
-              flotante §4.16.) */}
-          {isTabMode && selected.size > 0 && (
-            <button
-              type="button"
-              onClick={() => handleMarcarTarjeta([...selected], true)}
-              disabled={!puedoEditar}
-              title="Mostrar estas filas en «Próximas Entregas» de Transformadores"
-              className="ido-btn ido-btn-ghost shrink-0"
-              style={{ height: TOOLBAR_H }}
-            >
-              <CalendarClock className="w-3.5 h-3.5" />
-              Enviar a Tarjeta
-              <span className="ido-mono" style={{ color: "var(--ido-text)" }}>{selected.size}</span>
-            </button>
-          )}
-
-          {/* Copiar a pestaña — solo en el índice maestro y con filas tildadas. */}
-          {!isTabMode && selected.size > 0 && (
-            <div className="relative shrink-0">
-              <button
-                type="button"
-                onClick={() => setAddMenuOpen((v) => !v)}
-                className="ido-btn ido-btn-ghost"
-                style={{ height: TOOLBAR_H }}
-              >
-                <ListPlus className="w-3.5 h-3.5" />
-                Agregar a pestaña
-                <span className="ido-mono" style={{ color: "var(--ido-text)" }}>{seleccionadasVisibles}</span>
-                {/* Hay tildadas fuera de la búsqueda actual: solo se copian
-                    las visibles, así que se aclara en vez de prometer de más. */}
-                {seleccionadasVisibles !== selected.size && (
-                  <span style={{ color: "var(--ido-text-2)" }}>de {selected.size}</span>
-                )}
-                <ChevronDown className="w-3.5 h-3.5" />
-              </button>
-
-              {addMenuOpen && (
-                <div className="ido-pop absolute left-0 top-[calc(100%+6px)] z-50" style={{ minWidth: 230, maxHeight: 320, overflowY: "auto" }}>
-                  {(() => {
-                    // Solo pestañas donde se puede escribir: una compartida
-                    // "solo lectura" no admite que le agreguen filas.
-                    const editables = tabs.filter((t) => permisoDe(t) === "edicion");
-                    if (!editables.length) {
-                      return (
-                        <div className="px-2.5 py-2 text-[12px]" style={{ color: "var(--ido-text-2)" }}>
-                          {tabs.length === 0
-                            ? "No tenés pestañas todavía — creá una con el «+» de arriba."
-                            : "No tenés ninguna pestaña editable — las compartidas contigo son de solo lectura."}
-                        </div>
-                      );
-                    }
-                    return editables.map((t) => (
-                      <button key={t.id} type="button" onClick={() => handleAddSelected(t.id)} className="ido-pop-item">
-                        <span className="flex-1 truncate">{t.nombre}</span>
-                        {t.user_id !== userId && <span style={{ color: "var(--ido-text-2)", fontSize: 11 }}>compartida</span>}
-                      </button>
-                    ));
-                  })()}
-                </div>
-              )}
-            </div>
-          )}
-
-          {selected.size > 0 && (
-            <button
-              type="button"
-              onClick={() => setSelected(new Set())}
-              className="ido-btn ido-btn-text shrink-0"
-              style={{ height: TOOLBAR_H }}
-            >
-              <X className="w-3.5 h-3.5" />
-              {/* El "(N)" avisa que hay tildadas fuera de la búsqueda actual —
-                  algo que solo pasa en el índice. `seleccionadasVisibles` se
-                  calcula sobre el índice, así que en una pestaña no aplica. */}
-              Quitar selección{!isTabMode && selected.size > seleccionadasVisibles ? ` (${selected.size})` : ""}
-            </button>
-          )}
+          {/* Las acciones sobre la selección (Agregar a pestaña, Enviar a
+              Tarjeta, Exportar, Quitar selección) pasaron a la barra flotante
+              de abajo (§4.16), que aparece con 2+ filas seleccionadas. */}
 
           {/* El botón de exportar salió de la barra: ocupaba lugar fijo para
               algo ocasional. Ahora está en el click derecho — sobre las filas
@@ -2791,6 +2927,7 @@ export function BuscadorSection() {
               · <kbd className="ido-kbd">Doble clic</kbd> editar
               · <kbd className="ido-kbd">Clic der.</kbd> exportar y más
               {puedeArrastrar && <>· arrastrá para reordenar</>}
+              {vistaControls}
             </span>
           </div>
         )}
@@ -2819,288 +2956,215 @@ export function BuscadorSection() {
             <span className="inline-flex items-center gap-1.5 flex-wrap">
               <kbd className="ido-kbd">Ctrl+clic</kbd> varias
               · <kbd className="ido-kbd">Clic der.</kbd> exportar y más
+              {vistaControls}
             </span>
           </div>
         )}
 
-        {/* Resultados */}
-        {/* `minHeight` (mismo cálculo que el `maxHeight` del scroll de la
-            tabla, más abajo) hace que el panel llegue siempre hasta abajo de
-            la ventana, tenga pocos resultados o ninguno — antes se achicaba
-            al tamaño del contenido y dejaba un vacío gris debajo. Con MUCHOS
-            resultados el `maxHeight` de la tabla sigue cortando ahí: el panel
-            no crece sin límite, scrollea puertas adentro. */}
+        {/* Resultados — tabla en CSS grid (§4.11). UN solo contenedor de scroll
+            para los dos ejes con el encabezado sticky adentro (si header y
+            filas scrollean por separado se desincronizan en X). `minHeight`
+            hace que el panel llegue siempre hasta abajo de la ventana aunque
+            haya pocos resultados; con muchos, `maxHeight` corta y scrollea
+            puertas adentro. */}
         <div
-          className="rounded-[10px] overflow-hidden flex flex-col"
-          style={{ background: PANEL_BG, border: PANEL_BORDER, minHeight: "calc(100vh - 190px)" }}
+          className="overflow-hidden flex flex-col"
+          style={{ background: PANEL_BG, border: PANEL_BORDER, borderRadius: 12, minHeight: "calc(100vh - 190px)" }}
         >
           {isTabMode && loadingTab ? (
-            <div className="flex-1 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" />Cargando pestaña…
-            </div>
+            <div className="ido-loading flex-1"><Loader2 className="w-4 h-4 animate-spin" />Cargando pestaña…</div>
           ) : isTabMode && !tabFilas.length ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-2.5 text-sm text-muted-foreground">
-              <ListPlus className="w-10 h-10 opacity-20" />
+            <div className="ido-loading flex-1" style={{ flexDirection: "column", gap: 10, height: "auto", textAlign: "center" }}>
+              <ListPlus className="w-10 h-10" style={{ opacity: 0.2 }} />
               Esta pestaña está vacía.
-              <span className="text-[12px]">
-                Andá a «Índice maestro», tildá las filas que quieras seguir y usá «Agregar a pestaña».
+              <span className="text-[12px]" style={{ color: "var(--ido-text-2)" }}>
+                Andá a «Índice maestro», seleccioná las filas que quieras seguir y usá «Agregar a pestaña».
               </span>
             </div>
           ) : !isTabMode && loading ? (
-            <div className="flex-1 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <div className="ido-loading flex-1">
               <Loader2 className="w-4 h-4 animate-spin" />
-              {/* Ordenar re-consulta al servidor (el orden va en la query, no
-                  después — ver el efecto de búsqueda), así que el cartel tiene
-                  que decir eso y no "cargando las OP más recientes", que era el
-                  texto fijo de antes y confundía: aparecía igual al ordenar por
-                  SIC. */}
+              {/* Ordenar re-consulta al servidor (el orden va en la query), así
+                  que el cartel tiene que decir eso y no "cargando". */}
               {ordenServidor ? "Ordenando…" : query.trim() ? "Buscando…" : "Cargando las OP más recientes…"}
             </div>
           ) : !isTabMode && !sorted.length ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-2.5 text-sm text-muted-foreground">
-              <PackageOpen className="w-10 h-10 opacity-20" />
+            <div className="ido-loading flex-1" style={{ flexDirection: "column", gap: 10, height: "auto", textAlign: "center" }}>
+              <PackageOpen className="w-10 h-10" style={{ opacity: 0.2 }} />
               {query.trim() ? `Sin resultados para «${query.trim()}».` : "El índice no tiene filas todavía."}
-              {indice?.filas === 0 && <span className="text-[12px]">El índice está vacío — probá «Reconstruir índice».</span>}
+              {indice?.filas === 0 && <span className="text-[12px]" style={{ color: "var(--ido-text-2)" }}>El índice está vacío — probá «Reconstruir índice».</span>}
             </div>
           ) : !mergedCols.length ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-2.5 text-sm text-muted-foreground">
-              <Columns3 className="w-10 h-10 opacity-20" />
+            <div className="ido-loading flex-1" style={{ flexDirection: "column", gap: 10, height: "auto" }}>
+              <Columns3 className="w-10 h-10" style={{ opacity: 0.2 }} />
               Ocultaste todas las columnas — abrí «Columnas» para mostrar alguna.
             </div>
           ) : (
-            // Alto calculado en vez de un % fijo: con la barra compacta la
-            // tabla puede ocupar casi toda la ventana.
-            <div className="flex-1 overflow-auto" style={{ maxHeight: "calc(100vh - 190px)" }}>
-              <table style={{ tableLayout: "fixed", width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 13 }}>
-                <colgroup>
-                  {/* Columna de acciones: fija, no reordenable ni ocultable.
-                      En el índice maestro lleva el check de selección y el pin;
-                      dentro de una pestaña, el handle de arrastre y el borrar. */}
-                  <col style={{ width: isTabMode ? 78 : 58 }} />
-                  {mergedCols.map((x) => (
-                    <col key={x.key} style={{ width: effWidths[x.key] ?? DEFAULT_COL_WIDTHS[x.key] }} />
-                  ))}
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th
+            <div
+              ref={scrollRef}
+              className="flex-1"
+              style={{ overflow: "auto", maxHeight: "calc(100vh - 190px)" }}
+              // Clic en zona vacía libera la selección (§4.16).
+              onClick={(e) => { if ((e.target as HTMLElement).dataset.empty) liberarSeleccion(); }}
+              data-empty="1"
+            >
+              {/* minWidth 100%: si las columnas suman menos que el panel, las
+                  filas igual llegan hasta el borde. */}
+              <div data-empty="1" style={{ width: contentW, minWidth: "100%", minHeight: "100%", position: "relative" }}>
+                {resizingCol && (
+                  <>
+                    {/* Guía de 1px que atraviesa la tabla + ancho actual (§4.15). */}
+                    <div style={{ position: "absolute", top: 0, bottom: 0, left: colRightX(resizingCol), width: 1, background: "var(--ido-accent)", pointerEvents: "none", zIndex: 30 }} />
+                    <div
+                      className="ido-mono"
                       style={{
-                        padding: "8px 6px",
-                        position: "sticky", top: 0, zIndex: 2,
-                        background: STICKY_BG,
-                        borderBottom: "1px solid hsl(var(--border))",
-                        textAlign: "center",
+                        position: "absolute", top: 44, left: colRightX(resizingCol) + 6, zIndex: 31,
+                        padding: "4px 8px", borderRadius: 6, background: "var(--ido-elevated)", border: "1px solid var(--ido-border)",
+                        fontSize: 11, color: "var(--ido-text)", whiteSpace: "nowrap", pointerEvents: "none",
                       }}
                     >
-                      {/* Seleccionar / limpiar todo lo que está a la vista.
-                          Dejó de ser un checkbox junto con los de cada fila:
-                          ahora la selección se hace con click (ctrl/shift), y
-                          este botón es el atajo para "todo". */}
-                      {!isTabMode && sorted.length > 0 && (
-                        <button
-                          title={seleccionadasVisibles === sorted.length ? "Limpiar selección" : "Seleccionar todo lo visible"}
-                          onClick={() => {
-                            // Solo agrega/saca lo VISIBLE: lo seleccionado en
-                            // otra búsqueda se conserva en vez de perderse acá.
-                            const visibles = sorted.map((r) => String(r.id));
-                            setSelected((prev) => {
-                              const s = new Set(prev);
-                              if (seleccionadasVisibles === sorted.length) visibles.forEach((k) => s.delete(k));
-                              else visibles.forEach((k) => s.add(k));
-                              return s;
-                            });
-                          }}
-                          className="grid place-items-center mx-auto"
-                          style={{
-                            width: 16, height: 16, borderRadius: 4, cursor: "pointer",
-                            border: `1px solid ${seleccionadasVisibles > 0 ? "#8B5CF6" : "oklch(1 0 0 / 0.18)"}`,
-                            background: seleccionadasVisibles === sorted.length ? "#8B5CF6" : "transparent",
-                          }}
+                      {Math.round(widthOf(resizingCol))} px
+                    </div>
+                  </>
+                )}
+
+                {/* Encabezado sticky, fondo OPACO (las filas pasan por debajo).
+                    La franja de color de arriba dice de qué tabla sale cada
+                    columna (SIC / OP / Movimientos / Matrícula / Personalizadas). */}
+                <div
+                  style={{
+                    display: "grid", gridTemplateColumns, height: 38,
+                    position: "sticky", top: 0, zIndex: 10,
+                    background: "var(--ido-surface)", borderBottom: "1px solid var(--ido-border-strong)",
+                  }}
+                >
+                  <div className="flex items-center justify-center" style={{ background: "var(--ido-surface)" }}>
+                    {keysVisibles.length > 0 && (
+                      <IdoCheckbox
+                        checked={todosVisiblesSel}
+                        indeterminate={!todosVisiblesSel && algunoVisibleSel}
+                        onClick={toggleTodosVisibles}
+                        label={todosVisiblesSel ? "Quitar de la selección todo lo visible" : "Seleccionar todo lo visible"}
+                      />
+                    )}
+                  </div>
+                  {mergedCols.map((x) => {
+                    const active = sortCol === x.key;
+                    const group: ColGroup = x.kind === "data" ? x.data.group : "track";
+                    const num = x.kind === "data" && !!x.data.num;
+                    const label = x.kind === "data" ? x.data.label : x.track.label;
+                    return (
+                      <div
+                        key={x.key}
+                        onClick={() => handleSort(x.key)}
+                        title={x.kind === "data" ? `${label} — fuente: ${GROUP_META[group].label}` : `${label} — columna personalizada (editable)`}
+                        className={`ido-bs-head${active ? " is-active" : ""}`}
+                        style={{ justifyContent: num ? "flex-end" : "flex-start", boxShadow: `inset 0 2.5px 0 0 ${GROUP_META[group].color}` }}
+                      >
+                        <span className="truncate">{label}</span>
+                        <SortArrow active={active} dir={active ? sortDir : "asc"} className="w-3 h-3 shrink-0" />
+                        <span
+                          onMouseDown={(e) => startResize(e, x.key)}
+                          onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); autoFitCol(x.key); }}
+                          onClick={(e) => e.stopPropagation()}
+                          title="Arrastrá para cambiar el ancho · doble clic para ajustar al contenido"
+                          className="group absolute top-0 right-[-4px] bottom-0 w-2 cursor-col-resize z-20 flex justify-center"
                         >
-                          {seleccionadasVisibles > 0 && (
-                            seleccionadasVisibles === sorted.length
-                              ? <Check className="w-3 h-3" style={{ color: "#fff" }} strokeWidth={3} />
-                              : <span style={{ width: 7, height: 2, borderRadius: 1, background: "#8B5CF6" }} />
-                          )}
-                        </button>
-                      )}
-                    </th>
-                    {mergedCols.map((x) => {
-                      const active = sortCol === x.key;
-                      const SortIcon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
-                      if (x.kind === "data") {
-                        const c = x.data;
-                        return (
-                          <th
-                            key={c.key}
-                            onClick={() => handleSort(c.key)}
-                            title={`Fuente: ${GROUP_META[c.group].label}`}
-                            className="relative"
-                            style={{
-                              padding: "8px 12px",
-                              textAlign: c.num ? "right" : "left",
-                              fontSize: 12, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase",
-                              color: active ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
-                              cursor: "pointer", userSelect: "none",
-                              position: "sticky", top: 0, zIndex: 2,
-                              background: STICKY_BG,
-                              borderBottom: "1px solid hsl(var(--border))",
-                              // Franja de color arriba del header: de qué tabla sale la
-                              // columna (SIC / OP / Movimientos / Matrícula). boxShadow
-                              // inset no altera el layout, a diferencia de un borderTop.
-                              boxShadow: `inset 0 2.5px 0 0 ${GROUP_META[c.group].color}`,
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%", justifyContent: c.num ? "flex-end" : "flex-start" }}>
-                              <span className="truncate">{c.label}</span>
-                              <SortIcon className={`w-3.5 h-3.5 shrink-0 transition-opacity ${active ? "opacity-100" : "opacity-30"}`} />
-                            </span>
-                            <ResizeHandle
-                              onStart={(e) => {
-                                resizingRef.current = { col: c.key, startX: e.clientX, startWidth: effWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] };
-                              }}
-                            />
-                          </th>
-                        );
-                      }
-                      // Columnas de seguimiento: no vienen del índice, las
-                      // escribe el usuario. Fondo propio para diferenciarlas.
-                      const c = x.track;
-                      return (
-                        <th
-                          key={c.key}
-                          onClick={() => handleSort(c.key)}
-                          title="Columna de seguimiento (editable)"
-                          className="relative"
-                          style={{
-                            padding: "8px 12px", textAlign: "left",
-                            fontSize: 12, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase",
-                            color: active ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
-                            cursor: "pointer", userSelect: "none",
-                            position: "sticky", top: 0, zIndex: 2,
-                            background: TRACK_BG,
-                            borderBottom: "1px solid hsl(var(--border))",
-                            boxShadow: `inset 0 2.5px 0 0 ${GROUP_META.track.color}`,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%" }}>
-                            <span className="truncate">{c.label}</span>
-                            <SortIcon className={`w-3.5 h-3.5 shrink-0 transition-opacity ${active ? "opacity-100" : "opacity-30"}`} />
-                          </span>
-                          <ResizeHandle
-                            onStart={(e) => {
-                              resizingRef.current = { col: c.key, startX: e.clientX, startWidth: effWidths[c.key] ?? DEFAULT_COL_WIDTHS[c.key] };
-                            }}
+                          <span
+                            className={`w-[2px] h-full transition-opacity ${resizingCol === x.key ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+                            style={{ background: "var(--ido-accent)", transitionDuration: "100ms" }}
                           />
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayItems.map((item, i) => {
-                    // Encabezado de matrícula: ocupa toda la fila y pliega el grupo.
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Filas (virtualizadas) */}
+                <div data-empty="1" style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
+                  {rowVirtualizer.getVirtualItems().map((vi) => {
+                    const item = displayItems[vi.index];
+                    if (!item) return null;
+                    const pos: CSSProperties = { position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vi.start}px)` };
+
+                    // Encabezado de grupo (pestaña agrupada): ocupa toda la fila y pliega el grupo.
                     if (item.tipo === "grupo") {
                       const cerrado = colapsados.has(item.gkey);
                       return (
-                        <tr key={item.key}>
-                          <td
-                            colSpan={1 + mergedCols.length}
-                            style={{
-                              padding: 0,
-                              background: "oklch(0.245 0.008 270)",
-                              borderBottom: "1px solid oklch(1 0 0 / 0.07)",
-                              borderTop: "1px solid oklch(1 0 0 / 0.05)",
-                            }}
+                        <div
+                          key={item.key}
+                          className="ido-bs-group"
+                          style={{ ...pos, height: GROUP_H }}
+                          onContextMenu={(e) => abrirMenuGrupo(e, item)}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleGrupo(item.gkey)}
+                            title={cerrado ? "Abrir grupo" : "Cerrar grupo"}
+                            className="shrink-0 grid place-items-center rounded-[5px]"
+                            style={{ width: 22, height: 22, color: "var(--ido-cat-4)" }}
                           >
-                            <div
-                              className="w-full flex items-center gap-1 pl-3 pr-2 py-2 transition-colors"
-                              onMouseEnter={(e) => { e.currentTarget.style.background = "oklch(0.28 0.008 270)"; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                              onContextMenu={(e) => abrirMenuGrupo(e, item)}
+                            {cerrado ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </button>
+                          {puedoEditar && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteGrupo(item.filaIds, item.titulo)}
+                              title={`Quitar de la pestaña las ${item.count} fila(s) de «${item.titulo}»`}
+                              className="ido-icon-btn shrink-0"
+                              style={{ width: 22, height: 22 }}
                             >
-                              <button
-                                onClick={() => toggleGrupo(item.gkey)}
-                                title={cerrado ? "Abrir grupo" : "Cerrar grupo"}
-                                className="shrink-0 grid place-items-center rounded-[5px]"
-                                style={{ width: 22, height: 22, cursor: "pointer" }}
-                              >
-                                {cerrado
-                                  ? <ChevronRight className="w-4 h-4" style={{ color: "#fcd34d" }} />
-                                  : <ChevronDown  className="w-4 h-4" style={{ color: "#fcd34d" }} />}
-                              </button>
-                              {puedoEditar && (
-                                <button
-                                  onClick={() => handleDeleteGrupo(item.filaIds, item.titulo)}
-                                  title={`Quitar de la pestaña las ${item.count} fila(s) de «${item.titulo}»`}
-                                  className="shrink-0 grid place-items-center rounded-[5px] transition-colors"
-                                  style={{ width: 22, height: 22, color: "oklch(0.5 0 0)", cursor: "pointer" }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.color = "#fca5a5"; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.5 0 0)"; }}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                              <button
-                                onClick={() => toggleGrupo(item.gkey)}
-                                className="flex-1 flex items-center gap-2 text-left min-w-0"
-                                style={{ cursor: "pointer" }}
-                              >
-                                <span style={{
-                                  fontFamily: "ui-monospace, monospace", fontSize: 12.5,
-                                  fontWeight: 600, color: "hsl(var(--foreground))",
-                                }}>
-                                  {item.titulo}
-                                </span>
-                                <span className="truncate" style={{ fontSize: 12, color: "oklch(0.62 0 0)", flex: 1 }}>
-                                  {item.subtitulo}
-                                </span>
-                                <span style={{
-                                  fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999,
-                                  background: "oklch(0.30 0.10 155 / 0.35)", color: "#86efac",
-                                  border: "1px solid oklch(0.55 0.15 155 / 0.4)", whiteSpace: "nowrap",
-                                }}>
-                                  {item.count} línea{item.count === 1 ? "" : "s"}
-                                </span>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => toggleGrupo(item.gkey)}
+                            className="flex items-center gap-2 text-left min-w-0"
+                            // Sin flex-1: la fila de grupo mide lo que toda la
+                            // tabla, y estirado el chip de líneas quedaba fuera
+                            // de vista a la derecha.
+                            style={{ position: "sticky", left: 0, maxWidth: "min(100%, 900px)" }}
+                          >
+                            <span className="ido-mono" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ido-text)" }}>{item.titulo}</span>
+                            <span className="truncate" style={{ fontSize: 12, color: "var(--ido-text-2)" }}>{item.subtitulo}</span>
+                            <span className="ido-chip ido-badge-neutral shrink-0" style={{ fontWeight: 500 }}>
+                              <span className="ido-mono" style={{ color: "var(--ido-text)" }}>{item.count}</span> línea{item.count === 1 ? "" : "s"}
+                            </span>
+                          </button>
+                        </div>
                       );
                     }
 
                     const { key, filaId, data } = item;
+                    const i = vi.index;
                     const isPinned = !isTabMode && pinnedRows.length > 0 && i < pinnedRows.length;
                     const isLastPinned = isPinned && i === pinnedRows.length - 1;
-                    const isLastRow = i === displayItems.length - 1;
-                    const pinnedBg = "color-mix(in oklab, var(--accent-violet) 8%, transparent)";
-                    const bottomBorder = isLastPinned
-                      ? "2px solid color-mix(in oklab, var(--accent-violet) 50%, transparent)"
-                      : isLastRow ? "none" : "1px solid oklch(1 0 0 / 0.05)";
                     const isSel = selected.has(key);
+                    const isInsp = !isSel && inspeccionada === key;
                     const isDragOver = isTabMode && dragOverFilaId === filaId;
-                    // El resaltado ámbar de "fila en la que estoy" se retiró:
-                    // lo hacía un click suelto, que ahora selecciona. La fila
-                    // seleccionada (violeta) cumple la misma función de no
-                    // perderla de vista al scrollear en horizontal.
-                    const rowBg = isDragOver
-                      ? "oklch(0.27 0.005 270)"
-                      : isSel ? "color-mix(in oklab, var(--accent-violet) 12%, transparent)"
-                      : isPinned ? pinnedBg : undefined;
                     // Dentro de una pestaña la fila es una copia editable, no
                     // tiene sentido atenuar por fuente.
                     const dim = !isTabMode && data.fuente === "catalogo";
+                    const enTarjeta = isTabMode && String(data[TRACK_KEYS.enTarjeta] ?? "") === "true";
+                    const cls = [
+                      "ido-bs-row",
+                      isDragOver ? "is-dragover" : isSel ? "is-sel" : isInsp ? "is-insp" : isPinned ? "is-pinned" : "",
+                      isLastPinned ? "is-pinned-last" : "",
+                    ].join(" ");
 
                     return (
-                      <Fragment key={key}>
-                      <tr
-                        className="transition-colors"
+                      <div
+                        key={key}
+                        className={cls}
+                        style={{ ...pos, gridTemplateColumns, height: ROW_H, opacity: dim ? 0.72 : 1 }}
                         onClick={(e) => handleRowClick(e, key)}
-                        // Con el agrupado activo el arrastre se desactiva: mover
-                        // una fila entre matrículas no tiene sentido y el regrupado
-                        // la devolvería a su grupo igual.
+                        // ⇧ clic: el navegador selecciona texto en el mousedown, antes
+                        // del click — se corta acá o el rango queda pintado de azul.
+                        onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }}
+                        // Con el agrupado activo el arrastre se desactiva: mover una
+                        // fila entre grupos no tiene sentido y el regrupado la
+                        // devolvería a su grupo igual.
                         draggable={puedeArrastrar}
                         onDragStart={puedeArrastrar ? (e) => {
                           dragFilaId.current = filaId!;
@@ -3114,191 +3178,120 @@ export function BuscadorSection() {
                         onDragLeave={puedeArrastrar ? () => setDragOverFilaId((k) => (k === filaId ? null : k)) : undefined}
                         onDrop={puedeArrastrar ? (e) => { e.preventDefault(); handleDropFila(filaId!); } : undefined}
                         onDragEnd={puedeArrastrar ? () => { dragFilaId.current = null; setDragOverFilaId(null); } : undefined}
-                        style={{ opacity: dim ? 0.72 : 1, background: rowBg }}
-                        onMouseEnter={(e) => { if (!rowBg) (e.currentTarget as HTMLTableRowElement).style.background = "oklch(0.25 0.005 270 / 0.5)"; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = rowBg ?? ""; }}
                       >
-                        {/* Acciones de la fila */}
-                        <td
-                          style={{ padding: "6px 4px", borderBottom: bottomBorder }}
+                        {/* Columna fija: checkbox (§4.16) + indicadores. En una
+                            pestaña, el handle de arrastre y la marca «en la
+                            tarjeta»; en el índice, la chincheta de fijada. */}
+                        <div
+                          className="flex items-center justify-center gap-1.5"
                           onContextMenu={(e) => abrirMenuFila(e, { key, filaId, data })}
                         >
-                          <span className="flex items-center justify-center gap-1">
-                            {isTabMode ? (
-                              <>
-                                <span
-                                  className={cn("grid place-items-center", puedeArrastrar && "cursor-grab active:cursor-grabbing")}
-                                  title={puedeArrastrar ? "Arrastrar para reordenar" : "Desactivá el agrupado para reordenar"}
-                                  style={{ color: puedeArrastrar ? "oklch(0.42 0 0)" : "oklch(0.28 0 0)" }}
-                                >
-                                  <GripVertical className="w-3.5 h-3.5" />
-                                </span>
-                                {/* Indicador de que la fila alimenta la tarjeta
-                                    «Próximas Entregas». Sin esto no habría
-                                    forma de saber qué se mandó: la marca dejó
-                                    de tener columna propia. */}
-                                {String(data[TRACK_KEYS.enTarjeta] ?? "") === "true" && (
-                                  <span
-                                    className="grid place-items-center"
-                                    title="En «Próximas Entregas» — click derecho para quitarla"
-                                    style={{ width: 16, height: 16, color: GROUP_META.track.color }}
-                                  >
-                                    <CalendarClock className="w-3.5 h-3.5" strokeWidth={2.2} />
-                                  </span>
-                                )}
-                                {/* Borrar salió de acá: era una acción
-                                    destructiva a un click suelto al lado del
-                                    handle de arrastre. Ahora está en el menú
-                                    contextual (click derecho). */}
-                              </>
-                            ) : (
-                              <>
-                                {/* Fijar salió de acá: se hace con click
-                                    derecho. Igual la fila fijada se reconoce
-                                    sola — va arriba de todo, con fondo violeta
-                                    y un separador debajo del último. El ícono
-                                    solo se muestra como indicador. */}
-                                {isPinned && (
-                                  <span
-                                    className="grid place-items-center"
-                                    title="Fijada arriba — click derecho para quitarla"
-                                    style={{ width: 20, height: 20, color: "#c4b5fd" }}
-                                  >
-                                    <Pin className="w-3.5 h-3.5" strokeWidth={2} fill="#c4b5fd" />
-                                  </span>
-                                )}
-                              </>
-                            )}
-                          </span>
-                        </td>
+                          {isTabMode && (
+                            <span
+                              className={cn("grid place-items-center", puedeArrastrar && "cursor-grab active:cursor-grabbing")}
+                              title={puedeArrastrar ? "Arrastrar para reordenar" : "Desactivá el agrupado para reordenar"}
+                              style={{ color: "var(--ido-text-2)", opacity: puedeArrastrar ? 1 : 0.35 }}
+                            >
+                              <GripVertical className="w-3.5 h-3.5" />
+                            </span>
+                          )}
+                          <IdoCheckbox checked={isSel} onClick={(e) => handleCheck(e, key)} label={isSel ? "Quitar de la selección" : "Seleccionar"} />
+                          {enTarjeta && (
+                            <span className="grid place-items-center" title="En «Próximas Entregas» — clic derecho para quitarla" style={{ color: GROUP_META.track.color }}>
+                              <CalendarClock className="w-3.5 h-3.5" strokeWidth={2.2} />
+                            </span>
+                          )}
+                          {isPinned && (
+                            <span className="grid place-items-center" title="Fijada arriba — clic derecho para quitarla" style={{ color: "var(--ido-cat-1)" }}>
+                              <Pin className="w-3.5 h-3.5" strokeWidth={2} fill="var(--ido-cat-1)" />
+                            </span>
+                          )}
+                        </div>
 
-                        {/* Columnas del índice y de seguimiento, EN UN SOLO
-                            orden — ver el comentario largo de `mergedCols`
-                            más arriba sobre por qué dejaron de ser dos
-                            pasadas separadas. */}
+                        {/* Columnas del índice y de seguimiento, en un solo orden (ver `mergedCols`). */}
                         {mergedCols.map((x) => {
                           if (x.kind === "track") {
-                          const c = x.track;
-                          const editando = editing?.filaId === filaId && editing?.key === c.key;
-                          const val = String(data[c.key] ?? "");
-                          const est = c.tipo === "estado" ? ESTADO_STYLE[val] : undefined;
-                          return (
-                            <td
-                              key={c.key}
-                              className={cn(
-                                !editando && !puedoEditar && "truncate",
-                                puedoEditar && !editando && "group/celda",
-                              )}
-                              style={{
-                                padding: editando ? "2px 6px" : "7px 12px",
-                                borderBottom: bottomBorder,
-                                // Estas columnas pintan su propio fondo (para
-                                // distinguirse como "de seguimiento") y si no
-                                // se mezcla acá, tapan el resaltado de fila.
-                                background: isSel ? "color-mix(in oklab, var(--accent-violet) 12%, transparent)" : TRACK_BG,
-                                cursor: puedoEditar ? "text" : "default",
-                              }}
-                              title={!puedoEditar ? "Solo lectura — pedile al dueño permiso de edición" : c.tipo === "texto" ? val : "Doble click para editar"}
-                              onDoubleClick={puedoEditar ? () => {
-                                setEditValue(val);
-                                setEditing({ filaId: filaId!, key: c.key });
-                              } : undefined}
-                              onContextMenu={(e) => abrirMenuFila(e, { key, filaId, data, colKey: c.key })}
-                            >
-                              {editando && c.tipo === "estado" ? (
-                                <select
-                                  autoFocus
-                                  onClick={(e) => e.stopPropagation()}
-                                  value={editValue}
-                                  onChange={(e) => { setEditValue(e.target.value); commitEdit(filaId!, c.key, e.target.value); }}
-                                  onBlur={() => setEditing(null)}
-                                  className="w-full outline-none text-[13px]"
-                                  style={{
-                                    padding: "5px 6px", borderRadius: 6,
-                                    border: "1px solid oklch(0.55 0.20 295 / 0.6)",
-                                    background: "oklch(0.16 0.005 270)", color: "hsl(var(--foreground))",
-                                  }}
-                                >
-                                  <option value="">—</option>
-                                  {ESTADOS.map((e) => <option key={e} value={e}>{e}</option>)}
-                                </select>
-                              ) : editando ? (
-                                <input
-                                  autoFocus
-                                  onClick={(e) => e.stopPropagation()}
-                                  type={c.tipo === "fecha" ? "date" : "text"}
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
-                                  onBlur={() => commitEdit(filaId!, c.key, editValue)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") e.currentTarget.blur();
-                                    if (e.key === "Escape") setEditing(null);
-                                  }}
-                                  className="w-full bg-transparent outline-none text-[13px]"
-                                  style={{
-                                    padding: "5px 6px", borderRadius: 6,
-                                    border: "1px solid oklch(0.55 0.20 295 / 0.6)",
-                                    background: "oklch(0.16 0.005 270)", color: "hsl(var(--foreground))",
-                                  }}
-                                />
-                              ) : (
-                                // Mismo lápiz en hover que las columnas del
-                                // índice: anuncia que la celda es editable.
-                                <span className="flex items-center gap-1.5">
-                                  <span className="truncate flex-1">
-                                    {est ? (
-                                      <span style={{
-                                        display: "inline-flex", alignItems: "center", gap: 5,
-                                        padding: "3px 9px", borderRadius: 999, whiteSpace: "nowrap",
-                                        background: est.bg, color: est.fg, border: `1px solid ${est.bd}`,
-                                        fontSize: 11, fontWeight: 600, letterSpacing: 0.2,
-                                      }}>
-                                        <span style={{ width: 5, height: 5, borderRadius: 3, background: "currentColor" }} />
-                                        {val}
-                                      </span>
-                                    ) : c.tipo === "fecha" ? (
-                                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{fmtFechaISO(val)}</span>
-                                    ) : (
-                                      val || <span style={{ color: "oklch(0.38 0 0)" }}>—</span>
+                            const c = x.track;
+                            const editando = editing?.filaId === filaId && editing?.key === c.key;
+                            const val = String(data[c.key] ?? "");
+                            const est = c.tipo === "estado" ? ESTADO_STYLE[val] : undefined;
+                            return (
+                              <div
+                                key={c.key}
+                                className={cn("ido-bs-cell", puedoEditar && !editando && "group/celda")}
+                                style={{ padding: editando ? "0 4px" : undefined, cursor: puedoEditar ? "text" : "default", color: "var(--ido-text)" }}
+                                title={!puedoEditar ? "Solo lectura — pedile al dueño permiso de edición" : c.tipo === "texto" ? val : "Doble clic para editar"}
+                                onDoubleClick={puedoEditar ? () => { setEditValue(val); setEditing({ filaId: filaId!, key: c.key }); } : undefined}
+                                onContextMenu={(e) => abrirMenuFila(e, { key, filaId, data, colKey: c.key })}
+                              >
+                                {editando && c.tipo === "estado" ? (
+                                  <select
+                                    autoFocus
+                                    onClick={(e) => e.stopPropagation()}
+                                    value={editValue}
+                                    onChange={(e) => { setEditValue(e.target.value); commitEdit(filaId!, c.key, e.target.value); }}
+                                    onBlur={() => setEditing(null)}
+                                    className="ido-cell-edit"
+                                  >
+                                    <option value="">—</option>
+                                    {ESTADOS.map((e) => <option key={e} value={e}>{e}</option>)}
+                                  </select>
+                                ) : editando ? (
+                                  <input
+                                    autoFocus
+                                    onClick={(e) => e.stopPropagation()}
+                                    type={c.tipo === "fecha" ? "date" : "text"}
+                                    value={editValue}
+                                    onChange={(e) => setEditValue(e.target.value)}
+                                    onBlur={() => commitEdit(filaId!, c.key, editValue)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") e.currentTarget.blur();
+                                      if (e.key === "Escape") setEditing(null);
+                                    }}
+                                    className="ido-cell-edit"
+                                  />
+                                ) : (
+                                  // Lápiz en hover: anuncia que la celda es editable.
+                                  <>
+                                    <span className="ido-bs-txt flex-1">
+                                      {est ? (
+                                        <span className="ido-chip" style={{ background: est.bg, color: est.fg }}>{val}</span>
+                                      ) : c.tipo === "fecha" ? (
+                                        <span className="ido-mono">{fmtFechaISO(val)}</span>
+                                      ) : (
+                                        val || <span style={{ color: "var(--ido-text-faint)" }}>—</span>
+                                      )}
+                                    </span>
+                                    {puedoEditar && (
+                                      <Pencil className="w-3 h-3 shrink-0 ml-1.5 opacity-0 group-hover/celda:opacity-100 transition-opacity" style={{ color: "var(--ido-text-2)" }} />
                                     )}
-                                  </span>
-                                  {puedoEditar && (
-                                    <Pencil
-                                      className="w-3 h-3 shrink-0 opacity-0 group-hover/celda:opacity-100 transition-opacity"
-                                      style={{ color: "oklch(0.5 0 0)" }}
-                                    />
-                                  )}
-                                </span>
-                              )}
-                            </td>
-                          );
+                                  </>
+                                )}
+                              </div>
+                            );
                           }
                           // Columnas del índice. En una pestaña son copias, así
-                          // que se editan con doble click.
+                          // que se editan con doble clic. Las manuales de OP
+                          // (descripción / zona) se editan TAMBIÉN en el índice
+                          // maestro, donde no hay filaId: la clave es la fila.
                           const c = x.data;
-                          // Las columnas manuales de OP (descripción / zona) se
-                          // editan TAMBIÉN en el índice maestro, donde no hay
-                          // filaId: la clave de edición es la fila visible.
                           const esManualOp = OP_MANUAL_COLS.has(c.key as string);
                           const numeroOp   = String(data.numero_op ?? "");
                           const editKey    = isTabMode ? filaId : key;
-                          const editable   = esManualOp
-                            ? (puedoEditar && !!numeroOp)
-                            : (isTabMode && puedoEditar);
-                          const editando = editing?.filaId === editKey && editing?.key === c.key;
+                          const editable   = esManualOp ? (puedoEditar && !!numeroOp) : (isTabMode && puedoEditar);
+                          const editando   = editing?.filaId === editKey && editing?.key === c.key;
+                          const contenido  = c.render
+                            ? c.render(data as unknown as BusquedaRow)
+                            : c.num ? fmtNum(data[c.key] as number) : ((data[c.key] ?? "") as ReactNode);
                           return (
-                            <td
+                            <div
                               key={c.key}
-                              className={cn(
-                                !editando && !editable && "truncate",
-                                editable && !editando && "group/celda",
-                                c.num ? "text-right tabular-nums" : "text-left",
-                              )}
+                              className={cn("ido-bs-cell", editable && !editando && "group/celda", c.num && "tabular-nums")}
                               style={{
-                                padding: editando ? "2px 6px" : "7px 12px",
-                                borderBottom: bottomBorder,
-                                fontFamily: (c.num || c.mono) ? "ui-monospace, monospace" : undefined,
-                                color: c.key === "articulo" ? "hsl(var(--foreground))" : undefined,
+                                padding: editando ? "0 4px" : undefined,
+                                justifyContent: c.num ? "flex-end" : "flex-start",
+                                fontFamily: (c.num || c.mono) ? "var(--font-mono, ui-monospace, monospace)" : undefined,
+                                color: c.key === "articulo" || c.key === "descripcion" || c.num ? "var(--ido-text)" : undefined,
                                 fontWeight: c.key === "articulo" ? 500 : undefined,
                                 cursor: editable ? "text" : undefined,
                               }}
@@ -3306,8 +3299,8 @@ export function BuscadorSection() {
                                 esManualOp
                                   ? (!numeroOp ? "Esta fila no tiene OP"
                                      : !puedoEditar ? "Solo lectura — pedile al dueño permiso de edición"
-                                     : `Doble click para editar — se guarda para toda la OP ${numeroOp}`)
-                                : isTabMode ? (puedoEditar ? "Doble click para editar" : "Solo lectura — pedile al dueño permiso de edición")
+                                     : `Doble clic para editar — se guarda para toda la OP ${numeroOp}`)
+                                  : isTabMode ? (puedoEditar ? "Doble clic para editar" : "Solo lectura — pedile al dueño permiso de edición")
                                   : c.key === "descripcion" ? String(data.descripcion ?? "") : undefined
                               }
                               onDoubleClick={editable ? () => {
@@ -3327,50 +3320,106 @@ export function BuscadorSection() {
                                     if (e.key === "Enter") e.currentTarget.blur();
                                     if (e.key === "Escape") setEditing(null);
                                   }}
-                                  className="w-full bg-transparent outline-none text-[13px]"
-                                  style={{
-                                    padding: "5px 6px", borderRadius: 6,
-                                    border: "1px solid oklch(0.55 0.20 295 / 0.6)",
-                                    background: "oklch(0.16 0.005 270)",
-                                    color: "hsl(var(--foreground))",
-                                    textAlign: c.num ? "right" : "left",
-                                  }}
+                                  className="ido-cell-edit"
+                                  style={{ textAlign: c.num ? "right" : "left" }}
                                 />
-                              ) : editable ? (
-                                // Lápiz al pasar el mouse: el doble click es el
-                                // único gesto de edición y sin esto no se
-                                // anuncia por ningún lado. Vale sobre todo para
-                                // Zona y Descripción OP, que arrancan vacías.
-                                <span className="flex items-center gap-1.5" style={{ justifyContent: c.num ? "flex-end" : "flex-start" }}>
-                                  <span className="truncate">
-                                    {c.render
-                                      ? c.render(data as unknown as BusquedaRow)
-                                      : c.num ? fmtNum(data[c.key] as number) : ((data[c.key] ?? "") as ReactNode)}
-                                  </span>
-                                  <Pencil
-                                    className="w-3 h-3 shrink-0 opacity-0 group-hover/celda:opacity-100 transition-opacity"
-                                    style={{ color: "oklch(0.5 0 0)" }}
-                                  />
-                                </span>
                               ) : (
-                                c.render
-                                  ? c.render(data as unknown as BusquedaRow)
-                                  : c.num ? fmtNum(data[c.key] as number) : ((data[c.key] ?? "") as ReactNode)
+                                <>
+                                  <span className="ido-bs-txt">{contenido}</span>
+                                  {editable && (
+                                    <Pencil className="w-3 h-3 shrink-0 ml-1.5 opacity-0 group-hover/celda:opacity-100 transition-opacity" style={{ color: "var(--ido-text-2)" }} />
+                                  )}
+                                </>
                               )}
-                            </td>
+                            </div>
                           );
                         })}
-                      </tr>
-
-                      </Fragment>
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+              </div>
             </div>
           )}
         </div>
+
+        {/* Barra flotante de selección en lote (§4.16): aparece con 2+ filas
+            seleccionadas. En el índice la selección sobrevive a cambiar la
+            búsqueda — las acciones van sobre lo que está a la vista, y la barra
+            dice cuántas quedaron afuera para no prometer de más. */}
+        {selected.size >= 2 && (
+          <div className="ido-selbar">
+            <span className="ido-selbar-count">
+              <b>{selected.size.toLocaleString("es-AR")}</b> seleccionadas
+              {fueraDeVista > 0 && (
+                <span style={{ color: "var(--ido-text-2)" }}> · <b>{fueraDeVista.toLocaleString("es-AR")}</b> fuera de esta búsqueda</span>
+              )}
+            </span>
+            <span className="ido-selbar-sep" />
+            {!isTabMode && (
+              <div className="relative" ref={addMenuRef}>
+                <button
+                  type="button"
+                  className="ido-btn ido-btn-ghost"
+                  style={{ height: 32 }}
+                  onClick={() => setAddMenuOpen((v) => !v)}
+                  disabled={!seleccionVisibleKeys.length}
+                >
+                  <ListPlus className="w-3.5 h-3.5" />
+                  Agregar a pestaña
+                  {fueraDeVista > 0 && <span className="ido-mono" style={{ color: "var(--ido-text-2)" }}>({seleccionVisibleKeys.length})</span>}
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </button>
+                {addMenuOpen && (
+                  <div className="ido-pop absolute left-0 bottom-[calc(100%+8px)] z-50" style={{ minWidth: 240, maxHeight: 320, overflowY: "auto" }}>
+                    {(() => {
+                      // Solo pestañas donde se puede escribir: una compartida
+                      // "solo lectura" no admite que le agreguen filas.
+                      const editables = tabs.filter((t) => permisoDe(t) === "edicion");
+                      if (!editables.length) {
+                        return (
+                          <div className="px-2.5 py-2 text-[12px]" style={{ color: "var(--ido-text-2)" }}>
+                            {tabs.length === 0
+                              ? "No tenés pestañas todavía — creá una con el «+» de arriba."
+                              : "No tenés ninguna pestaña editable — las compartidas contigo son de solo lectura."}
+                          </div>
+                        );
+                      }
+                      return editables.map((t) => (
+                        <button key={t.id} type="button" onClick={() => handleAddSelected(t.id)} className="ido-pop-item">
+                          <span className="flex-1 truncate">{t.nombre}</span>
+                          {t.user_id !== userId && <span style={{ color: "var(--ido-text-2)", fontSize: 11 }}>compartida</span>}
+                        </button>
+                      ));
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+            {isTabMode && (
+              <button
+                type="button"
+                className="ido-btn ido-btn-ghost"
+                style={{ height: 32 }}
+                onClick={() => handleMarcarTarjeta(seleccionVisibleKeys, !enTarjetaTodas)}
+                disabled={!puedoEditar || !seleccionVisibleKeys.length}
+                title="«Próximas Entregas» de Transformadores"
+              >
+                <CalendarClock className="w-3.5 h-3.5" />
+                {enTarjetaTodas ? "Quitar de Tarjeta" : "Enviar a Tarjeta"}
+              </button>
+            )}
+            <button type="button" className="ido-btn ido-btn-ghost" style={{ height: 32 }} onClick={exportarSeleccion} disabled={!seleccionVisibleKeys.length}>
+              <Download className="w-3.5 h-3.5" />
+              Exportar
+            </button>
+            <button type="button" className="ido-selbar-close" title="Liberar selección" onClick={liberarSeleccion}>
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
+
 
       {ctxMenu && <RowContextMenu state={ctxMenu} onClose={() => setCtxMenu(null)} />}
 

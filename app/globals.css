@@ -761,6 +761,82 @@ textarea.ido-input {
   color: var(--ido-text);
 }
 
+/* Filas de la tabla del Buscador (§4.11 / §4.16). */
+.ido-bs-row {
+  display: grid;
+  align-items: stretch;
+  background: var(--ido-base);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+  color: var(--ido-text-dim);
+  cursor: default;
+  transition: background 100ms var(--ido-ease);
+}
+.ido-bs-row:hover { background: var(--ido-elevated); }
+.ido-bs-row.is-pinned { background: color-mix(in srgb, var(--ido-cat-1) 7%, var(--ido-base)); }
+.ido-bs-row.is-pinned-last { border-bottom: 2px solid color-mix(in srgb, var(--ido-cat-1) 50%, transparent); }
+/* Clic simple = inspección: bg.elevated + borde izquierdo verde, sin check. */
+.ido-bs-row.is-insp { background: var(--ido-elevated); box-shadow: inset 2px 0 0 0 var(--ido-accent); }
+/* Selección múltiple: verde 6% + mismo borde, checkbox marcado. */
+.ido-bs-row.is-sel { background: rgba(63, 207, 142, 0.06); box-shadow: inset 2px 0 0 0 var(--ido-accent); }
+.ido-bs-row.is-dragover { background: rgba(255, 255, 255, 0.06); }
+.ido-bs-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0 12px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ido-bs-cell > .ido-bs-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ido-bs-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 12px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ido-text-2);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: color 120ms var(--ido-ease);
+}
+.ido-bs-head:hover, .ido-bs-head.is-active { color: var(--ido-text); }
+/* Encabezado de grupo de filas (dentro de una pestaña agrupada). */
+.ido-bs-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 10px;
+  background: var(--ido-surface);
+  border-bottom: 1px solid var(--ido-border);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background 100ms var(--ido-ease);
+}
+.ido-bs-group:hover { background: var(--ido-elevated); }
+/* Celda en edición (§4.4): campo a todo el ancho con anillo verde inset. */
+.ido-cell-edit {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  outline: none;
+  background: var(--ido-base);
+  box-shadow: inset 0 0 0 1.5px var(--ido-accent);
+  color: var(--ido-text);
+  font-size: 13px;
+  font-family: inherit;
+}
+.ido-cell-edit::placeholder { color: var(--ido-placeholder); }
+select.ido-cell-edit { padding-right: 4px; cursor: pointer; }
+select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-text); }
+
 /* Panel desplegable (menú §4.5 / menú de columnas §4.10). */
 .ido-pop {
   background: var(--ido-elevated);

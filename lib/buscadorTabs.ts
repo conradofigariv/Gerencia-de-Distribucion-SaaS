@@ -60,6 +60,10 @@ export interface TabConfig {
   // una OP nueva que aparece después, arranca visible sin necesidad de que
   // alguien la agregue a una lista.
   colapsados?: string[];
+  // Altura de fila (design-system.md §4.19): "compacta" | "normal" | "comoda".
+  // Es de la pestaña, como el resto de la vista: la ven igual todos los que
+  // la abren.
+  density?:    string;
 }
 
 export interface BuscadorTab {
