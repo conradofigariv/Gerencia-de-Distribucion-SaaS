@@ -2462,47 +2462,16 @@ export function BuscadorSection() {
     if (userId) saveTableLayout(userId, INDICE_LAYOUT_ID, { density: next });
   };
 
-  const [resetMsg, setResetMsg] = useState(false);
-  const resetMsgT = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (resetMsgT.current) clearTimeout(resetMsgT.current); }, []);
-  /** «Restablecer vista» (§4.20) de una pestaña: columnas (orden, visibles,
-   *  anchos) + densidad. En el índice maestro NO existe (ver `vistaControls`). */
-  const restablecerVista = () => {
-    if (!isTabMode) return;
-    patchLayout({ order: DEFAULT_COL_ORDER, hidden: [], widths: DEFAULT_COL_WIDTHS, density: "normal" });
-    setResetMsg(true);
-    if (resetMsgT.current) clearTimeout(resetMsgT.current);
-    resetMsgT.current = setTimeout(() => setResetMsg(false), 1500);
-  };
-
-  // Vista (§4.19 / §4.20): densidad y «Restablecer vista». Viven en la línea
-  // de contexto, pegadas a la tabla: en la barra de herramientas la hacían
-  // saltar a dos renglones. En una pestaña es la vista compartida, así que en
-  // solo lectura no se toca.
-  // ⚠ En el índice maestro no hay «Restablecer vista» (pedido del usuario): un
-  //   clic borraba de una el orden, las columnas ocultas y los anchos armados a
-  //   mano, sin forma de deshacerlo. Ahí se vuelve atrás desde «Columnas».
+  // Densidad (§4.19): vive en la línea de contexto, pegada a la tabla — en la
+  // barra de herramientas la hacía saltar a dos renglones. En una pestaña es
+  // la vista compartida, así que en solo lectura no se toca.
+  // ⚠ NO hay «Restablecer vista» (§4.20), ni en el índice ni en las pestañas
+  //   (pedido del usuario): un clic borraba sin deshacer el orden, las columnas
+  //   ocultas y los anchos armados a mano — y en una pestaña, a todos los que
+  //   la comparten.
   const vistaBloqueada = isTabMode && !puedoEditar;
   const vistaControls = (
     <span className="inline-flex items-center gap-0.5" style={{ borderLeft: "1px solid var(--ido-border)", paddingLeft: 8 }}>
-      {isTabMode && resetMsg && (
-        <span className="ido-reset-confirm" style={{ marginRight: 4 }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12.5l5 5L20 6.5" /></svg>
-          Vista restablecida
-        </span>
-      )}
-      {isTabMode && (
-        <button
-          type="button"
-          className="ido-btn ido-btn-text"
-          style={{ height: 24, fontSize: 12 }}
-          onClick={restablecerVista}
-          disabled={vistaBloqueada}
-          title="Restaura columnas (orden, visibles y anchos) y densidad a su valor por defecto"
-        >
-          Restablecer vista
-        </button>
-      )}
       <button
         type="button"
         className="ido-btn ido-btn-text"
