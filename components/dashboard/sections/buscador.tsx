@@ -1101,6 +1101,17 @@ export function BuscadorSection() {
   //    borde verde, checkbox sin marcar). No es selección en lote.
   const [selected, setSelected]   = useState<Set<string>>(new Set());
   const [inspeccionada, setInspeccionada] = useState<string | null>(null);
+  // Datos de cada fila seleccionada, por clave. La selección del índice
+  // sobrevive a cambiar la búsqueda, pero `rows` solo tiene la búsqueda
+  // actual: sin guardar acá el dato de lo tildado antes, «Agregar a pestaña»
+  // y «Exportar» no podían incluirlo (y lo perdían). Lo llena el efecto que
+  // está debajo de `displayRows`.
+  const selDatos = useRef(new Map<string, Record<string, unknown>>());
+  /** Datos de TODO lo seleccionado, visible o no, en el orden en que se tildó. */
+  const filasSeleccionadas = useCallback(
+    () => [...selected].map((k) => selDatos.current.get(k)).filter((d): d is Record<string, unknown> => !!d),
+    [selected],
+  );
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   // Celda en edición dentro de una pestaña: { filaId, key }.
   const [editing, setEditing]     = useState<{ filaId: string; key: string } | null>(null);
@@ -1503,11 +1514,18 @@ export function BuscadorSection() {
     setSelected(new Set());
     setInspeccionada(null);
     if (!activeTab) { setTabFilas([]); return; }
+    // `vigente`: si se cambia de pestaña antes de que lleguen las filas, la
+    // respuesta vieja se descarta. Sin esto, una pestaña lenta que respondía
+    // última pintaba SUS filas bajo el nombre de la otra (y se podían editar
+    // ahí creyendo que eran de la pestaña abierta).
+    let vigente = true;
+    setTabFilas([]);
     setLoadingTab(true);
     fetchTabFilas(activeTab)
-      .then(setTabFilas)
-      .catch((e) => toast.error(`No se pudieron cargar las filas: ${e.message}`))
-      .finally(() => setLoadingTab(false));
+      .then((f) => { if (vigente) setTabFilas(f); })
+      .catch((e) => { if (vigente) toast.error(`No se pudieron cargar las filas: ${e.message}`); })
+      .finally(() => { if (vigente) setLoadingTab(false); });
+    return () => { vigente = false; };
   }, [activeTab]);
 
   // Espejo de `tabFilas` para el efecto de plegado de abajo, que necesita las
@@ -1737,19 +1755,36 @@ export function BuscadorSection() {
   // más vieja de las 500 traídas, no la más vieja que hay. Por eso el sort
   // está entre las dependencias: cambiarlo re-consulta.
   const ordenServidor = sortCol && ORDENABLES_SERVIDOR.has(sortCol) ? sortCol : null;
+  // La dirección solo le importa al servidor si ordena él: dar vuelta una
+  // columna que se ordena en el cliente (Stock ZA, movimientos…) no re-consulta.
+  const dirServidor: SortDir = ordenServidor ? sortDir : "asc";
+  // «Reconstruir ahora» lo incrementa para volver a buscar con el índice nuevo.
+  const [recargaBusqueda, setRecargaBusqueda] = useState(0);
 
   useEffect(() => {
     if (activeTab) { setLoading(false); return; }
     const q = query.trim();
+    // `vigente`: la respuesta de una búsqueda vieja que llega DESPUÉS que la
+    // nueva se descarta. Sin esto, tipear rápido podía dejar en la tabla los
+    // resultados de lo que se había escrito antes (y sacar el spinner antes
+    // de tiempo).
+    let vigente = true;
     setLoading(true);
     const t = setTimeout(() => {
-      buscar(q, undefined, campoBusqueda, false, ordenServidor, sortDir, fechaAplicada)
-        .then((data) => { setRows(data); setBuscado(true); })
-        .catch((e) => toast.error(`Error al buscar: ${e instanceof Error ? e.message : String(e)}`))
-        .finally(() => setLoading(false));
+      buscar(q, undefined, campoBusqueda, false, ordenServidor, dirServidor, fechaAplicada)
+        .then((data) => {
+          if (!vigente) return;
+          setRows(data);
+          setBuscado(true);
+          // Resultados nuevos arrancan arriba; el scroll horizontal se respeta
+          // (la columna que se estaba mirando sigue a la vista).
+          if (scrollRef.current) scrollRef.current.scrollTop = 0;
+        })
+        .catch((e) => { if (vigente) toast.error(`Error al buscar: ${e instanceof Error ? e.message : String(e)}`); })
+        .finally(() => { if (vigente) setLoading(false); });
     }, 300);
-    return () => clearTimeout(t);
-  }, [query, activeTab, campoBusqueda, ordenServidor, sortDir, fechaAplicada]);
+    return () => { vigente = false; clearTimeout(t); };
+  }, [query, activeTab, campoBusqueda, ordenServidor, dirServidor, fechaAplicada, recargaBusqueda]);
 
   // El stock se trae una sola vez y se cruza en memoria: son ~5k matrículas en
   // un único registro jsonb, mucho más barato que pedirlo por fila.
@@ -1776,7 +1811,7 @@ export function BuscadorSection() {
       const n = await reconstruirIndice();
       toast.success(`Índice reconstruido — ${n.toLocaleString("es-AR")} fila(s).`);
       cargarEstado();
-      if (query.trim()) setQuery((q) => q); // vuelve a disparar la búsqueda
+      setRecargaBusqueda((n) => n + 1); // vuelve a buscar con el índice nuevo
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       // 57014 = statement timeout. La reconstrucción es pesada; si el volumen
@@ -1830,18 +1865,6 @@ export function BuscadorSection() {
     return [...pinnedRows, ...rest];
   }, [sortedByCol, pinnedRows]);
 
-  /**
-   * Cuántas de las filas tildadas están DENTRO de la búsqueda actual.
-   *
-   * La selección se mantiene al cambiar la búsqueda (tildar en varias búsquedas
-   * es un caso legítimo), pero «Agregar a pestaña» solo copia lo visible
-   * (`sorted.filter(...)`). Sin esta cuenta el botón prometía 12 y agregaba 3.
-   */
-  const seleccionadasVisibles = useMemo(
-    () => sorted.reduce((n, r) => n + (selected.has(String(r.id)) ? 1 : 0), 0),
-    [sorted, selected]
-  );
-
   const handleSort = useCallback((col: string) => {
     if (resizingRef.current || Date.now() - lastResizeEnd.current < 300) return;
     setSort((prev) =>
@@ -1849,10 +1872,14 @@ export function BuscadorSection() {
     );
   }, []);
 
-  // Copia las filas tildadas del índice a una pestaña. Las que ya están (mismo
-  // row_key) se saltean para no duplicar.
+  // Copia las filas tildadas del índice a una pestaña — TODAS, también las que
+  // se tildaron en otra búsqueda (ver `filasSeleccionadas`). Las que ya están
+  // (mismo row_key) se saltean para no duplicar.
   const handleAddSelected = useCallback(async (tabId: string) => {
-    const elegidas = sorted.filter((r) => selected.has(String(r.id)));
+    // Sin `stock_za`: se pega al mostrar (no viene del índice) y copiado
+    // quedaría congelado en la pestaña con el valor de hoy.
+    const elegidas = filasSeleccionadas()
+      .map(({ stock_za: _stock, ...r }) => r) as unknown as BusquedaRow[];
     if (!elegidas.length) return;
     setAddMenuOpen(false);
     try {
@@ -1877,7 +1904,7 @@ export function BuscadorSection() {
     } catch (e) {
       toast.error(`No se pudieron copiar: ${e instanceof Error ? e.message : String(e)}`);
     }
-  }, [sorted, selected, activeTab, tabFilas, tabs]);
+  }, [filasSeleccionadas, activeTab, tabFilas, tabs]);
 
   /** Copia UNA fila del índice a una pestaña (desde el menú contextual). */
   const handleAddRowToTab = useCallback(async (tabId: string, r: BusquedaRow) => {
@@ -2013,6 +2040,23 @@ export function BuscadorSection() {
     }));
   }, [isTabMode, tabFilasOrdenadas, sorted, stockZA]);
 
+  // Mantiene `selDatos` al día: saca lo deseleccionado y guarda el dato de lo
+  // seleccionado que está a la vista. En una pestaña sale de todas sus filas
+  // (también las ocultas por el filtro), así una edición posterior se exporta
+  // con el valor nuevo.
+  useEffect(() => {
+    const c = selDatos.current;
+    for (const k of [...c.keys()]) if (!selected.has(k)) c.delete(k);
+    if (!selected.size) return;
+    const fuente = isTabMode
+      ? new Map(tabFilasConOp.map((f) => [f.id, f.datos as Record<string, unknown>]))
+      : new Map(displayRows.map((r) => [r.key, r.data]));
+    for (const k of selected) {
+      const d = fuente.get(k);
+      if (d) c.set(k, d);
+    }
+  }, [selected, displayRows, tabFilasConOp, isTabMode]);
+
   /**
    * Grupos plegados, ya resueltos para renderizar. Tres reglas, en orden:
    *
@@ -2076,20 +2120,23 @@ export function BuscadorSection() {
   );
   const ultimaClickeada = useRef<string | null>(null);
 
-  /** ⇧ clic: suma a la selección múltiple el rango visible desde la última fila tocada. */
+  /**
+   * ⇧ clic: suma a la selección múltiple el rango visible desde la última fila
+   * tocada. Si esa fila ya no está a la vista (otra búsqueda, grupo plegado,
+   * filtro), no hay rango posible: suma solo la fila clickeada — nunca borra
+   * lo que había.
+   */
   const seleccionarRango = useCallback((key: string) => {
     const a = ultimaClickeada.current ? keysVisibles.indexOf(ultimaClickeada.current) : -1;
     const b = keysVisibles.indexOf(key);
-    if (a === -1 || b === -1) return false;
-    const [lo, hi] = a < b ? [a, b] : [b, a];
-    const rango = keysVisibles.slice(lo, hi + 1);
+    const rango = a === -1 || b === -1 ? [key] : keysVisibles.slice(Math.min(a, b), Math.max(a, b) + 1);
     setSelected((prev) => new Set([...prev, ...rango]));
     setInspeccionada(null);
-    return true;
+    ultimaClickeada.current = key;
   }, [keysVisibles]);
 
   const handleRowClick = useCallback((e: React.MouseEvent, key: string) => {
-    if (e.shiftKey && seleccionarRango(key)) return;
+    if (e.shiftKey) { seleccionarRango(key); return; }
     if (e.ctrlKey || e.metaKey) {
       // Ctrl/⌘ acumula sobre lo que ya había — incluida la fila inspeccionada,
       // que pasa a ser parte de la selección múltiple.
@@ -2102,16 +2149,24 @@ export function BuscadorSection() {
       setInspeccionada(null);
     } else {
       // Clic simple: exclusivo (§4.16) — inspecciona esa fila y libera la
-      // selección múltiple.
-      setSelected(new Set());
+      // selección múltiple. EXCEPTO si parte de la selección quedó fuera de
+      // la vista (tildada en otra búsqueda): esa no se ve, así que borrarla
+      // con un clic que solo buscaba mirar una fila la perdía sin aviso. Ahí
+      // el clic solo inspecciona; se libera con la ✕ de la barra o con Esc.
+      setSelected((prev) => {
+        if (!prev.size) return prev;
+        const visibles = new Set(keysVisibles);
+        for (const k of prev) if (!visibles.has(k)) return prev;
+        return new Set();
+      });
       setInspeccionada(key);
     }
     ultimaClickeada.current = key;
-  }, [seleccionarRango, inspeccionada]);
+  }, [seleccionarRango, inspeccionada, keysVisibles]);
 
   /** Checkbox de la fila: suma/saca de la selección múltiple (⇧ = rango). */
   const handleCheck = useCallback((e: React.MouseEvent, key: string) => {
-    if (e.shiftKey && seleccionarRango(key)) return;
+    if (e.shiftKey) { seleccionarRango(key); return; }
     setSelected((prev) => {
       const s = new Set(prev);
       if (s.has(key)) s.delete(key); else s.add(key);
@@ -2370,14 +2425,16 @@ export function BuscadorSection() {
     // botón «CSV» que estaba fijo en la barra. Al abrir el menú la fila
     // clickeada ya entró en la selección (ver arriba), así que nunca exporta
     // vacío ni algo distinto de lo que el usuario ve marcado.
-    const seleccionadas = displayRows.filter((r) => objetivoKeys.has(r.key));
+    const seleccionadas = enSeleccion
+      ? filasSeleccionadas()
+      : displayRows.filter((r) => objetivoKeys.has(r.key)).map((r) => r.data);
     if (seleccionadas.length) {
       items.push("sep");
       items.push({
         label: seleccionadas.length > 1 ? `Exportar selección a Excel (${seleccionadas.length})` : "Exportar fila a Excel",
         icon: Download,
         onClick: () => exportarAExcel(
-          seleccionadas.map((r) => r.data),
+          seleccionadas,
           colsVisibles,
           isTabMode
             ? `${tabs.find((t) => t.id === activeTab)?.nombre ?? "pestana"}-seleccion`
@@ -2390,7 +2447,7 @@ export function BuscadorSection() {
   }, [
     isTabMode, puedoEditar, agrupar, agruparPor, tabFilas, pinnedKeys, selected,
     tabs, permisoDe, togglePin, handleDeleteFila, handleDeleteGrupo, handleAddRowToTab,
-    handleMarcarTarjeta, displayRows, colsVisibles, exportarAExcel, activeTab, query,
+    handleMarcarTarjeta, displayRows, colsVisibles, exportarAExcel, activeTab, query, filasSeleccionadas,
   ]);
 
   /** Menú contextual de una PESTAÑA (click derecho en la barra de arriba). */
@@ -2560,6 +2617,7 @@ export function BuscadorSection() {
   // de grupo y filas conviven en la misma lista con alturas distintas.
   const scrollRef = useRef<HTMLDivElement>(null);
   const GROUP_H = 40;
+  const HEADER_H = 38;   // encabezado sticky de la tabla (mismo alto que abajo)
   const rowVirtualizer = useVirtualizer({
     count: displayItems.length,
     getScrollElement: () => scrollRef.current,
@@ -2586,16 +2644,96 @@ export function BuscadorSection() {
     });
     setInspeccionada(null);
   };
-  const enTarjetaTodas = isTabMode && seleccionVisibleKeys.length > 0 && seleccionVisibleKeys.every(
-    (k) => String(tabFilas.find((f) => f.id === k)?.datos[TRACK_KEYS.enTarjeta] ?? "") === "true"
-  );
+  // Las acciones de la barra van sobre TODA la selección, también lo tildado
+  // en otra búsqueda / oculto por el filtro: es justamente para eso que se
+  // conserva. La barra lo avisa («N fuera de esta búsqueda»).
+  const enTarjetaTodas = useMemo(() => {
+    if (!isTabMode || !selected.size) return false;
+    const porId = new Map(tabFilas.map((f) => [f.id, f]));
+    for (const k of selected) {
+      if (String(porId.get(k)?.datos[TRACK_KEYS.enTarjeta] ?? "") !== "true") return false;
+    }
+    return true;
+  }, [isTabMode, selected, tabFilas]);
   const exportarSeleccion = () => exportarAExcel(
-    displayRows.filter((r) => selected.has(r.key)).map((r) => r.data),
+    filasSeleccionadas(),
     colsVisibles,
     isTabMode
       ? `${tabs.find((t) => t.id === activeTab)?.nombre ?? "pestana"}-seleccion`
       : `busqueda-${query.trim().replace(/\s+/g, "-") || "todo"}`,
   );
+
+  // ── Teclado ────────────────────────────────────────────────────────────────
+  // ↑/↓ mueve la fila inspeccionada (hace falta haber clickeado una antes, así
+  // las flechas no le roban el scroll a la página), Esc suelta la selección y
+  // Ctrl/⌘+C copia la fila inspeccionada — o toda la selección — como texto
+  // separado por tabs, listo para pegar en Excel.
+  // No actúa mientras se escribe en un campo, se edita una celda o hay un
+  // menú / modal / desplegable abierto (esos manejan sus propias teclas).
+  const teclado = useRef({ keysVisibles, displayItems, inspeccionada, selected, editing, ctxMenu, colsVisibles, filasSeleccionadas, displayRows });
+  teclado.current = { keysVisibles, displayItems, inspeccionada, selected, editing, ctxMenu, colsVisibles, filasSeleccionadas, displayRows };
+  useEffect(() => {
+    const valorCopiable = (v: unknown) =>
+      v == null ? "" : typeof v === "number" ? String(v).replace(".", ",") : String(v).replace(/[\t\r\n]+/g, " ");
+
+    const onKey = (e: KeyboardEvent) => {
+      const t = teclado.current;
+      const el = e.target as HTMLElement | null;
+      if (e.isComposing || t.editing || t.ctxMenu) return;
+      if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
+      if (document.querySelector(".ido-modal-overlay, [data-radix-popper-content-wrapper]")) return;
+
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        if (!t.inspeccionada || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+        const i = t.keysVisibles.indexOf(t.inspeccionada);
+        const j = i === -1 ? 0 : i + (e.key === "ArrowDown" ? 1 : -1);
+        const key = t.keysVisibles[j];
+        if (!key) return;
+        e.preventDefault();
+        setInspeccionada(key);
+        ultimaClickeada.current = key;
+        // Scroll a mano y no `scrollToIndex`: el virtualizador no sabe del
+        // encabezado sticky de 38px que está adentro del mismo scroll, así que
+        // dejaba la fila tapada por él (subiendo) o 38px bajo el borde (bajando).
+        const idx = t.displayItems.findIndex((it) => it.key === key);
+        const m = rowVirtualizer.measurementsCache[idx];
+        const sc = scrollRef.current;
+        if (m && sc) {
+          if (m.start < sc.scrollTop) sc.scrollTop = m.start;
+          else if (m.end + HEADER_H > sc.scrollTop + sc.clientHeight) sc.scrollTop = m.end + HEADER_H - sc.clientHeight;
+        }
+        return;
+      }
+
+      if (e.key === "Escape") {
+        if (!t.selected.size && !t.inspeccionada) return;
+        e.preventDefault();
+        setSelected(new Set());
+        setInspeccionada(null);
+        setAddMenuOpen(false);
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
+        // Si hay texto marcado con el mouse, se copia eso (comportamiento normal).
+        if (window.getSelection()?.toString()) return;
+        const filas = t.selected.size
+          ? t.filasSeleccionadas()
+          : t.displayRows.filter((r) => r.key === t.inspeccionada).map((r) => r.data);
+        if (!filas.length) return;
+        e.preventDefault();
+        const lineas = filas.map((f) => t.colsVisibles.map((c) => valorCopiable(f[c.key])).join("\t"));
+        // Varias filas llevan encabezado (para pegarlas como tabla nueva); una
+        // sola no, así se puede pegar debajo de una planilla que ya lo tiene.
+        if (filas.length > 1) lineas.unshift(t.colsVisibles.map((c) => c.label).join("\t"));
+        navigator.clipboard.writeText(lineas.join("\n"))
+          .then(() => toast.success(filas.length > 1 ? `${filas.length} filas copiadas.` : "Fila copiada."))
+          .catch(() => toast.error("No se pudo copiar."));
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [rowVirtualizer]);
 
   // Menú «Agregar a pestaña» de la barra flotante: cierra con clic afuera.
   const addMenuRef = useRef<HTMLDivElement>(null);
@@ -2912,8 +3050,9 @@ export function BuscadorSection() {
                 return <> en <b>{gruposCount.toLocaleString("es-AR")}</b> {nombre}{gruposCount === 1 || agruparPor !== "articulo" ? "" : "s"}</>;
               })()}
             </span>
-            <span className="inline-flex items-center gap-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1.5 flex-wrap" title="Atajos: ↑/↓ moverse entre filas · Esc soltar la selección · Ctrl+C copiar filas (para pegar en Excel)">
               <kbd className="ido-kbd">Ctrl+clic</kbd> varias
+              · <kbd className="ido-kbd">Ctrl+C</kbd> copiar
               · <kbd className="ido-kbd">Doble clic</kbd> editar
               · <kbd className="ido-kbd">Clic der.</kbd> exportar y más
               {puedeArrastrar && <>· arrastrá para reordenar</>}
@@ -2922,7 +3061,7 @@ export function BuscadorSection() {
           </div>
         )}
 
-        {(!isTabMode && buscado && !loading) && (
+        {(!isTabMode && buscado) && (
           <div className="ido-context">
             <span className="inline-flex items-center flex-wrap gap-x-1">
               <span>
@@ -2943,8 +3082,9 @@ export function BuscadorSection() {
                 </span>
               )}
             </span>
-            <span className="inline-flex items-center gap-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1.5 flex-wrap" title="Atajos: ↑/↓ moverse entre filas · Esc soltar la selección · Ctrl+C copiar filas (para pegar en Excel)">
               <kbd className="ido-kbd">Ctrl+clic</kbd> varias
+              · <kbd className="ido-kbd">Ctrl+C</kbd> copiar
               · <kbd className="ido-kbd">Clic der.</kbd> exportar y más
               {vistaControls}
             </span>
@@ -2971,7 +3111,12 @@ export function BuscadorSection() {
                 Andá a «Índice maestro», seleccioná las filas que quieras seguir y usá «Agregar a pestaña».
               </span>
             </div>
-          ) : !isTabMode && loading ? (
+          ) : !isTabMode && loading && !sorted.length ? (
+            // Spinner a pantalla completa SOLO si no hay nada que mostrar
+            // (primera carga, o la búsqueda anterior no trajo nada). Con
+            // resultados en pantalla, se quedan mientras llega lo nuevo: antes
+            // la tabla desaparecía en cada tecla y en cada orden, y volvía con
+            // el scroll en 0 (se perdía la columna que se estaba mirando).
             <div className="ido-loading flex-1">
               <Loader2 className="w-4 h-4 animate-spin" />
               {/* Ordenar re-consulta al servidor (el orden va en la query), así
@@ -2993,7 +3138,12 @@ export function BuscadorSection() {
             <div
               ref={scrollRef}
               className="flex-1"
-              style={{ overflow: "auto", maxHeight: "calc(100vh - 190px)" }}
+              // Mientras llega una búsqueda nueva, los resultados anteriores
+              // quedan atenuados (además del spinner en la caja de búsqueda).
+              style={{
+                overflow: "auto", maxHeight: "calc(100vh - 190px)",
+                opacity: !isTabMode && loading ? 0.55 : 1, transition: "opacity 150ms var(--ido-ease)",
+              }}
               // Clic en zona vacía libera la selección (§4.16).
               onClick={(e) => { if ((e.target as HTMLElement).dataset.empty) liberarSeleccion(); }}
               data-empty="1"
@@ -3023,7 +3173,7 @@ export function BuscadorSection() {
                     columna (SIC / OP / Movimientos / Matrícula / Personalizadas). */}
                 <div
                   style={{
-                    display: "grid", gridTemplateColumns, height: 38,
+                    display: "grid", gridTemplateColumns, height: HEADER_H,
                     position: "sticky", top: 0, zIndex: 10,
                     background: "var(--ido-surface)", borderBottom: "1px solid var(--ido-border-strong)",
                   }}
@@ -3335,7 +3485,9 @@ export function BuscadorSection() {
             <span className="ido-selbar-count">
               <b>{selected.size.toLocaleString("es-AR")}</b> seleccionadas
               {fueraDeVista > 0 && (
-                <span style={{ color: "var(--ido-text-2)" }}> · <b>{fueraDeVista.toLocaleString("es-AR")}</b> fuera de esta búsqueda</span>
+                <span style={{ color: "var(--ido-text-2)" }} title="Las acciones de esta barra las incluyen">
+                  {" "}· <b>{fueraDeVista.toLocaleString("es-AR")}</b> fuera de esta búsqueda
+                </span>
               )}
             </span>
             <span className="ido-selbar-sep" />
@@ -3346,11 +3498,9 @@ export function BuscadorSection() {
                   className="ido-btn ido-btn-ghost"
                   style={{ height: 32 }}
                   onClick={() => setAddMenuOpen((v) => !v)}
-                  disabled={!seleccionVisibleKeys.length}
                 >
                   <ListPlus className="w-3.5 h-3.5" />
                   Agregar a pestaña
-                  {fueraDeVista > 0 && <span className="ido-mono" style={{ color: "var(--ido-text-2)" }}>({seleccionVisibleKeys.length})</span>}
                   <ChevronUp className="w-3.5 h-3.5" />
                 </button>
                 {addMenuOpen && (
@@ -3384,15 +3534,15 @@ export function BuscadorSection() {
                 type="button"
                 className="ido-btn ido-btn-ghost"
                 style={{ height: 32 }}
-                onClick={() => handleMarcarTarjeta(seleccionVisibleKeys, !enTarjetaTodas)}
-                disabled={!puedoEditar || !seleccionVisibleKeys.length}
+                onClick={() => handleMarcarTarjeta([...selected], !enTarjetaTodas)}
+                disabled={!puedoEditar}
                 title="«Próximas Entregas» de Transformadores"
               >
                 <CalendarClock className="w-3.5 h-3.5" />
                 {enTarjetaTodas ? "Quitar de Tarjeta" : "Enviar a Tarjeta"}
               </button>
             )}
-            <button type="button" className="ido-btn ido-btn-ghost" style={{ height: 32 }} onClick={exportarSeleccion} disabled={!seleccionVisibleKeys.length}>
+            <button type="button" className="ido-btn ido-btn-ghost" style={{ height: 32 }} onClick={exportarSeleccion}>
               <Download className="w-3.5 h-3.5" />
               Exportar
             </button>

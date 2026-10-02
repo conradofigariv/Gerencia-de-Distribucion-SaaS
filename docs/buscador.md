@@ -16,7 +16,7 @@ Confirmado con el usuario. Se aplica en 3 etapas, cada una subida aparte:
    - Franja de color por origen de columna: se mantiene (pedido), con la paleta categórica `--ido-cat-*` (SIC violeta, OP azul, Movimientos celeste — ya no verde, Matrícula ámbar, Personalizadas rosa).
 2. ✅ **Tabla en CSS grid** (virtualizada) + selección §4.16 completa (checkbox por fila, clic simple solo marca, barra flotante con Agregar a pestaña / Enviar a Tarjeta / Exportar; la selección del índice SE CONSERVA entre búsquedas y la barra avisa «N fuera de esta búsqueda») + menú §4.5 + redimensionado con doble clic §4.15 + densidad §4.19 (sin «Restablecer vista» §4.20, ver abajo). Columnas Personalizadas sin fondo; filas fijadas en azul (`--ido-cat-1`), como Stock por Zona.
    - Un solo contenedor de scroll (`scrollRef`) con el encabezado sticky opaco adentro; filas absolutas con `@tanstack/react-virtual` (`displayItems` mezcla encabezados de grupo, 40px, y filas, `DENSITY_ROW_H`). Clases `.ido-bs-row` / `.ido-bs-cell` / `.ido-bs-head` / `.ido-bs-group` en `globals.css`.
-   - Selección: `selected` (múltiple, checkbox / Ctrl / ⇧) + `inspeccionada` (clic simple, sin barra). La barra aparece con 2+. Clic en zona vacía (`data-empty`) libera. Las acciones van sobre `seleccionVisibleKeys` (lo seleccionado que está a la vista).
+   - Selección: `selected` (múltiple, checkbox / Ctrl / ⇧) + `inspeccionada` (clic simple, sin barra). La barra aparece con 2+. Clic en zona vacía (`data-empty`) o Esc libera. Las acciones van sobre toda la selección (`filasSeleccionadas()`), también lo que quedó fuera de la búsqueda — ver «Modo índice» más abajo.
    - Clic derecho sobre una fila que no está en la selección actúa SOLO sobre esa fila (la inspecciona); sobre una seleccionada, sobre toda la selección.
    - Densidad: en el índice es por usuario (`lib/tableLayout`, id `buscadorIndice`); en una pestaña vive en `TabConfig.density` (vista compartida — en solo lectura no se toca). «Densidad» está a la derecha de la línea de contexto: en la barra la partía en dos renglones. **No hay «Restablecer vista» (§4.20), ni en el índice ni en las pestañas** — se sacó a pedido del usuario: un clic borraba sin deshacer el orden, las columnas ocultas y los anchos armados a mano (en una pestaña, a todos los que la comparten). No volver a agregarlo.
    - Redimensionado: guía de 1px + ancho en px; doble clic mide con canvas (`autoFitCol`, piso 64, techo 700). `lastResizeEnd` evita que soltar el borde ordene la columna.
@@ -52,8 +52,8 @@ Tabla maestro regenerada en cada reconstrucción. Una fila por (OP, línea, env�
 - `tx_primera_fecha`, `tx_ultima_fecha`: rango de movimientos en ISO YYYY-MM-DD.
 - `updated_at` (timestamptz): última reconstrucción.
 
-**Clave estable:** `rowKey(r) = "${r.fuente}|${r.articulo_key ?? ""}|${r.numero_op ?? ""}|${r.linea ?? ""}|${r.envio ?? ""}"`
-— Usada para deduplicar al agregar filas a pestañas y para refreschs manuales.
+**Clave estable:** `rowKey(r)` = `fuente|articulo_key|numero_op|linea|envio`, y en las filas `sic` además `|numero_sic|sic_linea` (ver «Normalización y Claves»).
+— Usada para deduplicar al agregar filas a pestañas y para los fijados.
 
 **Consulta:**
 - `buscar(q, limite)`: búsqueda full-text via RPC `gd_buscar`.
@@ -246,9 +246,10 @@ pasan por estas funciones.
 **Modo índice:**
 - Búsqueda global. Caja vacía = las OP más nuevas primero (`gd_buscar` ordena por `fecha_creacion DESC` cuando `p_q` viene vacío — ver `supabase/busqueda_global.sql`). Antes, con la caja vacía se mostraba un cartel de "escribí algo" y no se pedía nada al índice.
 - Checkboxes para seleccionar filas. La selección **sobrevive a cambiar la búsqueda** (tildar a lo largo de varias búsquedas es un caso legítimo).
-- Dropdown "Agregar a pestaña" → copia las seleccionadas a la pestaña elegida. ⚠ Solo copia las que están **dentro de la búsqueda actual** (`sorted.filter(...)`), así que el botón muestra `seleccionadasVisibles` y, si hay tildadas fuera, aclara «de N». El checkbox de "seleccionar todo" del header opera solo sobre lo visible por el mismo motivo, y conserva lo tildado en otras búsquedas.
-- Las celdas editables muestran un **lápiz al pasar el mouse** — el doble click es el único gesto de edición y sin eso no se anuncia. Importa sobre todo en Zona y Descripción OP, que arrancan vacías.
-- **Resaltar fila con un click** (como Excel): un click en cualquier parte de la fila la tiñe de ámbar (`filaResaltada`, toggle — otro click la destiñe). Como el color se aplica a nivel `<tr>`, viaja con la fila al hacer scroll horizontal — sirve de referencia para no perderse al mirar columnas lejos de las primeras. Ámbar a propósito, para no confundirse con la selección (violeta) ni con fijado (violeta tenue). Las columnas de seguimiento pintan su propio fondo (`TRACK_BG`) y se mezclan aparte para no taparlo.
+- "Agregar a pestaña" / "Exportar" de la barra flotante actúan sobre **toda** la selección, también lo tildado en otra búsqueda: `selDatos` guarda el dato de cada fila seleccionada mientras está a la vista, y `filasSeleccionadas()` lo devuelve todo. La barra avisa «N fuera de esta búsqueda». El checkbox de "seleccionar todo" del header opera solo sobre lo visible y conserva lo tildado en otras búsquedas.
+- Clic simple = inspeccionar (§4.16) y libera la selección múltiple, **salvo** que parte de ella esté fuera de la vista: ahí solo inspecciona (antes un clic para mirar una fila borraba lo tildado en otras búsquedas). ⇧clic con la fila de referencia fuera de vista suma solo esa fila, nunca borra.
+- Búsqueda: cada respuesta se descarta si ya hay una más nueva en camino (`vigente` en el efecto) — igual al cambiar de pestaña. Mientras llega, la tabla anterior queda atenuada (no desaparece, se conserva el scroll horizontal); el spinner a pantalla completa es solo cuando no hay nada que mostrar. Dar vuelta una columna que se ordena en el cliente no re-consulta (`dirServidor`).
+- **Teclado** (con una fila inspeccionada y sin foco en un campo): ↑/↓ mueve la fila inspeccionada (scroll manual que tiene en cuenta el encabezado sticky), Esc suelta selección e inspección, Ctrl/⌘+C copia la fila inspeccionada o toda la selección como texto con tabs (varias filas llevan encabezado) para pegar en Excel. No actúa con menús, modales o desplegables abiertos.
 
 ### Menú contextual de fila (click derecho)
 
@@ -392,8 +393,15 @@ Normaliza códigos de matrícula como el SQL `gd_norm_articulo()`:
 ### `rowKey(r: BusquedaRow)`
 Clave estable que sobrevive reconstrucciones:
 ```typescript
-`${r.fuente}|${r.articulo_key ?? ""}|${r.numero_op ?? ""}|${r.linea ?? ""}|${r.envio ?? ""}`
+base = `${r.fuente}|${r.articulo_key ?? ""}|${r.numero_op ?? ""}|${r.linea ?? ""}|${r.envio ?? ""}`
+r.fuente === "sic" ? `${base}|${r.numero_sic ?? ""}|${r.sic_linea ?? ""}` : base
 ```
+⚠ Las filas `sic` (SIC sin OP en la planilla) no tienen línea ni envío de OP:
+sin el N° de SIC, dos SICs distintas de la misma matrícula daban la misma
+clave — no se podía agregar la segunda a una pestaña y fijar una ocultaba la
+otra. Las claves `sic` viejas de `buscador_tab_filas` se migran con
+`supabase/buscador_rowkey_sic.sql`. Los fijados viejos de SIC (localStorage)
+quedan huérfanos: hay que volver a fijarlos.
 Se usa para:
 - Detectar duplicados al copiar a pestaña.
 - Refresco manual (futura): detectar si la fila existe todavía en el índice.

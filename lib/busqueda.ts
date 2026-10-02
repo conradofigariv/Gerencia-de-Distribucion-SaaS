@@ -93,12 +93,6 @@ export interface BusquedaRow {
 }
 
 /**
- * Clave estable de una fila del índice. NO se puede usar `id`: es un bigserial
- * que se borra y regenera entero en cada «Reconstruir» (DELETE + INSERT), así
- * que cambia con cada reconstrucción. Esta sale de los datos de negocio, que sí
- * son estables.
- */
-/**
  * Fecha comparable (ms). Las fechas del índice viven como texto y llegan en tres
  * formatos según de qué import salieron: ISO (`2026-03-14`), `dd/mm/aaaa` tal
  * cual lo exporta SIGA, o el `toString()` de un Date. NaN cuando no hay fecha o
@@ -120,8 +114,23 @@ export const fechaMs = (v: unknown): number => {
   return Number.isNaN(t) ? NaN : t;
 };
 
-export const rowKey = (r: BusquedaRow) =>
-  `${r.fuente}|${r.articulo_key ?? ""}|${r.numero_op ?? ""}|${r.linea ?? ""}|${r.envio ?? ""}`;
+/**
+ * Clave estable de una fila del índice. NO se puede usar `id`: es un bigserial
+ * que se borra y regenera entero en cada «Reconstruir» (DELETE + INSERT), así
+ * que cambia con cada reconstrucción. Esta sale de los datos de negocio, que sí
+ * son estables.
+ *
+ * Las filas `sic` (líneas de SIC sin OP en la planilla) no tienen línea ni
+ * envío de OP, y muchas ni OP: sin el N° de SIC y su línea, dos SICs distintas
+ * de la misma matrícula daban la MISMA clave — no se podía agregar la segunda
+ * a una pestaña («ya está») y fijar una ocultaba la otra. Las claves `sic` ya
+ * guardadas en `buscador_tab_filas.row_key` se migran con
+ * supabase/buscador_rowkey_sic.sql.
+ */
+export const rowKey = (r: BusquedaRow) => {
+  const base = `${r.fuente}|${r.articulo_key ?? ""}|${r.numero_op ?? ""}|${r.linea ?? ""}|${r.envio ?? ""}`;
+  return r.fuente === "sic" ? `${base}|${r.numero_sic ?? ""}|${r.sic_linea ?? ""}` : base;
+};
 
 /**
  * Normaliza el código de matrícula igual que gd_norm_articulo() en SQL: quita
