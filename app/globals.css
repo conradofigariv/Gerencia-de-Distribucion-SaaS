@@ -629,6 +629,210 @@ textarea.ido-input {
   to { opacity: 1; transform: scale(1); }
 }
 
+/* ── Buscador (design-system.md §4.7 / §4.2 / §4.8 / §4.9 / §4.10) ───────── */
+/* Tabs §4.7: indicador deslizante bg.elevated + borde fuerte, radio 8. */
+.ido-tabbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ido-border);
+}
+.ido-dtab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ido-text-2);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 120ms var(--ido-ease);
+}
+.ido-dtab:hover { color: var(--ido-text); }
+.ido-dtab.is-active { color: var(--ido-text); }
+.ido-dtab > * { position: relative; z-index: 1; }
+.ido-dtab-bubble {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 8px;
+  background: var(--ido-elevated);
+  border: 1px solid var(--ido-border-strong);
+}
+/* Botón «nueva vista»: borde discontinuo (§4.7). */
+.ido-dtab-new {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px dashed var(--ido-border);
+  background: transparent;
+  color: var(--ido-text-2);
+  cursor: pointer;
+  transition: color 120ms var(--ido-ease), border-color 120ms var(--ido-ease);
+}
+.ido-dtab-new:hover { color: var(--ido-text); border-color: var(--ido-border-strong); }
+
+/* Caja de input con ícono adentro (§4.2): el foco se ve en la caja entera. */
+.ido-inputbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  background: var(--ido-elevated);
+  border: 1px solid var(--ido-border);
+  border-radius: 8px;
+  color: var(--ido-text);
+  transition: border-color 120ms var(--ido-ease), box-shadow 120ms var(--ido-ease);
+}
+.ido-inputbox:focus-within {
+  border-color: var(--ido-accent);
+  box-shadow: 0 0 0 3px rgba(63, 207, 142, 0.15);
+}
+.ido-inputbox input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--ido-text);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 13px;
+}
+.ido-inputbox input::placeholder { color: var(--ido-placeholder); }
+/* Filtro aplicado: elemento activo (regla del acento §1, caso 2). */
+.ido-inputbox.is-on,
+.ido-selectbtn.is-on { box-shadow: inset 0 0 0 1px rgba(63, 207, 142, 0.45); }
+
+/* Botón-select de la barra de filtros (§4.8): hover sube el borde. */
+.ido-selectbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  background: var(--ido-elevated);
+  border: 1px solid var(--ido-border);
+  border-radius: 8px;
+  color: var(--ido-text);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 120ms var(--ido-ease);
+}
+.ido-selectbtn:hover:not(:disabled) { border-color: var(--ido-border-strong); }
+.ido-selectbtn:disabled { opacity: 0.45; cursor: not-allowed; }
+.ido-selectbtn .ido-chev { color: var(--ido-text-2); transition: transform 200ms var(--ido-ease); }
+.ido-selectbtn[data-state="open"] .ido-chev,
+.ido-selectbtn.is-open .ido-chev { transform: rotate(180deg); }
+
+/* Chip contador (§4.3): número en mono primario, resto secundario. */
+.ido-chipbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--ido-elevated);
+  border: 1px solid var(--ido-border);
+  color: var(--ido-text-2);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 120ms var(--ido-ease);
+}
+.ido-chipbtn:hover { border-color: var(--ido-border-strong); }
+.ido-chipbtn b {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--ido-text);
+}
+
+/* Panel desplegable (menú §4.5 / menú de columnas §4.10). */
+.ido-pop {
+  background: var(--ido-elevated);
+  border: 1px solid var(--ido-border);
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+  padding: 4px;
+  color: var(--ido-text);
+  animation: ido-menu-in 140ms var(--ido-ease);
+}
+.ido-pop-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ido-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  transition: background 120ms var(--ido-ease);
+}
+.ido-pop-item:hover,
+.ido-pop-item:focus-visible,
+.ido-pop-item[data-highlighted] { background: rgba(255, 255, 255, 0.06); }
+.ido-pop-item:disabled { opacity: 0.45; cursor: default; }
+.ido-pop-item svg { color: var(--ido-text-2); flex-shrink: 0; }
+.ido-pop-sep { height: 1px; margin: 4px 8px; background: var(--ido-border); }
+.ido-pop-label {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ido-text-2);
+}
+
+/* Línea de contexto (§4.9): 12px secundario, cifras en mono, atajos en <kbd>. */
+.ido-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 12px;
+  color: var(--ido-text-2);
+}
+.ido-context b {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--ido-text);
+}
+.ido-context .is-warn { color: var(--ido-warning); }
+.ido-kbd {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid var(--ido-border);
+  background: var(--ido-elevated);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  color: var(--ido-text-2);
+}
+
 /* ── Tarjeta de oferente en licitación (design-system.md §10) ───────────── */
 @keyframes ido-block-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes ido-card-in { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }

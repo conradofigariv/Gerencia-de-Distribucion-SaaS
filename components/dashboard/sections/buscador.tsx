@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef, Fragment, type ReactNode, type ElementType, type CSSProperties, type DragEvent } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment, memo, type ReactNode, type ElementType, type CSSProperties, type DragEvent } from "react";
+import { motion } from "motion/react";
 import { createPortal } from "react-dom";
 import {
   Search, Loader2, X, Download, RefreshCw, Database, PackageOpen,
   ChevronDown, ChevronUp, ChevronsUpDown, Wrench, Package,
-  Columns3, GripVertical, Eye, EyeOff, Pin, Plus, Trash2, Pencil, ListPlus,
+  Columns3, GripVertical, Pin, Plus, Trash2, Pencil, ListPlus,
   ChevronRight, Rows3, Tag, FileText, Share2, Users, Lock, UserMinus, UserPlus,
   Copy, Check, CalendarClock,
 } from "lucide-react";
@@ -37,16 +38,20 @@ import {
 } from "@/lib/buscadorTabs";
 import { getStockZonaMap } from "@/lib/stockStorage";
 import { supabase } from "@/lib/supabaseClient";
+import { IdoCheckbox } from "@/components/dashboard/ido-kit";
 
-// ─── Estilos beast pure ──────────────────────────────────────────────────────
+// ─── Sistema de diseño IDO (design-system.md) ────────────────────────────────
+// Tokens --ido-*: solo existen debajo de `.ido-terminal`. La sección entera va
+// adentro de esa clase, y lo que se portalea a <body> (menú contextual, modal
+// Compartir) la vuelve a aplicar.
 
-const CARD_BG      = "oklch(0.235 0.005 270)";
-const PANEL_BG     = "oklch(0.205 0.005 270)";
-const PANEL_BORDER = "1px solid oklch(1 0 0 / 0.07)";
-const STICKY_BG    = "oklch(0.255 0.006 270)";
+const CARD_BG      = "var(--ido-surface)";
+const PANEL_BG     = "var(--ido-base)";
+const PANEL_BORDER = "1px solid var(--ido-border)";
+const STICKY_BG    = "var(--ido-surface)";
 
-// Alto único de todos los controles de la barra, para que queden alineados.
-const TOOLBAR_H = 34;
+// Alto único de los controles de la barra (§4.2 / §4.8: 38px).
+const TOOLBAR_H = 38;
 
 const fmtNum = (n: number | null | undefined) =>
   n == null ? "" : Number(n).toLocaleString("es-AR", { maximumFractionDigits: 2 });
@@ -109,8 +114,13 @@ function DatePicker({
     <Popover open={abierto} onOpenChange={setAbierto}>
       <PopoverTrigger asChild>
         <button
-          className="text-[12px] text-left px-1 rounded transition-colors hover:bg-white/5 outline-none"
-          style={{ color: valor ? "oklch(0.88 0 0)" : "oklch(0.45 0 0)", width: 92 }}
+          type="button"
+          className="text-left px-1.5 rounded transition-colors hover:bg-white/5 outline-none"
+          style={{
+            color: valor ? "var(--ido-text)" : "var(--ido-placeholder)", width: 92, height: 26,
+            fontSize: valor ? 12 : 13,
+            fontFamily: valor ? "var(--font-mono, ui-monospace, monospace)" : undefined,
+          }}
         >
           {valor ? fmtFechaISO(valor) : placeholder}
         </button>
@@ -151,15 +161,17 @@ function DatePicker({
 
 type ColGroup = "sic" | "op" | "tx" | "cat" | "track";
 
+// Paleta categórica del sistema (§1): colores de IDENTIDAD, nunca el verde de
+// acento — por eso Movimientos dejó de ser verde y pasó a celeste.
 const GROUP_META: Record<ColGroup, { label: string; color: string }> = {
-  sic:   { label: "SIC",            color: "#c4b5fd" },  // violeta — nivel de arriba
-  op:    { label: "OP",             color: "#7dd3fc" },  // celeste — planilla OP
-  tx:    { label: "Movimientos",    color: "#86efac" },  // verde — transacciones reales
-  cat:   { label: "Matrícula",      color: "#fcd34d" },  // ámbar — catálogo (transversal)
+  sic:   { label: "SIC",            color: "var(--ido-cat-2)" },  // violeta — nivel de arriba
+  op:    { label: "OP",             color: "var(--ido-cat-1)" },  // azul — planilla OP
+  tx:    { label: "Movimientos",    color: "var(--ido-cat-3)" },  // celeste — transacciones reales
+  cat:   { label: "Matrícula",      color: "var(--ido-cat-4)" },  // ámbar — catálogo (transversal)
   // Las únicas que NO salen de ninguna tabla del índice: las escribe el usuario
   // sobre la fila copiada. Color propio (rosa) para que se lean de un vistazo
   // como "esto lo puse yo", no como un dato importado.
-  track: { label: "Personalizadas", color: "#f9a8d4" },
+  track: { label: "Personalizadas", color: "var(--ido-cat-5)" },
 };
 
 // ─── Selector de columnas (mostrar/ocultar + reordenar) ──────────────────────
@@ -225,54 +237,39 @@ function ColumnsMenu({
     dragKey.current = null;
   };
 
+  // Menú de columnas (§4.10): botón secundario con badge N/total y un panel
+  // de 216–270px con checkbox propio por columna (off: borde 16%; on: verde).
   return (
     <div ref={ref} className="relative shrink-0">
       <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors"
-        style={{
-          height: TOOLBAR_H,
-          background: open ? "oklch(0.22 0.005 270)" : "oklch(0.16 0.005 270)",
-          border: `1px solid ${open ? "oklch(0.55 0.20 295 / 0.5)" : "oklch(1 0 0 / 0.07)"}`,
-          color: "oklch(0.75 0 0)", cursor: "pointer",
-        }}
+        className="ido-btn ido-btn-ghost"
+        style={{ height: TOOLBAR_H }}
       >
         <Columns3 className="w-3.5 h-3.5" />
         Columnas
-        <span style={{ color: "oklch(0.5 0 0)" }}>{visibleCount}/{order.length}</span>
+        <span className="ido-mono" style={{ color: "var(--ido-text-2)" }}>{visibleCount}/{orderedCols.length}</span>
       </button>
 
       {open && (
         <div
-          className="absolute right-0 top-[calc(100%+6px)] z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
-          style={{
-            width: 270, maxHeight: 440, overflowY: "auto",
-            background: "oklch(0.205 0.005 270)",
-            border: "1px solid oklch(1 0 0 / 0.07)",
-            borderRadius: 10,
-            boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6), 0 0 0 1px oklch(1 0 0 / 0.02) inset",
-            padding: 6,
-          }}
+          className="ido-pop absolute right-0 top-[calc(100%+6px)] z-50"
+          style={{ width: 270, maxHeight: 440, overflowY: "auto" }}
         >
-          <div className="flex items-center justify-between px-2 pt-1 pb-1.5">
-            <span className="text-[11px] uppercase tracking-wide" style={{ color: "oklch(0.55 0 0)" }}>
-              {locked ? "Solo lectura" : "Mostrar y ordenar"}
-            </span>
+          <div className="flex items-center justify-between">
+            <span className="ido-pop-label">{locked ? "Solo lectura" : "Mostrar y ordenar"}</span>
             {!locked && (
-              <button
-                onClick={onReset}
-                className="text-[11px] hover:text-foreground transition-colors"
-                style={{ color: "oklch(0.55 0 0)" }}
-              >
+              <button type="button" onClick={onReset} className="ido-btn ido-btn-text" style={{ height: 24, fontSize: 11 }}>
                 Restablecer
               </button>
             )}
           </div>
           {/* Leyenda de colores: de qué tabla sale cada columna, para agrupar
               por jerarquía (SIC → OP → Movimientos) al arrastrar. */}
-          <div className="flex items-center flex-wrap gap-x-2.5 gap-y-1 px-2 pb-2 mb-1" style={{ borderBottom: "1px solid oklch(1 0 0 / 0.06)" }}>
+          <div className="flex items-center flex-wrap gap-x-2.5 gap-y-1 px-2.5 pb-2 mb-1" style={{ borderBottom: "1px solid var(--ido-border)" }}>
             {(Object.keys(GROUP_META) as ColGroup[]).map((g) => (
-              <span key={g} className="inline-flex items-center gap-1" style={{ fontSize: 10.5, color: "oklch(0.55 0 0)" }}>
+              <span key={g} className="inline-flex items-center gap-1" style={{ fontSize: 10.5, color: "var(--ido-text-2)" }}>
                 <span style={{ width: 7, height: 7, borderRadius: 2, background: GROUP_META[g].color, flexShrink: 0 }} />
                 {GROUP_META[g].label}
               </span>
@@ -288,10 +285,7 @@ function ColumnsMenu({
             return (
               <Fragment key={`w-${c.key}`}>
               {abreOcultas && (
-                <div
-                  className="text-[11px] uppercase tracking-wide px-2 pt-2 pb-1 mt-1"
-                  style={{ color: "oklch(0.5 0 0)", borderTop: "1px solid oklch(1 0 0 / 0.06)" }}
-                >
+                <div className="ido-pop-label" style={{ borderTop: "1px solid var(--ido-border)", marginTop: 4 }}>
                   Ocultas
                 </div>
               )}
@@ -311,28 +305,21 @@ function ColumnsMenu({
                 onDragLeave={locked ? undefined : () => setDragOverKey((k) => (k === c.key ? null : k))}
                 onDrop={locked ? undefined : (e) => handleDrop(e, c.key)}
                 onDragEnd={locked ? undefined : () => { dragKey.current = null; setDragOverKey(null); }}
-                className={cn("flex items-center gap-2 px-2 py-1.5 rounded-[7px] select-none", !locked && "cursor-grab active:cursor-grabbing")}
-                style={{
-                  opacity: isHidden ? 0.5 : 1,
-                  background: isDragOver ? "oklch(0.27 0.005 270)" : "transparent",
-                }}
+                className={cn("ido-pop-item select-none", !locked && "cursor-grab active:cursor-grabbing")}
+                style={{ background: isDragOver ? "rgba(255,255,255,.06)" : undefined, cursor: locked ? "default" : undefined }}
               >
-                <GripVertical className="w-3.5 h-3.5 shrink-0" style={{ color: locked ? "oklch(0.3 0 0)" : "oklch(0.45 0 0)" }} />
+                <GripVertical className="w-3.5 h-3.5" style={{ opacity: locked ? 0.35 : 1 }} />
+                <IdoCheckbox
+                  checked={!isHidden}
+                  onClick={() => onToggle(c.key)}
+                  disabled={locked}
+                  label={isHidden ? `Mostrar ${c.label}` : `Ocultar ${c.label}`}
+                />
                 <span
                   title={GROUP_META[c.group].label}
                   style={{ width: 7, height: 7, borderRadius: 2, background: GROUP_META[c.group].color, flexShrink: 0 }}
                 />
-                <button
-                  onClick={() => onToggle(c.key)}
-                  disabled={locked}
-                  className="shrink-0 inline-flex items-center justify-center disabled:cursor-default"
-                  title={locked ? undefined : isHidden ? "Mostrar columna" : "Ocultar columna"}
-                >
-                  {isHidden
-                    ? <EyeOff className="w-3.5 h-3.5" style={{ color: "oklch(0.5 0 0)" }} />
-                    : <Eye className="w-3.5 h-3.5" style={{ color: locked ? "oklch(0.5 0 0)" : "#86efac" }} />}
-                </button>
-                <span className="text-[13px] truncate flex-1" style={{ color: "oklch(0.88 0 0)" }}>
+                <span className="truncate flex-1" style={{ color: isHidden ? "var(--ido-text-2)" : "var(--ido-text)" }}>
                   {c.label}
                 </span>
               </div>
@@ -728,7 +715,7 @@ function RowContextMenu({ state, onClose }: { state: CtxState; onClose: () => vo
       ref={ref}
       onMouseDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
-      className="animate-in fade-in zoom-in-95 duration-100"
+      className="ido-terminal animate-in fade-in zoom-in-95 duration-100"
       style={{
         position: "fixed", left: pos.x, top: pos.y, zIndex: 200,
         minWidth: 210, padding: 5,
@@ -839,7 +826,7 @@ function ShareDialog({ tabId, tabNombre, ownerId, onClose }: { tabId: string; ta
 
   const dialog = (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      className="ido-terminal fixed inset-0 z-[100] flex items-center justify-center p-4"
       style={{ background: "oklch(0 0 0 / 0.55)" }}
       onClick={onClose}
     >
@@ -978,6 +965,75 @@ function ShareDialog({ tabId, tabNombre, ownerId, onClose }: { tabId: string; ta
 
   return createPortal(dialog, document.body);
 }
+
+// ─── Barra de pestañas (design-system.md §4.7) ───────────────────────────────
+// Indicador deslizante (bg.elevated + borde fuerte, 200ms con la curva del
+// sistema) y botón «nueva vista» con borde discontinuo. Memoizado A PROPÓSITO:
+// el indicador usa `layoutId` de motion, que remide el layout en cada render;
+// sin memo, tipear en el buscador o tildar una fila lo dispararía cada vez.
+// Los handlers tienen que ser estables (useCallback en la sección).
+
+const TAB_BUBBLE_TRANSITION = { duration: 0.2, ease: [0.16, 1, 0.3, 1] as const };
+
+const BuscadorTabsBar = memo(function BuscadorTabsBar({
+  tabs, activeTab, userId, permisoDe, activeCount, onSelectIndice, onSelectTab, onRename, onContext, onCreate,
+}: {
+  tabs: BuscadorTab[];
+  activeTab: string | null;
+  userId: string | null;
+  permisoDe: (t: BuscadorTab) => Permiso;
+  activeCount: number;
+  onSelectIndice: () => void;
+  onSelectTab: (id: string) => void;
+  onRename: (t: BuscadorTab) => void;
+  onContext: (e: React.MouseEvent, t: BuscadorTab) => void;
+  onCreate: () => void;
+}) {
+  const bubble = <motion.span layoutId="buscador-tab-bubble" className="ido-dtab-bubble" transition={TAB_BUBBLE_TRANSITION} />;
+  return (
+    <div className="ido-tabbar">
+      <button type="button" onClick={onSelectIndice} className={`ido-dtab${activeTab === null ? " is-active" : ""}`}>
+        {activeTab === null && bubble}
+        <Database className="w-3.5 h-3.5" />
+        <span>Índice maestro</span>
+      </button>
+      {tabs.map((t) => {
+        const act = activeTab === t.id;
+        const propia = t.user_id === userId;
+        const permiso = permisoDe(t);
+        return (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onSelectTab(t.id)}
+            onDoubleClick={permiso === "edicion" ? () => onRename(t) : undefined}
+            onContextMenu={(e) => onContext(e, t)}
+            title={
+              propia ? "Doble clic para renombrar · clic derecho para más"
+                : permiso === "edicion" ? "Compartida — podés editarla y renombrarla"
+                : "Compartida — solo lectura"
+            }
+            className={`ido-dtab${act ? " is-active" : ""}`}
+          >
+            {act && bubble}
+            {!propia && (
+              permiso === "edicion"
+                ? <Users className="w-3 h-3 shrink-0" style={{ color: "var(--ido-cat-3)" }} />
+                : <Lock className="w-3 h-3 shrink-0" style={{ color: "var(--ido-text-2)" }} />
+            )}
+            <span>{t.nombre}</span>
+            {act && activeCount > 0 && (
+              <span className="ido-mono" style={{ fontSize: 11, color: "var(--ido-text-2)" }}>{activeCount}</span>
+            )}
+          </button>
+        );
+      })}
+      <button type="button" onClick={onCreate} title="Nueva pestaña de seguimiento" className="ido-dtab-new">
+        <Plus className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+});
 
 // ─── Sección ─────────────────────────────────────────────────────────────────
 
@@ -2348,103 +2404,48 @@ export function BuscadorSection() {
   const soloCat  = sorted.filter((r) => r.fuente === "catalogo").length;
   const soloSic  = sorted.filter((r) => r.fuente === "sic").length;
 
+  // Handlers estables para la barra de pestañas memoizada.
+  const selectIndice = useCallback(() => {
+    // Vuelve al orden con el que abre el maestro (SIC más recientes), no al que
+    // hubiera quedado de la pestaña: son dos vistas con criterios distintos y
+    // la pestaña resetea el sort a manual.
+    setActiveTab(null); setEditing(null); setSort({ col: "numero_sic", dir: "desc" });
+  }, []);
+  const selectTab = useCallback((id: string) => {
+    setActiveTab(id); setEditing(null); setSort({ col: null, dir: "asc" });
+  }, []);
+
   return (
-    <div>
+    <div className="ido-terminal">
       {/* Card. El título de la sección ya lo pone el header general, así que
           acá va directo la barra de herramientas para que la tabla suba. */}
       <div
-        className="p-2.5 overflow-hidden space-y-2"
+        className="p-3 overflow-hidden space-y-3"
         style={{ background: CARD_BG, border: PANEL_BORDER, borderRadius: 12 }}
       >
-        {/* Barra de pestañas. El índice maestro es la vista de siempre; las
-            demás son listas de seguimiento propias del usuario. */}
-        <div className="flex items-center gap-1 flex-wrap" style={{ borderBottom: PANEL_BORDER, paddingBottom: 6 }}>
-          <button
-            // Vuelve al orden con el que abre el maestro (SIC más recientes),
-            // no al que hubiera quedado de la pestaña: son dos vistas con
-            // criterios distintos y la pestaña resetea el sort a manual.
-            onClick={() => { setActiveTab(null); setEditing(null); setSort({ col: "numero_sic", dir: "desc" }); }}
-            className="inline-flex items-center gap-1.5 px-3 rounded-[8px] text-[12.5px] font-medium transition-colors"
-            style={{
-              height: 30,
-              background: !isTabMode ? "oklch(0.28 0.02 295)" : "transparent",
-              border: `1px solid ${!isTabMode ? "oklch(0.55 0.20 295 / 0.45)" : "transparent"}`,
-              color: !isTabMode ? "oklch(0.92 0 0)" : "oklch(0.6 0 0)", cursor: "pointer",
-            }}
-          >
-            <Database className="w-3.5 h-3.5" />
-            Índice maestro
-          </button>
+        {/* Barra de pestañas (§4.7). El índice maestro es la vista de siempre;
+            las demás son listas de seguimiento propias o compartidas.
+            Compartir / Renombrar / Borrar: clic derecho en la pestaña. */}
+        <BuscadorTabsBar
+          tabs={tabs}
+          activeTab={activeTab}
+          userId={userId}
+          permisoDe={permisoDe}
+          activeCount={isTabMode ? tabFilas.length : 0}
+          onSelectIndice={selectIndice}
+          onSelectTab={selectTab}
+          onRename={handleRenameTab}
+          onContext={abrirMenuPestana}
+          onCreate={handleCreateTab}
+        />
 
-
-          {tabs.map((t) => {
-            const act = activeTab === t.id;
-            const propia = t.user_id === userId;
-            const permiso = permisoDe(t);
-            return (
-              <span
-                key={t.id}
-                className="inline-flex items-center group/tab"
-                onContextMenu={(e) => abrirMenuPestana(e, t)}
-              >
-                <button
-                  onClick={() => { setActiveTab(t.id); setEditing(null); setSort({ col: null, dir: "asc" }); }}
-                  onDoubleClick={permiso === "edicion" ? () => handleRenameTab(t) : undefined}
-                  title={
-                    propia ? "Doble click para renombrar"
-                      : permiso === "edicion" ? "Compartida — podés editarla y renombrarla"
-                      : "Compartida — solo lectura"
-                  }
-                  className="inline-flex items-center gap-1.5 px-3 rounded-[8px] text-[12.5px] font-medium transition-colors"
-                  style={{
-                    height: 30,
-                    background: act ? "oklch(0.28 0.02 295)" : "transparent",
-                    border: `1px solid ${act ? "oklch(0.55 0.20 295 / 0.45)" : "transparent"}`,
-                    color: act ? "oklch(0.92 0 0)" : "oklch(0.6 0 0)", cursor: "pointer",
-                  }}
-                >
-                  {!propia && (
-                    permiso === "edicion"
-                      ? <Users className="w-3 h-3 shrink-0" style={{ color: "#7dd3fc" }} />
-                      : <Lock  className="w-3 h-3 shrink-0" style={{ color: "oklch(0.55 0 0)" }} />
-                  )}
-                  {t.nombre}
-                  {act && tabFilas.length > 0 && (
-                    <span style={{ color: "oklch(0.55 0 0)" }}>{tabFilas.length}</span>
-                  )}
-                </button>
-                {/* Compartir / Renombrar / Borrar salieron de acá: click
-                    derecho en la pestaña abre el mismo menú (abrirMenuPestana). */}
-              </span>
-            );
-          })}
-
-          <button
-            onClick={handleCreateTab}
-            title="Nueva pestaña de seguimiento"
-            className="inline-flex items-center gap-1 px-2 rounded-[8px] text-[12.5px] transition-colors"
-            style={{ height: 30, background: "transparent", border: PANEL_BORDER, color: "oklch(0.6 0 0)", cursor: "pointer" }}
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {/* Barra única: búsqueda + acciones + estado del índice, todo en una
-            fila para no gastar alto vertical. */}
+        {/* Barra de filtros (§4.8) + acciones, en una sola fila para no gastar
+            alto vertical. Controles de 38px (§4.2). */}
         <div className="flex items-center gap-2 flex-wrap">
-          <div
-            className="flex items-center gap-2 px-3"
-            style={{
-              height: TOOLBAR_H, width: 220, flexShrink: 0, borderRadius: 9,
-              background: "oklch(0.16 0.005 270)",
-              border: `1px solid ${query ? "oklch(0.55 0.20 295 / 0.5)" : "oklch(1 0 0 / 0.07)"}`,
-              boxShadow: query ? "0 0 0 3px oklch(0.55 0.20 295 / 0.12)" : "none",
-              transition: "border-color .15s, box-shadow .15s",
-            }}
-          >
+          <div className="ido-inputbox" style={{ width: 260, flexShrink: 0 }}>
             {loading
-              ? <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" style={{ color: "#8B5CF6" }} />
-              : <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "oklch(0.55 0 0)" }} />}
+              ? <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" style={{ color: "var(--ido-text-2)" }} />
+              : <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--ido-text-2)" }} />}
             <input
               autoFocus
               value={query}
@@ -2454,10 +2455,9 @@ export function BuscadorSection() {
                   ? `Buscar en ${CAMPO_OPTIONS.find((o) => o.value === campoBusqueda)?.label}…`
                   : "SIC, OP, matrícula, preparador, proveedor, zona…"
               }
-              className="flex-1 bg-transparent border-none outline-none text-[13.5px] text-foreground placeholder:text-muted-foreground/45"
             />
             {query && (
-              <button onClick={() => setQuery("")} className="text-muted-foreground hover:text-foreground shrink-0">
+              <button type="button" onClick={() => setQuery("")} title="Limpiar búsqueda" style={{ color: "var(--ido-text-2)", display: "grid", placeItems: "center" }}>
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
@@ -2466,132 +2466,99 @@ export function BuscadorSection() {
           {/* Selector de campo — afina la búsqueda a una sola columna. Solo en
               el índice maestro: dentro de una pestaña el universo ya lo acotó
               el usuario al elegir qué filas copiar, y son pocas — filtrar por
-              campo ahí no aporta y ocupa lugar en la barra. */}
+              campo ahí no aporta y ocupa lugar en la barra.
+              DropdownMenu de Radix: animación de entrada y salida, clic afuera,
+              foco y teclado sin mantener nada de eso acá. */}
           {!isTabMode && (
-          <div className="relative shrink-0">
-            {/* DropdownMenu de shadcn (Radix) en vez del panel a mano que había
-                antes: trae la animación de entrada Y SALIDA, el click-afuera,
-                el foco y la navegación con teclado sin mantener nada de eso
-                acá. El de antes sólo animaba al abrir y desaparecía de golpe. */}
             <DropdownMenu open={campoMenuOpen} onOpenChange={setCampoMenuOpen}>
               <DropdownMenuTrigger asChild>
                 <button
+                  type="button"
                   title="Acotar la búsqueda a un solo campo"
-                  className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors outline-none"
-                  style={{
-                    height: TOOLBAR_H,
-                    background: campoBusqueda ? "oklch(0.28 0.02 295)" : "oklch(0.16 0.005 270)",
-                    border: `1px solid ${campoBusqueda ? "oklch(0.55 0.20 295 / 0.45)" : "oklch(1 0 0 / 0.07)"}`,
-                    color: campoBusqueda ? "oklch(0.92 0 0)" : "oklch(0.65 0 0)", cursor: "pointer",
-                  }}
+                  className={cn("ido-selectbtn shrink-0", campoBusqueda && "is-on")}
                 >
                   {(() => {
                     const opt = CAMPO_OPTIONS.find((o) => o.value === campoBusqueda);
                     const Icon = opt?.icon ?? Search;
-                    return <><Icon className="w-3.5 h-3.5" />{opt?.label ?? "Todo el índice"}</>;
+                    return <><Icon className="w-3.5 h-3.5" style={{ color: "var(--ido-text-2)" }} />{opt?.label ?? "Todo el índice"}</>;
                   })()}
-                  <ChevronDown
-                    className="w-3 h-3 opacity-60 transition-transform duration-200"
-                    style={{ transform: campoMenuOpen ? "rotate(180deg)" : undefined }}
-                  />
+                  <ChevronDown className="ido-chev w-3.5 h-3.5" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" sideOffset={6} className="min-w-[180px] bg-panel border-hairline">
-                <DropdownMenuItem
-                  onSelect={() => setCampoBusqueda(null)}
-                  className={cn("gap-2 text-[13px]", campoBusqueda === null && "bg-accent/15 text-foreground")}
-                >
-                  <Search className="w-3.5 h-3.5 shrink-0" />
-                  Todo el índice
+              <DropdownMenuContent align="start" sideOffset={6} className="ido-terminal ido-pop min-w-[200px] border-0">
+                <DropdownMenuItem onSelect={() => setCampoBusqueda(null)} className="ido-pop-item focus:bg-transparent">
+                  <Search className="w-3.5 h-3.5" />
+                  <span className="flex-1">Todo el índice</span>
+                  {campoBusqueda === null && <Check className="w-3.5 h-3.5" style={{ color: "var(--ido-accent)" }} />}
                 </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-hairline" />
+                <DropdownMenuSeparator className="ido-pop-sep" />
                 {CAMPO_OPTIONS.map((o) => {
                   const Icon = o.icon;
                   return (
-                    <DropdownMenuItem
-                      key={o.value}
-                      onSelect={() => setCampoBusqueda(o.value)}
-                      className={cn("gap-2 text-[13px]", o.value === campoBusqueda && "bg-accent/15 text-foreground")}
-                    >
-                      <Icon className="w-3.5 h-3.5 shrink-0" />
-                      {o.label}
+                    <DropdownMenuItem key={o.value} onSelect={() => setCampoBusqueda(o.value)} className="ido-pop-item focus:bg-transparent">
+                      <Icon className="w-3.5 h-3.5" />
+                      <span className="flex-1">{o.label}</span>
+                      {o.value === campoBusqueda && <Check className="w-3.5 h-3.5" style={{ color: "var(--ido-accent)" }} />}
                     </DropdownMenuItem>
                   );
                 })}
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
-
           )}
 
           {/* Filtro por rango de fechas. El desplegable elige CUÁL fecha se
               filtra: sin eso el rango es ambiguo (¿cuándo se pidió?, ¿para
               cuándo se comprometió?, ¿cuándo se movió?). Se aplica con
-              «Buscar» y no al tipear: una fecha a medio escribir dispararía
-              una consulta por tecla. */}
-          <div
-            className="flex items-center gap-1.5 px-2.5 shrink-0"
-            style={{
-              height: TOOLBAR_H, borderRadius: 9,
-              background: "oklch(0.16 0.005 270)",
-              border: `1px solid ${fechaAplicada ? "oklch(0.55 0.20 295 / 0.45)" : "oklch(1 0 0 / 0.07)"}`,
-            }}
-          >
-            <CalendarClock className="w-3.5 h-3.5 shrink-0" style={{ color: "oklch(0.5 0 0)" }} />
-            {/* Select de shadcn en vez del <select> nativo: el nativo abre un
-                menú del sistema operativo, sin animación ni forma de estilarlo
-                (se veía blanco en Windows aunque el resto sea oscuro). */}
+              «Buscar» (botón primario) y no al tipear: una fecha a medio
+              escribir dispararía una consulta por tecla. */}
+          <div className={cn("ido-inputbox shrink-0", fechaAplicada && "is-on")} style={{ gap: 6, paddingRight: 6 }}>
+            <CalendarClock className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--ido-text-2)" }} />
             <Select value={fechaCampo} onValueChange={(v) => setFechaCampo(v as CampoFecha)}>
               <SelectTrigger
                 size="sm"
                 title="Sobre qué fecha se aplica el rango"
-                className="h-[22px] border-none bg-transparent px-1 text-[12px] shadow-none focus-visible:ring-0"
-                style={{ color: "oklch(0.78 0 0)", maxWidth: 176 }}
+                className="h-[26px] border-none bg-transparent px-1 text-[13px] shadow-none focus-visible:ring-0"
+                style={{ color: "var(--ido-text)", maxWidth: 190 }}
               >
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-panel border-hairline">
+              <SelectContent className="ido-terminal ido-pop border-0">
                 {CAMPOS_FECHA.map((f) => (
-                  // ⚠ Se pisa el `focus:bg-accent` que trae SelectItem. Radix
-                  //   enfoca solo el ítem seleccionado al abrir el Select, así
-                  //   que ese estilo pintaba una barra verde a full apenas se
-                  //   abría — nada que ver con el DropdownMenu de al lado, que
-                  //   no enfoca nada al abrir. Acá el resaltado es suave y el
-                  //   elegido lleva el mismo tinte que el ítem activo de aquel.
+                  // ⚠ Se pisa el `focus:bg-accent` que trae SelectItem: Radix
+                  //   enfoca el ítem elegido al abrir y eso pintaba una barra
+                  //   verde a full apenas se abría.
                   <SelectItem
                     key={f.key}
                     value={f.key}
-                    className="text-[13px] focus:bg-panel-2 focus:text-foreground data-[state=checked]:bg-accent/15 data-[state=checked]:text-foreground"
+                    className="ido-pop-item focus:bg-white/5 focus:text-[var(--ido-text)] data-[state=checked]:text-[var(--ido-text)]"
                   >
                     {f.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <span style={{ color: "oklch(0.28 0 0)" }}>|</span>
+            <span style={{ width: 1, height: 18, background: "var(--ido-border)" }} />
             <DatePicker valor={fechaDesde} onChange={setFechaDesde} placeholder="Desde" />
-            <span style={{ color: "oklch(0.35 0 0)" }}>→</span>
+            <span style={{ color: "var(--ido-text-2)" }}>→</span>
             <DatePicker valor={fechaHasta} onChange={setFechaHasta} placeholder="Hasta" />
             <button
+              type="button"
               onClick={() => setFechaAplicada(
                 fechaDesde || fechaHasta ? { campo: fechaCampo, desde: fechaDesde, hasta: fechaHasta } : null
               )}
               disabled={!fechaDesde && !fechaHasta}
               title="Aplicar el filtro de fechas"
-              className="shrink-0 px-2 h-[22px] rounded-md text-[11px] font-semibold transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
-              style={{
-                background: "oklch(0.55 0.20 295 / 0.18)",
-                border: "1px solid oklch(0.55 0.20 295 / 0.45)",
-                color: "oklch(0.85 0.08 295)",
-              }}
+              className="ido-btn ido-btn-primary"
+              style={{ height: 26, padding: "0 10px", fontSize: 11.5 }}
             >
               Buscar
             </button>
             {(fechaAplicada || fechaDesde || fechaHasta) && (
               <button
+                type="button"
                 onClick={() => { setFechaDesde(""); setFechaHasta(""); setFechaAplicada(null); }}
                 title="Quitar el filtro de fechas"
-                className="text-muted-foreground hover:text-foreground shrink-0"
+                style={{ color: "var(--ido-text-2)", display: "grid", placeItems: "center" }}
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -2612,62 +2579,40 @@ export function BuscadorSection() {
               misma decisión, así que tenerlos separados obligaba a dos clics
               para algo que es una sola elección. «Nada» es el off. */}
           {isTabMode && (
-            <div className="inline-flex items-center gap-1 shrink-0">
+            <div className="inline-flex items-center gap-2 shrink-0">
               <div className="relative" ref={agruparMenuRef}>
                 <button
+                  type="button"
                   onClick={() => puedoEditar && setAgruparMenuOpen((v) => !v)}
                   disabled={!puedoEditar}
                   title={puedoEditar ? "Agrupar las filas por un criterio" : "Solo lectura — el agrupado es la misma vista para todos"}
-                  className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors disabled:cursor-default"
-                  style={{
-                    height: TOOLBAR_H,
-                    background: agrupar ? "oklch(0.28 0.02 295)" : "oklch(0.16 0.005 270)",
-                    border: `1px solid ${agrupar ? "oklch(0.55 0.20 295 / 0.45)" : "oklch(1 0 0 / 0.07)"}`,
-                    color: agrupar ? "oklch(0.92 0 0)" : "oklch(0.65 0 0)", cursor: puedoEditar ? "pointer" : "default",
-                  }}
+                  className={cn("ido-selectbtn", agruparMenuOpen && "is-open")}
                 >
-                  <Rows3 className="w-3.5 h-3.5" />
+                  <Rows3 className="w-3.5 h-3.5" style={{ color: "var(--ido-text-2)" }} />
                   {agrupar
                     ? `Agrupar: ${AGRUPAR_OPTIONS.find((o) => o.value === agruparPor)?.label ?? ""}`
                     : "Agrupar: Nada"}
-                  {puedoEditar && <ChevronDown className="w-3 h-3 opacity-60" />}
+                  {puedoEditar && <ChevronDown className="ido-chev w-3.5 h-3.5" />}
                 </button>
 
                 {agruparMenuOpen && puedoEditar && (
-                  <div
-                    className="absolute left-0 top-[calc(100%+6px)] z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
-                    style={{
-                      minWidth: 170, background: "oklch(0.205 0.005 270)", border: PANEL_BORDER,
-                      borderRadius: 10, padding: 6, boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6)",
-                    }}
-                  >
+                  <div className="ido-pop absolute left-0 top-[calc(100%+6px)] z-50" style={{ minWidth: 190 }}>
                     {/* «Nada» apaga el agrupado sin tocar el criterio guardado:
                         al volver a elegir uno, la pestaña recuerda cuál era. */}
-                    <button
-                      onClick={() => { setAgrupar(false); setAgruparMenuOpen(false); }}
-                      className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 rounded-[7px] text-[13px] transition-colors"
-                      style={{ color: !agrupar ? "oklch(0.92 0 0)" : "oklch(0.75 0 0)", background: !agrupar ? "oklch(0.28 0.02 295)" : "transparent" }}
-                      onMouseEnter={(e) => { if (agrupar) e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
-                      onMouseLeave={(e) => { if (agrupar) e.currentTarget.style.background = "transparent"; }}
-                    >
-                      <X className="w-3.5 h-3.5 shrink-0" />
-                      Nada
+                    <button type="button" onClick={() => { setAgrupar(false); setAgruparMenuOpen(false); }} className="ido-pop-item">
+                      <X className="w-3.5 h-3.5" />
+                      <span className="flex-1">Nada</span>
+                      {!agrupar && <Check className="w-3.5 h-3.5" style={{ color: "var(--ido-accent)" }} />}
                     </button>
-                    <div style={{ height: 1, background: "oklch(1 0 0 / 0.07)", margin: "4px 6px" }} />
+                    <div className="ido-pop-sep" />
                     {AGRUPAR_OPTIONS.map((o) => {
                       const Icon = o.icon;
                       const activo = agrupar && o.value === agruparPor;
                       return (
-                        <button
-                          key={o.value}
-                          onClick={() => { setAgruparPor(o.value); setAgruparMenuOpen(false); }}
-                          className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 rounded-[7px] text-[13px] transition-colors"
-                          style={{ color: activo ? "oklch(0.92 0 0)" : "oklch(0.75 0 0)", background: activo ? "oklch(0.28 0.02 295)" : "transparent" }}
-                          onMouseEnter={(e) => { if (!activo) e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
-                          onMouseLeave={(e) => { if (!activo) e.currentTarget.style.background = "transparent"; }}
-                        >
-                          <Icon className="w-3.5 h-3.5 shrink-0" />
-                          {o.label}
+                        <button key={o.value} type="button" onClick={() => { setAgruparPor(o.value); setAgruparMenuOpen(false); }} className="ido-pop-item">
+                          <Icon className="w-3.5 h-3.5" />
+                          <span className="flex-1">{o.label}</span>
+                          {activo && <Check className="w-3.5 h-3.5" style={{ color: "var(--ido-accent)" }} />}
                         </button>
                       );
                     })}
@@ -2677,14 +2622,15 @@ export function BuscadorSection() {
 
               {agrupar && gruposCount > 0 && (
                 <button
+                  type="button"
                   onClick={() => patchLayout({
                     colapsados: colapsados.size
                       ? []
                       : [...new Set(displayRows.map((r) => groupKeyOf(r.data, agruparPor)))],
                   })}
-                  title={colapsados.size ? "Abrir todas" : "Cerrar todas"}
-                  className="inline-flex items-center justify-center rounded-[9px] transition-colors"
-                  style={{ height: TOOLBAR_H, width: 32, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, color: "oklch(0.6 0 0)", cursor: "pointer" }}
+                  title={colapsados.size ? "Abrir todos los grupos" : "Cerrar todos los grupos"}
+                  className="ido-btn ido-btn-ghost"
+                  style={{ height: TOOLBAR_H, width: TOOLBAR_H, padding: 0, justifyContent: "center" }}
                 >
                   {colapsados.size ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                 </button>
@@ -2693,24 +2639,20 @@ export function BuscadorSection() {
           )}
 
           {/* Enviar a la tarjeta — dentro de una pestaña, con filas tildadas.
-              Misma acción que el menú contextual, a la vista: si no, la única
-              forma de descubrirla sería probando el click derecho. */}
+              (En la etapa 2 estas acciones de selección pasan a la barra
+              flotante §4.16.) */}
           {isTabMode && selected.size > 0 && (
             <button
+              type="button"
               onClick={() => handleMarcarTarjeta([...selected], true)}
               disabled={!puedoEditar}
               title="Mostrar estas filas en «Próximas Entregas» de Transformadores"
-              className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{
-                height: TOOLBAR_H,
-                background: "oklch(0.28 0.02 295)",
-                border: "1px solid oklch(0.55 0.20 295 / 0.45)",
-                color: "oklch(0.92 0 0)", cursor: "pointer",
-              }}
+              className="ido-btn ido-btn-ghost shrink-0"
+              style={{ height: TOOLBAR_H }}
             >
               <CalendarClock className="w-3.5 h-3.5" />
               Enviar a Tarjeta
-              <span style={{ color: GROUP_META.track.color }}>{selected.size}</span>
+              <span className="ido-mono" style={{ color: "var(--ido-text)" }}>{selected.size}</span>
             </button>
           )}
 
@@ -2718,43 +2660,31 @@ export function BuscadorSection() {
           {!isTabMode && selected.size > 0 && (
             <div className="relative shrink-0">
               <button
+                type="button"
                 onClick={() => setAddMenuOpen((v) => !v)}
-                className="inline-flex items-center gap-1.5 px-3 rounded-[9px] text-[12.5px] font-medium transition-colors"
-                style={{
-                  height: TOOLBAR_H,
-                  background: "oklch(0.28 0.02 295)",
-                  border: "1px solid oklch(0.55 0.20 295 / 0.45)",
-                  color: "oklch(0.92 0 0)", cursor: "pointer",
-                }}
+                className="ido-btn ido-btn-ghost"
+                style={{ height: TOOLBAR_H }}
               >
                 <ListPlus className="w-3.5 h-3.5" />
                 Agregar a pestaña
-                <span style={{ color: "#c4b5fd" }}>{seleccionadasVisibles}</span>
+                <span className="ido-mono" style={{ color: "var(--ido-text)" }}>{seleccionadasVisibles}</span>
                 {/* Hay tildadas fuera de la búsqueda actual: solo se copian
                     las visibles, así que se aclara en vez de prometer de más. */}
                 {seleccionadasVisibles !== selected.size && (
-                  <span style={{ color: "oklch(0.6 0 0)" }}>de {selected.size}</span>
+                  <span style={{ color: "var(--ido-text-2)" }}>de {selected.size}</span>
                 )}
-                <ChevronDown className="w-3 h-3" />
+                <ChevronDown className="w-3.5 h-3.5" />
               </button>
 
               {addMenuOpen && (
-                <div
-                  className="absolute left-0 top-[calc(100%+6px)] z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
-                  style={{
-                    minWidth: 220, maxHeight: 320, overflowY: "auto",
-                    background: "oklch(0.205 0.005 270)", border: PANEL_BORDER,
-                    borderRadius: 10, padding: 6,
-                    boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6)",
-                  }}
-                >
+                <div className="ido-pop absolute left-0 top-[calc(100%+6px)] z-50" style={{ minWidth: 230, maxHeight: 320, overflowY: "auto" }}>
                   {(() => {
                     // Solo pestañas donde se puede escribir: una compartida
                     // "solo lectura" no admite que le agreguen filas.
                     const editables = tabs.filter((t) => permisoDe(t) === "edicion");
                     if (!editables.length) {
                       return (
-                        <div className="px-2 py-2 text-[12px]" style={{ color: "oklch(0.55 0 0)" }}>
+                        <div className="px-2.5 py-2 text-[12px]" style={{ color: "var(--ido-text-2)" }}>
                           {tabs.length === 0
                             ? "No tenés pestañas todavía — creá una con el «+» de arriba."
                             : "No tenés ninguna pestaña editable — las compartidas contigo son de solo lectura."}
@@ -2762,16 +2692,9 @@ export function BuscadorSection() {
                       );
                     }
                     return editables.map((t) => (
-                      <button
-                        key={t.id}
-                        onClick={() => handleAddSelected(t.id)}
-                        className="w-full text-left px-2 py-1.5 rounded-[7px] text-[13px] transition-colors"
-                        style={{ color: "oklch(0.88 0 0)" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "oklch(0.27 0.005 270)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                      >
-                        {t.nombre}
-                        {t.user_id !== userId && <span style={{ color: "oklch(0.5 0 0)" }}> · compartida</span>}
+                      <button key={t.id} type="button" onClick={() => handleAddSelected(t.id)} className="ido-pop-item">
+                        <span className="flex-1 truncate">{t.nombre}</span>
+                        {t.user_id !== userId && <span style={{ color: "var(--ido-text-2)", fontSize: 11 }}>compartida</span>}
                       </button>
                     ));
                   })()}
@@ -2782,9 +2705,10 @@ export function BuscadorSection() {
 
           {selected.size > 0 && (
             <button
+              type="button"
               onClick={() => setSelected(new Set())}
-              className="inline-flex items-center gap-1.5 px-2.5 rounded-[9px] text-[12px] transition-colors"
-              style={{ height: TOOLBAR_H, background: "transparent", border: PANEL_BORDER, color: "oklch(0.55 0 0)", cursor: "pointer" }}
+              className="ido-btn ido-btn-text shrink-0"
+              style={{ height: TOOLBAR_H }}
             >
               <X className="w-3.5 h-3.5" />
               {/* El "(N)" avisa que hay tildadas fuera de la búsqueda actual —
@@ -2798,56 +2722,47 @@ export function BuscadorSection() {
               algo ocasional. Ahora está en el click derecho — sobre las filas
               (exporta la selección) y sobre una pestaña (la exporta entera). */}
 
-          {/* Estado del índice. «Reconstruir» vive adentro de este menú y no
-              suelto en la barra: tarda varios minutos y, desde que cada carga
-              masiva reconstruye sola, casi nunca hace falta a mano. */}
+          {/* Estado del índice: chip contador (§4.3). «Reconstruir» vive
+              adentro de este menú y no suelto en la barra: tarda varios
+              minutos y, desde que cada carga masiva reconstruye sola, casi
+              nunca hace falta a mano. */}
           {indice && !isTabMode && (
-            <div className="relative shrink-0" ref={indiceMenuRef}>
+            <div className="relative shrink-0" ref={indiceMenuRef} style={{ marginLeft: "auto" }}>
               <button
+                type="button"
                 onClick={() => setIndiceMenuOpen((v) => !v)}
                 title="Estado del índice de búsqueda"
-                className="inline-flex items-center gap-1.5 px-2.5 rounded-[9px] text-[12px] whitespace-nowrap transition-colors"
-                style={{
-                  height: TOOLBAR_H, background: "oklch(0.16 0.005 270)", border: PANEL_BORDER,
-                  color: "oklch(0.6 0 0)", cursor: "pointer",
-                }}
+                className="ido-chipbtn"
               >
                 {reconstruyendo
-                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "#fcd34d" }} />
-                  : <Database className="w-3.5 h-3.5" style={{ color: "#86efac" }} />}
-                {reconstruyendo ? "Reconstruyendo…" : indice.filas.toLocaleString("es-AR")}
-                <ChevronDown className="w-3 h-3 opacity-60" />
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "var(--ido-warning)" }} />
+                  : <Database className="w-3.5 h-3.5" />}
+                {reconstruyendo ? "Reconstruyendo…" : <><b>{indice.filas.toLocaleString("es-AR")}</b> filas</>}
+                <ChevronDown className="w-3 h-3" />
               </button>
 
               {indiceMenuOpen && (
-                <div
-                  className="absolute right-0 top-[calc(100%+6px)] z-50 animate-in fade-in slide-in-from-top-1 duration-150"
-                  style={{
-                    width: 280, background: "oklch(0.205 0.005 270)", border: PANEL_BORDER,
-                    borderRadius: 10, padding: 12, boxShadow: "0 14px 32px -16px rgba(0,0,0,0.6)",
-                  }}
-                >
-                  <p className="text-[11px] uppercase tracking-wide mb-2" style={{ color: "oklch(0.55 0 0)" }}>
-                    Índice de búsqueda
-                  </p>
-                  <p className="text-[12.5px] mb-1" style={{ color: "oklch(0.85 0 0)" }}>
-                    <span className="font-medium">{indice.filas.toLocaleString("es-AR")}</span> filas indexadas
+                <div className="ido-pop absolute right-0 top-[calc(100%+6px)] z-50" style={{ width: 290, padding: 12 }}>
+                  <div className="ido-pop-label" style={{ padding: "0 0 8px" }}>Índice de búsqueda</div>
+                  <p className="text-[13px] mb-1" style={{ color: "var(--ido-text)" }}>
+                    <span className="ido-mono">{indice.filas.toLocaleString("es-AR")}</span> filas indexadas
                   </p>
                   {indice.actualizado && (
-                    <p className="text-[11.5px] mb-2.5" style={{ color: "oklch(0.55 0 0)" }}>
-                      Actualizado el {fmtFechaISO(indice.actualizado)}
+                    <p className="text-[12px] mb-2.5" style={{ color: "var(--ido-text-2)" }}>
+                      Actualizado el <span className="ido-mono">{fmtFechaISO(indice.actualizado)}</span>
                     </p>
                   )}
-                  <p className="text-[11.5px] leading-relaxed mb-3" style={{ color: "oklch(0.5 0 0)" }}>
+                  <p className="text-[12px] leading-relaxed mb-3" style={{ color: "var(--ido-text-2)" }}>
                     Se reconstruye solo después de cargar Envíos, SIC, MATRICULAS o
                     Transacciones. Hacelo a mano solo si cambiaste un Material/Servicio
                     o el catálogo y no querés esperar a la próxima carga.
                   </p>
                   <button
+                    type="button"
                     onClick={handleReconstruir}
                     disabled={reconstruyendo}
-                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-[8px] text-[12.5px] font-medium transition-colors disabled:opacity-50"
-                    style={{ background: "oklch(0.22 0.005 270)", border: PANEL_BORDER, color: "oklch(0.75 0 0)", cursor: "pointer" }}
+                    className="ido-btn ido-btn-ghost w-full justify-center"
+                    style={{ height: 32 }}
                   >
                     {reconstruyendo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                     {reconstruyendo ? "Reconstruyendo…" : "Reconstruir ahora"}
@@ -2858,41 +2773,54 @@ export function BuscadorSection() {
           )}
         </div>
 
-        {/* Contador — en una pestaña cuenta sus filas, no resultados del índice. */}
+        {/* Línea de contexto (§4.9): conteo en mono, aviso de lista truncada
+            en ámbar, atajos a la derecha en <kbd>. En una pestaña cuenta sus
+            filas, no resultados del índice. */}
         {isTabMode && !loadingTab && tabFilas.length > 0 && (
-          <p className="text-[12px] px-0.5" style={{ color: "oklch(0.55 0 0)", margin: 0 }}>
-            <span className="text-foreground font-medium">{tabFilasEnRango.length.toLocaleString("es-AR")}</span>
-            {query.trim() || fechaAplicada ? ` de ${tabFilas.length} fila(s)` : " fila(s)"}
-            {agrupar && gruposCount > 0 && (() => {
-              const nombre = agruparPor === "articulo" ? "matrícula" : agruparPor === "numero_sic" ? "SIC" : "OP";
-              return ` en ${gruposCount.toLocaleString("es-AR")} ${nombre}${gruposCount === 1 || agruparPor !== "articulo" ? "" : "s"}`;
-            })()}
-            {" · ctrl+click para elegir varias · doble click para editar · click derecho para exportar y más"}
-            {puedeArrastrar && " · arrastrá para reordenar"}
-          </p>
+          <div className="ido-context">
+            <span>
+              <b>{tabFilasEnRango.length.toLocaleString("es-AR")}</b>
+              {query.trim() || fechaAplicada ? <> de <b>{tabFilas.length.toLocaleString("es-AR")}</b> filas</> : " filas"}
+              {agrupar && gruposCount > 0 && (() => {
+                const nombre = agruparPor === "articulo" ? "matrícula" : agruparPor === "numero_sic" ? "SIC" : "OP";
+                return <> en <b>{gruposCount.toLocaleString("es-AR")}</b> {nombre}{gruposCount === 1 || agruparPor !== "articulo" ? "" : "s"}</>;
+              })()}
+            </span>
+            <span className="inline-flex items-center gap-1.5 flex-wrap">
+              <kbd className="ido-kbd">Ctrl+clic</kbd> varias
+              · <kbd className="ido-kbd">Doble clic</kbd> editar
+              · <kbd className="ido-kbd">Clic der.</kbd> exportar y más
+              {puedeArrastrar && <>· arrastrá para reordenar</>}
+            </span>
+          </div>
         )}
 
         {(!isTabMode && buscado && !loading) && (
-          <p className="text-[12px] px-0.5 flex items-center flex-wrap gap-x-1" style={{ color: "oklch(0.55 0 0)", margin: 0 }}>
-            <span>
-              <span className="text-foreground font-medium">{sorted.length.toLocaleString("es-AR")}</span> resultado(s)
-              {conOp > 0 && <> · {conOp.toLocaleString("es-AR")} con OP</>}
-              {soloSic > 0 && <> · {soloSic.toLocaleString("es-AR")} SIC sin OP todavía</>}
-              {soloMov > 0 && <> · {soloMov.toLocaleString("es-AR")} solo con movimientos (OP fuera de la planilla)</>}
-              {soloCat > 0 && <> · {soloCat.toLocaleString("es-AR")} solo en catálogo</>}
-              {sorted.length >= 500 && <> · mostrando los primeros 500, afiná la búsqueda</>}
-              {" · ctrl+click para elegir varias · click derecho para exportar y más"}
-            </span>
-            {pinnedRows.length > 0 && (
-              <span className="inline-flex items-center gap-1">
-                · <Pin className="w-3 h-3" fill="#c4b5fd" strokeWidth={2} style={{ color: "#c4b5fd" }} />
-                {pinnedRows.length} fijada{pinnedRows.length !== 1 ? "s" : ""}
-                <button onClick={unpinAll} className="ml-0.5 underline decoration-dotted hover:text-foreground">
-                  Quitar todas
-                </button>
+          <div className="ido-context">
+            <span className="inline-flex items-center flex-wrap gap-x-1">
+              <span>
+                <b>{sorted.length.toLocaleString("es-AR")}</b> resultados
+                {conOp > 0 && <> · <b>{conOp.toLocaleString("es-AR")}</b> con OP</>}
+                {soloSic > 0 && <> · <b>{soloSic.toLocaleString("es-AR")}</b> SIC sin OP todavía</>}
+                {soloMov > 0 && <> · <b>{soloMov.toLocaleString("es-AR")}</b> solo con movimientos (OP fuera de la planilla)</>}
+                {soloCat > 0 && <> · <b>{soloCat.toLocaleString("es-AR")}</b> solo en catálogo</>}
+                {sorted.length >= 500 && <> · <span className="is-warn">lista truncada a 500 filas, afiná la búsqueda</span></>}
               </span>
-            )}
-          </p>
+              {pinnedRows.length > 0 && (
+                <span className="inline-flex items-center gap-1">
+                  · <Pin className="w-3 h-3" fill="var(--ido-cat-1)" strokeWidth={2} style={{ color: "var(--ido-cat-1)" }} />
+                  <b>{pinnedRows.length}</b> fijada{pinnedRows.length !== 1 ? "s" : ""}
+                  <button type="button" onClick={unpinAll} className="ml-0.5 underline decoration-dotted" style={{ color: "var(--ido-text-2)" }}>
+                    Quitar todas
+                  </button>
+                </span>
+              )}
+            </span>
+            <span className="inline-flex items-center gap-1.5 flex-wrap">
+              <kbd className="ido-kbd">Ctrl+clic</kbd> varias
+              · <kbd className="ido-kbd">Clic der.</kbd> exportar y más
+            </span>
+          </div>
         )}
 
         {/* Resultados */}

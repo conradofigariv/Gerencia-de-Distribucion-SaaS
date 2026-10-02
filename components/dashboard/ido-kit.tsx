@@ -40,19 +40,21 @@ export function SortArrow({ active, dir, className }: { active: boolean; dir: So
 // ─── Checkbox (§4.16) ──────────────────────────────────────────────────────────
 
 export function IdoCheckbox({
-  checked, indeterminate, onClick, label,
-}: { checked: boolean; indeterminate?: boolean; onClick: (e: React.MouseEvent) => void; label: string }) {
+  checked, indeterminate, onClick, label, disabled,
+}: { checked: boolean; indeterminate?: boolean; onClick: (e: React.MouseEvent) => void; label: string; disabled?: boolean }) {
   const on = checked || indeterminate;
   return (
     <button
       type="button"
-      onClick={(e) => { e.stopPropagation(); onClick(e); }}
+      disabled={disabled}
+      onClick={(e) => { e.stopPropagation(); if (!disabled) onClick(e); }}
       aria-label={label}
       style={{
+        opacity: disabled ? 0.45 : 1,
         width: 16, height: 16, borderRadius: 4, display: "grid", placeItems: "center", flexShrink: 0,
         border: `1px solid ${on ? "var(--ido-accent)" : "rgba(255,255,255,.16)"}`,
         background: on ? "var(--ido-accent)" : "transparent",
-        transition: "all 100ms var(--ido-ease)", cursor: "pointer",
+        transition: "all 100ms var(--ido-ease)", cursor: disabled ? "default" : "pointer",
       }}
     >
       {checked && !indeterminate && (

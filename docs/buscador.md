@@ -4,6 +4,21 @@ El Buscador es un sistema de dos capas:
 1. **Índice maestro** (`busqueda_index`): base de solo lectura que se regenera entera en cada "Reconstruir". Contiene todas las filas de compra (OP/línea/envío) y catálogo.
 2. **Pestañas de seguimiento** (`buscador_tabs`, `buscador_tab_filas`): espacio de trabajo del usuario. Se copian filas del índice acá, editables y reordenables por usuario — y **compartibles con otros usuarios** (`buscador_tab_shares`, ver sección propia más abajo).
 
+## Sistema de diseño IDO (`design-system.md`) — en curso, por etapas
+
+Confirmado con el usuario. Se aplica en 3 etapas, cada una subida aparte:
+
+1. ✅ **Pestañas + barra de herramientas + línea de contexto.**
+   - Pestañas §4.7: `BuscadorTabsBar` (memoizada por el `layoutId` del indicador), botón «nueva vista» punteado.
+   - Barra §4.2/§4.8 a 38px: `.ido-inputbox` (búsqueda, filtro de fechas), `.ido-selectbtn` (campo, Agrupar), «Buscar» primario. Filtro aplicado = `.is-on` (anillo verde, «elemento activo» de la regla del acento).
+   - Menú de columnas §4.10 con `IdoCheckbox`; menús desplegables con `.ido-pop`; chip del índice §4.3 (`.ido-chipbtn`).
+   - Línea de contexto §4.9 (`.ido-context`): cifras en mono, «lista truncada a 500» en ámbar, atajos en `<kbd className="ido-kbd">`.
+   - Franja de color por origen de columna: se mantiene (pedido), con la paleta categórica `--ido-cat-*` (SIC violeta, OP azul, Movimientos celeste — ya no verde, Matrícula ámbar, Personalizadas rosa).
+2. ⏳ **Tabla en CSS grid** (virtualizada) + selección §4.16 completa (checkbox por fila, clic simple solo marca, barra flotante con Agregar a pestaña / Enviar a Tarjeta / Exportar; la selección del índice SE CONSERVA entre búsquedas y la barra avisa «N fuera de esta búsqueda») + menú §4.5 + redimensionado con doble clic §4.15 + densidad y «Restablecer vista» §4.19/§4.20. Columnas Personalizadas sin fondo; filas fijadas en azul (`--ido-cat-1`), como Stock por Zona.
+3. ⏳ **Edición de celdas** §4.4, encabezados de grupo de filas (como hoy, con tokens), badges de estado de seguimiento (Pendiente ámbar, **En curso azul `#5B8DEF`**, Resuelto verde), modal Compartir (`.ido-modal`) y calendario con tokens.
+
+**Excluido:** §4.6 (header global), §4.10 Guardar (guarda solo), §4.13, §4.22. **No pedidos:** anclar Matrícula al scrollear (§4.18) y barra de estado al pie (§4.12).
+
 ## Arquitectura de Datos
 
 ### `busqueda_index` (READ ONLY)
