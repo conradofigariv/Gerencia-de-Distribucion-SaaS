@@ -9,6 +9,8 @@ Leelo antes de tocar `lib/parseo.ts`, `supabase/tablero_op*.sql` o las secciones
 > `tablero_op_stock`, `tablero_op_sic` ni la RPC `gd_tablero()` que este
 > documento menciona como fuentes. `tablero_op_transaccion` SÍ sigue en uso
 > (Carga de datos → TRANSACCIONES, Buscador).
+> Esas tablas y la RPC se borran de la base con
+> `supabase/tablero_op_drop_legacy.sql`.
 
 ---
 

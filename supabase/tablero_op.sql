@@ -10,7 +10,8 @@
 -- el Buscador). La tabla conserva el prefijo tablero_op_ porque renombrarla
 -- obligaría a migrar todas las funciones SQL que la leen. Las otras tablas
 -- del Tablero (tablero_op_seguimiento, tablero_op_stock, tablero_op_sic) y la
--- función gd_tablero() ya no se usan desde la app.
+-- función gd_tablero() ya no se usan desde la app; se borran con
+-- tablero_op_drop_legacy.sql.
 -- ============================================================================
 
 -- Crece rápido (60k+ filas) — sin PK natural, se usa uuid + índices.
