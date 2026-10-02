@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef, Fragment, memo, type ReactNode, type ElementType, type CSSProperties, type DragEvent } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, Fragment, memo, type ReactNode, type ElementType, type CSSProperties, type DragEvent } from "react";
 import { motion } from "motion/react";
 import { createPortal } from "react-dom";
 import {
@@ -2663,6 +2663,41 @@ export function BuscadorSection() {
       : `busqueda-${query.trim().replace(/\s+/g, "-") || "todo"}`,
   );
 
+  // ── Alto de la tabla: ajustado a la ventana ───────────────────────────────
+  // El panel termina justo en el borde de abajo de la ventana, así la barra de
+  // scroll HORIZONTAL queda siempre a la vista: antes el alto era un número
+  // fijo (100vh − 190px) que no contaba todo lo que hay arriba (header de la
+  // app, pestañas, barra, contexto), la tabla se pasaba de la ventana y para
+  // ir a la derecha había que bajar primero la página.
+  // Se mide dónde arranca el panel en la página y se le resta lo que queda
+  // debajo (padding de la card y del <main>). Se recalcula al cambiar el
+  // tamaño de la ventana o lo de arriba (la barra se parte en dos renglones,
+  // aparece la línea de contexto…).
+  const cardRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [altoTabla, setAltoTabla] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const card = cardRef.current, panel = panelRef.current;
+    if (!card || !panel) return;
+    const medir = () => {
+      const p = panel.getBoundingClientRect();
+      const debajoEnCard = card.getBoundingClientRect().bottom - p.bottom;
+      const main = card.closest("main");
+      const padMain = main ? parseFloat(getComputedStyle(main).paddingBottom) || 0 : 0;
+      const top = p.top + window.scrollY;
+      const alto = Math.max(260, Math.floor(window.innerHeight - top - debajoEnCard - padMain));
+      setAltoTabla((prev) => (prev === alto ? prev : alto));
+    };
+    medir();
+    // La sección entra con una animación de 500ms que la desplaza 16px: se
+    // vuelve a medir cuando termina.
+    const t = setTimeout(medir, 550);
+    const ro = new ResizeObserver(medir);
+    ro.observe(card);
+    window.addEventListener("resize", medir);
+    return () => { clearTimeout(t); ro.disconnect(); window.removeEventListener("resize", medir); };
+  }, []);
+
   // ── Teclado ────────────────────────────────────────────────────────────────
   // ↑/↓ mueve la fila inspeccionada (hace falta haber clickeado una antes, así
   // las flechas no le roban el scroll a la página), Esc suelta la selección y
@@ -2760,6 +2795,7 @@ export function BuscadorSection() {
       {/* Card. El título de la sección ya lo pone el header general, así que
           acá va directo la barra de herramientas para que la tabla suba. */}
       <div
+        ref={cardRef}
         className="p-3 overflow-hidden space-y-3"
         style={{ background: CARD_BG, border: PANEL_BORDER, borderRadius: 12, position: "relative" }}
       >
@@ -3098,8 +3134,9 @@ export function BuscadorSection() {
             haya pocos resultados; con muchos, `maxHeight` corta y scrollea
             puertas adentro. */}
         <div
+          ref={panelRef}
           className="overflow-hidden flex flex-col"
-          style={{ background: PANEL_BG, border: PANEL_BORDER, borderRadius: 12, minHeight: "calc(100vh - 190px)" }}
+          style={{ background: PANEL_BG, border: PANEL_BORDER, borderRadius: 12, height: altoTabla ?? "calc(100vh - 190px)" }}
         >
           {isTabMode && loadingTab ? (
             <div className="ido-loading flex-1"><Loader2 className="w-4 h-4 animate-spin" />Cargando pestaña…</div>
@@ -3137,11 +3174,11 @@ export function BuscadorSection() {
           ) : (
             <div
               ref={scrollRef}
-              className="flex-1"
+              className="flex-1 min-h-0"
               // Mientras llega una búsqueda nueva, los resultados anteriores
               // quedan atenuados (además del spinner en la caja de búsqueda).
               style={{
-                overflow: "auto", maxHeight: "calc(100vh - 190px)",
+                overflow: "auto",
                 opacity: !isTabMode && loading ? 0.55 : 1, transition: "opacity 150ms var(--ido-ease)",
               }}
               // Clic en zona vacía libera la selección (§4.16).
