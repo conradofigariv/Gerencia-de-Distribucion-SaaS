@@ -13,7 +13,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { loadTableLayout, saveTableLayout } from "@/lib/tableLayout";
 import {
   type Density, type SortDir, DENSITY_ROW_H, DENSITY_LABEL, DENSITY_ORDER, isDensity,
-  SortArrow, IdoCheckbox, TipoPill, monoFont, sansFont, autoFitTextWidth,
+  SortArrow, IdoCheckbox, TipoPill, monoFont, sansFont, autoFitTextWidth, IdoConfirmModal,
 } from "@/components/dashboard/ido-kit";
 import {
   listMatriculas, createMatricula, updateMatricula, deleteMatricula, deleteMatriculasBulk,
@@ -336,47 +336,9 @@ function MatriculaModal({
   );
 }
 
-// ─── Confirmación de borrado (una o varias) ─────────────────────────────────
-function DeleteConfirm({
-  title, children, confirmLabel, onClose, onConfirm,
-}: {
-  title: string;
-  children: React.ReactNode;
-  confirmLabel: string;
-  onClose: () => void;
-  onConfirm: () => Promise<void>;
-}) {
-  const [deleting, setDeleting] = useState(false);
-  const run = async () => { setDeleting(true); await onConfirm(); setDeleting(false); };
-  return createPortal(
-    <div className="ido-terminal ido-modal-overlay" onClick={onClose}>
-      <div className="ido-modal" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
-        <div className="flex flex-col gap-3" style={{ padding: 20 }}>
-          <div className="flex items-center gap-2.5">
-            <span
-              className="grid place-items-center shrink-0"
-              style={{ width: 34, height: 34, borderRadius: 999, background: "rgba(229,72,77,.12)", color: "var(--ido-error)" }}
-            >
-              <Trash2 className="w-4 h-4" />
-            </span>
-            <span className="ido-modal-title">{title}</span>
-          </div>
-          <p style={{ fontSize: 13, lineHeight: 1.55, color: "var(--ido-text-dim)" }}>{children}</p>
-        </div>
-        <div className="ido-modal-foot">
-          <button type="button" className="ido-btn ido-btn-text" style={{ height: 38 }} onClick={onClose}>
-            Cancelar
-          </button>
-          <button type="button" className="ido-btn ido-btn-danger" style={{ height: 38 }} onClick={run} disabled={deleting}>
-            {deleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
+// Confirmación de borrado (una o varias): `IdoConfirmModal` de ido-kit, el
+// mismo que usa el Buscador.
+const DeleteConfirm = IdoConfirmModal;
 
 // ─── Sección principal ──────────────────────────────────────────────────────
 export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (label: string | null) => void } = {}) {

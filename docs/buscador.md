@@ -4,7 +4,7 @@ El Buscador es un sistema de dos capas:
 1. **Índice maestro** (`busqueda_index`): base de solo lectura que se regenera entera en cada "Reconstruir". Contiene todas las filas de compra (OP/línea/envío) y catálogo.
 2. **Pestañas de seguimiento** (`buscador_tabs`, `buscador_tab_filas`): espacio de trabajo del usuario. Se copian filas del índice acá, editables y reordenables por usuario — y **compartibles con otros usuarios** (`buscador_tab_shares`, ver sección propia más abajo).
 
-## Sistema de diseño IDO (`design-system.md`) — en curso, por etapas
+## Sistema de diseño IDO (`design-system.md`) — aplicado en 3 etapas
 
 Confirmado con el usuario. Se aplica en 3 etapas, cada una subida aparte:
 
@@ -21,7 +21,12 @@ Confirmado con el usuario. Se aplica en 3 etapas, cada una subida aparte:
    - Densidad: en el índice es por usuario (`lib/tableLayout`, id `buscadorIndice`); en una pestaña vive en `TabConfig.density` (vista compartida — en solo lectura no se toca). «Densidad» está a la derecha de la línea de contexto: en la barra la partía en dos renglones. **No hay «Restablecer vista» (§4.20), ni en el índice ni en las pestañas** — se sacó a pedido del usuario: un clic borraba sin deshacer el orden, las columnas ocultas y los anchos armados a mano (en una pestaña, a todos los que la comparten). No volver a agregarlo.
    - Redimensionado: guía de 1px + ancho en px; doble clic mide con canvas (`autoFitCol`, piso 64, techo 700). `lastResizeEnd` evita que soltar el borde ordene la columna.
    - Celda en edición: `.ido-cell-edit` (anillo verde inset 1.5px, 28px). El rediseño completo de §4.4 queda para la etapa 3.
-3. ⏳ **Edición de celdas** §4.4, encabezados de grupo de filas (como hoy, con tokens), badges de estado de seguimiento (Pendiente ámbar, **En curso azul `#5B8DEF`**, Resuelto verde), modal Compartir (`.ido-modal`) y calendario con tokens.
+3. ✅ **Edición de celdas** §4.4, encabezados de grupo de filas (como hoy, con tokens), badges de estado de seguimiento (Pendiente ámbar, **En curso azul `#5B8DEF`**, Resuelto verde), modal Compartir (`.ido-modal`) y calendario con tokens.
+   - §4.4: solo **Hover** (`.ido-bs-cell.is-editable`, fondo elevado + borde) y **Edición** (`.ido-cell-edit`, cursor verde, `color-scheme: dark` para el `<input type="date">`). Se sacó el lápiz que aparecía en hover. El borde del hover usa `--ido-border-strong` y no `--ido-border` como dice §4.4: la fila entera ya se pinta `bg.elevated` en hover, y con el borde por defecto la celda no se distinguía.
+   - **Excluidos de §4.4:** Selección de celda (choca con clic simple = inspeccionar fila), Bloqueada (en solo lectura / índice teñiría casi toda la tabla), Error y Modificada (no confirmados — «Modificada» necesitaría guardar el valor original de cada celda editada).
+   - Modales: `useIdoDialogs()` de `ido-kit` (`confirmar` / `pedirTexto`, con promesa) reemplaza a TODOS los `window.confirm` / `window.prompt` (nueva pestaña, renombrar, borrar pestaña, quitar grupo, reconstruir índice). Matrículas usa el mismo `IdoConfirmModal`. Esc cierra, salvo que lo consuma un Select/Popover abierto adentro (`defaultPrevented`).
+   - Compartir: `.ido-modal` + `PermisoSelect` (Select de shadcn con `.ido-pop`, `z-[10000]` para quedar sobre el modal).
+   - Calendario: `.ido-cal` en el `PopoverContent` remapea `--primary`/`--accent`/… a tokens IDO (el tema es `@theme inline`, así que alcanza con redefinir las variables en el contenedor). Hoy = número verde sin fondo.
 
 **Excluido:** §4.6 (header global), §4.10 Guardar (guarda solo), §4.13, §4.22. **No pedidos:** anclar Matrícula al scrollear (§4.18) y barra de estado al pie (§4.12).
 

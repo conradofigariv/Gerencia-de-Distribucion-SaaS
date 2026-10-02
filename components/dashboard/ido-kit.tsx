@@ -6,7 +6,9 @@
 // `.ido-terminal` — usar siempre dentro de ese contenedor (o re-aplicar la
 // clase en lo que se portalee a <body>).
 
-import { ChevronUp, Package, Wrench } from "lucide-react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { ChevronUp, Loader2, Package, Trash2, Wrench, type LucideIcon } from "lucide-react";
 
 // ─── Densidad de fila (§4.19) ──────────────────────────────────────────────────
 
@@ -120,4 +122,165 @@ export function autoFitTextWidth(ctx: CanvasRenderingContext2D, values: string[]
     if (w > widest) widest = w;
   }
   return Math.max(floor, Math.round(widest) + 24);
+}
+
+// ─── Modales (.ido-modal) ──────────────────────────────────────────────────────
+// Reemplazan a window.confirm / window.prompt: el cuadro nativo no hereda el
+// tema, se ve distinto en cada navegador y bloquea la pestaña entera.
+// Se portalean a <body>, así que re-aplican `.ido-terminal` (tokens --ido-*).
+
+function useEscape(onClose: () => void) {
+  useEffect(() => {
+    // `defaultPrevented`: un desplegable de Radix abierto adentro del modal
+    // (Select, Popover) ya consumió ese Esc para cerrarse él — no el modal.
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape" && !e.defaultPrevented) onClose(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [onClose]);
+}
+
+/** Confirmación. `danger` (default) = acción destructiva: ícono y botón rojos. */
+export function IdoConfirmModal({
+  title, children, confirmLabel, danger = true, icon: Icon = Trash2, onClose, onConfirm,
+}: {
+  title: string;
+  children: ReactNode;
+  confirmLabel: string;
+  danger?: boolean;
+  icon?: LucideIcon;
+  onClose: () => void;
+  onConfirm: () => void | Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  useEscape(onClose);
+  const run = async () => { setBusy(true); try { await onConfirm(); } finally { setBusy(false); } };
+  return createPortal(
+    <div className="ido-terminal ido-modal-overlay" onClick={onClose}>
+      <div className="ido-modal" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex flex-col gap-3" style={{ padding: 20 }}>
+          <div className="flex items-center gap-2.5">
+            <span
+              className="grid place-items-center shrink-0"
+              style={{
+                width: 34, height: 34, borderRadius: 999,
+                background: danger ? "rgba(229,72,77,.12)" : "var(--ido-elevated)",
+                color: danger ? "var(--ido-error)" : "var(--ido-text)",
+              }}
+            >
+              <Icon className="w-4 h-4" />
+            </span>
+            <span className="ido-modal-title">{title}</span>
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.55, color: "var(--ido-text-dim)" }}>{children}</div>
+        </div>
+        <div className="ido-modal-foot">
+          <button type="button" className="ido-btn ido-btn-text" style={{ height: 38 }} onClick={onClose}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            autoFocus={!danger}
+            className={`ido-btn ${danger ? "ido-btn-danger" : "ido-btn-primary"}`}
+            style={{ height: 38 }}
+            onClick={run}
+            disabled={busy}
+          >
+            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** Pide un texto corto (ej. el nombre de una pestaña). Enter confirma, Esc cancela. */
+export function IdoPromptModal({
+  title, label, initial = "", placeholder, confirmLabel, icon: Icon, onClose, onConfirm,
+}: {
+  title: string;
+  label: string;
+  initial?: string;
+  placeholder?: string;
+  confirmLabel: string;
+  icon?: LucideIcon;
+  onClose: () => void;
+  onConfirm: (value: string) => void;
+}) {
+  const [value, setValue] = useState(initial);
+  useEscape(onClose);
+  const vacio = !value.trim();
+  return createPortal(
+    <div className="ido-terminal ido-modal-overlay" onClick={onClose}>
+      <form
+        className="ido-modal"
+        style={{ maxWidth: 420 }}
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={(e) => { e.preventDefault(); if (!vacio) onConfirm(value.trim()); }}
+      >
+        <div className="ido-modal-head">
+          <div className="flex items-center gap-2 min-w-0">
+            {Icon && <Icon className="w-4 h-4 shrink-0" style={{ color: "var(--ido-text-dim)" }} />}
+            <span className="ido-modal-title truncate">{title}</span>
+          </div>
+          <button type="button" className="ido-icon-btn" onClick={onClose} title="Cerrar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div style={{ padding: 20 }}>
+          <label className="ido-label">{label}</label>
+          <input
+            autoFocus
+            onFocus={(e) => e.currentTarget.select()}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={placeholder}
+            className="ido-input"
+          />
+        </div>
+        <div className="ido-modal-foot">
+          <button type="button" className="ido-btn ido-btn-text" style={{ height: 38 }} onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="submit" className="ido-btn ido-btn-primary" style={{ height: 38 }} disabled={vacio}>
+            {confirmLabel}
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body,
+  );
+}
+
+type ConfirmOpts = Omit<Parameters<typeof IdoConfirmModal>[0], "onClose" | "onConfirm">;
+type PromptOpts = Omit<Parameters<typeof IdoPromptModal>[0], "onClose" | "onConfirm">;
+type DialogState =
+  | { kind: "confirm"; opts: ConfirmOpts; resolve: (ok: boolean) => void }
+  | { kind: "prompt"; opts: PromptOpts; resolve: (v: string | null) => void };
+
+/**
+ * Versión con promesa, para reemplazar `window.confirm` / `window.prompt` sin
+ * reescribir el handler: `if (!(await confirmar({...}))) return;`.
+ * Renderizar `dialogo` en algún lugar del componente.
+ */
+export function useIdoDialogs() {
+  const [state, setState] = useState<DialogState | null>(null);
+  const confirmar = useCallback(
+    (opts: ConfirmOpts) => new Promise<boolean>((resolve) => setState({ kind: "confirm", opts, resolve })), [],
+  );
+  const pedirTexto = useCallback(
+    (opts: PromptOpts) => new Promise<string | null>((resolve) => setState({ kind: "prompt", opts, resolve })), [],
+  );
+  const cerrar = useCallback(() => {
+    setState((s) => { if (s?.kind === "confirm") s.resolve(false); else s?.resolve(null); return null; });
+  }, []);
+
+  let dialogo: ReactNode = null;
+  if (state?.kind === "confirm") {
+    dialogo = <IdoConfirmModal {...state.opts} onClose={cerrar} onConfirm={() => { state.resolve(true); setState(null); }} />;
+  } else if (state?.kind === "prompt") {
+    dialogo = <IdoPromptModal {...state.opts} onClose={cerrar} onConfirm={(v) => { state.resolve(v); setState(null); }} />;
+  }
+  return { confirmar, pedirTexto, dialogo };
 }

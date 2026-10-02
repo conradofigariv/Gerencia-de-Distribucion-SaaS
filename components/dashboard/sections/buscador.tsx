@@ -40,7 +40,7 @@ import { getStockZonaMap } from "@/lib/stockStorage";
 import { supabase } from "@/lib/supabaseClient";
 import {
   IdoCheckbox, SortArrow, TipoPill as IdoTipoPill, monoFont, sansFont, autoFitTextWidth,
-  type Density, DENSITY_ROW_H, DENSITY_LABEL, DENSITY_ORDER, isDensity,
+  type Density, DENSITY_ROW_H, DENSITY_LABEL, DENSITY_ORDER, isDensity, useIdoDialogs,
 } from "@/components/dashboard/ido-kit";
 import { loadTableLayout, saveTableLayout } from "@/lib/tableLayout";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -88,18 +88,6 @@ const compararValores = (va: unknown, vb: unknown, col: string, dir: number): nu
 // familias desde Matrículas, y tienen que generar exactamente la misma clave
 // para que la detección de duplicados funcione.
 
-function ResizeHandle({ onStart }: { onStart: (e: MouseEvent) => void }) {
-  return (
-    <div
-      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none group/rh"
-      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onStart(e.nativeEvent); }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="absolute right-0 top-1/4 h-1/2 w-px bg-border group-hover/rh:bg-accent/60 transition-colors" />
-    </div>
-  );
-}
-
 // ─── Selector de fecha (Popover + Calendar de shadcn) ───────────────────────
 // Reemplaza al <input type="date"> nativo, que abre el calendario del sistema
 // operativo: sin animación, sin tema oscuro y distinto en cada navegador. Este
@@ -130,7 +118,8 @@ function DatePicker({
           {valor ? fmtFechaISO(valor) : placeholder}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-auto p-0 bg-panel border-hairline">
+      {/* `.ido-cal` remapea los colores del Calendar de shadcn a los tokens IDO. */}
+      <PopoverContent align="start" className="ido-terminal ido-pop ido-cal w-auto p-0 border-0">
         <Calendar
           mode="single"
           selected={fecha}
@@ -147,8 +136,10 @@ function DatePicker({
         {valor && (
           <div className="p-2 pt-0">
             <button
+              type="button"
               onClick={() => { onChange(""); setAbierto(false); }}
-              className="w-full text-[12px] py-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-panel-2 transition-colors"
+              className="ido-btn ido-btn-text w-full justify-center"
+              style={{ height: 30, fontSize: 12 }}
             >
               Limpiar
             </button>
@@ -740,6 +731,38 @@ function RowContextMenu({ state, onClose }: { state: CtxState; onClose: () => vo
 
 const PERMISO_LABEL: Record<Permiso, string> = { lectura: "Lectura", edicion: "Edición" };
 
+/** Lectura / Edición — Select de shadcn con el panel IDO. `z-[10000]`: el
+ *  desplegable se portalea a <body> y tiene que quedar arriba del modal. */
+function PermisoSelect({ value, onChange, compact }: { value: Permiso; onChange: (v: Permiso) => void; compact?: boolean }) {
+  return (
+    <Select value={value} onValueChange={(v) => onChange(v as Permiso)}>
+      <SelectTrigger
+        size="sm"
+        className="shrink-0 text-[12.5px] shadow-none focus-visible:ring-0"
+        style={{
+          height: compact ? 28 : 38, minWidth: 104,
+          background: compact ? "transparent" : "var(--ido-elevated)",
+          border: compact ? "0" : "1px solid var(--ido-border)", borderRadius: 8,
+          color: "var(--ido-text)",
+        }}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="ido-terminal ido-pop border-0 z-[10000]">
+        {(["edicion", "lectura"] as Permiso[]).map((p) => (
+          <SelectItem
+            key={p}
+            value={p}
+            className="ido-pop-item focus:bg-white/5 focus:text-[var(--ido-text)] data-[state=checked]:text-[var(--ido-text)]"
+          >
+            {PERMISO_LABEL[p]}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 function ShareDialog({ tabId, tabNombre, ownerId, onClose }: { tabId: string; tabNombre: string; ownerId: string; onClose: () => void }) {
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [equipo, setEquipo]               = useState<PerfilBasico[]>([]);
@@ -809,70 +832,57 @@ function ShareDialog({ tabId, tabNombre, ownerId, onClose }: { tabId: string; ta
     }
   };
 
+  // Esc cierra, igual que los demás modales IDO — salvo que lo haya consumido
+  // el Select de permiso abierto (Radix hace preventDefault al cerrarse).
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape" && !e.defaultPrevented) onClose(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [onClose]);
+
   const dialog = (
-    <div
-      className="ido-terminal fixed inset-0 z-[100] flex items-center justify-center p-4"
-      style={{ background: "oklch(0 0 0 / 0.55)" }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full animate-in fade-in zoom-in-95 duration-150"
-        style={{
-          maxWidth: 420, background: "oklch(0.205 0.005 270)", border: PANEL_BORDER,
-          borderRadius: 14, boxShadow: "0 24px 60px -20px rgba(0,0,0,0.7)",
-        }}
-      >
-        <div className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: PANEL_BORDER }}>
+    <div className="ido-terminal ido-modal-overlay" onClick={onClose}>
+      <div className="ido-modal" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+        <div className="ido-modal-head">
           <div className="flex items-center gap-2 min-w-0">
-            <Share2 className="w-4 h-4 shrink-0" style={{ color: "#7dd3fc" }} />
-            <span className="text-[14px] font-semibold truncate" style={{ color: "hsl(var(--foreground))" }}>
-              Compartir «{tabNombre}»
-            </span>
+            <Share2 className="w-4 h-4 shrink-0" style={{ color: "var(--ido-text-dim)" }} />
+            <span className="ido-modal-title truncate">Compartir «{tabNombre}»</span>
           </div>
-          <button onClick={onClose} className="shrink-0 grid place-items-center rounded-[6px]" style={{ width: 24, height: 24, color: "oklch(0.55 0 0)" }}>
+          <button type="button" className="ido-icon-btn" onClick={onClose} title="Cerrar">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div className="flex flex-col gap-5" style={{ padding: 20 }}>
           {/* Colaboradores actuales */}
           <div>
-            <p className="text-[11px] uppercase tracking-wide mb-2" style={{ color: "oklch(0.55 0 0)" }}>
-              Con acceso
-            </p>
+            <span className="ido-label">Con acceso</span>
             {loading ? (
-              <div className="flex items-center gap-2 py-2 text-[13px]" style={{ color: "oklch(0.6 0 0)" }}>
+              <div className="flex items-center gap-2 py-2 text-[13px]" style={{ color: "var(--ido-text-2)" }}>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />Cargando…
               </div>
             ) : !colaboradores.length ? (
-              <p className="text-[13px]" style={{ color: "oklch(0.55 0 0)" }}>
+              <p className="text-[13px]" style={{ color: "var(--ido-text-2)" }}>
                 Todavía no compartiste esta pestaña con nadie.
               </p>
             ) : (
-              <div className="space-y-1">
+              <div className="flex flex-col gap-1">
                 {colaboradores.map((c) => {
                   const nombre = [c.nombre, c.apellido].filter(Boolean).join(" ").trim()
                     || equipoPorId.get(c.user_id)?.email || "Usuario";
                   return (
-                    <div key={c.id} className="flex items-center gap-2 px-2 py-1.5 rounded-[8px]" style={{ background: "oklch(0.16 0.005 270)" }}>
-                      <span className="text-[13px] flex-1 truncate" style={{ color: "hsl(var(--foreground))" }}>{nombre}</span>
-                      <select
-                        value={c.permiso}
-                        onChange={(e) => handleCambiarPermiso(c.user_id, e.target.value as Permiso)}
-                        className="text-[12px] rounded-[6px] outline-none"
-                        style={{ background: "oklch(0.22 0.005 270)", border: PANEL_BORDER, color: "oklch(0.8 0 0)", padding: "3px 6px" }}
-                      >
-                        <option value="lectura">Lectura</option>
-                        <option value="edicion">Edición</option>
-                      </select>
+                    <div
+                      key={c.id}
+                      className="flex items-center gap-2"
+                      style={{ padding: "4px 4px 4px 10px", borderRadius: 8, background: "var(--ido-elevated)", border: "1px solid var(--ido-border)" }}
+                    >
+                      <span className="text-[13px] flex-1 truncate" style={{ color: "var(--ido-text)" }}>{nombre}</span>
+                      <PermisoSelect value={c.permiso} onChange={(v) => handleCambiarPermiso(c.user_id, v)} compact />
                       <button
+                        type="button"
                         onClick={() => handleQuitar(c.user_id)}
                         title="Quitar acceso"
-                        className="grid place-items-center rounded-[6px] transition-colors"
-                        style={{ width: 24, height: 24, color: "oklch(0.5 0 0)" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = "#fca5a5"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = "oklch(0.5 0 0)"; }}
+                        className="ido-icon-btn ido-icon-btn-danger"
                       >
                         <UserMinus className="w-3.5 h-3.5" />
                       </button>
@@ -885,51 +895,39 @@ function ShareDialog({ tabId, tabNombre, ownerId, onClose }: { tabId: string; ta
 
           {/* Agregar colaborador */}
           <div>
-            <p className="text-[11px] uppercase tracking-wide mb-2" style={{ color: "oklch(0.55 0 0)" }}>
-              Agregar
-            </p>
-            <div className="flex items-center gap-2 mb-2">
+            <span className="ido-label">Agregar</span>
+            <div className="flex items-center gap-2">
               <input
+                autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Buscar por nombre o email…"
-                className="flex-1 text-[13px] outline-none"
-                style={{ background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, borderRadius: 8, padding: "7px 10px", color: "hsl(var(--foreground))" }}
+                className="ido-input flex-1"
               />
-              <select
-                value={nuevoPermiso}
-                onChange={(e) => setNuevoPermiso(e.target.value as Permiso)}
-                className="text-[12px] rounded-[8px] outline-none shrink-0"
-                style={{ background: "oklch(0.16 0.005 270)", border: PANEL_BORDER, color: "oklch(0.8 0 0)", padding: "7px 8px" }}
-              >
-                <option value="edicion">Edición</option>
-                <option value="lectura">Lectura</option>
-              </select>
+              <PermisoSelect value={nuevoPermiso} onChange={setNuevoPermiso} />
             </div>
             {query.trim() && (
-              <div className="space-y-1 max-h-[160px] overflow-y-auto">
+              <div className="flex flex-col gap-0.5 mt-2 max-h-[180px] overflow-y-auto">
                 {!resultados.length ? (
-                  <p className="text-[12.5px] px-1" style={{ color: "oklch(0.5 0 0)" }}>Sin resultados.</p>
+                  <p className="text-[12.5px] px-1" style={{ color: "var(--ido-text-2)" }}>Sin resultados.</p>
                 ) : resultados.map((p) => {
                   const nombreCompleto = [p.nombre, p.apellido].filter(Boolean).join(" ").trim();
                   const nombre = nombreCompleto || p.email || "Usuario";
                   return (
                     <button
                       key={p.id}
+                      type="button"
                       onClick={() => handleAgregar(p)}
                       disabled={busy === p.id}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-[8px] text-left transition-colors disabled:opacity-50"
-                      style={{ color: "hsl(var(--foreground))" }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "oklch(0.16 0.005 270)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                      className="ido-pop-item disabled:opacity-50"
                     >
-                      <UserPlus className="w-3.5 h-3.5 shrink-0" style={{ color: "#86efac" }} />
+                      <UserPlus className="w-3.5 h-3.5 shrink-0" />
                       <span className="flex-1 min-w-0 truncate">
                         <span className="text-[13px]">{nombre}</span>
                         {/* Si ya se muestra el nombre, el email va aparte y más chico
                             — ayuda a distinguir gente con el mismo nombre. */}
                         {nombreCompleto && p.email && (
-                          <span className="text-[11px] ml-1.5" style={{ color: "oklch(0.5 0 0)" }}>{p.email}</span>
+                          <span className="text-[11px] ml-1.5" style={{ color: "var(--ido-text-2)" }}>{p.email}</span>
                         )}
                       </span>
                       {busy === p.id && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -940,7 +938,7 @@ function ShareDialog({ tabId, tabNombre, ownerId, onClose }: { tabId: string; ta
             )}
           </div>
 
-          <p className="text-[11.5px] leading-relaxed" style={{ color: "oklch(0.5 0 0)" }}>
+          <p className="text-[12px] leading-relaxed" style={{ color: "var(--ido-text-2)" }}>
             {PERMISO_LABEL.lectura}: solo ve la pestaña. {PERMISO_LABEL.edicion}: además edita filas, columnas y agrupado — la vista es la misma para todos.
           </p>
         </div>
@@ -1023,6 +1021,9 @@ const BuscadorTabsBar = memo(function BuscadorTabsBar({
 // ─── Sección ─────────────────────────────────────────────────────────────────
 
 export function BuscadorSection() {
+  // Confirmaciones y nombres de pestaña en modales IDO, no en los cuadros
+  // nativos del navegador (ver ido-kit `useIdoDialogs`).
+  const { confirmar, pedirTexto, dialogo } = useIdoDialogs();
   const [query, setQuery]     = useState("");
   // Campo al que se acota la búsqueda (selector al lado de la caja). null =
   // todos los campos, arranca así siempre — es un afinador, no un requisito.
@@ -1536,7 +1537,9 @@ export function BuscadorSection() {
   }, [indiceMenuOpen]);
 
   const handleCreateTab = useCallback(async () => {
-    const nombre = window.prompt("Nombre de la pestaña:", "Seguimiento");
+    const nombre = await pedirTexto({
+      title: "Nueva pestaña", label: "Nombre", initial: "Seguimiento", confirmLabel: "Crear", icon: Plus,
+    });
     if (!nombre?.trim()) return;
     try {
       // Se pide el usuario FRESCO en vez de usar el `userId` de estado (que se
@@ -1558,10 +1561,12 @@ export function BuscadorSection() {
     } catch (e) {
       toast.error(`No se pudo crear: ${e instanceof Error ? e.message : String(e)}`);
     }
-  }, [userId, tabs.length]);
+  }, [userId, tabs.length, pedirTexto]);
 
   const handleRenameTab = useCallback(async (tab: BuscadorTab) => {
-    const nombre = window.prompt("Nuevo nombre:", tab.nombre);
+    const nombre = await pedirTexto({
+      title: "Renombrar pestaña", label: "Nombre", initial: tab.nombre, confirmLabel: "Guardar", icon: Pencil,
+    });
     if (!nombre?.trim() || nombre.trim() === tab.nombre) return;
     try {
       await renameTab(tab.id, nombre.trim());
@@ -1569,10 +1574,15 @@ export function BuscadorSection() {
     } catch (e) {
       toast.error(`No se pudo renombrar: ${e instanceof Error ? e.message : String(e)}`);
     }
-  }, []);
+  }, [pedirTexto]);
 
   const handleDeleteTab = useCallback(async (tab: BuscadorTab) => {
-    if (!window.confirm(`¿Borrar la pestaña «${tab.nombre}» y todas sus filas?`)) return;
+    const ok = await confirmar({
+      title: "Borrar pestaña",
+      children: <>Se borra «{tab.nombre}» con todas sus filas{tab.user_id === userId ? ", también para quienes la tengan compartida" : ""}. No se puede deshacer.</>,
+      confirmLabel: "Borrar pestaña",
+    });
+    if (!ok) return;
     try {
       await deleteTab(tab.id);
       // Cortar un guardado de layout en vuelo: la pestaña ya no existe.
@@ -1585,7 +1595,7 @@ export function BuscadorSection() {
     } catch (e) {
       toast.error(`No se pudo borrar: ${e instanceof Error ? e.message : String(e)}`);
     }
-  }, []);
+  }, [confirmar, userId]);
 
   const handleDeleteFila = useCallback(async (id: string) => {
     const backup = tabFilas;
@@ -1601,7 +1611,12 @@ export function BuscadorSection() {
   /** Borra todas las filas de un grupo entero (una OP, una matrícula, una SIC) de una vez. */
   const handleDeleteGrupo = useCallback(async (filaIds: string[], titulo: string) => {
     if (!filaIds.length) return;
-    if (!window.confirm(`¿Quitar de la pestaña las ${filaIds.length} fila(s) de «${titulo}»?`)) return;
+    const ok = await confirmar({
+      title: "Quitar filas de la pestaña",
+      children: <>Se quitan las <b className="ido-mono" style={{ color: "var(--ido-text)" }}>{filaIds.length}</b> fila{filaIds.length === 1 ? "" : "s"} de «{titulo}», con lo que hayas anotado en ellas. El índice maestro no se toca.</>,
+      confirmLabel: "Quitar",
+    });
+    if (!ok) return;
     const backup = tabFilas;
     const ids = new Set(filaIds);
     setTabFilas((p) => p.filter((f) => !ids.has(f.id)));   // optimista
@@ -1612,7 +1627,7 @@ export function BuscadorSection() {
       setTabFilas(backup);
       toast.error(`No se pudo borrar: ${e instanceof Error ? e.message : String(e)}`);
     }
-  }, [tabFilas]);
+  }, [tabFilas, confirmar]);
 
   // Guarda una celda editada. `datos` es jsonb, así que se manda el objeto
   // entero con la clave ya aplicada.
@@ -1747,12 +1762,15 @@ export function BuscadorSection() {
   const handleReconstruir = async () => {
     // Confirmación explícita: son varios minutos y no es algo que haga falta
     // en el uso normal (las cargas masivas ya reconstruyen solas).
-    if (!window.confirm(
-      "Reconstruir el índice vuelve a leer Matrículas + Envíos + SIC + Transacciones. " +
-      "Tarda varios minutos y no hace falta después de una carga de datos, porque eso " +
-      "ya reconstruye solo.\n\n¿Reconstruir igual?"
-    )) return;
     setIndiceMenuOpen(false);
+    const ok = await confirmar({
+      title: "Reconstruir el índice",
+      children: <>Vuelve a leer Matrículas + Envíos + SIC + Transacciones. Tarda varios minutos y no hace falta después de una carga de datos, porque eso ya reconstruye solo.</>,
+      confirmLabel: "Reconstruir igual",
+      danger: false,
+      icon: RefreshCw,
+    });
+    if (!ok) return;
     setReconstruyendo(true);
     try {
       const n = await reconstruirIndice();
@@ -3190,8 +3208,8 @@ export function BuscadorSection() {
                             return (
                               <div
                                 key={c.key}
-                                className={cn("ido-bs-cell", puedoEditar && !editando && "group/celda")}
-                                style={{ padding: editando ? "0 4px" : undefined, cursor: puedoEditar ? "text" : "default", color: "var(--ido-text)" }}
+                                className={cn("ido-bs-cell", puedoEditar && !editando && "is-editable")}
+                                style={{ padding: editando ? "0 4px" : undefined, color: "var(--ido-text)" }}
                                 title={!puedoEditar ? "Solo lectura — pedile al dueño permiso de edición" : c.tipo === "texto" ? val : "Doble clic para editar"}
                                 onDoubleClick={puedoEditar ? () => { setEditValue(val); setEditing({ filaId: filaId!, key: c.key }); } : undefined}
                                 onContextMenu={(e) => abrirMenuFila(e, { key, filaId, data, colKey: c.key })}
@@ -3223,7 +3241,7 @@ export function BuscadorSection() {
                                     className="ido-cell-edit"
                                   />
                                 ) : (
-                                  // Lápiz en hover: anuncia que la celda es editable.
+                                  // Hover de celda editable (§4.4) en CSS: `.is-editable`.
                                   <>
                                     <span className="ido-bs-txt flex-1">
                                       {est ? (
@@ -3234,9 +3252,6 @@ export function BuscadorSection() {
                                         val || <span style={{ color: "var(--ido-text-faint)" }}>—</span>
                                       )}
                                     </span>
-                                    {puedoEditar && (
-                                      <Pencil className="w-3 h-3 shrink-0 ml-1.5 opacity-0 group-hover/celda:opacity-100 transition-opacity" style={{ color: "var(--ido-text-2)" }} />
-                                    )}
                                   </>
                                 )}
                               </div>
@@ -3258,14 +3273,13 @@ export function BuscadorSection() {
                           return (
                             <div
                               key={c.key}
-                              className={cn("ido-bs-cell", editable && !editando && "group/celda", c.num && "tabular-nums")}
+                              className={cn("ido-bs-cell", editable && !editando && "is-editable", c.num && "tabular-nums")}
                               style={{
                                 padding: editando ? "0 4px" : undefined,
                                 justifyContent: c.num ? "flex-end" : "flex-start",
                                 fontFamily: (c.num || c.mono) ? "var(--font-mono, ui-monospace, monospace)" : undefined,
                                 color: c.key === "articulo" || c.key === "descripcion" || c.num ? "var(--ido-text)" : undefined,
                                 fontWeight: c.key === "articulo" ? 500 : undefined,
-                                cursor: editable ? "text" : undefined,
                               }}
                               title={
                                 esManualOp
@@ -3298,9 +3312,6 @@ export function BuscadorSection() {
                               ) : (
                                 <>
                                   <span className="ido-bs-txt">{contenido}</span>
-                                  {editable && (
-                                    <Pencil className="w-3 h-3 shrink-0 ml-1.5 opacity-0 group-hover/celda:opacity-100 transition-opacity" style={{ color: "var(--ido-text-2)" }} />
-                                  )}
                                 </>
                               )}
                             </div>
@@ -3394,6 +3405,7 @@ export function BuscadorSection() {
 
 
       {ctxMenu && <RowContextMenu state={ctxMenu} onClose={() => setCtxMenu(null)} />}
+      {dialogo}
 
       {shareTabId && (() => {
         const tab = tabs.find((t) => t.id === shareTabId);
