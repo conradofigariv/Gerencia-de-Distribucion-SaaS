@@ -70,7 +70,12 @@ const estadoDe = (c: Celda | undefined): Estado => (c?.v != null ? "cargado" : c
 const K = (itemId: string, ofId: string) => `${itemId}|${ofId}`;
 interface Pos { item: string; c: number }
 
+// Columna Ítem: 280px del diseño, pero se achica hasta ITEM_MIN si así la
+// tabla entra entera sin scroll horizontal (§4.17). Con 7 oferentes a 170px
+// sobraban ~15px y la grilla scrolleaba: la primera columna de oferente
+// quedaba tapada por la columna fija.
 const ITEM_W = 280;
+const ITEM_MIN = 220;
 const COL_MIN = 170;
 // Encabezado de oferente en dos líneas: nombre (hasta 2 renglones) y debajo
 // contador + chip de moneda con «Por defecto».
@@ -78,8 +83,9 @@ const HEAD_H = 84;
 const GROUP_H = 36;
 const ROW_H = 52;
 // Ítem de un renglón de UN solo ítem: lleva el nombre del renglón arriba de la
-// matrícula (no hay fila de grupo), necesita un renglón más de alto.
-const ROW_H_SOLO = 64;
+// matrícula (no hay fila de grupo): 60px de texto + 8px de aire arriba y abajo
+// (con 64 quedaba pegado a los bordes).
+const ROW_H_SOLO = 76;
 const FOOT_H = 64;
 // Lo que ocupa la columna además del nombre: padding 14+14, avatar 24, gap 8.
 const HEAD_EXTRA = 14 + 14 + 24 + 8;
@@ -200,6 +206,24 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
     return oferentes.map((o) => anchoParaNombre(ctx, o.nombre));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [oferentes, fuentesListas]);
+
+  // Ancho útil de la grilla (sin la barra de scroll vertical) → ancho de la
+  // columna Ítem.
+  const [anchoGrid, setAnchoGrid] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const sc = scrollRef.current;
+    if (!sc) return;
+    const medir = () => setAnchoGrid((p) => { const w = Math.floor(sc.clientWidth); return p === w ? p : w; });
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(sc);
+    return () => ro.disconnect();
+  }, [loading]);
+  const sumaOferentes = anchosCol.reduce((a, w) => a + w, 0);
+  // Solo se achica si ASÍ entra todo; si igual va a haber scroll horizontal,
+  // achicarla no gana nada y corta texto: queda en 280.
+  const libre = anchoGrid == null ? null : anchoGrid - sumaOferentes;
+  const itemW = libre != null && libre >= ITEM_MIN && libre < ITEM_W ? libre : ITEM_W;
 
   const rangeKeys = useCallback((): string[] => {
     if (!range) return activeKey ? [activeKey] : [];
@@ -357,7 +381,7 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
     const el = sc.querySelector<HTMLElement>(`[data-k="${activeKey}"]`);
     if (!el) return;
     const r = el.getBoundingClientRect(), b = sc.getBoundingClientRect();
-    const top = b.top + HEAD_H + GROUP_H, bottom = b.bottom - FOOT_H, left = b.left + ITEM_W;
+    const top = b.top + HEAD_H + GROUP_H, bottom = b.bottom - FOOT_H, left = b.left + itemW;
     if (r.top < top) sc.scrollTop -= top - r.top + 4;
     else if (r.bottom > bottom) sc.scrollTop += r.bottom - bottom + 4;
     if (r.left < left) sc.scrollLeft -= left - r.left;
@@ -549,8 +573,8 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
   const cargadasPorOf = oferentes.map((o) => items.filter((it) => estadoDe(vals.get(K(it.id, o.id))) === "cargado").length);
   const resueltasPorOf = oferentes.map((o) => items.filter((it) => estadoDe(vals.get(K(it.id, o.id))) !== "pendiente").length);
   const doneCells = resueltasPorOf.reduce((a, n) => a + n, 0);
-  const cols = `${ITEM_W}px ${anchosCol.map((w) => `minmax(${w}px, 1fr)`).join(" ")}`;
-  const minW = ITEM_W + anchosCol.reduce((a, w) => a + w, 0);
+  const cols = `${itemW}px ${anchosCol.map((w) => `minmax(${w}px, 1fr)`).join(" ")}`;
+  const minW = itemW + sumaOferentes;
   const stickyShadow = scrolledX ? "8px 0 12px -6px rgba(0,0,0,.6)" : "none";
 
   const conv = (v: number, from: Divisa, to: Divisa) => (from === to ? v : tc == null ? null : from === "ARS" ? v / tc : v * tc);
@@ -568,7 +592,8 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
       sum = sum == null || x == null ? null : sum + x * Number(it.cantidad || 0);
     }
     const usd = sum == null ? null : conv(sum, cur, "USD");
-    return { cur, sum, usd, pendientes, noCotiza, mezcla };
+    const cargados = items.length - pendientes - noCotiza;
+    return { cur, sum, usd, pendientes, noCotiza, mezcla, cargados };
   });
   // «Completa» = todos sus ítems cargados (ni pendientes ni No cotiza).
   const completas = totales.filter((t) => t.pendientes === 0 && t.noCotiza === 0 && t.usd != null && t.sum! > 0);
@@ -849,7 +874,7 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
                       {/* Punto de «mejor total» en línea, con su propio espacio: absoluto
                           se montaba sobre el primer dígito de los montos largos. */}
                       {mejor && <span title="Menor total entre ofertas completas" style={{ alignSelf: "center", width: 6, height: 6, marginRight: 4, borderRadius: 999, background: "var(--ido-accent)", flex: "none" }} />}
-                      <span className="ido-mono" style={{ fontSize: 14, fontWeight: 600, color: parcial ? "var(--ido-text-2)" : "var(--ido-text)", whiteSpace: "nowrap" }}>{t.sum == null ? "—" : fmt(t.sum)}</span>
+                      <span className="ido-mono" style={{ fontSize: 14, fontWeight: 600, color: parcial ? "var(--ido-text-2)" : "var(--ido-text)", whiteSpace: "nowrap" }}>{t.sum == null || t.cargados === 0 ? "—" : fmt(t.sum)}</span>
                       <span className="ido-mono" style={{ fontSize: 10, fontWeight: 500, color: "var(--ido-placeholder)" }}>{t.cur}</span>
                     </div>
                     <span data-line title={lineTip || undefined} className={lineMono ? "ido-mono" : undefined} style={{ fontSize: 11, color: lineColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", minHeight: 15 }}>{line}</span>
@@ -944,7 +969,7 @@ function FilaItem({
         title={item.descripcion ?? undefined}
         style={{ position: "sticky", left: 0, zIndex: 2, background: "var(--ido-panel)", display: "flex", alignItems: "center", gap: 10, padding: "0 16px", minWidth: 0, borderRight: "1px solid var(--ido-border-strong)", boxShadow: stickyShadow, transition: "box-shadow 140ms var(--ido-ease)" }}
       >
-        <span className="ido-mono" style={{ fontSize: 11, color: "var(--ido-placeholder)", width: 26, flex: "none", alignSelf: "flex-start", paddingTop: renglonLabel ? 20 : 8 }}>
+        <span className="ido-mono" style={{ fontSize: 11, color: "var(--ido-placeholder)", width: 26, flex: "none", alignSelf: "flex-start", paddingTop: renglonLabel ? 21 : 8 }}>
           {renglonNumero}.{item.numero_item}
         </span>
         <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
