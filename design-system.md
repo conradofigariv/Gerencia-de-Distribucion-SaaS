@@ -299,7 +299,7 @@ Tabla única de referencia — tres modos, sin valores intermedios:
 - Teclado tipo planilla: clic o escribir edita, Enter baja, Tab avanza, flechas navegan, Esc cancela, pegado desde Excel completa hacia abajo y a la derecha, guion = No cotiza, clic derecho = menú (Copiar, Pegar, Marcar No cotiza, Cambiar moneda ×N, Borrar valor).
 - Totales (fila fija abajo, 64px, `bg.elevated`): total mono 14/600 + moneda 10; punto verde en el menor total entre ofertas completas; debajo «Parcial, faltan N ítems» (ámbar) / «Incluye montos en X convertidos» / «+N % vs mejor». Pie: «Comparación en USD a 1 USD = N ARS».
 - El chip de moneda del encabezado = «Por defecto», solo para celdas nuevas.
-- *Aplicado en Informe Técnico → Ofertas sin «No cotiza» ni las ayudas automáticas (punto verde por ítem, triángulo de fuera de rango, tooltip cantidad × precio) — ver docs/informe-tecnico.md.*
+- *Aplicado en Informe Técnico → Ofertas sin las ayudas automáticas (punto verde por ítem, triángulo de fuera de rango, tooltip cantidad × precio). Ajustes de la revisión: estado único por celda (pendiente / no cotiza / cargado) del que se deriva el chip de cobertura (+ «Pendiente 0/N»); encabezado de oferente en dos líneas con «Por defecto» 10px bajo el chip y ancho mínimo 170px; valores de celda 400 y totales 600; textos de totales cortos; renglones de un solo ítem sin fila de grupo (nombre del renglón 10px verde 70% arriba de la matrícula) — ver docs/informe-tecnico.md.*
 
 ## 5. Pendiente de definir
 

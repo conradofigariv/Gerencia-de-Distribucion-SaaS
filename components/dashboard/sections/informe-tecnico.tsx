@@ -22,6 +22,7 @@ import {
   createOferente,
   deleteOferente,
   listOfertas,
+  ofertaConPrecio,
   listEvaluaciones,
   upsertEvaluacion,
   type Licitacion,
@@ -950,7 +951,8 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
         for (const ev of evs) map.set(cellKey(ev.renglon_id, ev.oferente_id), ev);
         setEvals(map);
         const os = new Set<string>();
-        for (const o of oftas) os.add(`${o.item_id}|${o.oferente_id}`);
+        // «No cotiza» no es una oferta: el renglón queda sin cobertura completa.
+        for (const o of oftas) if (ofertaConPrecio(o)) os.add(`${o.item_id}|${o.oferente_id}`);
         setOfertaSet(os);
       } catch (e) {
         console.error(e);
@@ -2648,7 +2650,8 @@ function HelpStepContent({ step }: { step: number }) {
           <HelpSection title="Estructura de la grilla">
             <HelpField name="Filas" desc="Ítems de la licitación, agrupados por renglón (clic en el renglón para plegarlo)." />
             <HelpField name="Columnas" desc="Un oferente por columna, con su contador de ítems cotizados y su moneda por defecto." />
-            <HelpField name="Cobertura" desc="En cada renglón: Completo, Parcial (clic = ir a la primera pendiente) o Sin ofertar." />
+            <HelpField name="Estados" desc="Cada celda está pendiente (punto ámbar), en No cotiza o cargada con un precio." />
+            <HelpField name="Cobertura" desc="En renglones de 2 ítems o más: Completo, Parcial, Pendiente (clic = ir a la primera pendiente) o Sin ofertar (todo No cotiza). Se calcula de las celdas." />
             <HelpField name="Totales" desc="Abajo, el total de cada oferta (precio × cantidad) en su moneda por defecto; el punto verde marca el menor total entre las ofertas completas." />
           </HelpSection>
           <HelpSection title="Teclado y mouse">
@@ -2657,11 +2660,12 @@ function HelpStepContent({ step }: { step: number }) {
             <HelpAction label="Pegar" desc="Pegar desde Excel completa hacia abajo y a la derecha desde la celda activa." />
             <HelpAction label="⇧ + clic / flechas" desc="Selecciona un rango (para cambiar la moneda en bloque)." />
             <HelpAction label="M" desc="Alterna la moneda de la celda entre USD y ARS." />
-            <HelpAction label="Clic derecho" desc="Copiar, pegar, cambiar moneda (de la celda o del rango) y borrar." />
+            <HelpAction label="- (guion)" desc="Marca la celda como No cotiza (también desde el clic derecho, para un rango)." />
+            <HelpAction label="Clic derecho" desc="Copiar, pegar, marcar No cotiza, cambiar moneda (de la celda o del rango) y borrar." />
           </HelpSection>
           <HelpTip>Cada precio <strong>se guarda automáticamente</strong> al salir de la celda; aparece un ✓ verde al guardarse.</HelpTip>
           <HelpTip>La <strong>moneda es por celda</strong>. La del encabezado de cada oferente es solo para las celdas nuevas; «Cambiar todas las divisas» cambia todo.</HelpTip>
-          <HelpTip>Una celda vacía es «sin oferta» para ese ítem: el renglón queda Parcial y no compite en la Adjudicación.</HelpTip>
+          <HelpTip>Un ítem pendiente o en No cotiza deja el renglón incompleto para ese oferente: no compite en la Adjudicación.</HelpTip>
           <HelpWarning>Los montos en otra moneda se convierten con el Dólar SIC de Datos generales. Si no está cargado, los totales mezclados no se pueden calcular.</HelpWarning>
         </>
       );

@@ -9,22 +9,28 @@
 // vuelve chip con menú, tecla M alterna, clic derecho cambia en bloque); cada
 // oferente tiene una moneda por defecto para las celdas nuevas.
 //
-// Confirmado con el usuario: SIN «No cotiza» (la base no lo soporta; celda
-// vacía = no ofertó), SIN las ayudas automáticas del diseño (punto verde por
-// ítem, triángulo de fuera de rango, tooltip cantidad × precio), y el tipo de
-// cambio del pie es el Dólar SIC de Datos generales, solo lectura.
+// Estado ÚNICO por celda (ver `estadoDe`): pendiente · no cotiza · cargado.
+// Todo lo demás (contadores, chip de cobertura del renglón, progreso, totales)
+// se calcula SIEMPRE a partir de esos estados — nunca se guarda aparte, así no
+// pueden contradecirse (antes una celda mostraba el punto de pendiente
+// mientras el chip del renglón decía «Sin ofertar»).
+//
+// Confirmado con el usuario: SIN las ayudas automáticas del diseño (punto
+// verde por ítem, triángulo de fuera de rango, tooltip cantidad × precio), y
+// el tipo de cambio del pie es el Dólar SIC de Datos generales, solo lectura.
 //
 // Tokens --ido-*: el contenedor de la pestaña lleva `.ido-terminal`.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeftRight, ArrowRight, Check, ChevronDown, Clipboard, Clock, Copy, Loader2, Save, X } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, Ban, Check, ChevronDown, Clipboard, Clock, Copy, Loader2, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   listRenglonesConItems, listOferentes, listOfertas, upsertOferta, deleteOferta, updateOferentesDivisa,
   type Licitacion, type RenglonConItems, type Oferente, type Divisa, type Item,
 } from "@/lib/informeTecnico";
 import { Avatar } from "@/components/dashboard/sections/informe-tecnico-adjudicacion";
+import { sansFont } from "@/components/dashboard/ido-kit";
 
 // ─── Números ──────────────────────────────────────────────────────────────
 
@@ -37,9 +43,10 @@ const fmt = (v: number) => nf(2).format(v);
  * de Excel en inglés (1234.56), separadores de miles sueltos (1.441.700), «$»
  * y un «USD»/«ARS» pegado adelante o atrás. `err` = no se entiende.
  */
-function parsePrecio(t: string): { v: number | null; err?: boolean } {
+function parsePrecio(t: string): { v: number | null; err?: boolean; nc?: boolean } {
   t = String(t ?? "").trim();
   if (!t) return { v: null };
+  if (/^[-–—]$/.test(t)) return { v: null, nc: true };   // un guion = No cotiza
   let s = t.replace(/[\s$]/g, "").replace(/^(usd|ars)/i, "").replace(/(usd|ars)$/i, "");
   if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
   else if ((s.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(s)) s = s.replace(/\./g, "");
@@ -51,18 +58,57 @@ const textoEditable = (v: number | null) => (v == null ? "" : String(v).replace(
 
 // ─── Tipos ────────────────────────────────────────────────────────────────
 
-/** Celda: precio guardado (`v`) o texto que no se entendió (`raw`, sin guardar). */
-interface Celda { v: number | null; cur: Divisa | null; raw: string | null }
-const VACIA: Celda = { v: null, cur: null, raw: null };
+/**
+ * Celda: precio guardado (`v`), «No cotiza» (`nc`) o nada (pendiente). `raw` =
+ * texto que no se entendió: se muestra en rojo y NO se guarda (la celda sigue
+ * pendiente para la base).
+ */
+interface Celda { v: number | null; nc: boolean; cur: Divisa | null; raw: string | null }
+const VACIA: Celda = { v: null, nc: false, cur: null, raw: null };
+type Estado = "pendiente" | "nc" | "cargado";
+const estadoDe = (c: Celda | undefined): Estado => (c?.v != null ? "cargado" : c?.nc ? "nc" : "pendiente");
 const K = (itemId: string, ofId: string) => `${itemId}|${ofId}`;
 interface Pos { item: string; c: number }
 
 const ITEM_W = 280;
-const COL_MIN = 168;
-const HEAD_H = 52;
+const COL_MIN = 170;
+// Encabezado de oferente en dos líneas: nombre (hasta 2 renglones) y debajo
+// contador + chip de moneda con «Por defecto».
+const HEAD_H = 84;
 const GROUP_H = 36;
 const ROW_H = 52;
+// Ítem de un renglón de UN solo ítem: lleva el nombre del renglón arriba de la
+// matrícula (no hay fila de grupo), necesita un renglón más de alto.
+const ROW_H_SOLO = 64;
 const FOOT_H = 64;
+// Lo que ocupa la columna además del nombre: padding 14+14, avatar 24, gap 8.
+const HEAD_EXTRA = 14 + 14 + 24 + 8;
+const COL_MAX = 320;
+
+/**
+ * Ancho mínimo de la columna de un oferente para que su nombre entre COMPLETO
+ * en dos líneas (13px/600), con 170px de piso. Simula el corte por palabras
+ * (greedy) con canvas y busca el ancho más chico que lo deja en ≤ 2 líneas.
+ * Arriba de COL_MAX se trunca con tooltip (nombres absurdamente largos).
+ */
+function anchoParaNombre(ctx: CanvasRenderingContext2D, nombre: string): number {
+  const palabras = nombre.split(/\s+/).filter(Boolean);
+  const w = (t: string) => ctx.measureText(t).width;
+  const entra = (ancho: number) => {
+    let lineas = 1, actual = "";
+    for (const p of palabras) {
+      if (w(p) > ancho) return false;
+      const prueba = actual ? `${actual} ${p}` : p;
+      if (w(prueba) <= ancho) actual = prueba;
+      else { lineas++; actual = p; if (lineas > 2) return false; }
+    }
+    return true;
+  };
+  const piso = COL_MIN - HEAD_EXTRA;
+  if (entra(piso)) return COL_MIN;
+  for (let a = piso + 4; a <= COL_MAX - HEAD_EXTRA; a += 4) if (entra(a)) return Math.ceil(a + HEAD_EXTRA + 2);
+  return COL_MAX;
+}
 
 // ─── Componente ───────────────────────────────────────────────────────────
 
@@ -110,7 +156,11 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
         setRenglones(rens);
         setOferentes(offs);
         const m = new Map<string, Celda>();
-        for (const o of oftas) m.set(K(o.item_id, o.oferente_id), { v: Number(o.precio_unitario), cur: o.divisa, raw: null });
+        for (const o of oftas) {
+          m.set(K(o.item_id, o.oferente_id), o.no_cotiza
+            ? { v: null, nc: true, cur: o.divisa, raw: null }
+            : { v: o.precio_unitario == null ? null : Number(o.precio_unitario), nc: false, cur: o.divisa, raw: null });
+        }
         setVals(m);
         const primero = rens.find((r) => r.items.length)?.items[0];
         setActive(primero && offs.length ? { item: primero.id, c: 0 } : null);
@@ -126,12 +176,30 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
     [renglones],
   );
   const itemById = useMemo(() => new Map(items.map((it) => [it.id, it])), [items]);
-  const visibles = useMemo(() => items.filter((it) => !collapsed.has(it.renglonId)).map((it) => it.id), [items, collapsed]);
+  // Los renglones de un solo ítem no tienen fila de grupo, así que no se pliegan.
+  const visibles = useMemo(() => {
+    const solo = new Set(renglones.filter((r) => r.items.length < 2).map((r) => r.id));
+    return items.filter((it) => solo.has(it.renglonId) || !collapsed.has(it.renglonId)).map((it) => it.id);
+  }, [items, renglones, collapsed]);
   const defaultOf = useCallback((ofId: string): Divisa => oferentes.find((o) => o.id === ofId)?.divisa_default ?? "ARS", [oferentes]);
   const celda = useCallback((key: string) => vals.get(key) ?? VACIA, [vals]);
   const curDe = useCallback((key: string) => celda(key).cur ?? defaultOf(key.split("|")[1]), [celda, defaultOf]);
 
   const activeKey = active && oferentes[active.c] ? K(active.item, oferentes[active.c].id) : null;
+
+  // Ancho mínimo por oferente (nombre completo en 2 líneas). Se vuelve a
+  // medir cuando terminan de cargar las fuentes: medido con la de respaldo
+  // daba otro ancho.
+  const [fuentesListas, setFuentesListas] = useState(0);
+  useEffect(() => { document.fonts?.ready.then(() => setFuentesListas((n) => n + 1)).catch(() => {}); }, []);
+  const anchosCol = useMemo(() => {
+    if (typeof document === "undefined") return oferentes.map(() => COL_MIN);
+    const ctx = document.createElement("canvas").getContext("2d");
+    if (!ctx) return oferentes.map(() => COL_MIN);
+    ctx.font = sansFont(13, 600);
+    return oferentes.map((o) => anchoParaNombre(ctx, o.nombre));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oferentes, fuentesListas]);
 
   const rangeKeys = useCallback((): string[] => {
     if (!range) return activeKey ? [activeKey] : [];
@@ -160,34 +228,50 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
   }, [later]);
 
   // ── Guardado ──
-  /** Aplica un texto a una celda: vacío borra, inválido queda en rojo sin guardar. */
+  /**
+   * Aplica un texto a una celda: número → cargado, «-» → No cotiza, vacío →
+   * pendiente (borra la fila), inválido → queda en rojo sin guardar.
+   */
   const aplicarTexto = useCallback(async (key: string, text: string, opts?: { delay?: number }) => {
     const p = parsePrecio(text);
     const [itemId, ofId] = key.split("|");
     const prev = vals.get(key) ?? VACIA;
+    const revertir = (e: unknown, msg: string) => {
+      console.error(e);
+      toast.error(e instanceof Error && /Falta correr/.test(e.message) ? e.message : msg);
+      setVals((m) => new Map(m).set(key, prev));
+    };
     if (p.err) {
       setVals((m) => new Map(m).set(key, { ...prev, raw: String(text).trim() }));
       return;
     }
-    if (p.v == null) {
-      if (prev.v == null && prev.raw == null) return;
-      setVals((m) => { const n = new Map(m); n.delete(key); return n; });
-      if (prev.v == null) return;   // solo había texto inválido: no hay nada guardado
-      try { await deleteOferta(ofId, itemId); flashSaved([key], opts?.delay); }
-      catch (e) { console.error(e); toast.error("No se pudo borrar el precio"); setVals((m) => new Map(m).set(key, prev)); }
+    if (p.nc) {
+      if (prev.nc && prev.raw == null) return;
+      const cur = prev.cur ?? defaultOf(ofId);
+      setVals((m) => new Map(m).set(key, { v: null, nc: true, cur, raw: null }));
+      try {
+        await upsertOferta({ oferente_id: ofId, item_id: itemId, precio_unitario: null, divisa: cur, no_cotiza: true });
+        flashSaved([key], opts?.delay);
+      } catch (e) { revertir(e, "No se pudo marcar No cotiza"); }
       return;
     }
-    if (prev.v === p.v && prev.raw == null) return;   // sin cambios
-    const cur = prev.cur ?? defaultOf(ofId);
-    setVals((m) => new Map(m).set(key, { v: p.v, cur, raw: null }));
-    try {
-      await upsertOferta({ oferente_id: ofId, item_id: itemId, precio_unitario: p.v, divisa: cur });
-      flashSaved([key], opts?.delay);
-    } catch (e) {
-      console.error(e);
-      toast.error("No se pudo guardar el precio");
-      setVals((m) => new Map(m).set(key, prev));
+    if (p.v == null) {
+      if (estadoDe(prev) === "pendiente" && prev.raw == null) return;
+      setVals((m) => { const n = new Map(m); n.delete(key); return n; });
+      if (estadoDe(prev) === "pendiente") return;   // solo había texto inválido: no hay nada guardado
+      try { await deleteOferta(ofId, itemId); flashSaved([key], opts?.delay); }
+      catch (e) { revertir(e, "No se pudo borrar el precio"); }
+      return;
     }
+    if (prev.v === p.v && !prev.nc && prev.raw == null) return;   // sin cambios
+    const cur = prev.cur ?? defaultOf(ofId);
+    setVals((m) => new Map(m).set(key, { v: p.v, nc: false, cur, raw: null }));
+    try {
+      // `no_cotiza: false` solo si venía de No cotiza (si no, ni se manda: así
+      // guardar precios funciona aunque el SQL de No cotiza no se haya corrido).
+      await upsertOferta({ oferente_id: ofId, item_id: itemId, precio_unitario: p.v, divisa: cur, no_cotiza: prev.nc ? false : undefined });
+      flashSaved([key], opts?.delay);
+    } catch (e) { revertir(e, "No se pudo guardar el precio"); }
   }, [vals, defaultOf, flashSaved]);
 
   /** Cambia la moneda de varias celdas con precio (las vacías no tienen moneda propia). */
@@ -283,7 +367,7 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
   const copiar = useCallback(() => {
     if (!activeKey) return;
     const c = celda(activeKey);
-    const t = c.v != null ? fmt(c.v) : c.raw ?? "";
+    const t = c.v != null ? fmt(c.v) : c.nc ? "-" : c.raw ?? "";
     navigator.clipboard?.writeText(t).catch(() => {});
   }, [activeKey, celda]);
 
@@ -339,6 +423,7 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
     if (e.key === "Tab") { e.preventDefault(); move(0, e.shiftKey ? -1 : 1, true); return; }
     if (e.key === "Enter" || e.key === "F2") { e.preventDefault(); startEdit(active, celda(key).raw ?? textoEditable(celda(key).v)); return; }
     if (e.key === "Backspace" || e.key === "Delete") { e.preventDefault(); aplicarTexto(key, ""); return; }
+    if (e.key === "-" && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); aplicarTexto(key, "-"); return; }
     if (e.key === "Escape") { if (range) { e.preventDefault(); setRange(null); } return; }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") { e.preventDefault(); copiar(); return; }
     if ((e.key === "m" || e.key === "M") && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -391,7 +476,7 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
     for (const it of items) {
       for (let c = 0; c < oferentes.length; c++) {
         const v = celda(K(it.id, oferentes[c].id));
-        if (v.v == null && v.raw == null) {
+        if (estadoDe(v) === "pendiente" && v.raw == null) {
           if (liveEdit.current) commitEdit();
           const abrir = collapsed.has(it.renglonId);
           if (abrir) setCollapsed((s) => { const n = new Set(s); n.delete(it.renglonId); return n; });
@@ -405,7 +490,7 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
   };
 
   const focusPending = (r: RenglonConItems, c: number) => {
-    const it = r.items.find((i) => { const v = celda(K(i.id, oferentes[c].id)); return v.v == null && v.raw == null; });
+    const it = r.items.find((i) => estadoDe(celda(K(i.id, oferentes[c].id))) === "pendiente");
     if (!it) return;
     if (liveEdit.current) commitEdit();
     setRange(null);
@@ -459,30 +544,34 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
   }
 
   // ── Datos para pintar ──
+  // Todo sale de los estados de celda.
   const totalCells = items.length * oferentes.length;
-  let doneCells = 0;
-  const hechasPorOf = oferentes.map((o) => items.filter((it) => vals.get(K(it.id, o.id))?.v != null).length);
-  hechasPorOf.forEach((n) => { doneCells += n; });
-  const cols = `${ITEM_W}px repeat(${oferentes.length}, minmax(${COL_MIN}px, 1fr))`;
-  const minW = ITEM_W + COL_MIN * oferentes.length;
+  const cargadasPorOf = oferentes.map((o) => items.filter((it) => estadoDe(vals.get(K(it.id, o.id))) === "cargado").length);
+  const resueltasPorOf = oferentes.map((o) => items.filter((it) => estadoDe(vals.get(K(it.id, o.id))) !== "pendiente").length);
+  const doneCells = resueltasPorOf.reduce((a, n) => a + n, 0);
+  const cols = `${ITEM_W}px ${anchosCol.map((w) => `minmax(${w}px, 1fr)`).join(" ")}`;
+  const minW = ITEM_W + anchosCol.reduce((a, w) => a + w, 0);
   const stickyShadow = scrolledX ? "8px 0 12px -6px rgba(0,0,0,.6)" : "none";
 
   const conv = (v: number, from: Divisa, to: Divisa) => (from === to ? v : tc == null ? null : from === "ARS" ? v / tc : v * tc);
   const totales = oferentes.map((o) => {
     const cur = defaultOf(o.id);
-    let sum: number | null = 0, pendientes = 0, mezcla = false;
+    let sum: number | null = 0, pendientes = 0, noCotiza = 0, mezcla = false;
     for (const it of items) {
       const key = K(it.id, o.id), c = vals.get(key);
-      if (c?.v == null) { pendientes++; continue; }
+      const est = estadoDe(c);
+      if (est === "pendiente") { pendientes++; continue; }
+      if (est === "nc" || c?.v == null) { noCotiza++; continue; }
       const from = curDe(key);
       if (from !== cur) mezcla = true;
       const x = conv(c.v, from, cur);
       sum = sum == null || x == null ? null : sum + x * Number(it.cantidad || 0);
     }
     const usd = sum == null ? null : conv(sum, cur, "USD");
-    return { cur, sum, usd, pendientes, mezcla };
+    return { cur, sum, usd, pendientes, noCotiza, mezcla };
   });
-  const completas = totales.filter((t) => t.pendientes === 0 && t.usd != null && t.sum! > 0);
+  // «Completa» = todos sus ítems cargados (ni pendientes ni No cotiza).
+  const completas = totales.filter((t) => t.pendientes === 0 && t.noCotiza === 0 && t.usd != null && t.sum! > 0);
   const mejorUsd = completas.length ? Math.min(...completas.map((t) => t.usd!)) : null;
 
   const allIs = (cur: Divisa) =>
@@ -550,25 +639,26 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
                 </span>
               </div>
               {oferentes.map((o, c) => {
-                const n = hechasPorOf[c], completo = n === items.length, def = defaultOf(o.id);
+                const n = cargadasPorOf[c], completo = n === items.length, def = defaultOf(o.id);
                 return (
-                  <div key={o.id} style={{ height: HEAD_H, padding: "0 14px", display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                    <Avatar nombre={o.nombre} size={24} />
-                    {/* Nombre arriba a todo el ancho; abajo el contador de ítems
-                        cotizados y la moneda por defecto (no entran los tres en
-                        una línea sin cortar el nombre). */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: 1 }}>
-                      <span title={o.nombre} style={{ fontSize: 13, fontWeight: 600, lineHeight: "16px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{o.nombre}</span>
-                      <div className="flex items-center" style={{ gap: 8, minWidth: 0 }}>
-                        <span className="ido-mono" title={`${n} de ${items.length} ítems cotizados`} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: completo ? "var(--ido-accent)" : "var(--ido-text-2)", transition: "color 200ms var(--ido-ease)" }}>
-                          {completo && <Check className="w-3 h-3" strokeWidth={2.5} />}{n}/{items.length}
-                        </span>
+                  // Dos líneas: (1) avatar + nombre completo, hasta 2 renglones
+                  // antes de truncar; (2) contador de ítems cargados a la
+                  // izquierda y chip de moneda a la derecha con «Por defecto».
+                  <div key={o.id} className="ido-of-head" style={{ height: HEAD_H }}>
+                    <div className="flex items-start" style={{ gap: 8, minWidth: 0 }}>
+                      <Avatar nombre={o.nombre} size={24} />
+                      <span title={o.nombre} className="ido-of-head-name">{o.nombre}</span>
+                    </div>
+                    <div className="flex items-start" style={{ gap: 8, minWidth: 0 }}>
+                      <span className="ido-mono" title={`${n} de ${items.length} ítems cargados`} style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 18, fontSize: 11, color: completo ? "var(--ido-accent)" : "var(--ido-text-2)", transition: "color 200ms var(--ido-ease)", whiteSpace: "nowrap" }}>
+                        {completo && <Check className="w-3 h-3" strokeWidth={2.5} />}{n}/{items.length}
+                      </span>
+                      <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
                         <button
                           type="button"
                           data-of-menu="1"
                           className={`ido-of-cur is-head${defMenu?.ofId === o.id ? " is-open" : ""}`}
                           title="Moneda por defecto — solo para celdas nuevas de este oferente"
-                          style={{ marginLeft: "auto" }}
                           onMouseDown={(e) => {
                             e.preventDefault(); e.stopPropagation();
                             if (defMenu?.ofId === o.id) { setDefMenu(null); return; }
@@ -579,6 +669,7 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
                         >
                           {def}<ChevronDown className="w-2 h-2" strokeWidth={3} />
                         </button>
+                        <span style={{ fontSize: 10, lineHeight: "12px", color: "var(--ido-placeholder)", whiteSpace: "nowrap" }}>Por defecto</span>
                       </div>
                     </div>
                   </div>
@@ -588,10 +679,14 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
 
             {/* Renglones */}
             {renglones.filter((r) => r.items.length).map((r) => {
-              const cerrado = collapsed.has(r.id);
+              // Renglón de UN solo ítem: sin fila de grupo (el nombre del
+              // renglón va dentro de la celda del ítem) ni chips de cobertura
+              // (la celda ya muestra su estado).
+              const solo = r.items.length < 2;
+              const cerrado = !solo && collapsed.has(r.id);
               return (
-                <div key={r.id}>
-                  <div
+                <div key={r.id} data-ren={r.id}>
+                  {!solo && <div
                     onClick={() => {
                       if (liveEdit.current) commitEdit();
                       setCollapsed((s) => { const n = new Set(s); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; });
@@ -608,25 +703,29 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
                       )}
                     </div>
                     {oferentes.map((o, c) => {
+                      // Cobertura: SIEMPRE derivada de los estados de las celdas.
                       const t = r.items.length;
-                      const n = r.items.filter((it) => vals.get(K(it.id, o.id))?.v != null).length;
-                      const kind = n === t ? "ok" : n === 0 ? "none" : "part";
-                      const pend = kind !== "ok";
+                      const est = r.items.map((it) => estadoDe(vals.get(K(it.id, o.id))));
+                      const n = est.filter((x) => x === "cargado").length;
+                      const nNc = est.filter((x) => x === "nc").length;
+                      const nPend = est.filter((x) => x === "pendiente").length;
+                      const kind = n === t ? "ok" : nNc === t ? "none" : nPend === t ? "pend" : "part";
+                      const pend = nPend > 0;
                       return (
-                        <div key={o.id} style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "0 14px" }}>
+                        <div key={o.id} data-cov={r.id} data-of={o.id} style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "0 14px", minWidth: 0 }}>
                           <span
                             className={`ido-of-cov is-${kind}`}
                             title={pend ? "Ir a la primera celda pendiente" : undefined}
                             style={{ cursor: pend ? "pointer" : "default" }}
                             onClick={(e) => { e.stopPropagation(); if (pend) focusPending(r, c); }}
                           >
-                            {kind === "ok" ? <Check className="w-3 h-3" strokeWidth={2.5} /> : kind === "part" ? <Clock className="w-3 h-3" strokeWidth={2.2} /> : <span style={{ width: 8, height: 1.5, background: "currentColor", borderRadius: 1 }} />}
-                            {kind === "ok" ? `Completo ${n}/${t}` : kind === "part" ? `Parcial ${n}/${t}` : "Sin ofertar"}
+                            {kind === "ok" ? <Check className="w-3 h-3" strokeWidth={2.5} /> : kind === "none" ? <span style={{ width: 8, height: 1.5, background: "currentColor", borderRadius: 1 }} /> : <Clock className="w-3 h-3" strokeWidth={2.2} />}
+                            {kind === "ok" ? `Completo ${n}/${t}` : kind === "none" ? "Sin ofertar" : kind === "pend" ? `Pendiente 0/${t}` : `Parcial ${n}/${t}`}
                           </span>
                         </div>
                       );
                     })}
-                  </div>
+                  </div>}
 
                   <div style={{ display: "grid", gridTemplateRows: cerrado ? "0fr" : "1fr", transition: "grid-template-rows 200ms var(--ido-ease)" }}>
                     {/* `clip` y no `hidden`: `hidden` vuelve a este div un contenedor
@@ -638,6 +737,7 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
                           key={it.id}
                           item={it}
                           renglonNumero={r.numero}
+                          renglonLabel={solo ? `Renglón ${r.numero}${r.condicion_adjudicacion ? ` · ${r.condicion_adjudicacion}` : ""}` : undefined}
                           cols={cols}
                           stickyShadow={stickyShadow}
                         >
@@ -648,6 +748,7 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
                             const sel = key === activeKey;
                             const ed = sel && editing;
                             const err = v.raw != null;
+                            const estado = estadoDe(v);
                             const cur = curDe(key);
                             const cls = [
                               "ido-of-cell",
@@ -663,7 +764,7 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
                                 data-k={key}
                                 className={cls}
                                 title={err ? "Formato inválido · usá 1.234,56" : undefined}
-                                style={{ justifyContent: v.v == null && !err && !ed ? "center" : "flex-end" }}
+                                style={{ justifyContent: estado !== "cargado" && !err && !ed ? "center" : "flex-end" }}
                                 onMouseDown={cellDown(pos, key)}
                                 onContextMenu={cellCtx(pos, key)}
                               >
@@ -681,12 +782,12 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
                                   </>
                                 ) : err ? (
                                   <>
-                                    <span className="ido-mono" style={{ fontSize: 13, color: "var(--ido-text)" }}>{v.raw}</span>
+                                    <span className="ido-mono" style={{ fontSize: 13, fontWeight: 400, color: "var(--ido-text)" }}>{v.raw}</span>
                                     <span className="ido-of-tri is-err" />
                                   </>
                                 ) : v.v != null ? (
                                   <>
-                                    <span className="ido-mono" style={{ fontSize: 13, color: "var(--ido-text)", whiteSpace: "nowrap" }}>{fmt(v.v)}</span>
+                                    <span className="ido-mono" style={{ fontSize: 13, fontWeight: 400, color: "var(--ido-text)", whiteSpace: "nowrap" }}>{fmt(v.v)}</span>
                                     <span
                                       data-of-menu="1"
                                       className={`ido-of-cur${curMenu?.key === key ? " is-open" : ""}`}
@@ -703,6 +804,8 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
                                       {cur}<ChevronDown className="w-2 h-2" strokeWidth={3} />
                                     </span>
                                   </>
+                                ) : estado === "nc" ? (
+                                  <span className="ido-of-nc">No cotiza</span>
                                 ) : (
                                   <span className="ido-of-pend" />
                                 )}
@@ -725,27 +828,31 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
                 <span style={{ fontSize: 11, color: "var(--ido-placeholder)", whiteSpace: "nowrap" }}>Precio unitario × cantidad</span>
               </div>
               {totales.map((t, c) => {
-                const parcial = t.pendientes > 0;
+                const parcial = t.pendientes > 0 || t.noCotiza > 0;
                 const mejor = !parcial && t.usd != null && t.usd === mejorUsd;
                 const pctVsMejor = !mejor && mejorUsd && t.usd != null ? (t.usd / mejorUsd - 1) * 100 : null;
                 const equivUsd = t.cur === "ARS" && t.usd != null ? `${fmt(t.usd)} USD` : "";
                 let line = "", lineColor = "var(--ido-text-2)", lineMono = true, lineTip = "";
-                if (t.sum == null) { line = "Falta el Dólar SIC para convertir"; lineColor = "var(--ido-warning)"; lineMono = false; }
-                else if (parcial) { line = t.pendientes === 1 ? "Parcial, falta 1 ítem" : `Parcial, faltan ${t.pendientes} ítems`; lineColor = "var(--ido-warning)"; lineMono = false; }
+                // Textos cortos: tienen que entrar sin truncar en 170px.
+                if (t.sum == null) { line = "Sin Dólar SIC"; lineColor = "var(--ido-warning)"; lineMono = false; lineTip = "Cargalo en Datos generales para convertir montos en otra moneda"; }
+                else if (t.pendientes > 0) { line = t.pendientes === 1 ? "Falta 1 ítem" : `Faltan ${t.pendientes} ítems`; lineColor = "var(--ido-warning)"; lineMono = false; }
+                else if (t.noCotiza > 0) { line = t.noCotiza === 1 ? "1 ítem no cotiza" : `${t.noCotiza} ítems no cotiza`; lineColor = "var(--ido-warning)"; lineMono = false; }
                 else if (t.mezcla) {
-                  line = `Incluye montos en ${t.cur === "USD" ? "ARS" : "USD"} convertidos`; lineMono = false;
+                  line = `Incluye ${t.cur === "USD" ? "ARS" : "USD"} convertido`; lineMono = false;
                   lineTip = [pctVsMejor != null && !parcial ? `+${nf(1).format(pctVsMejor)} % vs mejor` : "", equivUsd].filter(Boolean).join(" · ");
                 }
                 else if (pctVsMejor != null && !parcial) { line = `+${nf(1).format(pctVsMejor)} % vs mejor`; lineTip = equivUsd; }
                 else if (equivUsd) line = equivUsd;
                 return (
-                  <div key={oferentes[c].id} style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "flex-end", justifyContent: "center", gap: 2, padding: "0 14px", minWidth: 0 }}>
-                    {mejor && <span title="Menor total entre ofertas completas" style={{ position: "absolute", left: 12, top: 22, width: 6, height: 6, borderRadius: 999, background: "var(--ido-accent)" }} />}
+                  <div key={oferentes[c].id} data-tot={oferentes[c].id} style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "flex-end", justifyContent: "center", gap: 2, padding: "0 14px", minWidth: 0 }}>
                     <div className="flex items-baseline gap-1" style={{ minWidth: 0 }}>
+                      {/* Punto de «mejor total» en línea, con su propio espacio: absoluto
+                          se montaba sobre el primer dígito de los montos largos. */}
+                      {mejor && <span title="Menor total entre ofertas completas" style={{ alignSelf: "center", width: 6, height: 6, marginRight: 4, borderRadius: 999, background: "var(--ido-accent)", flex: "none" }} />}
                       <span className="ido-mono" style={{ fontSize: 14, fontWeight: 600, color: parcial ? "var(--ido-text-2)" : "var(--ido-text)", whiteSpace: "nowrap" }}>{t.sum == null ? "—" : fmt(t.sum)}</span>
                       <span className="ido-mono" style={{ fontSize: 10, fontWeight: 500, color: "var(--ido-placeholder)" }}>{t.cur}</span>
                     </div>
-                    <span title={lineTip || undefined} className={lineMono ? "ido-mono" : undefined} style={{ fontSize: 11, color: lineColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", minHeight: 15 }}>{line}</span>
+                    <span data-line title={lineTip || undefined} className={lineMono ? "ido-mono" : undefined} style={{ fontSize: 11, color: lineColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", minHeight: 15 }}>{line}</span>
                   </div>
                 );
               })}
@@ -775,6 +882,7 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
           onClose={() => setMenu(null)}
           onCopiar={copiar}
           onPegar={() => { navigator.clipboard?.readText().then(pegarGrilla).catch(() => toast.error("El navegador no dejó leer el portapapeles — usá Ctrl+V")); }}
+          onNoCotiza={() => rangeKeys().forEach((k) => aplicarTexto(k, "-"))}
           onMoneda={(d) => setCurKeys(rangeKeys(), d)}
           onBorrar={() => aplicarTexto(menu.key, "")}
         />,
@@ -826,20 +934,22 @@ function Vacio({ children }: { children: React.ReactNode }) {
 }
 
 function FilaItem({
-  item, renglonNumero, cols, stickyShadow, children,
+  item, renglonNumero, renglonLabel, cols, stickyShadow, children,
 }: {
-  item: Item; renglonNumero: number; cols: string; stickyShadow: string; children: React.ReactNode;
+  item: Item; renglonNumero: number; renglonLabel?: string; cols: string; stickyShadow: string; children: React.ReactNode;
 }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: cols, height: ROW_H, borderBottom: "1px solid var(--ido-row-line)" }}>
+    <div style={{ display: "grid", gridTemplateColumns: cols, height: renglonLabel ? ROW_H_SOLO : ROW_H, borderBottom: "1px solid var(--ido-row-line)" }}>
       <div
         title={item.descripcion ?? undefined}
         style={{ position: "sticky", left: 0, zIndex: 2, background: "var(--ido-panel)", display: "flex", alignItems: "center", gap: 10, padding: "0 16px", minWidth: 0, borderRight: "1px solid var(--ido-border-strong)", boxShadow: stickyShadow, transition: "box-shadow 140ms var(--ido-ease)" }}
       >
-        <span className="ido-mono" style={{ fontSize: 11, color: "var(--ido-placeholder)", width: 26, flex: "none", alignSelf: "flex-start", paddingTop: 8 }}>
+        <span className="ido-mono" style={{ fontSize: 11, color: "var(--ido-placeholder)", width: 26, flex: "none", alignSelf: "flex-start", paddingTop: renglonLabel ? 20 : 8 }}>
           {renglonNumero}.{item.numero_item}
         </span>
         <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+          {/* Renglón de un solo ítem: su nombre va acá, arriba de la matrícula. */}
+          {renglonLabel && <span className="ido-of-ren-label" title={renglonLabel}>{renglonLabel}</span>}
           <div className="flex items-center gap-2" style={{ lineHeight: "14px" }}>
             {item.matricula && <span className="ido-mono" style={{ fontSize: 11, color: "var(--ido-accent)", whiteSpace: "nowrap", flex: "none" }}>{item.matricula}</span>}
             <span style={{ fontSize: 11, color: "var(--ido-text-2)", whiteSpace: "nowrap", flex: "none" }}>Cant. {nf(0).format(Number(item.cantidad || 0))}</span>
@@ -853,10 +963,10 @@ function FilaItem({
 }
 
 function MenuCelda({
-  x, y, nSel, onClose, onCopiar, onPegar, onMoneda, onBorrar,
+  x, y, nSel, onClose, onCopiar, onPegar, onNoCotiza, onMoneda, onBorrar,
 }: {
   x: number; y: number; nSel: number; onClose: () => void;
-  onCopiar: () => void; onPegar: () => void; onMoneda: (d: Divisa) => void; onBorrar: () => void;
+  onCopiar: () => void; onPegar: () => void; onNoCotiza: () => void; onMoneda: (d: Divisa) => void; onBorrar: () => void;
 }) {
   const it = (label: string, Icon: typeof Copy, kbd: string, run: () => void) => (
     <button type="button" className="ido-pop-item" onMouseDown={(e) => { e.preventDefault(); onClose(); run(); }}>
@@ -873,6 +983,7 @@ function MenuCelda({
       {it("Copiar", Copy, "Ctrl C", onCopiar)}
       {it("Pegar", Clipboard, "Ctrl V", onPegar)}
       <div className="ido-pop-sep" />
+      {it("Marcar No cotiza", Ban, nSel > 1 ? veces : "-", onNoCotiza)}
       {it("Cambiar moneda a USD", ArrowLeftRight, veces, () => onMoneda("USD"))}
       {it("Cambiar moneda a ARS", ArrowLeftRight, veces, () => onMoneda("ARS"))}
       <div className="ido-pop-sep" />

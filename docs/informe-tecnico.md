@@ -70,15 +70,27 @@ InformeTecnicoSection (export)
 │   ├── Moneda por defecto por oferente (chip en su encabezado, solo celdas nuevas) →
 │   │   `licitacion_oferentes.divisa_default` (supabase/informe_tecnico_divisa_default.sql).
 │   │   «Cambiar todas las divisas» cambia los defaults y todas las celdas.
-│   ├── Cobertura por renglón y oferente: Completo / Parcial (clic = primera pendiente) / Sin ofertar
+│   ├── ESTADO ÚNICO POR CELDA (`estadoDe`): pendiente (punto ámbar) · no cotiza («No cotiza»
+│   │   11px itálica terciaria, sin punto) · cargado. Todo lo demás — contador del encabezado,
+│   │   progreso, chip de cobertura, totales — se DERIVA de esos estados; nada se guarda aparte.
+│   │   «-» (tecla o pegado) o clic derecho → «Marcar No cotiza» (también en rango).
+│   ├── Cobertura por renglón y oferente (solo renglones de 2+ ítems): Completo · Parcial ·
+│   │   Pendiente 0/N (todo pendiente) · Sin ofertar (todo No cotiza). Clic = primera pendiente.
+│   ├── Renglón de UN solo ítem: sin fila de grupo; «Renglón N · condición» va en la celda del
+│   │   ítem, arriba de la matrícula (10px, verde 70%). Fila de 64px.
+│   ├── Encabezado de oferente en 2 líneas: avatar + nombre 13/600 (hasta 2 renglones, tooltip)
+│   │   / contador de ítems cargados + chip de moneda con «Por defecto» debajo. Ancho mínimo
+│   │   170px, y más si el nombre no entra completo en 2 líneas (`anchoParaNombre`, canvas).
+│   ├── Valores de celda peso 400; totales 600. Textos de totales cortos para no truncar:
+│   │   «Faltan N ítems» · «N ítems no cotiza» · «Incluye USD/ARS convertido» · «Sin Dólar SIC»
+│   │   · «+N % vs mejor».
 │   ├── Totales: Σ precio × cantidad en la moneda por defecto del oferente; punto verde =
 │   │   menor total entre ofertas completas; «Parcial, faltan N» / «Incluye montos en X
 │   │   convertidos» / «+N % vs mejor».
 │   ├── Pie: Dólar SIC de Datos generales, SOLO LECTURA (mismo que usa Adjudicación).
 │   ├── Guardado automático por celda (upsertOferta / deleteOferta), ✓ verde 1.5s.
-│   └── Confirmado con el usuario: SIN «No cotiza» (precio_unitario es NOT NULL; celda
-│       vacía = no ofertó) y SIN las ayudas automáticas del diseño (punto verde por ítem,
-│       triángulo de fuera de rango, tooltip cantidad × precio).
+│   └── Confirmado con el usuario: SIN las ayudas automáticas del diseño (punto verde por
+│       ítem, triángulo de fuera de rango, tooltip cantidad × precio).
 │
 ├── EvaluacionTab
 │   ├── Tabla: filas=renglones, columnas=oferentes
@@ -173,6 +185,10 @@ licitacion_ofertas(id uuid PK, oferente_id uuid FK, item_id uuid FK,
   precio_unitario numeric, divisa text, UNIQUE(oferente_id, item_id))
 -- licitacion_oferentes.divisa_default text ('USD'|'ARS', default 'ARS') — moneda de las
 -- celdas nuevas en Ofertas; ver supabase/informe_tecnico_divisa_default.sql
+-- licitacion_ofertas.no_cotiza boolean + precio_unitario NULLABLE + CHECK
+--   (no_cotiza AND precio IS NULL) OR (NOT no_cotiza AND precio IS NOT NULL)
+--   → supabase/informe_tecnico_no_cotiza.sql. Adjudicación y Evaluación usan solo las
+--   ofertas con precio (`ofertaConPrecio`): «No cotiza» = ítem sin oferta.
 
 -- Evaluación y adjudicación
 licitacion_evaluaciones_tecnicas(id uuid PK, oferente_id uuid FK, renglon_id uuid FK,

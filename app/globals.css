@@ -1821,7 +1821,48 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
 .ido-of-cov.is-ok { background: rgba(63, 207, 142, 0.12); color: var(--ido-accent); }
 .ido-of-cov.is-part { background: rgba(245, 165, 36, 0.12); color: var(--ido-warning); }
 .ido-of-cov.is-none { background: rgba(122, 130, 139, 0.12); color: var(--ido-text-2); }
-.ido-of-cov.is-part:hover, .ido-of-cov.is-none:hover { filter: brightness(1.15); }
+.ido-of-cov.is-pend { background: rgba(245, 165, 36, 0.12); color: var(--ido-warning); }
+.ido-of-cov.is-part:hover, .ido-of-cov.is-pend:hover, .ido-of-cov.is-none:hover { filter: brightness(1.15); }
+/* Encabezado de oferente en dos líneas: avatar + nombre (hasta 2 renglones) /
+   contador + chip de moneda con «Por defecto» debajo. */
+.ido-of-head {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 14px 8px;
+}
+.ido-of-head-name {
+  min-width: 0;
+  padding-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--ido-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+/* Celda «No cotiza»: 11px itálica terciaria, sin punto ámbar. */
+.ido-of-nc {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--ido-placeholder);
+  white-space: nowrap;
+}
+/* Nombre del renglón dentro de la celda del ítem (renglones de un solo ítem). */
+.ido-of-ren-label {
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--ido-accent) 70%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* Menús de la grilla (contextual 216px, moneda 80px): §4.5, escala + fade. */
 .ido-of-menu {
   position: fixed;

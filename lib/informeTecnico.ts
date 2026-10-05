@@ -52,13 +52,27 @@ export interface Oferente {
 
 export type Divisa = "USD" | "ARS";
 
+/**
+ * Una celda de la grilla de Ofertas (oferente × ítem) tiene TRES estados:
+ *   • pendiente  → no hay fila;
+ *   • cargado    → fila con `precio_unitario` y `no_cotiza = false`;
+ *   • no cotiza  → fila con `no_cotiza = true` y `precio_unitario` NULL.
+ * La base impide mezclar los dos últimos (CHECK de
+ * supabase/informe_tecnico_no_cotiza.sql). Sin ese script `no_cotiza` no viene
+ * y todo lo que hay es «cargado».
+ */
 export interface Oferta {
   id: string;
   oferente_id: string;
   item_id: string;
-  precio_unitario: number;
+  precio_unitario: number | null;
   divisa: Divisa;
+  no_cotiza?: boolean;
 }
+
+/** Oferta con precio (estado «cargado»): la única que cuenta para comparar y adjudicar. */
+export const ofertaConPrecio = (o: Oferta): o is Oferta & { precio_unitario: number } =>
+  !o.no_cotiza && o.precio_unitario != null;
 
 export interface EvaluacionTecnica {
   id: string;
@@ -341,18 +355,31 @@ export async function listOfertas(licitacionId: string): Promise<Oferta[]> {
   return (data ?? []) as Oferta[];
 }
 
+/**
+ * Guarda una celda. `no_cotiza: true` va con `precio_unitario: null`. Si
+ * `no_cotiza` viene `undefined` no se manda: así guardar un precio sigue
+ * funcionando aunque todavía no se haya corrido el SQL de «No cotiza».
+ */
 export async function upsertOferta(input: {
   oferente_id: string;
   item_id: string;
-  precio_unitario: number;
+  precio_unitario: number | null;
   divisa: Divisa;
+  no_cotiza?: boolean;
 }): Promise<Oferta> {
+  const payload: Record<string, unknown> = { ...input };
+  if (input.no_cotiza === undefined) delete payload.no_cotiza;
   const { data, error } = await supabase
     .from("licitacion_ofertas")
-    .upsert(input, { onConflict: "oferente_id,item_id" })
+    .upsert(payload, { onConflict: "oferente_id,item_id" })
     .select("*")
     .single();
-  if (error) throw error;
+  if (error) {
+    if (/no_cotiza|precio_unitario.*null|null value in column "precio_unitario"/i.test(error.message)) {
+      throw new Error("Falta correr supabase/informe_tecnico_no_cotiza.sql en Supabase.");
+    }
+    throw error;
+  }
   return data as Oferta;
 }
 

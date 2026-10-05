@@ -22,8 +22,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { loadTableLayout, saveTableLayout } from "@/lib/tableLayout";
 import {
   listRenglonesConItems, listOferentes, listOfertas, listEvaluaciones, listAdjudicaciones,
-  upsertAdjudicacion, deleteAdjudicacion,
-  type Licitacion, type RenglonConItems, type Oferente, type Divisa,
+  upsertAdjudicacion, deleteAdjudicacion, ofertaConPrecio,
+  type Licitacion, type RenglonConItems, type Oferente, type Divisa, type Oferta,
   type EvaluacionTecnica, type Adjudicacion,
 } from "@/lib/informeTecnico";
 
@@ -269,11 +269,13 @@ export function AdjudicacionTab({ licitacion, prefs }: { licitacion: Licitacion;
       listEvaluaciones(licitacionId),
       listAdjudicaciones(licitacionId),
     ])
-      .then(([rens, offs, oftas, evs, adjs]: [RenglonConItems[], Oferente[], { id: string; oferente_id: string; item_id: string; precio_unitario: number; divisa: Divisa }[], EvaluacionTecnica[], Adjudicacion[]]) => {
+      .then(([rens, offs, oftas, evs, adjs]: [RenglonConItems[], Oferente[], Oferta[], EvaluacionTecnica[], Adjudicacion[]]) => {
         setRenglones(rens);
         setOferentes(offs);
+        // Solo las celdas con precio: una «No cotiza» cuenta como ítem sin
+        // oferta (el renglón queda con cobertura parcial y no compite).
         const om = new Map<string, { precio: number; divisa: Divisa }>();
-        for (const o of oftas) om.set(`${o.item_id}|${o.oferente_id}`, { precio: o.precio_unitario, divisa: o.divisa });
+        for (const o of oftas) if (ofertaConPrecio(o)) om.set(`${o.item_id}|${o.oferente_id}`, { precio: o.precio_unitario, divisa: o.divisa });
         setOfertasMap(om);
         const em = new Map<string, { cumple: boolean | null }>();
         for (const ev of evs) em.set(`${ev.renglon_id}|${ev.oferente_id}`, { cumple: ev.cumple });
