@@ -71,16 +71,17 @@ InformeTecnicoSection (export)
 │   │   `licitacion_oferentes.divisa_default` (supabase/informe_tecnico_divisa_default.sql).
 │   │   «Cambiar todas las divisas» cambia los defaults y todas las celdas.
 │   ├── ESTADO ÚNICO POR CELDA (`estadoDe`): pendiente (punto ámbar) · no cotiza («No cotiza»
-│   │   11px itálica terciaria, sin punto) · cargado. Todo lo demás — contador del encabezado,
-│   │   progreso, chip de cobertura, totales — se DERIVA de esos estados; nada se guarda aparte.
+│   │   11px itálica terciaria, sin punto) · cargado. Todo lo demás — progreso, chip de
+│   │   cobertura, totales — se DERIVA de esos estados; nada se guarda aparte.
 │   │   «-» (tecla o pegado) o clic derecho → «Marcar No cotiza» (también en rango).
 │   ├── Cobertura por renglón y oferente (solo renglones de 2+ ítems): Completo · Parcial ·
 │   │   Pendiente 0/N (todo pendiente) · Sin ofertar (todo No cotiza). Clic = primera pendiente.
 │   ├── Renglón de UN solo ítem: sin fila de grupo; «Renglón N · condición» va en la celda del
-│   │   ítem, arriba de la matrícula (10px, verde 70%). Fila de 64px.
-│   ├── Encabezado de oferente en 2 líneas: avatar + nombre 13/600 (hasta 2 renglones, tooltip)
-│   │   / contador de ítems cargados + chip de moneda con «Por defecto» debajo. Ancho mínimo
-│   │   170px, y más si el nombre no entra completo en 2 líneas (`anchoParaNombre`, canvas).
+│   │   ítem, arriba de la matrícula (10px, verde 70%). Fila de 76px.
+│   ├── Encabezado de oferente en UNA fila de 56px: avatar + nombre 13/600 (hasta 2 renglones,
+│   │   tooltip) + chip de moneda por defecto al lado. Sin contador n/M ni texto «Por defecto»
+│   │   (lo dice el tooltip del chip). Ancho mínimo 170px, y más si el nombre no entra completo
+│   │   en 2 líneas al lado del chip (`anchoParaNombre`, canvas).
 │   ├── Valores de celda peso 400; totales 600. Textos de totales cortos para no truncar:
 │   │   «Faltan N ítems» · «N ítems no cotiza» · «Incluye USD/ARS convertido» · «Sin Dólar SIC»
 │   │   · «+N % vs mejor».

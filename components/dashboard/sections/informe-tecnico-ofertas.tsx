@@ -73,13 +73,19 @@ interface Pos { item: string; c: number }
 // Columna Ítem: 280px del diseño, pero se achica hasta ITEM_MIN si así la
 // tabla entra entera sin scroll horizontal (§4.17). Con 7 oferentes a 170px
 // sobraban ~15px y la grilla scrolleaba: la primera columna de oferente
-// quedaba tapada por la columna fija.
+// quedaba tapada por la columna fija. El piso sube lo necesario para que la
+// etiqueta de renglón más larga («Renglón N · condición») no se corte.
 const ITEM_W = 280;
-const ITEM_MIN = 220;
+const ITEM_MIN = 200;
+// Lo que ocupa la celda del ítem además del texto: padding 16+16, número 26,
+// gap 10 y el borde derecho.
+const ITEM_EXTRA = 16 + 16 + 26 + 10 + 1;
+const etiquetaRenglon = (r: RenglonConItems) =>
+  `Renglón ${r.numero}${r.condicion_adjudicacion ? ` · ${r.condicion_adjudicacion}` : ""}`;
 const COL_MIN = 170;
-// Encabezado de oferente en dos líneas: nombre (hasta 2 renglones) y debajo
-// contador + chip de moneda con «Por defecto».
-const HEAD_H = 84;
+// Encabezado de oferente en una fila: avatar + nombre (hasta 2 renglones) +
+// chip de moneda por defecto al lado.
+const HEAD_H = 56;
 const GROUP_H = 36;
 const ROW_H = 52;
 // Ítem de un renglón de UN solo ítem: lleva el nombre del renglón arriba de la
@@ -87,8 +93,9 @@ const ROW_H = 52;
 // (con 64 quedaba pegado a los bordes).
 const ROW_H_SOLO = 76;
 const FOOT_H = 64;
-// Lo que ocupa la columna además del nombre: padding 14+14, avatar 24, gap 8.
-const HEAD_EXTRA = 14 + 14 + 24 + 8;
+// Lo que ocupa la columna además del nombre: padding 12+12, avatar 24, chip de
+// moneda ~40 y los dos gaps de 8.
+const HEAD_EXTRA = 12 + 12 + 24 + 40 + 8 + 8;
 const COL_MAX = 320;
 
 /**
@@ -206,6 +213,18 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
     return oferentes.map((o) => anchoParaNombre(ctx, o.nombre));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [oferentes, fuentesListas]);
+  // Piso de la columna Ítem: la etiqueta de renglón más larga (solo la llevan
+  // los renglones de un ítem) tiene que entrar entera.
+  const itemMin = useMemo(() => {
+    const solos = renglones.filter((r) => r.items.length === 1);
+    if (!solos.length || typeof document === "undefined") return ITEM_MIN;
+    const ctx = document.createElement("canvas").getContext("2d");
+    if (!ctx) return ITEM_W;
+    ctx.font = sansFont(10, 500);
+    const max = Math.max(...solos.map((r) => ctx.measureText(etiquetaRenglon(r)).width));
+    return Math.min(ITEM_W, Math.max(ITEM_MIN, Math.ceil(max + ITEM_EXTRA + 2)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renglones, fuentesListas]);
 
   // Ancho útil de la grilla (sin la barra de scroll vertical) → ancho de la
   // columna Ítem.
@@ -223,7 +242,7 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
   // Solo se achica si ASÍ entra todo; si igual va a haber scroll horizontal,
   // achicarla no gana nada y corta texto: queda en 280.
   const libre = anchoGrid == null ? null : anchoGrid - sumaOferentes;
-  const itemW = libre != null && libre >= ITEM_MIN && libre < ITEM_W ? libre : ITEM_W;
+  const itemW = libre != null && libre >= itemMin && libre < ITEM_W ? libre : ITEM_W;
 
   const rangeKeys = useCallback((): string[] => {
     if (!range) return activeKey ? [activeKey] : [];
@@ -570,7 +589,6 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
   // ── Datos para pintar ──
   // Todo sale de los estados de celda.
   const totalCells = items.length * oferentes.length;
-  const cargadasPorOf = oferentes.map((o) => items.filter((it) => estadoDe(vals.get(K(it.id, o.id))) === "cargado").length);
   const resueltasPorOf = oferentes.map((o) => items.filter((it) => estadoDe(vals.get(K(it.id, o.id))) !== "pendiente").length);
   const doneCells = resueltasPorOf.reduce((a, n) => a + n, 0);
   const cols = `${itemW}px ${anchosCol.map((w) => `minmax(${w}px, 1fr)`).join(" ")}`;
@@ -659,44 +677,33 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
             <div style={{ position: "sticky", top: 0, zIndex: 4, display: "grid", gridTemplateColumns: cols, background: "var(--ido-header)", borderBottom: "1px solid var(--ido-border-strong)" }}>
               <div style={{ position: "sticky", left: 0, zIndex: 5, background: "var(--ido-header)", padding: "0 16px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 2, height: HEAD_H, borderRight: "1px solid var(--ido-border-strong)", boxShadow: stickyShadow, transition: "box-shadow 140ms var(--ido-ease)" }}>
                 <span className="ido-of-th">Ítem</span>
-                <span style={{ fontSize: 11, color: "var(--ido-placeholder)", whiteSpace: "nowrap" }}>
+                <span title={`${items.length} ítems · ${renglones.length} renglones · Precios unitarios`} style={{ fontSize: 11, color: "var(--ido-placeholder)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {items.length} ítems · {renglones.length} renglones · Precios unitarios
                 </span>
               </div>
               {oferentes.map((o, c) => {
-                const n = cargadasPorOf[c], completo = n === items.length, def = defaultOf(o.id);
+                const def = defaultOf(o.id);
                 return (
-                  // Dos líneas: (1) avatar + nombre completo, hasta 2 renglones
-                  // antes de truncar; (2) contador de ítems cargados a la
-                  // izquierda y chip de moneda a la derecha con «Por defecto».
+                  // Una fila: avatar + nombre completo (hasta 2 renglones antes
+                  // de truncar) + chip de moneda por defecto al lado.
                   <div key={o.id} className="ido-of-head" style={{ height: HEAD_H }}>
-                    <div className="flex items-start" style={{ gap: 8, minWidth: 0 }}>
-                      <Avatar nombre={o.nombre} size={24} />
-                      <span title={o.nombre} className="ido-of-head-name">{o.nombre}</span>
-                    </div>
-                    <div className="flex items-start" style={{ gap: 8, minWidth: 0 }}>
-                      <span className="ido-mono" title={`${n} de ${items.length} ítems cargados`} style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 18, fontSize: 11, color: completo ? "var(--ido-accent)" : "var(--ido-text-2)", transition: "color 200ms var(--ido-ease)", whiteSpace: "nowrap" }}>
-                        {completo && <Check className="w-3 h-3" strokeWidth={2.5} />}{n}/{items.length}
-                      </span>
-                      <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-                        <button
-                          type="button"
-                          data-of-menu="1"
-                          className={`ido-of-cur is-head${defMenu?.ofId === o.id ? " is-open" : ""}`}
-                          title="Moneda por defecto — solo para celdas nuevas de este oferente"
-                          onMouseDown={(e) => {
-                            e.preventDefault(); e.stopPropagation();
-                            if (defMenu?.ofId === o.id) { setDefMenu(null); return; }
-                            const r = e.currentTarget.getBoundingClientRect();
-                            setMenu(null); setCurMenu(null);
-                            setDefMenu({ ofId: o.id, x: r.right - 132, y: r.bottom + 4 });
-                          }}
-                        >
-                          {def}<ChevronDown className="w-2 h-2" strokeWidth={3} />
-                        </button>
-                        <span style={{ fontSize: 10, lineHeight: "12px", color: "var(--ido-placeholder)", whiteSpace: "nowrap" }}>Por defecto</span>
-                      </div>
-                    </div>
+                    <Avatar nombre={o.nombre} size={24} />
+                    <span title={o.nombre} className="ido-of-head-name">{o.nombre}</span>
+                    <button
+                      type="button"
+                      data-of-menu="1"
+                      className={`ido-of-cur is-head${defMenu?.ofId === o.id ? " is-open" : ""}`}
+                      title="Moneda por defecto — solo para celdas nuevas de este oferente"
+                      onMouseDown={(e) => {
+                        e.preventDefault(); e.stopPropagation();
+                        if (defMenu?.ofId === o.id) { setDefMenu(null); return; }
+                        const r = e.currentTarget.getBoundingClientRect();
+                        setMenu(null); setCurMenu(null);
+                        setDefMenu({ ofId: o.id, x: r.right - 132, y: r.bottom + 4 });
+                      }}
+                    >
+                      {def}<ChevronDown className="w-2 h-2" strokeWidth={3} />
+                    </button>
                   </div>
                 );
               })}
@@ -762,7 +769,7 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
                           key={it.id}
                           item={it}
                           renglonNumero={r.numero}
-                          renglonLabel={solo ? `Renglón ${r.numero}${r.condicion_adjudicacion ? ` · ${r.condicion_adjudicacion}` : ""}` : undefined}
+                          renglonLabel={solo ? etiquetaRenglon(r) : undefined}
                           cols={cols}
                           stickyShadow={stickyShadow}
                         >

@@ -1827,15 +1827,14 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
    contador + chip de moneda con «Por defecto» debajo. */
 .ido-of-head {
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
-  padding: 10px 14px 8px;
+  padding: 0 12px;
 }
 .ido-of-head-name {
+  flex: 1;
   min-width: 0;
-  padding-top: 4px;
   font-size: 13px;
   font-weight: 600;
   line-height: 16px;
