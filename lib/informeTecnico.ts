@@ -44,6 +44,10 @@ export interface Oferente {
   id: string;
   licitacion_id: string;
   nombre: string;
+  /** Moneda con la que arranca una celda nueva de la grilla de Ofertas (y la
+   *  del total de su oferta). Columna de supabase/informe_tecnico_divisa_default.sql:
+   *  si todavía no se corrió, no viene y se toma ARS. */
+  divisa_default?: Divisa;
 }
 
 export type Divisa = "USD" | "ARS";
@@ -283,6 +287,21 @@ export async function createOferente(input: {
     .single();
   if (error) throw error;
   return data as Oferente;
+}
+
+/** Cambia la moneda por defecto de uno o varios oferentes. */
+export async function updateOferentesDivisa(ids: string[], divisa: Divisa): Promise<void> {
+  if (!ids.length) return;
+  const { error } = await supabase
+    .from("licitacion_oferentes")
+    .update({ divisa_default: divisa })
+    .in("id", ids);
+  if (error) {
+    if (/divisa_default/.test(error.message)) {
+      throw new Error("Falta correr supabase/informe_tecnico_divisa_default.sql en Supabase.");
+    }
+    throw error;
+  }
 }
 
 export async function deleteOferente(id: string): Promise<void> {

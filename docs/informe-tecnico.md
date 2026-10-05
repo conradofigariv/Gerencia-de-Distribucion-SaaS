@@ -56,12 +56,29 @@ InformeTecnicoSection (export)
 ├── OferentesTab
 │   └── Lista simple: agregar/eliminar oferentes por nombre
 │
-├── OfertasTab
-│   ├── Tabla: filas=ítems (agrupados por renglón), columnas=oferentes
-│   ├── Cada celda: input precio + DivisaPicker custom
-│   ├── Guardado automático al salir de cada celda (onBlur → upsertOferta)
-│   ├── Botones "Cambiar todas las divisas: [USD] [ARS]"
-│   └── Contador de celdas completadas
+├── OfertasTab  →  informe-tecnico-ofertas.tsx (archivo aparte)
+│   ├── Sistema de diseño IDO, pantalla «Carga de ofertas» del Design (design-system.md §4.23)
+│   ├── Grilla CSS (no <table>): columna Ítem fija a la izquierda, encabezado fijo arriba,
+│   │   renglones plegables fijos bajo el encabezado, fila de totales fija abajo.
+│   │   Alto ajustado a la ventana (como el Buscador). Contenedor con `.ido-terminal`.
+│   ├── Planilla: clic o escribir edita · Enter baja · Tab avanza · flechas · Esc cancela ·
+│   │   F2/Enter edita · ⌫ borra · Ctrl+C copia · pegar TSV de Excel completa abajo/derecha ·
+│   │   ⇧ clic / ⇧ flechas = rango. Formato es-AR (1.234,56) o 1234.56; texto que no se
+│   │   entiende queda en rojo SIN guardar.
+│   ├── Moneda POR CELDA: sufijo → chip con menú (80px) · tecla M alterna · clic derecho
+│   │   (Copiar / Pegar / Cambiar moneda a USD|ARS en el rango / Borrar valor).
+│   ├── Moneda por defecto por oferente (chip en su encabezado, solo celdas nuevas) →
+│   │   `licitacion_oferentes.divisa_default` (supabase/informe_tecnico_divisa_default.sql).
+│   │   «Cambiar todas las divisas» cambia los defaults y todas las celdas.
+│   ├── Cobertura por renglón y oferente: Completo / Parcial (clic = primera pendiente) / Sin ofertar
+│   ├── Totales: Σ precio × cantidad en la moneda por defecto del oferente; punto verde =
+│   │   menor total entre ofertas completas; «Parcial, faltan N» / «Incluye montos en X
+│   │   convertidos» / «+N % vs mejor».
+│   ├── Pie: Dólar SIC de Datos generales, SOLO LECTURA (mismo que usa Adjudicación).
+│   ├── Guardado automático por celda (upsertOferta / deleteOferta), ✓ verde 1.5s.
+│   └── Confirmado con el usuario: SIN «No cotiza» (precio_unitario es NOT NULL; celda
+│       vacía = no ofertó) y SIN las ayudas automáticas del diseño (punto verde por ítem,
+│       triángulo de fuera de rango, tooltip cantidad × precio).
 │
 ├── EvaluacionTab
 │   ├── Tabla: filas=renglones, columnas=oferentes
@@ -123,7 +140,7 @@ calcPct = (total ofertado ARS / SIC total ARS − 1) × 100   // sobre TOTALES (
 DivisaPicker({ value, onChange, size })
 // Dropdown custom (no <select> nativo) para elegir ARS/USD
 // Cierra al hacer click afuera via mousedown listener
-// size="sm" para tabla de Ofertas, size="md" para ItemModal
+// size="md" para ItemModal (la grilla de Ofertas ya no lo usa: moneda por celda con chip)
 
 ItemModal({ mode, renglonNumero, initialNumero, ..., onSubmit })
 // Modal para crear/editar ítems
@@ -154,6 +171,8 @@ licitacion_items(id uuid PK, renglon_id uuid FK, numero_item int, matricula text
 licitacion_oferentes(id uuid PK, licitacion_id uuid FK, nombre text)
 licitacion_ofertas(id uuid PK, oferente_id uuid FK, item_id uuid FK,
   precio_unitario numeric, divisa text, UNIQUE(oferente_id, item_id))
+-- licitacion_oferentes.divisa_default text ('USD'|'ARS', default 'ARS') — moneda de las
+-- celdas nuevas en Ofertas; ver supabase/informe_tecnico_divisa_default.sql
 
 -- Evaluación y adjudicación
 licitacion_evaluaciones_tecnicas(id uuid PK, oferente_id uuid FK, renglon_id uuid FK,

@@ -103,7 +103,7 @@ function initialsOf(nombre: string): string {
   const w = nombre.replace(/[.]/g, "").split(/\s+/).filter(Boolean);
   return ((w[0]?.[0] ?? "") + (w[1]?.[0] ?? "")).toUpperCase();
 }
-function Avatar({ nombre, size }: { nombre: string; size: number }) {
+export function Avatar({ nombre, size }: { nombre: string; size: number }) {
   const c = avatarColor(nombre);
   return (
     <span

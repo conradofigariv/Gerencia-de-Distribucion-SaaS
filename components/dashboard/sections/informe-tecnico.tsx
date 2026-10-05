@@ -22,8 +22,6 @@ import {
   createOferente,
   deleteOferente,
   listOfertas,
-  upsertOferta,
-  deleteOferta,
   listEvaluaciones,
   upsertEvaluacion,
   type Licitacion,
@@ -39,6 +37,7 @@ import { toast } from "sonner";
 import { FloatingInput, SearchInput } from "@/components/ui/floating-input";
 import { DirectionAwareTabs } from "@/components/ui/direction-aware-tabs";
 import { AdjudicacionTab, AdjudicacionControls, useAdjudicacionPrefs } from "@/components/dashboard/sections/informe-tecnico-adjudicacion";
+import { OfertasTab } from "@/components/dashboard/sections/informe-tecnico-ofertas";
 
 type WizardTab = "datos" | "renglones" | "oferentes" | "ofertas" | "evaluacion" | "adjudicacion";
 
@@ -209,13 +208,13 @@ export function InformeTecnicoSection() {
           })}
         >
           {/* Content card */}
-          {/* Adjudicación está en el sistema de diseño IDO (§10): su contenedor
-              toma el fondo bg.base del sistema en vez del panel "beast pure",
-              si no las tarjetas oscuras quedaban sobre un gris que no es el suyo.
-              `.ido-terminal` acá define los tokens --ido-* para este mismo nodo. */}
+          {/* Ofertas y Adjudicación están en el sistema de diseño IDO: su
+              contenedor toma el fondo bg.base del sistema en vez del panel
+              "beast pure", si no las superficies oscuras quedaban sobre un gris
+              que no es el suyo. `.ido-terminal` acá define los tokens --ido-*. */}
           <div
-            className={`px-4 py-4 sm:px-6 overflow-hidden${tab === "adjudicacion" ? " ido-terminal" : ""}`}
-            style={tab === "adjudicacion" ? {
+            className={`px-4 py-4 sm:px-6 overflow-hidden${tab === "adjudicacion" || tab === "ofertas" ? " ido-terminal" : ""}`}
+            style={tab === "adjudicacion" || tab === "ofertas" ? {
               background: "var(--ido-base)",
               border: "1px solid var(--ido-border)",
               borderRadius: 14,
@@ -255,14 +254,7 @@ export function InformeTecnicoSection() {
             ) : tab === "oferentes" ? (
               <OferentesTab licitacionId={selected.id} />
             ) : tab === "ofertas" ? (
-              <OfertasTab
-                licitacion={selected}
-                onUpdated={(updated) => {
-                  setLicitaciones((prev) =>
-                    prev.map((l) => (l.id === updated.id ? updated : l)),
-                  );
-                }}
-              />
+              <OfertasTab licitacion={selected} />
             ) : tab === "evaluacion" ? (
               <EvaluacionTab licitacionId={selected.id} />
             ) : tab === "adjudicacion" ? (
@@ -2246,303 +2238,6 @@ function DivisaPicker({ value, onChange, size = "md" }: { value: Divisa; onChang
   );
 }
 
-// ─── Tab: Ofertas ─────────────────────────────────────────────────────
-
-function OfertasTab({
-  licitacion,
-  onUpdated,
-}: {
-  licitacion: Licitacion;
-  onUpdated: (l: Licitacion) => void;
-}) {
-  const licitacionId = licitacion.id;
-  const [loading, setLoading] = useState(true);
-  const [renglones, setRenglones] = useState<RenglonConItems[]>([]);
-  const [oferentes, setOferentes] = useState<Oferente[]>([]);
-  const [cells, setCells] = useState<Map<string, { precio: string; divisa: Divisa }>>(new Map());
-  const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    setLoading(true);
-    Promise.all([
-      listRenglonesConItems(licitacionId),
-      listOferentes(licitacionId),
-      listOfertas(licitacionId),
-    ])
-      .then(([rens, offs, oftas]) => {
-        setRenglones(rens);
-        setOferentes(offs);
-        const map = new Map<string, { precio: string; divisa: Divisa }>();
-        for (const o of oftas) {
-          map.set(`${o.item_id}|${o.oferente_id}`, {
-            precio: o.precio_unitario.toString(),
-            divisa: o.divisa,
-          });
-        }
-        setCells(map);
-      })
-      .catch((e) => { console.error(e); toast.error("No se pudieron cargar las ofertas"); })
-      .finally(() => setLoading(false));
-  }, [licitacionId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const setAllDivisas = async (divisa: Divisa) => {
-    const allItems = renglones.flatMap((r) => r.items);
-    const updates: Promise<unknown>[] = [];
-    setCells((prev) => {
-      const next = new Map(prev);
-      for (const of_ of oferentes) {
-        for (const it of allItems) {
-          const key = `${it.id}|${of_.id}`;
-          const existing = next.get(key);
-          if (existing) {
-            next.set(key, { ...existing, divisa });
-            if (existing.precio.trim()) {
-              updates.push(
-                upsertOferta({ oferente_id: of_.id, item_id: it.id, precio_unitario: parseFloat(existing.precio), divisa })
-                  .catch((e) => console.error(e))
-              );
-            }
-          }
-        }
-      }
-      return next;
-    });
-    await Promise.all(updates);
-    toast.success(`Todas las divisas cambiadas a ${divisa}`);
-  };
-
-  const getCell = (itemId: string, ofId: string) =>
-    cells.get(`${itemId}|${ofId}`) ?? { precio: "", divisa: "ARS" as Divisa };
-
-  const setCell = (itemId: string, ofId: string, patch: Partial<{ precio: string; divisa: Divisa }>) =>
-    setCells((prev) => {
-      const next = new Map(prev);
-      const key = `${itemId}|${ofId}`;
-      next.set(key, { ...(next.get(key) ?? { precio: "", divisa: "ARS" as Divisa }), ...patch });
-      return next;
-    });
-
-  const saveCell = async (itemId: string, ofId: string) => {
-    const key = `${itemId}|${ofId}`;
-    const cell = cells.get(key) ?? { precio: "", divisa: "ARS" as Divisa };
-    const precioStr = cell.precio.trim();
-
-    if (!precioStr) {
-      try { await deleteOferta(ofId, itemId); }
-      catch (e) { console.error(e); }
-      setCells((prev) => { const next = new Map(prev); next.delete(key); return next; });
-      return;
-    }
-
-    const precio = Number(precioStr.replace(",", "."));
-    if (!Number.isFinite(precio) || precio < 0) { toast.error("Precio inválido"); return; }
-
-    setSavingCells((prev) => new Set(prev).add(key));
-    try {
-      await upsertOferta({ oferente_id: ofId, item_id: itemId, precio_unitario: precio, divisa: cell.divisa });
-    } catch (e) { console.error(e); toast.error("No se pudo guardar la oferta"); }
-    finally {
-      setSavingCells((prev) => { const next = new Set(prev); next.delete(key); return next; });
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-        <Loader2 className="w-4 h-4 animate-spin" /> Cargando ofertas...
-      </div>
-    );
-  }
-
-  const totalItems = renglones.reduce((n, r) => n + r.items.length, 0);
-  const totalOfertas = cells.size;
-
-  if (renglones.length === 0) {
-    return (
-      <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
-        No hay renglones cargados. Cargalos en la pestaña <strong>Renglones e Ítems</strong> primero.
-      </div>
-    );
-  }
-
-  if (oferentes.length === 0) {
-    return (
-      <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-muted-foreground">
-        No hay oferentes cargados. Cargalos en la pestaña <strong>Oferentes</strong> primero.
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      <style>{`
-        .oferta-price-input::-webkit-inner-spin-button,
-        .oferta-price-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-        .oferta-price-input { -moz-appearance: textfield; }
-      `}</style>
-
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <p className="text-[14px] text-muted-foreground">
-          Los precios se guardan automáticamente al salir de cada celda.
-        </p>
-        <div className="flex items-center gap-3">
-          <span style={{ fontSize: 12.5, color: "oklch(0.50 0 0)", fontWeight: 500 }}>Cambiar todas las divisas:</span>
-          <button onClick={() => setAllDivisas("USD")}
-            style={{ padding: "5px 14px", borderRadius: 7, border: "1px solid oklch(1 0 0 / 0.10)", background: "oklch(0.20 0.005 270)", color: "var(--accent-green)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-            USD
-          </button>
-          <button onClick={() => setAllDivisas("ARS")}
-            style={{ padding: "5px 14px", borderRadius: 7, border: "1px solid oklch(1 0 0 / 0.10)", background: "oklch(0.20 0.005 270)", color: "oklch(0.85 0 0)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-            ARS
-          </button>
-          <p className="text-[14px] text-muted-foreground tabular-nums">
-            {totalOfertas} / {totalItems * oferentes.length} celdas completadas
-          </p>
-        </div>
-      </div>
-
-      <div className="overflow-auto max-h-[75vh] rounded-lg border border-border -mx-4 sm:-mx-6">
-        <table className="w-full text-[14.5px] border-collapse">
-          <thead>
-            <tr className="bg-secondary/50">
-              <th
-                className="sticky top-0 z-10 text-left py-3.5 px-4 font-medium text-muted-foreground border-r border-b border-border bg-secondary"
-                style={{ minWidth: "320px" }}
-              >
-                Ítem
-              </th>
-              {oferentes.map((of) => (
-                <th
-                  key={of.id}
-                  className="sticky top-0 z-10 py-3.5 px-4 font-semibold text-foreground border-r border-b border-border last:border-r-0 text-center text-[15px] bg-secondary"
-                  style={{ minWidth: "210px" }}
-                >
-                  {of.nombre}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {renglones.flatMap((r) => [
-              <tr key={`reng-${r.id}`} className="bg-secondary/20 border-t border-border">
-                <td colSpan={1 + oferentes.length} className="py-2.5 px-4 font-semibold text-[14.5px]">
-                  <span className="text-accent">Renglón {r.numero}</span>
-                  {r.condicion_adjudicacion && (
-                    <span className="font-normal text-muted-foreground ml-2">{r.condicion_adjudicacion}</span>
-                  )}
-                </td>
-              </tr>,
-              ...r.items.map((item) => (
-                <tr key={item.id} className="border-t border-border hover:bg-secondary/10 transition-colors">
-                  <td className="py-2.5 px-4 border-r border-border align-top">
-                    <div className="flex items-start gap-2.5">
-                      <span className="font-mono text-muted-foreground shrink-0 text-[13px] mt-0.5">
-                        {r.numero}.{item.numero_item}
-                      </span>
-                      <div className="min-w-0">
-                        {item.matricula && (
-                          <div className="font-mono text-accent text-[13px]">{item.matricula}</div>
-                        )}
-                        <div className="text-foreground leading-snug break-words text-[14.5px]">
-                          {item.descripcion || "Sin descripción"}
-                        </div>
-                        <div className="text-muted-foreground text-[13px] mt-0.5">
-                          Cant: {item.cantidad}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  {oferentes.map((of) => {
-                    const key = `${item.id}|${of.id}`;
-                    const cell = getCell(item.id, of.id);
-                    const isSaving = savingCells.has(key);
-                    return (
-                      <td key={of.id} className="py-2 px-2.5 border-r border-border last:border-r-0 align-middle">
-                        <div className="flex items-center gap-1.5 relative">
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={cell.precio}
-                            onChange={(e) => setCell(item.id, of.id, { precio: e.target.value })}
-                            onBlur={() => saveCell(item.id, of.id)}
-                            placeholder="—"
-                            className="oferta-price-input w-full min-w-0 h-9 px-2.5 rounded border text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-ring/20"
-                            style={{ background: "var(--panel-input)", borderColor: "oklch(1 0 0 / 0.09)", color: "oklch(0.92 0 0)", fontSize: 14.5 }}
-                          />
-                          <DivisaPicker size="sm" value={cell.divisa} onChange={(divisa) => {
-                              setCell(item.id, of.id, { divisa });
-                              const precioStr = cell.precio.trim();
-                              if (precioStr) {
-                                const n = Number(precioStr.replace(",", "."));
-                                if (Number.isFinite(n) && n >= 0)
-                                  upsertOferta({ oferente_id: of.id, item_id: item.id, precio_unitario: n, divisa }).catch(console.error);
-                              }
-                            }} />
-                          {isSaving && (
-                            <span className="absolute -top-1.5 -right-1.5">
-                              <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
-              )),
-              ...(r.items.length === 0
-                ? [
-                    <tr key={`empty-${r.id}`} className="border-t border-border">
-                      <td
-                        colSpan={1 + oferentes.length}
-                        className="py-2 px-3 text-center text-muted-foreground italic"
-                      >
-                        Sin ítems en este renglón.
-                      </td>
-                    </tr>,
-                  ]
-                : [
-                    <tr key={`cob-${r.id}`} className="border-t border-border bg-secondary/10">
-                      <td className="py-2 px-4 text-[13px] text-muted-foreground italic border-r border-border">
-                        Cobertura del renglón
-                      </td>
-                      {oferentes.map((of) => {
-                        const total = r.items.length;
-                        const con = r.items.reduce((n, it) => {
-                          const c = cells.get(`${it.id}|${of.id}`);
-                          return c && c.precio.trim() !== "" ? n + 1 : n;
-                        }, 0);
-                        let badge: React.ReactNode;
-                        if (con === 0) {
-                          badge = <span className="text-muted-foreground">— Sin ofertar</span>;
-                        } else if (con === total) {
-                          badge = <span className="text-emerald-500">✓ Completo ({con}/{total})</span>;
-                        } else {
-                          badge = (
-                            <span className="text-amber-500" title={`Faltan ${total - con} ítem${total - con === 1 ? "" : "s"}`}>
-                              ⚠ {con}/{total} — descalificado
-                            </span>
-                          );
-                        }
-                        return (
-                          <td
-                            key={of.id}
-                            className="py-2 px-2.5 text-[13px] text-center border-r border-border last:border-r-0"
-                          >
-                            {badge}
-                          </td>
-                        );
-                      })}
-                    </tr>,
-                  ]),
-            ])}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 // ─── Modal: Renglón (crear/editar) ─────────────────────────────
 
 function RenglonModal({
@@ -2948,21 +2643,26 @@ function HelpStepContent({ step }: { step: number }) {
       return (
         <>
           <p style={{ fontSize: 14, color: "oklch(0.72 0 0)", lineHeight: 1.65, marginBottom: 4 }}>
-            Ingresá el precio unitario ofertado por cada proveedor para cada ítem de la licitación.
+            Ingresá el precio unitario ofertado por cada proveedor para cada ítem. La grilla se maneja como una planilla.
           </p>
-          <HelpSection title="Estructura de la tabla">
-            <HelpField name="Filas" desc="Ítems de la licitación, agrupados por renglón." />
-            <HelpField name="Columnas" desc="Un bloque precio + divisa por cada oferente registrado." />
+          <HelpSection title="Estructura de la grilla">
+            <HelpField name="Filas" desc="Ítems de la licitación, agrupados por renglón (clic en el renglón para plegarlo)." />
+            <HelpField name="Columnas" desc="Un oferente por columna, con su contador de ítems cotizados y su moneda por defecto." />
+            <HelpField name="Cobertura" desc="En cada renglón: Completo, Parcial (clic = ir a la primera pendiente) o Sin ofertar." />
+            <HelpField name="Totales" desc="Abajo, el total de cada oferta (precio × cantidad) en su moneda por defecto; el punto verde marca el menor total entre las ofertas completas." />
           </HelpSection>
-          <HelpSection title="Acciones">
-            <HelpAction label="Precio" desc="Escribí el precio unitario ofertado en el campo correspondiente." />
-            <HelpAction label="ARS / USD" desc="Selector de divisa por celda. Podés mezclar divisas entre oferentes." />
-            <HelpAction label="Botón USD" desc="Cambia la divisa de todas las celdas a USD con un solo clic." />
-            <HelpAction label="Botón ARS" desc="Cambia la divisa de todas las celdas a ARS con un solo clic." />
+          <HelpSection title="Teclado y mouse">
+            <HelpAction label="Editar" desc="Clic en la celda o empezar a escribir. Acepta 1.234,56 y también 1234.56." />
+            <HelpAction label="Enter / Tab" desc="Guarda y baja / avanza a la derecha. Flechas para moverse, Esc cancela." />
+            <HelpAction label="Pegar" desc="Pegar desde Excel completa hacia abajo y a la derecha desde la celda activa." />
+            <HelpAction label="⇧ + clic / flechas" desc="Selecciona un rango (para cambiar la moneda en bloque)." />
+            <HelpAction label="M" desc="Alterna la moneda de la celda entre USD y ARS." />
+            <HelpAction label="Clic derecho" desc="Copiar, pegar, cambiar moneda (de la celda o del rango) y borrar." />
           </HelpSection>
-          <HelpTip>El precio <strong>se guarda automáticamente</strong> al salir del campo (sin necesidad de botón Guardar).</HelpTip>
-          <HelpTip>Los campos en blanco se interpretan como "sin oferta" para ese ítem, lo que resulta en cobertura Parcial en la Adjudicación.</HelpTip>
-          <HelpWarning>Si hay precios en USD, se convierten a ARS con el Dólar SIC para la comparativa. Verificá que el dólar SIC esté cargado en Datos generales.</HelpWarning>
+          <HelpTip>Cada precio <strong>se guarda automáticamente</strong> al salir de la celda; aparece un ✓ verde al guardarse.</HelpTip>
+          <HelpTip>La <strong>moneda es por celda</strong>. La del encabezado de cada oferente es solo para las celdas nuevas; «Cambiar todas las divisas» cambia todo.</HelpTip>
+          <HelpTip>Una celda vacía es «sin oferta» para ese ítem: el renglón queda Parcial y no compite en la Adjudicación.</HelpTip>
+          <HelpWarning>Los montos en otra moneda se convierten con el Dólar SIC de Datos generales. Si no está cargado, los totales mezclados no se pueden calcular.</HelpWarning>
         </>
       );
     case 4:

@@ -319,6 +319,7 @@ input[type="number"] { -moz-appearance: textfield; }
   --ido-base: #0a0b0d; /* bg.base (§1) */
   --ido-panel: #111316; /* bg.surface (§1) — tarjetas de oferente (§10) */
   --ido-text-2: #7a828b; /* text.secondary (§1) */
+  --ido-header: #0d0f11; /* bg.header (§1) — encabezados de tabla / barras */
   /* Paleta categórica de identidad (zonas, avatares de oferente) — nunca el verde */
   --ido-cat-1: #5b8def;
   --ido-cat-2: #b07beb;
@@ -1696,4 +1697,140 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
 .ido-tab > * {
   position: relative;
   z-index: 1;
+}
+
+/* ── Informe Técnico → Ofertas («Carga de ofertas» del Design) ─────────────
+   Matriz ítems × oferentes que se maneja como planilla. Ver
+   components/dashboard/sections/informe-tecnico-ofertas.tsx. */
+.ido-of-th {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ido-text-2);
+}
+.ido-of-desc {
+  font-size: 13px;
+  line-height: 16px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--ido-text);
+}
+.ido-of-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 10px 0 12px;
+  cursor: cell;
+  background: transparent;
+  transition: background 600ms var(--ido-ease), box-shadow 100ms var(--ido-ease);
+}
+.ido-of-cell:hover { background: var(--ido-elevated); transition-duration: 100ms, 100ms; }
+.ido-of-cell.is-range { background: rgba(63, 207, 142, 0.06); }
+.ido-of-cell.is-pulse { background: rgba(63, 207, 142, 0.16); transition-duration: 80ms, 100ms; }
+.ido-of-cell.is-editing { background: var(--ido-base); }
+.ido-of-cell.is-active { box-shadow: inset 0 0 0 1.5px var(--ido-accent); }
+.ido-of-cell.is-err { box-shadow: inset 0 0 0 1px var(--ido-error); }
+.ido-of-input {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ido-text);
+  text-align: right;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  padding: 0;
+  caret-color: var(--ido-accent);
+}
+/* Moneda de la celda: sufijo mono que en hover / selección se vuelve chip. */
+.ido-of-cur {
+  margin-left: -4px;
+  height: 18px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  box-sizing: border-box;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ido-placeholder);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 100ms var(--ido-ease), color 100ms var(--ido-ease), background 600ms var(--ido-ease);
+}
+.ido-of-cur svg { opacity: 0; transition: opacity 100ms var(--ido-ease); }
+.ido-of-cell:hover .ido-of-cur,
+.ido-of-cell.is-active .ido-of-cur,
+.ido-of-cur.is-open,
+.ido-of-cur.is-head {
+  border-color: var(--ido-border-strong);
+  color: var(--ido-text-2);
+}
+.ido-of-cell:hover .ido-of-cur svg,
+.ido-of-cell.is-active .ido-of-cur svg,
+.ido-of-cur.is-open svg,
+.ido-of-cur.is-head svg { opacity: 1; }
+.ido-of-cur.is-head { margin-left: 0; }
+.ido-of-cur.is-head:hover, .ido-of-cur.is-open { color: var(--ido-text); }
+.ido-of-cur.is-edit { cursor: default; }
+.ido-of-cell.is-pulse .ido-of-cur { background: rgba(63, 207, 142, 0.16); transition-duration: 100ms, 100ms, 80ms; }
+/* Celda vacía (pendiente): punto ámbar tenue. */
+.ido-of-pend { width: 4px; height: 4px; border-radius: 999px; background: var(--ido-warning); opacity: 0.6; }
+/* Triángulo de error en la esquina superior derecha (§4.4 «Error»). */
+.ido-of-tri { position: absolute; top: 0; right: 0; width: 0; height: 0; border-left: 7px solid transparent; }
+.ido-of-tri.is-err { border-top: 7px solid var(--ido-error); }
+/* Guardado: check verde 1.5s. */
+.ido-of-saved {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  color: var(--ido-accent);
+  animation: ido-of-saved 1500ms var(--ido-ease) both;
+}
+@keyframes ido-of-saved {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+/* Cobertura del renglón por oferente: chip de cumplimiento (§4.21). */
+.ido-of-cov {
+  height: 22px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ido-of-cov.is-ok { background: rgba(63, 207, 142, 0.12); color: var(--ido-accent); }
+.ido-of-cov.is-part { background: rgba(245, 165, 36, 0.12); color: var(--ido-warning); }
+.ido-of-cov.is-none { background: rgba(122, 130, 139, 0.12); color: var(--ido-text-2); }
+.ido-of-cov.is-part:hover, .ido-of-cov.is-none:hover { filter: brightness(1.15); }
+/* Menús de la grilla (contextual 216px, moneda 80px): §4.5, escala + fade. */
+.ido-of-menu {
+  position: fixed;
+  z-index: 200;
+  padding: 4px;
+  box-sizing: border-box;
+  animation: ido-of-menu-in 140ms var(--ido-ease) both;
+}
+@keyframes ido-of-menu-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
 }

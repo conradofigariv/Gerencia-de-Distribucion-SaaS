@@ -1,6 +1,6 @@
 # Sistema de diseño — Producto de datos interno (modo oscuro)
 
-> Extraído del import de Claude Design `Sistema de diseño.dc.html` (v1; §4.21–§4.22 agregados desde la v2, sección 10 «Tarjeta de oferente en licitación»).
+> Extraído del import de Claude Design `Sistema de diseño.dc.html` (v1; §4.21–§4.22 agregados desde la v2, sección 10 «Tarjeta de oferente en licitación»; §4.23 desde `Carga de ofertas.dc.html`).
 > Este documento es una **transcripción fiel** de lo que el archivo de Design
 > define explícitamente. Donde un componente no tiene todos sus estados
 > (hover / disabled / error / loading, etc.) definidos en el archivo fuente,
@@ -290,6 +290,16 @@ Tabla única de referencia — tres modos, sin valores intermedios:
 - **Conmutador tarjetas / tabla** (dos íconos, 28px, sobre la fila). La tabla (CSS grid, filas 40px, header 38px) tiene Ranking, Oferente, Precio total, Precio unitario, Porcentaje vs SIC, Ahorro, Informe técnico, Cobertura; la mejor oferta lleva el borde izquierdo verde de selección. Cambio de vista con fade cruzado 120ms; **la vista se persiste por usuario**.
 
 ---
+
+### 4.23 Carga de ofertas (matriz ítems × oferentes) — `Carga de ofertas.dc.html`
+- Barra de la tarjeta (52px): aviso de guardado automático · «Cambiar todas las divisas» (USD/ARS segmentado sobre `bg.header`) · barra de progreso 120×4 verde + «N de M celdas» · acción terciaria «Ir a la próxima pendiente».
+- Grilla CSS: columna Ítem fija 280px (número mono 11 terciario, matrícula mono 11 verde, «Cant. N» 11 secundario, descripción 13 hasta 2 líneas) + una columna por oferente `minmax(168px,1fr)`. Encabezado fijo 52px (`bg.header`, borde inferior 16%): avatar 24 radio 6 con color de identidad, nombre 13/600 truncado, contador mono 11 `n/M` (verde + check si completo). Divisorias 8%; la columna fija lleva borde derecho 16% y sombra de scroll cuando hay scroll horizontal.
+- Renglón (36px, `bg.elevated`, fijo bajo el encabezado): chevron, «Renglón N» 12/600 verde, descripción 12 secundaria; por oferente chip de cobertura (§4.21): Completo verde / Parcial ámbar (clic → primera celda pendiente) / No cotiza gris. Plegado con `grid-template-rows` 200ms.
+- Celda (52px): moneda por celda — sufijo mono 10 terciario que en hover/selección pasa a chip 18px radio 4 con chevron 8 (fade 100ms) y abre menú de 80px; tecla M alterna. Activa = anillo verde 1.5px; edición = `bg.base`; rango (⇧) = verde 6%; pegado/cambio = pulso verde 16%; error = anillo rojo 1px + triángulo; vacía = punto ámbar 4px al 60%; guardado = check 1.5s.
+- Teclado tipo planilla: clic o escribir edita, Enter baja, Tab avanza, flechas navegan, Esc cancela, pegado desde Excel completa hacia abajo y a la derecha, guion = No cotiza, clic derecho = menú (Copiar, Pegar, Marcar No cotiza, Cambiar moneda ×N, Borrar valor).
+- Totales (fila fija abajo, 64px, `bg.elevated`): total mono 14/600 + moneda 10; punto verde en el menor total entre ofertas completas; debajo «Parcial, faltan N ítems» (ámbar) / «Incluye montos en X convertidos» / «+N % vs mejor». Pie: «Comparación en USD a 1 USD = N ARS».
+- El chip de moneda del encabezado = «Por defecto», solo para celdas nuevas.
+- *Aplicado en Informe Técnico → Ofertas sin «No cotiza» ni las ayudas automáticas (punto verde por ítem, triángulo de fuera de rango, tooltip cantidad × precio) — ver docs/informe-tecnico.md.*
 
 ## 5. Pendiente de definir
 
