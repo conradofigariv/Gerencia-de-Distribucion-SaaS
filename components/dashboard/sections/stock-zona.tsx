@@ -449,10 +449,11 @@ export function StockZonaSection() {
   const [selectedRow, setSelectedRow]       = useState<string | null>(null);
   const [checkedArticulos, setCheckedArticulos] = useState<Set<string>>(new Set()); // tildadas para exportar
   const [exporting, setExporting]           = useState(false);
-  const [mapaArticulo, setMapaArticulo]     = useState<string | null>(null); // matrícula pintada en el mapa
+  const [mapaArticulos, setMapaArticulos]   = useState<string[]>([]); // matrículas pintadas en el mapa
 
-  const verEnMapa = useCallback((articulo: string) => {
-    setMapaArticulo(articulo);
+  // Fila → muestra esa matrícula sola; barra de selección → todas las tildadas.
+  const verEnMapa = useCallback((articulos: string[]) => {
+    setMapaArticulos(articulos);
     setTab("mapa");
   }, []);
 
@@ -1401,7 +1402,7 @@ export function StockZonaSection() {
                                         className="sz-map-btn"
                                         title="Ver en mapa"
                                         aria-label={`Ver ${row.articulo} en el mapa`}
-                                        onClick={(e) => { e.stopPropagation(); verEnMapa(row.articulo); }}
+                                        onClick={(e) => { e.stopPropagation(); verEnMapa([row.articulo]); }}
                                       >
                                         <MapIcon className="w-3.5 h-3.5" strokeWidth={1.75} />
                                       </button>
@@ -1482,6 +1483,14 @@ export function StockZonaSection() {
                         {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
                         Exportar Excel
                       </button>
+                      <button
+                        className="ido-btn ido-btn-ghost"
+                        title="Ver en el mapa qué zonas tienen estas matrículas"
+                        onClick={() => verEnMapa(Array.from(checkedArticulos))}
+                      >
+                        <MapIcon className="w-3.5 h-3.5" />
+                        Ver en mapa
+                      </button>
                       <button className="ido-selbar-close" title="Limpiar selección" onClick={() => setCheckedArticulos(new Set())}>
                         <X className="w-4 h-4" />
                       </button>
@@ -1499,8 +1508,8 @@ export function StockZonaSection() {
             <MapaZonas
               rows={mapaRows}
               pinned={pinnedArticulos}
-              articulo={mapaArticulo}
-              onArticuloChange={setMapaArticulo}
+              articulos={mapaArticulos}
+              onArticulosChange={setMapaArticulos}
             />
           </div>
         )}
