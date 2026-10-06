@@ -510,6 +510,55 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     });
   }, []);
 
+  // ── Nombres sin superponerse ─────────────────────────────────────────────────
+  // Leaflet no evita choques entre tooltips. Se ubican por prioridad: lo fijo
+  // (etiquetas de zona, cantidades, pin de la obra) siempre; después nombres de
+  // delegaciones, de distritos y del resto de localidades. Un nombre que pisaría
+  // algo de mayor prioridad se oculta (reaparece al acercar, cuando hay lugar).
+  const resolverEtiquetas = useCallback(() => {
+    const map = mapRef.current;
+    const panel = panelRef.current;
+    if (!map || !panel) return;
+    const PAD = 3;
+    const ocupados: DOMRect[] = [];
+    const choca = (r: DOMRect) => ocupados.some((o) =>
+      r.left < o.right + PAD && r.right > o.left - PAD && r.top < o.bottom + PAD && r.bottom > o.top - PAD);
+    panel.querySelectorAll<HTMLElement>(".mz-zcode, .mz-zcode-b, .mz-qty, .mz-pulse-label").forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.width) ocupados.push(r);
+    });
+    const ubicar = (els: HTMLElement[]) => {
+      for (const el of els) {
+        el.style.visibility = "";
+        const r = el.getBoundingClientRect();
+        if (!r.width) continue;
+        if (choca(r)) el.style.visibility = "hidden";
+        else ocupados.push(r);
+      }
+    };
+    const deleg: HTMLElement[] = [];
+    const dist: HTMLElement[] = [];
+    for (const r of ringsRef.current) {
+      if (!r.fijo || !map.hasLayer(r.m)) continue;
+      const el = r.m.getTooltip()?.getElement();
+      if (el) (r.l.rol === "delegacion" ? deleg : dist).push(el);
+    }
+    ubicar(deleg);
+    ubicar(dist);
+    const locs: HTMLElement[] = [];
+    todasLayerRef.current?.eachLayer((ly) => {
+      const t = (ly as Marker).getTooltip?.();
+      const el = t?.options.permanent ? t.getElement() : undefined;
+      if (el) locs.push(el);
+    });
+    ubicar(locs);
+  }, []);
+  const etiquetasRaf = useRef(0);
+  const programarEtiquetas = useCallback(() => {
+    cancelAnimationFrame(etiquetasRaf.current);
+    etiquetasRaf.current = requestAnimationFrame(() => resolverEtiquetas());
+  }, [resolverEtiquetas]);
+
   // ── Flechas sobre la línea de distancia: van desde el stock HACIA la obra ───
   // Se ubican cada ~90 px de pantalla, por eso se recalculan al cambiar el zoom.
   const dibujarFlechas = useCallback(() => {
@@ -660,12 +709,13 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       if (capasRef.current.distritos) distL.addTo(map);
       if (capasRef.current.delegaciones) delegL.addTo(map);
       flechasLayerRef.current = L.layerGroup().addTo(map);
-      map.on("zoomend", () => { actualizarNombres(); renderTodas(); dibujarFlechas(); });
+      map.on("zoomend", () => { actualizarNombres(); renderTodas(); dibujarFlechas(); programarEtiquetas(); });
       map.on("click", (e) => handlersRef.current.onMapClick(e.latlng.lat, e.latlng.lng));
 
       styleZones();
       actualizarNombres();
       renderTodas();
+      programarEtiquetas();
       setMapReady(true);
     })();
     return () => {
@@ -691,7 +741,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       bigLabelsRef.current = {};
       setMapReady(false);
     };
-  }, [modelo, styleZones, unitIcon, actualizarNombres, renderTodas, dibujarFlechas]);
+  }, [modelo, styleZones, unitIcon, actualizarNombres, renderTodas, dibujarFlechas, programarEtiquetas]);
 
   // ── Capas: mostrar/ocultar y recordar en este dispositivo ───────────────────
   useEffect(() => {
@@ -708,6 +758,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     toggle(distLayerRef.current, capas.distritos);
     toggle(rutasLayerRef.current, capas.rutas);
     renderTodas();
+    programarEtiquetas();
     // Primera vez que se prende la capa de rutas: descargar y dibujar.
     const L = LRef.current;
     const lyr = rutasLayerRef.current;
@@ -725,7 +776,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
         })
         .catch(() => { rutasCargadasRef.current = false; });
     }
-  }, [capas, mapReady, renderTodas]);
+  }, [capas, mapReady, renderTodas, programarEtiquetas]);
 
   useEffect(() => {
     if (!capasOpen) return;
@@ -747,7 +798,8 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       zoneLayersRef.current[u.code]?.setTooltipContent(zoneTipHtml(u, metrica, udm));
     }
     styleZones();
-  }, [metrica, udm, mapReady, styleZones, unitIcon]);
+    programarEtiquetas();
+  }, [metrica, udm, mapReady, styleZones, unitIcon, programarEtiquetas]);
 
   // ── Distancias por ruta desde la localidad elegida a cada sede ──────────────
   useEffect(() => {
@@ -810,7 +862,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     if (!mapReady || !L || !map) return;
     if (ghostRef.current) { map.removeLayer(ghostRef.current); ghostRef.current = null; }
     if (pinRef.current) { map.removeLayer(pinRef.current); pinRef.current = null; }
-    if (!selected) { selZoneRef.current = null; styleZones(); return; }
+    if (!selected) { selZoneRef.current = null; styleZones(); programarEtiquetas(); return; }
     pinRef.current = L.marker([selected.lat, selected.lon], {
       interactive: false, zIndexOffset: 1000,
       icon: L.divIcon({
@@ -830,6 +882,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     }
     selZoneRef.current = selected.zona;
     styleZones();
+    programarEtiquetas();
     // Solo re-encuadra si cambia la localidad o la sede elegida, no cuando llegan las rutas.
   }, [selected, mejorKey, mapReady, styleZones]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1354,10 +1407,10 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
               <Search className="mz-lupa" strokeWidth={1.5} />
               <input
                 ref={qRef}
-                className="mz-input"
+                className="mz-input is-obra"
                 value={query}
                 disabled={!ready}
-                placeholder={zoneFilter ? `Buscar en ${fLabel(zoneFilter).toLowerCase()}` : "Escribí la localidad"}
+                placeholder={zoneFilter ? `Buscar en ${fLabel(zoneFilter)}` : "Escribí la localidad"}
                 autoComplete="off"
                 spellCheck={false}
                 aria-label="Dónde es la obra"
@@ -1366,17 +1419,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
                 onBlur={() => { setFocused(false); setAct(-1); showGhost(null); }}
                 onKeyDown={onQueryKey}
               />
-              {zoneFilter ? (
-                <button
-                  type="button"
-                  className="mz-zfilter"
-                  title="Quitar filtro de zona"
-                  style={{ background: `color-mix(in srgb, ${zfColor} 15%, transparent)`, color: zfColor }}
-                  onMouseDown={(e) => { e.preventDefault(); setZoneFilter(null); }}
-                >
-                  {fLabel(zoneFilter)}<X className="w-3 h-3" strokeWidth={2} />
-                </button>
-              ) : !focused && !query && <span className="mz-kbd mz-mono">/</span>}
+              {!focused && !query && <span className="mz-kbd mz-mono">/</span>}
               {ddOpen && (
                 <div className="mz-dd" role="listbox">
                   {locList.head && <div className="mz-dd-head">{locList.head}</div>}
@@ -1413,6 +1456,22 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
                 </div>
               )}
             </div>
+            {/* Filtro de zona (clic en una zona o en la leyenda): debajo del campo, no adentro,
+                para no tapar el texto en una tarjeta angosta. */}
+            {zoneFilter && (
+              <div className="mz-obra-filtro">
+                <span>Buscando en</span>
+                <button
+                  type="button"
+                  className="mz-zchip"
+                  title="Quitar filtro de zona"
+                  style={{ background: `color-mix(in srgb, ${zfColor} 15%, transparent)`, color: zfColor }}
+                  onClick={() => setZoneFilter(null)}
+                >
+                  {fLabel(zoneFilter)}<X className="w-3 h-3" strokeWidth={2} />
+                </button>
+              </div>
+            )}
             {selected && (
               <div className="mz-obra-sel">
                 <LocBadge l={selected} />
