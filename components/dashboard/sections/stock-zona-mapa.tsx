@@ -269,6 +269,8 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const rutasLayerRef = useRef<LayerGroup | null>(null);
   const rutasCargadasRef = useRef(false);
   const rutasRefLayerRef = useRef<LayerGroup | null>(null);
+  const rutasLineasRef = useRef<{ pl: Polyline; principal: boolean }[]>([]);
+  const hayRecorridoRef = useRef(false);
   const flechasLayerRef = useRef<LayerGroup | null>(null);
   const lineaRef = useRef<LatLng[] | null>(null);
   const ringsRef = useRef<{ m: CircleMarker; l: Localidad; fijo: boolean }[]>([]);
@@ -512,6 +514,22 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     });
   }, []);
 
+  // ── Estilo de rutas: contexto, no protagonista ──────────────────────────────
+  // Casi imperceptibles a escala provincial, ganan presencia al acercar (como un
+  // mapa vial) y bajan aún más cuando hay un recorrido a la obra dibujado.
+  const estiloRutas = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const t = Math.min(1, Math.max(0, (map.getZoom() - 7.5) / 2.5)); // 0 a zoom 7,5 → 1 a zoom 10
+    const atenuar = hayRecorridoRef.current ? 0.5 : 1;
+    for (const { pl, principal } of rutasLineasRef.current) {
+      pl.setStyle(principal
+        ? { weight: 0.9 + 0.9 * t, opacity: (0.26 + 0.34 * t) * atenuar }
+        : { weight: 0.6 + 0.6 * t, opacity: (0.18 + 0.27 * t) * atenuar });
+    }
+    panelRef.current?.classList.toggle("has-recorrido", hayRecorridoRef.current);
+  }, []);
+
   // ── Números de ruta: solo con la capa prendida y desde ZOOM_NUMERO_RUTA ──────
   const actualizarNumerosRuta = useCallback(() => {
     const map = mapRef.current;
@@ -730,7 +748,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       if (capasRef.current.distritos) distL.addTo(map);
       if (capasRef.current.delegaciones) delegL.addTo(map);
       flechasLayerRef.current = L.layerGroup().addTo(map);
-      map.on("zoomend", () => { actualizarNombres(); renderTodas(); dibujarFlechas(); actualizarNumerosRuta(); programarEtiquetas(); });
+      map.on("zoomend", () => { actualizarNombres(); renderTodas(); dibujarFlechas(); actualizarNumerosRuta(); estiloRutas(); programarEtiquetas(); });
       map.on("click", (e) => handlersRef.current.onMapClick(e.latlng.lat, e.latlng.lng));
 
       styleZones();
@@ -753,6 +771,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       todasLayerRef.current = null;
       rutasLayerRef.current = null;
       rutasRefLayerRef.current = null;
+      rutasLineasRef.current = [];
       flechasLayerRef.current = null;
       lineaRef.current = null;
       ringsRef.current = [];
@@ -763,7 +782,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       bigLabelsRef.current = {};
       setMapReady(false);
     };
-  }, [modelo, styleZones, unitIcon, actualizarNombres, renderTodas, dibujarFlechas, actualizarNumerosRuta, programarEtiquetas]);
+  }, [modelo, styleZones, unitIcon, actualizarNombres, renderTodas, dibujarFlechas, actualizarNumerosRuta, estiloRutas, programarEtiquetas]);
 
   // ── Capas: mostrar/ocultar y recordar en este dispositivo ───────────────────
   useEffect(() => {
@@ -792,10 +811,13 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
         .then((d: { rutas?: { t: string; c: LatLng[] }[]; etiquetas?: { r: string; p: LatLng; t: string }[] }) => {
           if (rutasLayerRef.current !== lyr || !panelRef.current) return;
           const color = getComputedStyle(panelRef.current).getPropertyValue("--ido-map-ruta").trim();
+          rutasLineasRef.current = [];
           for (const r of d.rutas ?? []) {
             const principal = r.t === "principal";
-            L.polyline(r.c, { color, weight: principal ? 1.9 : 1.2, opacity: principal ? 0.85 : 0.6, interactive: false, lineJoin: "round" }).addTo(lyr);
+            const pl = L.polyline(r.c, { color, interactive: false, lineJoin: "round", lineCap: "round" }).addTo(lyr);
+            rutasLineasRef.current.push({ pl, principal });
           }
+          estiloRutas();
           const refs = rutasRefLayerRef.current;
           if (refs) {
             for (const e of d.etiquetas ?? []) {
@@ -812,7 +834,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
         })
         .catch(() => { rutasCargadasRef.current = false; });
     }
-  }, [capas, mapReady, renderTodas, programarEtiquetas, actualizarNumerosRuta]);
+  }, [capas, mapReady, renderTodas, programarEtiquetas, actualizarNumerosRuta, estiloRutas]);
 
   useEffect(() => {
     if (!capasOpen) return;
@@ -939,6 +961,12 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     lineaRef.current = puntos;
     dibujarFlechas();
   }, [selected, mejor, mejorKey, trazado, mapReady, dibujarFlechas]);
+
+  const hayRecorrido = !!(selected && mejor?.sede);
+  useEffect(() => {
+    hayRecorridoRef.current = hayRecorrido;
+    if (mapReady) estiloRutas();
+  }, [hayRecorrido, mapReady, estiloRutas]);
 
   // ── Acciones ────────────────────────────────────────────────────────────────
   const zoneBounds = useCallback((code: string) => {

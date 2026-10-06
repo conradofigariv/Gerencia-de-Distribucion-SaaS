@@ -1894,7 +1894,7 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
   --ido-map-depto: rgba(255, 255, 255, 0.06);
   --ido-map-laguna-line: rgba(91, 141, 239, 0.35);
   --ido-map-laguna-fill: #16243a;
-  --ido-map-ruta: #cdbf95; /* rutas principales: tono ruta, distinto de las 8 zonas */
+  --ido-map-ruta: #a3a9b0; /* rutas: gris neutro, contexto — no compite con los colores de zona */
 }
 .mz-panel {
   position: relative;
@@ -2154,7 +2154,7 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
 /* Flechas sobre la línea de distancia: van desde el stock hacia la obra */
 .mz-flecha { width: 16px; height: 16px; display: grid; place-items: center; filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.95)); pointer-events: none; }
 .mz-flecha path { fill: none; stroke: var(--ido-text); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
-.mz-rutak { display: inline-block; width: 14px; height: 2px; border-radius: 2px; background: var(--ido-map-ruta); }
+.mz-rutak { display: inline-block; width: 14px; height: 1.5px; border-radius: 2px; background: color-mix(in srgb, var(--ido-map-ruta) 60%, transparent); }
 
 /* Campo «Dónde es la obra»: deja lugar solo al atajo «/» y corta con «…». */
 .mz-step .mz-input.is-obra { padding-right: 34px; }
@@ -2163,5 +2163,6 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
 .mz-zchip { height: 22px; padding: 0 4px 0 8px; display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; font-size: 11px; font-weight: 500; border: 0; cursor: pointer; }
 
 /* Número de ruta (estilo cartel vial, centrado sobre el trazado) */
-.mz-rref { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); white-space: nowrap; padding: 1px 5px; border-radius: 4px; background: var(--ido-base); border: 1px solid color-mix(in srgb, var(--ido-map-ruta) 55%, transparent); color: var(--ido-map-ruta); font-size: 10px; font-weight: 600; letter-spacing: 0.02em; pointer-events: none; }
-.mz-rref.is-principal { border-color: var(--ido-map-ruta); }
+.mz-rref { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); white-space: nowrap; padding: 0 4px; border-radius: 4px; background: color-mix(in srgb, var(--ido-base) 85%, transparent); border: 1px solid color-mix(in srgb, var(--ido-map-ruta) 30%, transparent); color: color-mix(in srgb, var(--ido-map-ruta) 85%, transparent); font-size: 9.5px; font-weight: 500; letter-spacing: 0.02em; pointer-events: none; transition: opacity 200ms var(--ido-ease); }
+.mz-rref.is-principal { border-color: color-mix(in srgb, var(--ido-map-ruta) 45%, transparent); }
+.mz-panel.has-recorrido .mz-rref { opacity: 0.45; }
