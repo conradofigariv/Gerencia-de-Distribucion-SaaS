@@ -20,12 +20,25 @@ El stock y las familias son enriquecimientos sobre la lista maestra de matrícul
   - `getFamilies`, `upsertFamily`, `upsertFamiliesBulk`, `deleteFamily`, `deleteFamiliesBulk`.
   - `interface MatriculaInfo { descripcion; udm; tipo }` + `getMatriculasInfo()` → Map `articulo → MatriculaInfo` leyendo `matriculas` (descripción, UDM y `mat_serv` normalizado a tipo). **Descarga paralela:** 1ª página con conteo exacto + resto con `Promise.all` (Supabase corta en ~1000 filas).
 
-## Dos pestañas (la edición de Familias se movió a Matrículas → Familias)
+## Tres pestañas (la edición de Familias se movió a Matrículas → Familias)
 - **Resumen de stock:** tabla pivot virtualizada — una fila por matrícula. Columnas fijas: Matrícula, Descripción, UDM, **Tipo** (Material/Servicio), Total + columnas dinámicas por zona (colapsables con animación). Filtros: zona, familia, **Servicio/Material** y búsqueda por Nro/Nombre. Orden y redimensión por columna.
   - Descripción/UDM salen del catálogo maestro (prioridad) con respaldo en el stock.
   - **Servicios** del catálogo aparecen aunque no tengan stock (Total 0). Materiales sin stock NO se agregan (ruido). Matrículas con alguna familia asignada también se incluyen aunque no tengan stock.
   - El filtro por familia y el tipo efectivo se leen (solo lectura) desde las tablas nuevas vía `getFamilyRowsCompat()` de `lib/familias.ts`.
+- **Mapa:** mapa interactivo de las zonas EPEC de Córdoba para saber dónde hay stock más cerca. Ver «Mapa de zonas» abajo.
 - **Cargar datos:** textarea para pegar datos del sistema (tab-separado). Encabezado en la 1ª fila: `Artículo`, `Desc Artículo`, `UDM Primaria`, `En Mano`, `Organización`. La zona se detecta desde Organización. Flujo: pegar → previsualizar zonas → Importar → vuelve a "Resumen".
+
+## Mapa de zonas (`stock-zona-mapa.tsx` + `lib/mapaZonas.ts`)
+Portado del componente `MapaZonas` del import de Claude Design (zip «Sistema de diseño armado»). Se carga con `next/dynamic` (`ssr: false`) solo al abrir la pestaña: Leaflet toca `window` al importarse.
+- **Leaflet 100% vectorial, sin tiles.** Geometría: límites IGN de los 26 departamentos de Córdoba en **`public/geo/cordoba.json`** (330 KB, se descarga una vez por sesión con `cargarGeo()`). Cada departamento trae su zona; B se arma como unión de BN + BS con borde exterior continuo y divisoria punteada.
+- **Zonas = unión de departamentos**, con excepciones forzadas por distrito (`ZONA_FORZADA` en `lib/mapaZonas.ts`, ej. Villa Carlos Paz → BS aunque esté en Punilla).
+- **Mapeo stock ↔ mapa** (`unidadDeStock`): `ZA→A`, **`ZB→BN` (B Norte, La Falda)**, **`ZI→BS` (B Sur, Villa Carlos Paz)**, `ZC…ZH→C…H`. El stock de B llega separado por subzona; el badge B suma las dos. Un código desconocido no se pinta en el mapa (sigue en la tabla).
+- **Colores territoriales** como tokens `--ido-zona-a … --ido-zona-h`, `--ido-zona-bn`, `--ido-zona-bs` en `.ido-terminal` (`globals.css`). `ZonePill` de la tabla usa los mismos (antes era un hash sobre la paleta categórica), así una zona tiene el mismo color en tabla y mapa. Leaflet necesita colores resueltos para los `path` SVG: se leen con `getComputedStyle` sobre el panel, no se escriben hex en el componente.
+- **Matrícula del mapa** (`mapaArticulo` en `stock-zona.tsx`): se elige desde el botón «Ver en mapa» de cada fila del Resumen (al final de la celda Descripción, visible en hover — no en Matrícula porque esa columna está en su ancho medido) o desde el buscador «Ver stock de una matrícula» del mapa (vacío muestra las fijadas). Con matrícula, el relleno de cada zona sigue la cantidad (`0.14 + 0.32·√(q/max)`), la etiqueta muestra la cantidad y las zonas sin stock se atenúan.
+- **Stock más cercano:** al elegir una localidad (buscador con tolerancia a errores, recientes en `localStorage` `mapa.recientes.v1`, atajo `/`), la tarjeta lista las zonas con stock ordenadas por distancia haversine desde la localidad hasta la **delegación sede** de cada zona (`MapaModelo.sedes`). Se dibuja una línea punteada a la más cercana y el mapa encuadra ambos puntos.
+- **Localidades:** lista embebida (82 con zona, subconjunto real de Georef). La API de Georef queda como mejora futura.
+- **Intro globo → provincia** (d3-geo + topojson-client + `world-atlas/land-110m.json` desde npm, sin CDN): 1 s, una vez por apertura de la pestaña, salteada con `prefers-reduced-motion` o si las librerías no cargan en 2,5 s.
+- **Estilos:** prefijo `.mz-*` en `globals.css`, todos sobre tokens `--ido-*`. Debajo de 900 px los buscadores se apilan y la tarjeta pasa a hoja inferior.
 
 ## Tipo efectivo (`tipoOf`)
 `tipoOf(articulo)` = override manual (`matricula_tipo.tipo`) si existe, si no el `mat_serv` del catálogo `matriculas`.

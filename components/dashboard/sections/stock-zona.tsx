@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { createPortal } from "react-dom";
+import dynamic from "next/dynamic";
 import { motion } from "motion/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -9,7 +10,9 @@ import {
   ChevronDown,
   Download, Check, HelpCircle,
   ChevronLeft, ChevronRight, ArrowRight, Lightbulb, ListChecks, Pin, Filter, FileSpreadsheet, Search,
+  Map as MapIcon,
 } from "lucide-react";
+import { colorVarDeStock } from "@/lib/mapaZonas";
 import { supabase } from "@/lib/supabaseClient";
 import { markUpdated } from "@/lib/notificaciones";
 import { loadTableLayout, saveTableLayout } from "@/lib/tableLayout";
@@ -24,7 +27,18 @@ import type { FamilyRow, ArticuloTipo, MatriculaInfo } from "@/lib/stockFamilies
 import { getFamilyRowsCompat } from "@/lib/familias";
 import { toast } from "sonner";
 
-type Tab            = "resumen" | "cargar";
+type Tab            = "resumen" | "mapa" | "cargar";
+
+// Leaflet toca `window` al importarse: el mapa se carga solo en el cliente y
+// recién cuando se abre la pestaña (no suma peso a Resumen / Cargar datos).
+const MapaZonas = dynamic(() => import("./stock-zona-mapa"), {
+  ssr: false,
+  loading: () => (
+    <div className="ido-loading">
+      <Loader2 className="w-4 h-4 animate-spin" /> Cargando mapa…
+    </div>
+  ),
+});
 
 // Caché de sesión del catálogo maestro (para que la 2da carga sea instantánea)
 const MATRICULAS_CACHE_KEY = "stock-zona-matriculas-cache";
@@ -57,6 +71,7 @@ const ABSORBER_KEYS = new Set(["descArticulo"]);
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "resumen",  label: "Resumen de stock", icon: PackageOpen },
+  { id: "mapa",     label: "Mapa",             icon: MapIcon },
   { id: "cargar",   label: "Cargar datos",     icon: Download },
 ];
 
@@ -71,25 +86,29 @@ interface PivotRow {
 // ─── Zone identity (paleta categórica del sistema de diseño — nunca el verde,
 // reservado para valor calculado / activo / foco / botón primario) ────────────
 
-const ZONE_CATEGORY_COLORS = ["#5B8DEF", "#B07BEB", "#4FC3D9", "#E8A33D", "#E8788F"];
+const ZONE_CATEGORY_COLORS = ["--ido-cat-1", "--ido-cat-2", "--ido-cat-3", "--ido-cat-4", "--ido-cat-5"];
 
-function zoneCategoryColor(zona: string): string {
+// Zonas EPEC (ZA…ZI) usan su color territorial — el mismo del mapa. Un código
+// desconocido cae en la paleta categórica por hash, como antes.
+function zoneColor(zona: string): string {
+  const territorial = colorVarDeStock(zona);
+  if (territorial) return territorial;
   let h = 0;
   for (const c of zona) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
-  return ZONE_CATEGORY_COLORS[h % ZONE_CATEGORY_COLORS.length];
+  return `var(${ZONE_CATEGORY_COLORS[h % ZONE_CATEGORY_COLORS.length]})`;
 }
 
 function ZonePill({ zona, small }: { zona: string; small?: boolean }) {
-  const color = zoneCategoryColor(zona);
+  const color = zoneColor(zona);
   return (
     <span
       className="ido-chip"
       style={{
         padding: small ? "2px 7px" : undefined,
         fontSize: small ? 11 : undefined,
-        background: `${color}20`,
+        background: `color-mix(in srgb, ${color} 12.5%, transparent)`,
         color,
-        border: `1px solid ${color}55`,
+        border: `1px solid color-mix(in srgb, ${color} 33%, transparent)`,
       }}
     >
       <span className="ido-chip-dot" style={{ background: color }} />
@@ -430,6 +449,12 @@ export function StockZonaSection() {
   const [selectedRow, setSelectedRow]       = useState<string | null>(null);
   const [checkedArticulos, setCheckedArticulos] = useState<Set<string>>(new Set()); // tildadas para exportar
   const [exporting, setExporting]           = useState(false);
+  const [mapaArticulo, setMapaArticulo]     = useState<string | null>(null); // matrícula pintada en el mapa
+
+  const verEnMapa = useCallback((articulo: string) => {
+    setMapaArticulo(articulo);
+    setTab("mapa");
+  }, []);
 
   // Toggle de fijar matrícula arriba
   const togglePin = useCallback((articulo: string) => {
@@ -752,6 +777,8 @@ export function StockZonaSection() {
     }
     return m;
   }, [uploads, families, matriculasInfo]);
+
+  const mapaRows = useMemo(() => Array.from(pivotMap.values()), [pivotMap]);
 
   const searchExtraRows = useMemo(() => {
     if (!filterSearch) return [] as PivotRow[];
@@ -1365,8 +1392,19 @@ export function StockZonaSection() {
                                       </button>
                                       <span className="truncate">{row.articulo}</span>
                                     </div>
-                                    <div className="flex items-center" title={row.descArticulo || undefined} style={{ width: fitted.widths.descArticulo, flexShrink: 0, padding: "0 12px", color: "var(--ido-text-dim)", overflow: "hidden" }}>
-                                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.descArticulo}</span>
+                                    <div className="flex items-center" title={row.descArticulo || undefined} style={{ width: fitted.widths.descArticulo, flexShrink: 0, padding: "0 6px 0 12px", color: "var(--ido-text-dim)", overflow: "hidden" }}>
+                                      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.descArticulo}</span>
+                                      {/* Va al final de Descripción (la columna que absorbe el sobrante)
+                                          para no achicar Matrícula, que está en su ancho medido. */}
+                                      <button
+                                        type="button"
+                                        className="sz-map-btn"
+                                        title="Ver en mapa"
+                                        aria-label={`Ver ${row.articulo} en el mapa`}
+                                        onClick={(e) => { e.stopPropagation(); verEnMapa(row.articulo); }}
+                                      >
+                                        <MapIcon className="w-3.5 h-3.5" strokeWidth={1.75} />
+                                      </button>
                                     </div>
                                     <div className="flex items-center truncate" style={{ width: fitted.widths.udmPrimaria, flexShrink: 0, padding: "0 12px", color: "var(--ido-text-faint)" }}>
                                       {row.udmPrimaria}
@@ -1452,6 +1490,18 @@ export function StockZonaSection() {
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {/* ── MAPA ───────────────────────────────────────────────────────────── */}
+        {tab === "mapa" && (
+          <div style={{ padding: 16 }}>
+            <MapaZonas
+              rows={mapaRows}
+              pinned={pinnedArticulos}
+              articulo={mapaArticulo}
+              onArticuloChange={setMapaArticulo}
+            />
           </div>
         )}
 
