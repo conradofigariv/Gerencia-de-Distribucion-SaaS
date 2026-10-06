@@ -52,6 +52,7 @@ const CBA: [number, number] = [-64.18, -31.42];
 const ZOOM_NOMBRE_DELEGACION = 8;
 const ZOOM_NOMBRE_DISTRITO = 9.25;
 const ZOOM_NOMBRE_LOCALIDAD = 10;
+const ZOOM_NUMERO_RUTA = 8;
 
 const fmtNum = (n: number) => n.toLocaleString("es-AR", { maximumFractionDigits: 2 });
 const fmtKm = (n: number) => n.toFixed(1).replace(".", ",") + " km";
@@ -267,6 +268,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const todasLayerRef = useRef<LayerGroup | null>(null);
   const rutasLayerRef = useRef<LayerGroup | null>(null);
   const rutasCargadasRef = useRef(false);
+  const rutasRefLayerRef = useRef<LayerGroup | null>(null);
   const flechasLayerRef = useRef<LayerGroup | null>(null);
   const lineaRef = useRef<LatLng[] | null>(null);
   const ringsRef = useRef<{ m: CircleMarker; l: Localidad; fijo: boolean }[]>([]);
@@ -510,6 +512,16 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     });
   }, []);
 
+  // ── Números de ruta: solo con la capa prendida y desde ZOOM_NUMERO_RUTA ──────
+  const actualizarNumerosRuta = useCallback(() => {
+    const map = mapRef.current;
+    const lyr = rutasRefLayerRef.current;
+    if (!map || !lyr) return;
+    const ver = capasRef.current.rutas && map.getZoom() >= ZOOM_NUMERO_RUTA;
+    if (ver && !map.hasLayer(lyr)) lyr.addTo(map);
+    if (!ver && map.hasLayer(lyr)) map.removeLayer(lyr);
+  }, []);
+
   // ── Nombres sin superponerse ─────────────────────────────────────────────────
   // Leaflet no evita choques entre tooltips. Se ubican por prioridad: lo fijo
   // (etiquetas de zona, cantidades, pin de la obra) siempre; después nombres de
@@ -552,6 +564,14 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       if (el) locs.push(el);
     });
     ubicar(locs);
+    const refs: HTMLElement[] = [];
+    if (rutasRefLayerRef.current && map.hasLayer(rutasRefLayerRef.current)) {
+      rutasRefLayerRef.current.eachLayer((ly) => {
+        const el = (ly as Marker).getElement()?.querySelector<HTMLElement>(".mz-rref");
+        if (el) refs.push(el);
+      });
+    }
+    ubicar(refs);
   }, []);
   const etiquetasRaf = useRef(0);
   const programarEtiquetas = useCallback(() => {
@@ -621,7 +641,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
 
       const map = L.map(mapEl, { zoomControl: false, attributionControl: true, zoomSnap: 0, zoomDelta: 1, minZoom: 6, maxZoom: 13 });
       mapRef.current = map;
-      map.attributionControl.setPrefix(false).addAttribution("Límites: IGN · Rutas: Natural Earth · Recorridos: OSRM / OpenStreetMap");
+      map.attributionControl.setPrefix(false).addAttribution("Límites: IGN · Rutas: © OpenStreetMap (ODbL) · Recorridos: OSRM");
       const provBounds = L.latLngBounds(modelo.contorno.flat());
       provBoundsRef.current = provBounds;
       map.setView(provBounds.getCenter(), 7, { animate: false });
@@ -681,6 +701,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       }).bindTooltip("Laguna Mar Chiquita", { className: "mz-ptip" }).addTo(map);
       // Rutas principales: grupo vacío, se llena bajo demanda (capa «rutas»).
       rutasLayerRef.current = L.layerGroup();
+      rutasRefLayerRef.current = L.layerGroup();
       rutasCargadasRef.current = false;
       L.polyline(modelo.contorno, { color: v("--ido-map-contorno"), weight: 1.25, interactive: false, lineJoin: "round" }).addTo(map);
       for (const mk of [...Object.values(unitLabelsRef.current), ...Object.values(bigLabelsRef.current)]) mk?.setZIndexOffset(500);
@@ -709,7 +730,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       if (capasRef.current.distritos) distL.addTo(map);
       if (capasRef.current.delegaciones) delegL.addTo(map);
       flechasLayerRef.current = L.layerGroup().addTo(map);
-      map.on("zoomend", () => { actualizarNombres(); renderTodas(); dibujarFlechas(); programarEtiquetas(); });
+      map.on("zoomend", () => { actualizarNombres(); renderTodas(); dibujarFlechas(); actualizarNumerosRuta(); programarEtiquetas(); });
       map.on("click", (e) => handlersRef.current.onMapClick(e.latlng.lat, e.latlng.lng));
 
       styleZones();
@@ -731,6 +752,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       distLayerRef.current = null;
       todasLayerRef.current = null;
       rutasLayerRef.current = null;
+      rutasRefLayerRef.current = null;
       flechasLayerRef.current = null;
       lineaRef.current = null;
       ringsRef.current = [];
@@ -741,7 +763,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       bigLabelsRef.current = {};
       setMapReady(false);
     };
-  }, [modelo, styleZones, unitIcon, actualizarNombres, renderTodas, dibujarFlechas, programarEtiquetas]);
+  }, [modelo, styleZones, unitIcon, actualizarNombres, renderTodas, dibujarFlechas, actualizarNumerosRuta, programarEtiquetas]);
 
   // ── Capas: mostrar/ocultar y recordar en este dispositivo ───────────────────
   useEffect(() => {
@@ -757,6 +779,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     toggle(delegLayerRef.current, capas.delegaciones);
     toggle(distLayerRef.current, capas.distritos);
     toggle(rutasLayerRef.current, capas.rutas);
+    actualizarNumerosRuta();
     renderTodas();
     programarEtiquetas();
     // Primera vez que se prende la capa de rutas: descargar y dibujar.
@@ -766,17 +789,30 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       rutasCargadasRef.current = true;
       fetch("/geo/rutas-cordoba.json")
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error("rutas " + r.status))))
-        .then((d: { rutas?: { t: string; c: LatLng[] }[] }) => {
+        .then((d: { rutas?: { t: string; c: LatLng[] }[]; etiquetas?: { r: string; p: LatLng; t: string }[] }) => {
           if (rutasLayerRef.current !== lyr || !panelRef.current) return;
           const color = getComputedStyle(panelRef.current).getPropertyValue("--ido-map-ruta").trim();
           for (const r of d.rutas ?? []) {
             const principal = r.t === "principal";
-            L.polyline(r.c, { color, weight: principal ? 1.8 : 1.2, opacity: principal ? 0.8 : 0.55, interactive: false, lineJoin: "round" }).addTo(lyr);
+            L.polyline(r.c, { color, weight: principal ? 1.9 : 1.2, opacity: principal ? 0.85 : 0.6, interactive: false, lineJoin: "round" }).addTo(lyr);
           }
+          const refs = rutasRefLayerRef.current;
+          if (refs) {
+            for (const e of d.etiquetas ?? []) {
+              L.marker(e.p, {
+                interactive: false,
+                keyboard: false,
+                zIndexOffset: -500,
+                icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<div class="mz-rref${e.t === "principal" ? " is-principal" : ""}">${esc(e.r)}</div>` }),
+              }).addTo(refs);
+            }
+          }
+          actualizarNumerosRuta();
+          programarEtiquetas();
         })
         .catch(() => { rutasCargadasRef.current = false; });
     }
-  }, [capas, mapReady, renderTodas, programarEtiquetas]);
+  }, [capas, mapReady, renderTodas, programarEtiquetas, actualizarNumerosRuta]);
 
   useEffect(() => {
     if (!capasOpen) return;

@@ -2161,3 +2161,7 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
 .mz-input { text-overflow: ellipsis; }
 .mz-obra-filtro { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ido-text-2); }
 .mz-zchip { height: 22px; padding: 0 4px 0 8px; display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; font-size: 11px; font-weight: 500; border: 0; cursor: pointer; }
+
+/* Número de ruta (estilo cartel vial, centrado sobre el trazado) */
+.mz-rref { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); white-space: nowrap; padding: 1px 5px; border-radius: 4px; background: var(--ido-base); border: 1px solid color-mix(in srgb, var(--ido-map-ruta) 55%, transparent); color: var(--ido-map-ruta); font-size: 10px; font-weight: 600; letter-spacing: 0.02em; pointer-events: none; }
+.mz-rref.is-principal { border-color: var(--ido-map-ruta); }
