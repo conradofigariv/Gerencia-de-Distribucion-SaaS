@@ -15,7 +15,7 @@ import {
   TriangleAlert, X,
 } from "lucide-react";
 import {
-  armarModelo, cargarGeo, cargarLocalidadesGeoref, km, unidadDeStock, zonaColorVar,
+  armarModelo, cargarGeo, cargarLocalidadesGeoref, km, unidadDeStock, zonaColorVar, zonaForzada,
   type LatLng, type Localidad, type MapaModelo, type Unidad, type UnidadCode, type ZonaCode,
 } from "@/lib/mapaZonas";
 import { distanciasPorRuta, fmtDuracion, trazadoRuta, type Ruta } from "@/lib/ruteo";
@@ -75,8 +75,11 @@ function readRecents(): string[] {
     return [];
   }
 }
-function pushRecent(name: string): string[] {
-  const r = [name, ...readRecents().filter((x) => x !== name)].slice(0, 5);
+// Clave «nombre|departamento»: hay localidades homónimas en distintos departamentos.
+// Las entradas viejas (solo nombre) siguen funcionando.
+const claveReciente = (l: Localidad) => `${l.nombre}|${l.departamento}`;
+function pushRecent(clave: string): string[] {
+  const r = [clave, ...readRecents().filter((x) => x !== clave)].slice(0, 5);
   try { localStorage.setItem(RECENT_KEY, JSON.stringify(r)); } catch { /* sin storage */ }
   return r;
 }
@@ -203,9 +206,20 @@ const fLabel = (code: string) => (code === "BN" || code === "BS" ? `Zona B · ${
 
 function fitOpts(panel: HTMLElement | null): FitBoundsOptions {
   const narrow = !panel || panel.clientWidth < 900;
-  return narrow
-    ? { paddingTopLeft: [16, 112], paddingBottomRight: [16, 24] }
-    : { paddingTopLeft: [280, 78], paddingBottomRight: [280, 78] };
+  if (!narrow) return { paddingTopLeft: [280, 78], paddingBottomRight: [280, 78] };
+  // En angosto las tarjetas van arriba, a todo el ancho: se deja libre su alto real
+  // (sin pasar de la mitad del panel, para que la provincia no quede minúscula).
+  const tools = panel?.querySelector<HTMLElement>(".mz-tools:not(.is-oculto), .mz-tools-mini");
+  const alto = tools ? Math.min(tools.offsetTop + tools.offsetHeight + 8, (panel?.clientHeight ?? 600) / 2) : 112;
+  return { paddingTopLeft: [16, Math.max(64, Math.round(alto))], paddingBottomRight: [16, 24] };
+}
+
+// Posición de la tarjeta de zona: centrada en el punto, sin salirse por los costados,
+// arriba del punto si hay lugar y si no, abajo.
+function popEstilo(pt: { x: number; y: number }, panelW: number) {
+  const x = Math.min(Math.max(pt.x, 170), Math.max(170, panelW - 170));
+  const arriba = pt.y > 300;
+  return { left: x, top: pt.y, transform: `translate(-50%, ${arriba ? "calc(-100% - 14px)" : "14px"})` };
 }
 
 const prefersReduced = () =>
@@ -255,7 +269,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const [matFocused, setMatFocused] = useState(false);
   const [matAct, setMatAct] = useState(-1);
 
-  const [rutas, setRutas] = useState<{ id: number; r: Partial<Record<UnidadCode, Ruta | null>> } | null>(null);
+  const [rutas, setRutas] = useState<{ key: string; r: Partial<Record<UnidadCode, Ruta | null>> } | null>(null);
   const [rutaEstado, setRutaEstado] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [trazado, setTrazado] = useState<{ key: string; coords: LatLng[] } | null>(null);
   // Localidades: arranca con la lista embebida y se completa con Georef.
@@ -270,11 +284,11 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const [toolsAbiertos, setToolsAbiertos] = useState(false);
   const [depositos, setDepositos] = useState<Deposito[]>([]);
   const [zonaPop, setZonaPop] = useState<{ code: UnidadCode; lat: number; lon: number } | null>(null);
-  const [, setPopTick] = useState(0);
   const [depEdit, setDepEdit] = useState(false);
   const [depQuery, setDepQuery] = useState("");
   const [depGuardando, setDepGuardando] = useState(false);
   const toolsRef = useRef<HTMLDivElement>(null);
+  const popElRef = useRef<HTMLDivElement>(null);
 
   // Leaflet (imperativo) — vive en refs, fuera del ciclo de render.
   const LRef = useRef<LeafletNS | null>(null);
@@ -309,7 +323,12 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const zonaPopRef = useRef<typeof zonaPop>(null);
   const depositosLayerRef = useRef<LayerGroup | null>(null);
   const zonaClickRef = useRef(false);
+  // userMovedRef: la vista ya no es la inicial (por el usuario o por un encuadre
+  // propio) → un cambio de tamaño no vuelve a mostrar toda la provincia.
+  // interaccionRef: el usuario tocó el mapa desde el último encuadre automático.
   const userMovedRef = useRef(false);
+  const interaccionRef = useRef(false);
+  const ultimoVueloRef = useRef<number | null>(null);
   const introRunningRef = useRef(introOn);
   const handlersRef = useRef<{
     onZoneClick: (u: UnidadCode, lat: number, lon: number) => void;
@@ -408,6 +427,14 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     }
     return out;
   }, [modelo, depositos]);
+
+  // Las distancias por ruta valen para una obra y un juego de depósitos: si
+  // cambia un depósito, las viejas no se muestran mientras llegan las nuevas.
+  const sedesKey = useMemo(
+    () => Object.entries(sedes).map(([k, s]) => `${k}:${s!.lat},${s!.lon}`).join(";"),
+    [sedes],
+  );
+  const rutasKey = selected ? `${selected.id}|${sedesKey}` : "";
 
   const locIdx = useMemo<LocIdx[]>(() => (localidades.length ? localidades.map((l) => {
     const nn = norm(l.nombre);
@@ -521,7 +548,10 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     const z = map.getZoom();
     const cell = 56;
     const groups = new Map<string, Localidad[]>();
+    // Solo lo visible (con margen): a zoom alto son cientos de marcadores fuera de pantalla.
+    const vista = map.getBounds().pad(0.3);
     for (const l of localidadesRef.current.length ? localidadesRef.current : m.localidades) {
+      if (!vista.contains([l.lat, l.lon])) continue;
       // Las que ya tienen anillo visible no se repiten como punto.
       if (l.rol === "delegacion" && c.delegaciones) continue;
       if (l.rol === "distrito" && c.distritos) continue;
@@ -598,15 +628,11 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       const r = el.getBoundingClientRect();
       if (r.width) ocupados.push(r);
     });
-    const ubicar = (els: HTMLElement[]) => {
-      for (const el of els) {
-        el.style.visibility = "";
-        const r = el.getBoundingClientRect();
-        if (!r.width) continue;
-        if (choca(r)) el.style.visibility = "hidden";
-        else ocupados.push(r);
-      }
-    };
+    // Se juntan los grupos por prioridad y se resuelven al final: leer todas las
+    // medidas de una vez y recién después ocultar (visibility no cambia el layout).
+    // Intercalar lecturas y escrituras forzaba un layout por cada nombre.
+    const grupos: HTMLElement[][] = [];
+    const ubicar = (els: HTMLElement[]) => { grupos.push(els); };
     const deleg: HTMLElement[] = [];
     const dist: HTMLElement[] = [];
     for (const r of ringsRef.current) {
@@ -631,6 +657,17 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       });
     }
     ubicar(refs);
+    const todos = grupos.flat();
+    for (const el of todos) el.style.visibility = "";
+    const rects = todos.map((el) => el.getBoundingClientRect());
+    const ocultar: HTMLElement[] = [];
+    todos.forEach((el, i) => {
+      const r = rects[i];
+      if (!r.width) return;
+      if (choca(r)) ocultar.push(el);
+      else ocupados.push(r);
+    });
+    for (const el of ocultar) el.style.visibility = "hidden";
   }, []);
   const etiquetasRaf = useRef(0);
   const programarEtiquetas = useCallback(() => {
@@ -682,6 +719,13 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     }
   }, []);
 
+  // Llegó el listado completo de Georef: la capa «todas» se redibuja con él.
+  useEffect(() => {
+    if (!mapReady || !capasRef.current.todas) return;
+    renderTodas();
+    programarEtiquetas();
+  }, [localidades, mapReady, renderTodas, programarEtiquetas]);
+
   // ── Construcción del mapa ───────────────────────────────────────────────────
   useEffect(() => {
     if (!modelo) return;
@@ -689,7 +733,18 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     let ro: ResizeObserver | null = null;
     const zoneLayers = zoneLayersRef.current;
     (async () => {
-      const L = (await import("leaflet")).default;
+      let L: LeafletNS;
+      try {
+        L = (await import("leaflet")).default;
+      } catch {
+        // Sin la librería del mapa (red cortada, deploy nuevo): mismo estado que si
+        // falla la geometría, con «Reintentar».
+        if (cancelled) return;
+        introRunningRef.current = false;
+        setIntroOn(false);
+        setStatus("error");
+        return;
+      }
       const mapEl = mapElRef.current;
       const panel = panelRef.current;
       if (cancelled || !mapEl || !panel) return;
@@ -706,14 +761,22 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       map.setView(provBounds.getCenter(), 7, { animate: false });
 
       const container = map.getContainer();
-      const markMoved = () => { userMovedRef.current = true; };
-      container.addEventListener("pointerdown", markMoved);
-      container.addEventListener("wheel", markMoved, { passive: true });
+      // Antes solo contaban el arrastre y la rueda: una búsqueda, «acercar» o la
+      // leyenda movían el mapa y el siguiente resize volvía a la provincia entera.
+      let autoFit = false;
+      map.on("movestart", () => { if (!autoFit && !introRunningRef.current) userMovedRef.current = true; });
+      const marcarInteraccion = () => { interaccionRef.current = true; };
+      container.addEventListener("pointerdown", marcarInteraccion);
+      container.addEventListener("wheel", marcarInteraccion, { passive: true });
       let boundsSet = false;
       const fitIfSized = () => {
         if (!container.clientWidth || !container.clientHeight) return;
         map.invalidateSize({ animate: false });
-        if (!userMovedRef.current && !introRunningRef.current) map.fitBounds(provBounds, { animate: false, ...fitOpts(panelRef.current) });
+        if (!userMovedRef.current && !introRunningRef.current) {
+          autoFit = true;
+          map.fitBounds(provBounds, { animate: false, ...fitOpts(panelRef.current) });
+          autoFit = false;
+        }
         if (!boundsSet) { map.setMaxBounds(provBounds.pad(0.6)); boundsSet = true; }
       };
       ro = new ResizeObserver(fitIfSized);
@@ -723,8 +786,8 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       // Zonas (A al final para que quede arriba, como en el diseño).
       const order = modelo.unidades.filter((u) => u.code !== "A").concat(modelo.unidades.filter((u) => u.code === "A"));
       for (const u of order) {
-        const lyr = L.featureGroup(u.departamentos.map((d) =>
-          L.polygon(d.ring, { stroke: false, fillColor: colorOf(u.code), fillOpacity: 0.16 }),
+        const lyr = L.featureGroup(u.areas.map((poly) =>
+          L.polygon(poly, { stroke: false, fillColor: colorOf(u.code), fillOpacity: 0.16 }),
         )).addTo(map);
         lyr.bindTooltip(zoneTipHtml(u, null, ""), { sticky: true, className: "mz-ztip", direction: "top", offset: [0, -8] });
         lyr.on("mouseover", () => { hoverRef.current = { zona: u.zona, sub: u.subzona ? u.code : null }; styleZones(); });
@@ -750,11 +813,9 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
         }
       }
 
-      // Límites internos de departamento (muy tenues), laguna y contorno provincial.
-      const depto = v("--ido-map-depto");
-      for (const u of modelo.unidades) {
-        for (const d of u.departamentos) L.polygon(d.ring, { color: depto, weight: 0.6, fill: false, interactive: false }).addTo(map);
-      }
+      // Límites internos de departamento (muy tenues, sin los de adentro de la
+      // Zona A — ver lineasDepto), laguna y contorno provincial.
+      L.polyline(modelo.lineasDepto, { color: v("--ido-map-depto"), weight: 0.6, interactive: false, lineJoin: "round" }).addTo(map);
       L.polygon(modelo.marChiquita, {
         color: v("--ido-map-laguna-line"), weight: 1, fillColor: v("--ido-map-laguna-fill"), fillOpacity: 0.9, interactive: false,
       }).bindTooltip("Laguna Mar Chiquita", { className: "mz-ptip" }).addTo(map);
@@ -790,7 +851,9 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       if (capasRef.current.delegaciones) delegL.addTo(map);
       flechasLayerRef.current = L.layerGroup().addTo(map);
       depositosLayerRef.current = L.layerGroup().addTo(map);
-      map.on("zoomend", () => { actualizarNombres(); renderTodas(); dibujarFlechas(); actualizarNumerosRuta(); estiloRutas(); programarEtiquetas(); });
+      map.on("zoomend", () => { actualizarNombres(); dibujarFlechas(); actualizarNumerosRuta(); estiloRutas(); programarEtiquetas(); });
+      // moveend llega también después de cada zoom.
+      map.on("moveend", () => { if (capasRef.current.todas) { renderTodas(); programarEtiquetas(); } });
       map.on("click", (e) => handlersRef.current.onMapClick(e.latlng.lat, e.latlng.lng));
       map.on("move zoom", () => handlersRef.current.onMapMove());
 
@@ -909,23 +972,24 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     let cancelled = false;
     const units = modelo.unidades.filter((u) => sedes[u.code]);
     setRutaEstado("loading");
+    const key = `${selected.id}|${sedesKey}`;
     distanciasPorRuta(selected, units.map((u) => sedes[u.code]!))
       .then((res) => {
         if (cancelled) return;
         const r: Partial<Record<UnidadCode, Ruta | null>> = {};
         units.forEach((u, i) => { r[u.code] = res[i]; });
-        setRutas({ id: selected.id, r });
+        setRutas({ key, r });
         setRutaEstado("ok");
       })
       .catch(() => { if (!cancelled) setRutaEstado("error"); });
     return () => { cancelled = true; };
-  }, [selected, modelo, sedes]);
+  }, [selected, modelo, sedes, sedesKey]);
 
   // ── Zonas con stock para la localidad elegida, de más cercana a más lejana ──
   const cercanos = useMemo(() => {
     if (!selected || !metrica || !modelo) return null;
-    const r = rutas && rutas.id === selected.id ? rutas.r : null;
-    return modelo.unidades
+    const r = rutas && rutas.key === rutasKey ? rutas.r : null;
+    const lista = modelo.unidades
       .filter((u) => (metrica.values[u.code] ?? 0) > 0)
       .map((u) => {
         const sede = sedes[u.code];
@@ -935,9 +999,13 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
         const cover = metrica.kind === "cover" ? (metrica.values[u.code] ?? 0) : 1;
         const qtys = elegidas.map(({ a, s }) => ({ a, q: s[u.code] ?? 0 }));
         return { u, sede, recta, ruta, dist, cover, qtys };
-      })
-      .sort((a, b) => b.cover - a.cover || (a.dist ?? Infinity) - (b.dist ?? Infinity));
-  }, [selected, metrica, modelo, rutas, elegidas, sedes]);
+      });
+    // Si OSRM no devolvió ruta para alguna zona, se ordena todo por línea recta:
+    // comparar km por ruta contra km en línea recta favorece a la que no tiene ruta.
+    const completas = lista.every((c) => c.recta === null || c.recta < 1 || c.ruta);
+    const clave = (c: (typeof lista)[number]) => (completas ? c.dist : c.recta) ?? Infinity;
+    return lista.sort((a, b) => b.cover - a.cover || clave(a) - clave(b));
+  }, [selected, metrica, modelo, rutas, rutasKey, elegidas, sedes]);
   const mejor = cercanos?.[0] && cercanos[0].sede && (cercanos[0].dist ?? 0) >= 1 ? cercanos[0] : null;
   const mejorKey = selected && mejor?.sede ? `${selected.id}:${mejor.u.code}:${mejor.sede.lat},${mejor.sede.lon}` : null;
   const mejorCode = cercanos?.[0]?.u.code ?? null;
@@ -964,7 +1032,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     if (!mapReady || !L || !map) return;
     if (ghostRef.current) { map.removeLayer(ghostRef.current); ghostRef.current = null; }
     if (pinRef.current) { map.removeLayer(pinRef.current); pinRef.current = null; }
-    if (!selected) { selZoneRef.current = null; styleZones(); programarEtiquetas(); return; }
+    if (!selected) { ultimoVueloRef.current = null; selZoneRef.current = null; styleZones(); programarEtiquetas(); return; }
     pinRef.current = L.marker([selected.lat, selected.lon], {
       interactive: false, zIndexOffset: 1000,
       icon: L.divIcon({
@@ -972,6 +1040,15 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
         html: `<div class="mz-pulse"><span class="mz-ring"></span><span class="mz-ring"></span><span class="mz-ring"></span><span class="mz-core"></span><span class="mz-pulse-label">${esc(selected.marcado ? "Obra" : selected.nombre)}</span></div>`,
       }),
     }).addTo(map);
+    // Misma obra y el usuario ya movió el mapa: llegó otra sede (p. ej. al
+    // terminar de calcular las rutas) pero no se le saca la vista que eligió.
+    const mismaObra = ultimoVueloRef.current === selected.id;
+    ultimoVueloRef.current = selected.id;
+    selZoneRef.current = selected.zona;
+    styleZones();
+    programarEtiquetas();
+    if (mismaObra && interaccionRef.current) return;
+    interaccionRef.current = false;
     const sede = mejor?.sede;
     const panel = panelRef.current;
     const ancho = !!panel && panel.clientWidth >= 900;
@@ -984,9 +1061,6 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       ? L.latLngBounds([[selected.lat, selected.lon], [sede.lat, sede.lon]]).pad(0.35)
       : L.latLngBounds([[selected.lat, selected.lon], [selected.lat, selected.lon]]);
     map.flyToBounds(b, { ...pads, maxZoom: 10, duration: 0.8, easeLinearity: 0.2 });
-    selZoneRef.current = selected.zona;
-    styleZones();
-    programarEtiquetas();
     // Solo re-encuadra si cambia la localidad o la sede elegida, no cuando llegan las rutas.
   }, [selected, mejorKey, mapReady, styleZones]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1029,6 +1103,19 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     return b.isValid() ? b : null;
   }, []);
 
+  // Al mover el mapa la tarjeta de zona acompaña su punto: se escribe el estilo
+  // directo (por cuadro), sin re-renderizar todo el componente.
+  const posicionarPop = useCallback(() => {
+    const map = mapRef.current;
+    const el = popElRef.current;
+    const zp = zonaPopRef.current;
+    if (!map || !el || !zp) return;
+    const st = popEstilo(map.latLngToContainerPoint([zp.lat, zp.lon]), panelRef.current?.clientWidth ?? 0);
+    el.style.left = `${st.left}px`;
+    el.style.top = `${st.top}px`;
+    el.style.transform = st.transform;
+  }, []);
+
   const flyToZone = useCallback((code: string) => {
     const b = zoneBounds(code);
     if (b) mapRef.current?.flyToBounds(b, { padding: [60, 60], duration: 0.8, easeLinearity: 0.2 });
@@ -1040,7 +1127,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     setZonaPop(null);
     setSelected(l);
     setQuery(l.nombre);
-    setRecents(pushRecent(l.nombre));
+    setRecents(pushRecent(claveReciente(l)));
   }, []);
 
   const clearSelection = useCallback(() => { setSelected(null); setQuery(""); }, []);
@@ -1055,7 +1142,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       setDepEdit(false);
       setZonaPop({ code, lat, lon });
     };
-    handlersRef.current.onMapMove = () => { if (zonaPopRef.current) setPopTick((t) => t + 1); };
+    handlersRef.current.onMapMove = () => { if (zonaPopRef.current) posicionarPop(); };
     handlersRef.current.onMapClick = (lat, lon) => {
       if (!pickingRef.current) {
         // Un clic fuera de las zonas cierra la tarjeta de zona.
@@ -1070,7 +1157,10 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       let cerca = lista[0];
       let dMin = Infinity;
       for (const l of lista) { const d = km({ lat, lon }, l); if (d < dMin) { dMin = d; cerca = l; } }
-      const u = donde.unidad;
+      // Si el punto cae en (o pegado a) una localidad que EPEC asigna a otra zona
+      // que su departamento, manda la de la localidad, igual que al buscarla.
+      const forzada = cerca && dMin <= 3 ? zonaForzada(cerca.nombre) : undefined;
+      const u = (forzada && m.unidades.find((x) => x.code === forzada)) || donde.unidad;
       pickingRef.current = false;
       setPicking(false);
       setAviso(null);
@@ -1083,7 +1173,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       });
       setQuery(cerca ? `Punto marcado · cerca de ${cerca.nombre}` : "Punto marcado");
     };
-  }, [selectLoc, flyToZone]);
+  }, [selectLoc, flyToZone, posicionarPop]);
 
   useEffect(() => {
     pickingRef.current = picking;
@@ -1171,6 +1261,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     if (!map || !b) return;
     map.invalidateSize({ animate: false });
     map.flyToBounds(b, { duration: 0.8, easeLinearity: 0.2, ...fitOpts(panelRef.current) });
+    map.once("moveend", () => { userMovedRef.current = false; });
   }, []);
 
   // ── Buscador de localidades ─────────────────────────────────────────────────
@@ -1179,7 +1270,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     if (!modelo) return { head: null, items: [], empty: false };
     if (!query.trim()) {
       const items = recents
-        .map((nm) => localidades.find((l) => l.nombre === nm))
+        .map((k) => localidades.find((l) => (k.includes("|") ? claveReciente(l) === k : l.nombre === k)))
         .filter((l): l is Localidad => !!l && inFiltro(l, zoneFilter))
         .map((l) => ({ l, h: [0, 0] as [number, number] }));
       return { head: items.length ? "Búsquedas recientes" : null, items, empty: false };
@@ -1270,8 +1361,8 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     if (!map || !cv || !panel || !m || !provBounds) return;
 
     const endIntro = () => {
-      introRunningRef.current = false;
       map.fitBounds(provBounds, { animate: false, ...fitOpts(panel) });
+      introRunningRef.current = false;
       setIntroOn(false);
       fadeTimer = setTimeout(() => setFading(false), 320);
       cv.getContext("2d")?.clearRect(0, 0, cv.width, cv.height);
@@ -1406,7 +1497,14 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const clickLegend = (code: string) => {
     flyToZone(code);
     const u = modeloRef.current?.unidades.find((x) => x.code === code);
-    if (u) { setDepEdit(false); setZonaPop({ code: u.code, lat: u.label[0], lon: u.label[1] }); }
+    if (u) { setDepEdit(false); setZonaPop({ code: u.code, lat: u.label[0], lon: u.label[1] }); return; }
+    // B no tiene tarjeta propia (stock y depósito van por subzona): se muestran BN y BS.
+    setZonaPop(null);
+    setLgOpenB(true);
+  };
+  // Filas clicables que no son <button>: también con teclado.
+  const teclaClic = (fn: () => void) => (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); }
   };
 
   const zfColor = zoneFilter ? zonaColorVar(zoneFilter) : "";
@@ -1455,15 +1553,13 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
 
   // Tarjeta de zona (clic en una zona del mapa o en la leyenda).
   const popPt = zonaPop && mapRef.current ? mapRef.current.latLngToContainerPoint([zonaPop.lat, zonaPop.lon]) : null;
+
   const tarjetaZona = (() => {
     if (!zonaPop || !popPt || !modelo) return null;
     const u = modelo.unidades.find((x) => x.code === zonaPop.code);
     if (!u) return null;
     const dep = sedes[u.code];
-    const panelW = panelRef.current?.clientWidth ?? 0;
-    const x = Math.min(Math.max(popPt.x, 170), Math.max(170, panelW - 170));
-    const arriba = popPt.y > 300;
-    const ruta = selected && rutas && rutas.id === selected.id ? rutas.r[u.code] : undefined;
+    const ruta = selected && rutas && rutas.key === rutasKey ? rutas.r[u.code] : undefined;
     const recta = selected && dep ? km(selected, dep) : null;
     // Depósito: primero las localidades de la zona, después el resto.
     const opciones = depEdit && depQuery.trim()
@@ -1472,10 +1568,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
         .slice(0, 6)
       : [];
     return (
-      <div
-        className="mz-zpop"
-        style={{ left: x, top: popPt.y, transform: `translate(-50%, ${arriba ? "calc(-100% - 14px)" : "14px"})` }}
-      >
+      <div ref={popElRef} className="mz-zpop" role="dialog" aria-label={`Zona ${u.code} · ${u.delegacion}`} style={popEstilo(popPt, panelRef.current?.clientWidth ?? 0)}>
         <div className="mz-zpop-head">
           <ZoneBadge code={u.code} text={u.subzona ? `${u.zona} · ${u.code}` : u.code} />
           <span className="mz-zpop-title">{u.delegacion}</span>
@@ -1647,13 +1740,17 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
                 autoComplete="off"
                 spellCheck={false}
                 aria-label="Buscar matrícula"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={matDdOpen}
+                aria-controls="mz-dd-mat"
                 onChange={(e) => { setMatQuery(e.target.value); setMatAct(e.target.value.trim() ? 0 : -1); }}
                 onFocus={() => { setMatFocused(true); setMatAct(-1); }}
                 onBlur={() => { setMatFocused(false); setMatAct(-1); }}
                 onKeyDown={onMatKey}
               />
               {matDdOpen && (
-                <div className="mz-dd" role="listbox">
+                <div className="mz-dd" role="listbox" id="mz-dd-mat">
                   {matList.head && (
                     <div className="mz-dd-head mz-dd-head-row">
                       <span>{matList.head}</span>
@@ -1713,6 +1810,10 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
                 autoComplete="off"
                 spellCheck={false}
                 aria-label="Dónde es la obra"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={ddOpen}
+                aria-controls="mz-dd-obra"
                 onChange={(e) => { setQuery(e.target.value); setAct(e.target.value.trim() ? 0 : -1); showGhost(null); }}
                 onFocus={(e) => { setFocused(true); setAct(-1); if (selected) e.currentTarget.select(); }}
                 onBlur={() => { setFocused(false); setAct(-1); showGhost(null); }}
@@ -1720,7 +1821,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
               />
               {!focused && !query && <span className="mz-kbd mz-mono">/</span>}
               {ddOpen && (
-                <div className="mz-dd" role="listbox">
+                <div className="mz-dd" role="listbox" id="mz-dd-obra">
                   {locList.head && <div className="mz-dd-head">{locList.head}</div>}
                   {locList.empty ? (
                     <div className="mz-dd-empty">
@@ -1838,6 +1939,9 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
                       <div key={z.code}>
                         <div
                           className={`mz-lg-row${zoneFilter === z.code ? " is-on" : ""}`}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={teclaClic(() => clickLegend(z.code))}
                           onClick={() => clickLegend(z.code)}
                           onMouseEnter={() => hoverLegend(z.code)}
                           onMouseLeave={() => hoverLegend(null)}
@@ -1850,6 +1954,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
                               type="button"
                               className={`mz-chev${lgOpenB ? "" : " is-closed"}`}
                               title={lgOpenB ? "Contraer" : "Expandir"}
+                              aria-expanded={lgOpenB}
                               onClick={(e) => { e.stopPropagation(); setLgOpenB((v) => !v); }}
                             >
                               <ChevronDown strokeWidth={2} />
@@ -1862,6 +1967,9 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
                             <div
                               key={s.code}
                               className={`mz-lg-row is-sub${zoneFilter === s.code ? " is-on" : ""}`}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={teclaClic(() => clickLegend(s.code))}
                               onClick={() => clickLegend(s.code)}
                               onMouseEnter={() => hoverLegend(s.code)}
                               onMouseLeave={() => hoverLegend(null)}
@@ -1951,7 +2059,15 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
                             const best = c === cercanos[0];
                             const open = expandida === c.u.code;
                             return (
-                              <div key={c.u.code} className={`mz-stock-row is-click${best ? " is-best" : ""}`} onClick={() => setExpandida(open ? null : c.u.code)}>
+                              <div
+                                key={c.u.code}
+                                className={`mz-stock-row is-click${best ? " is-best" : ""}`}
+                                role="button"
+                                tabIndex={0}
+                                aria-expanded={open}
+                                onKeyDown={teclaClic(() => setExpandida(open ? null : c.u.code))}
+                                onClick={() => setExpandida(open ? null : c.u.code)}
+                              >
                                 <ZoneBadge code={c.u.code} />
                                 <span className="mz-stock-del">{c.u.delegacion}</span>
                                 {distDerecha(c, best)}

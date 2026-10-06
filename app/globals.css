@@ -1908,7 +1908,7 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
 }
 .mz-panel button { font-family: inherit; }
 .mz-mono { font-family: var(--font-mono, "JetBrains Mono", monospace); font-variant-numeric: tabular-nums; }
-.mz-map { position: absolute; inset: 0; background: var(--ido-base); }
+.mz-map { position: absolute; inset: 0; z-index: 0; background: var(--ido-base); }
 .mz-globe { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1200; pointer-events: none; display: none; }
 .mz-panel.is-intro .mz-globe { display: block; }
 .mz-panel.is-intro .mz-map { opacity: 0; }

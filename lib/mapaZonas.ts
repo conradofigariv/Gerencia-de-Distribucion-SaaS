@@ -1,14 +1,21 @@
 // Capa de datos del mapa de zonas EPEC (Córdoba). Portado de `datos-mapa.js`
 // del import de Claude Design «MapaZonas». La geometría (límites IGN de los 26
 // departamentos) vive en `public/geo/cordoba.json` y se carga bajo demanda.
+// Las zonas siguen a los departamentos salvo donde EPEC corta distinto: la
+// Zona A (Capital + Gran Córdoba) trae su propio polígono en `zonas`, y A, D, E
+// y H ya vienen recortadas entre sí (ver docs/stock-zona.md → «Forma de las zonas»).
 
 export type LatLng = [number, number];
 
 export interface GeoDepartamento { name: string; zone: string; ring: LatLng[] }
+/** Polígono: anillo exterior + agujeros. */
+export type Poligono = LatLng[][];
 export interface GeoCordoba {
   departamentos: GeoDepartamento[];
   bordesZona: Record<string, LatLng[][]>;
   contorno: LatLng[][];
+  /** Forma propia de las zonas que no coinciden con sus departamentos. */
+  zonas?: Partial<Record<string, Poligono[]>>;
 }
 
 /** Zona territorial A–H. */
@@ -75,6 +82,8 @@ export interface Unidad {
   sede: string;
   label: LatLng;
   departamentos: GeoDepartamento[];
+  /** Superficie de la unidad (relleno, clic y a qué zona pertenece un punto). */
+  areas: Poligono[];
 }
 
 export interface Zona {
@@ -90,6 +99,8 @@ export interface MapaModelo {
   zonas: Zona[];
   unidades: Unidad[];
   contorno: LatLng[][];
+  /** Límites internos de departamento (cada arista una vez), sin los que cruzan la Zona A. */
+  lineasDepto: LatLng[][];
   marChiquita: LatLng[];
   localidades: Localidad[];
   /** Coordenadas de la sede de cada unidad (para distancias). */
@@ -167,10 +178,17 @@ const DISTRITOS: Partial<Record<UnidadCode, string[]>> = {
 // Distritos y delegaciones que EPEC asigna a una zona distinta de la de su departamento.
 // Claves normalizadas (sin acentos, minúsculas) para que también matcheen los
 // nombres de Georef, que vienen en mayúsculas y sin tildes.
-const ZONA_FORZADA: Record<string, UnidadCode> = { "villa carlos paz": "BS", "rio segundo": "H" };
+// Estación General Paz cae justo en la punta norte de la franja de A (en el mapa
+// de EPEC el punto del pueblo está sobre el borde): se fuerza para no depender
+// de ±1 km de trazado.
+const ZONA_FORZADA: Record<string, UnidadCode> = {
+  "villa carlos paz": "BS", "rio segundo": "H", "general paz": "A", "estacion general paz": "A",
+};
 for (const [z, list] of Object.entries(DISTRITOS) as [UnidadCode, string[]][]) {
   for (const n of list) ZONA_FORZADA[normNombre(n)] = ZONA_FORZADA[normNombre(n)] || z;
 }
+/** Zona que EPEC le asigna a una localidad aunque su departamento diga otra (o undefined). */
+export const zonaForzada = (nombre: string): UnidadCode | undefined => ZONA_FORZADA[normNombre(nombre)];
 const DISTRITOS_NORM: Partial<Record<UnidadCode, Set<string>>> = Object.fromEntries(
   (Object.entries(DISTRITOS) as [UnidadCode, string[]][]).map(([z, list]) => [z, new Set(list.map(normNombre))]),
 );
@@ -273,6 +291,8 @@ export interface Localidad {
   marcado?: { cerca: string; km: number };
 }
 
+const enPoligono = (pt: LatLng, poly: Poligono) => inside(pt, poly[0]) && !poly.slice(1).some((h) => inside(pt, h));
+
 function inside(pt: LatLng, ring: LatLng[]): boolean {
   let c = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -297,11 +317,13 @@ export function km(a: { lat: number; lon: number }, b: { lat: number; lon: numbe
 export function armarModelo(geo: GeoCordoba): MapaModelo {
   const deps = geo.departamentos;
   const unidades: Unidad[] = [];
+  const areasDe = (code: string): Poligono[] =>
+    geo.zonas?.[code] ?? deps.filter((d) => d.zone === code).map((d) => [d.ring]);
   const zonas: Zona[] = ZONAS_DEF.map((z) => {
     if (!z.subzonas) {
       const u: Unidad = {
         code: z.code as UnidadCode, zona: z.code, subzona: null, delegacion: z.delegacion, sede: z.sede!,
-        label: z.label, departamentos: deps.filter((d) => d.zone === z.code),
+        label: z.label, departamentos: deps.filter((d) => d.zone === z.code), areas: areasDe(z.code),
       };
       unidades.push(u);
       return { code: z.code, delegacion: z.delegacion, label: z.label, subzonas: null, bordes: geo.bordesZona[z.code] || [], divisoria: null };
@@ -309,7 +331,7 @@ export function armarModelo(geo: GeoCordoba): MapaModelo {
     const subs = z.subzonas.map((s) => {
       const u: Unidad = {
         code: s.code, zona: z.code, subzona: s.code as "BN" | "BS", delegacion: s.delegacion, sede: s.sede,
-        label: s.label, departamentos: deps.filter((d) => d.zone === s.code),
+        label: s.label, departamentos: deps.filter((d) => d.zone === s.code), areas: areasDe(s.code),
       };
       unidades.push(u);
       return u;
@@ -338,11 +360,16 @@ export function armarModelo(geo: GeoCordoba): MapaModelo {
 
   const unidadPorCode = new Map(unidades.map((u) => [u.code, u]));
   const deptoEn = (lat: number, lon: number) => deps.find((dep) => inside([lat, lon], dep.ring)) ?? null;
+  // La zona sale de la superficie de cada unidad (no del departamento: A corta
+  // pedazos de Colón, Santa María y Río Primero). Si el punto cae justo en una
+  // costura entre polígonos, se usa el departamento.
+  const unidadEn = (lat: number, lon: number): Unidad | null =>
+    unidades.find((u) => u.areas.some((p) => enPoligono([lat, lon], p)))
+    ?? unidadPorCode.get(deptoEn(lat, lon)?.zone as UnidadCode) ?? null;
   const zonaDe = (lat: number, lon: number, nombre: string): UnidadCode | null => {
     const forzada = ZONA_FORZADA[normNombre(nombre)];
     if (forzada) return forzada;
-    const d = deptoEn(lat, lon);
-    return d ? (d.zone as UnidadCode) : null;
+    return unidadEn(lat, lon)?.code ?? null;
   };
   const rol = (nombre: string, unidad: UnidadCode): Localidad["rol"] => {
     const u = unidadPorCode.get(unidad);
@@ -369,7 +396,7 @@ export function armarModelo(geo: GeoCordoba): MapaModelo {
 
   const ubicar = (lat: number, lon: number) => {
     const d = deptoEn(lat, lon);
-    const u = d ? unidadPorCode.get(d.zone as UnidadCode) : undefined;
+    const u = unidadEn(lat, lon);
     return d && u ? { unidad: u, departamento: d.name } : null;
   };
 
@@ -401,7 +428,26 @@ export function armarModelo(geo: GeoCordoba): MapaModelo {
     return out;
   };
 
-  return { zonas, unidades, contorno: geo.contorno, marChiquita: MAR_CHIQUITA, localidades, sedes, ubicar, fusionar };
+  // Límites de departamento para el fondo. Dentro de A no se dibujan: A corta
+  // pedazos de cuatro departamentos y sus límites (el «cuadrado» de Capital y los
+  // bordes de Colón y Santa María que lo rodean) parecían otra zona adentro.
+  const areasA = unidadPorCode.get("A")?.areas ?? [];
+  const vistas = new Set<string>();
+  const aristas: [LatLng, LatLng][] = [];
+  for (const dep of deps) {
+    dep.ring.forEach((a, i) => {
+      const b = dep.ring[(i + 1) % dep.ring.length];
+      const k = [pk(a), pk(b)].sort().join("|");
+      if (pk(a) === pk(b) || vistas.has(k)) return;
+      vistas.add(k);
+      const mid: LatLng = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      if (areasA.some((p) => enPoligono(mid, p))) return;
+      aristas.push([a, b]);
+    });
+  }
+  const lineasDepto = chain(aristas);
+
+  return { zonas, unidades, contorno: geo.contorno, lineasDepto, marChiquita: MAR_CHIQUITA, localidades, sedes, ubicar, fusionar };
 }
 
 // ─── Localidades completas desde Georef (API pública de datos.gob.ar) ─────────
