@@ -264,6 +264,10 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const [picking, setPicking] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [lgMax, setLgMax] = useState<number | null>(null);
+  // Pantallas angostas: con obra elegida, las tarjetas de arriba se compactan
+  // en una barra para que la tarjeta de stock y el mapa entren.
+  const [angosto, setAngosto] = useState(false);
+  const [toolsAbiertos, setToolsAbiertos] = useState(false);
   const [depositos, setDepositos] = useState<Deposito[]>([]);
   const [zonaPop, setZonaPop] = useState<{ code: UnidadCode; lat: number; lon: number } | null>(null);
   const [, setPopTick] = useState(0);
@@ -969,15 +973,17 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       }),
     }).addTo(map);
     const sede = mejor?.sede;
-    if (sede) {
-      map.flyToBounds(L.latLngBounds([[selected.lat, selected.lon], [sede.lat, sede.lon]]).pad(0.35), {
-        ...fitOpts(panelRef.current),
-        paddingBottomRight: panelRef.current && panelRef.current.clientWidth >= 900 ? [360, 78] : [16, 24],
-        maxZoom: 10, duration: 0.8, easeLinearity: 0.2,
-      });
-    } else {
-      map.flyTo([selected.lat, selected.lon], 10, { duration: 0.8, easeLinearity: 0.2 });
-    }
+    const panel = panelRef.current;
+    const ancho = !!panel && panel.clientWidth >= 900;
+    // Encuadre que deja libre lo que tapan los paneles: en escritorio la tarjeta
+    // de la derecha; en angosto, la barra de arriba y la hoja de abajo (55 %).
+    const pads: FitBoundsOptions = ancho
+      ? { paddingTopLeft: [280, 78], paddingBottomRight: [360, 78] }
+      : { paddingTopLeft: [16, 64], paddingBottomRight: [16, Math.round((panel?.clientHeight ?? 600) * 0.55) + 16] };
+    const b = sede
+      ? L.latLngBounds([[selected.lat, selected.lon], [sede.lat, sede.lon]]).pad(0.35)
+      : L.latLngBounds([[selected.lat, selected.lon], [selected.lat, selected.lon]]);
+    map.flyToBounds(b, { ...pads, maxZoom: 10, duration: 0.8, easeLinearity: 0.2 });
     selZoneRef.current = selected.zona;
     styleZones();
     programarEtiquetas();
@@ -1087,6 +1093,18 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [picking]);
+
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const medir = () => setAngosto(panel.clientWidth < 900);
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(panel);
+    return () => ro.disconnect();
+  }, []);
+  // Al elegir (o cambiar) la obra, en angosto se vuelve a compactar.
+  useEffect(() => { setToolsAbiertos(false); }, [selected?.id]);
 
   // La leyenda usa el alto que deja libre la columna de tarjetas de la izquierda.
   useEffect(() => {
@@ -1566,7 +1584,20 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
         )}
 
         {/* Columna izquierda: 1) qué matrícula · 2) dónde es la obra */}
-        <div ref={toolsRef} className="mz-ui mz-tools">
+        {angosto && selected && !toolsAbiertos && (
+          <button type="button" className="mz-ui mz-tools-mini" onClick={() => setToolsAbiertos(true)}>
+            <span className="mz-tools-mini-txt">
+              <span className="mz-mono">{n === 0 ? "Sin matrícula" : n === 1 ? articulos[0] : `${n} matrículas`}</span>
+              <span className="mz-tools-mini-sep">·</span>
+              <span>{selected.marcado ? "Punto marcado" : selected.nombre}</span>
+            </span>
+            <span className="mz-tools-mini-edit">Editar</span>
+          </button>
+        )}
+        <div
+          ref={toolsRef}
+          className={`mz-ui mz-tools${angosto && selected && !toolsAbiertos ? " is-oculto" : ""}`}
+        >
           <div className="mz-step">
             <div className="mz-step-head">
               <span>{n <= 1 ? "Matrícula" : `${n} matrículas`}</span>
@@ -1859,7 +1890,12 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
         {tarjetaZona}
 
         {/* Tarjeta de detalle */}
-        <aside className={`mz-card${selected ? " is-open" : ""}`} aria-live="polite">
+        {angosto && selected && toolsAbiertos && (
+          <button type="button" className="mz-ui mz-ver-resultado" onClick={() => setToolsAbiertos(false)}>
+            Ver resultado
+          </button>
+        )}
+        <aside className={`mz-card${selected && !(angosto && toolsAbiertos) ? " is-open" : ""}`} aria-live="polite">
           {selected && unidadSel && (
             <>
               <div className="mz-card-head">

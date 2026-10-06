@@ -2073,7 +2073,7 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
   .mz-legend { left: 12px; bottom: 12px; width: 200px; }
   .mz-zoom { right: 12px; bottom: 12px; }
   .mz-zoom .mz-fullview { display: none; }
-  .mz-card { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 62%; transform: translateY(12px); }
+  .mz-card { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 55%; transform: translateY(12px); z-index: 1002; }
   .mz-err-box { width: calc(100% - 32px); }
 }
 
@@ -2188,3 +2188,12 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
 .mz-zpop-op small { color: var(--ido-text-2); font-size: 11px; }
 @media (max-width: 899px) { .mz-zpop { width: min(300px, calc(100% - 24px)); } }
 .mz-dep { width: 12px; height: 12px; border-radius: 3px; border: 2px solid var(--ido-base); box-shadow: 0 0 0 1px var(--ido-border-strong); }
+
+/* Angosto con obra elegida: las tarjetas de arriba se compactan en una barra */
+.mz-tools.is-oculto { display: none; }
+.mz-tools-mini { position: absolute; top: 12px; left: 12px; right: 12px; z-index: 1001; height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 6px 0 12px; border-radius: 10px; border: 1px solid var(--ido-border); background: var(--ido-elevated); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); color: var(--ido-text); font-size: 12px; cursor: pointer; text-align: left; }
+.mz-tools-mini-txt { flex: 1; min-width: 0; display: flex; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mz-tools-mini-txt > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.mz-tools-mini-sep { color: var(--ido-text-2); }
+.mz-tools-mini-edit { flex: none; height: 28px; padding: 0 10px; display: grid; place-items: center; border-radius: 6px; background: var(--ido-border); color: var(--ido-text-2); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.mz-ver-resultado { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 1002; height: 38px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--ido-accent); color: var(--ido-base); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); cursor: pointer; }
