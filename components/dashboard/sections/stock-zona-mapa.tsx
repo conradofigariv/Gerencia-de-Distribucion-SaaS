@@ -19,6 +19,8 @@ import {
   type LatLng, type Localidad, type MapaModelo, type Unidad, type UnidadCode, type ZonaCode,
 } from "@/lib/mapaZonas";
 import { distanciasPorRuta, fmtDuracion, trazadoRuta, type Ruta } from "@/lib/ruteo";
+import { getDepositos, guardarDeposito, quitarDeposito, type Deposito } from "@/lib/stockDepositos";
+import { toast } from "sonner";
 
 type LeafletNS = typeof import("leaflet");
 type PorUnidad = Partial<Record<UnidadCode, number>>;
@@ -42,6 +44,9 @@ interface MapaZonasProps {
 interface Metrica { kind: "qty" | "cover"; values: PorUnidad; max: number }
 
 interface Capas { delegaciones: boolean; distritos: boolean; todas: boolean; rutas: boolean }
+
+/** Desde dónde se mide la distancia al stock de una zona: su depósito. */
+interface PuntoDeposito { nombre: string; lat: number; lon: number; propio: boolean }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -206,6 +211,14 @@ function fitOpts(panel: HTMLElement | null): FitBoundsOptions {
 const prefersReduced = () =>
   typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+// La intro del globo se ve una vez por día (en uso diario cansaría verla siempre).
+const INTRO_KEY = "mapa.intro.dia";
+const hoy = () => new Date().toLocaleDateString("sv"); // AAAA-MM-DD local
+function introPendiente(): boolean {
+  if (typeof window === "undefined" || prefersReduced()) return false;
+  try { return localStorage.getItem(INTRO_KEY) !== hoy(); } catch { return true; }
+}
+
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }: MapaZonasProps) {
@@ -221,7 +234,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [showSkel, setShowSkel] = useState(false);
   const [loadNonce, setLoadNonce] = useState(0);
-  const [introOn, setIntroOn] = useState(() => !prefersReduced());
+  const [introOn, setIntroOn] = useState(introPendiente);
   const [fading, setFading] = useState(false);
   const [mapReady, setMapReady] = useState(false);
 
@@ -251,6 +264,12 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const [picking, setPicking] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [lgMax, setLgMax] = useState<number | null>(null);
+  const [depositos, setDepositos] = useState<Deposito[]>([]);
+  const [zonaPop, setZonaPop] = useState<{ code: UnidadCode; lat: number; lon: number } | null>(null);
+  const [, setPopTick] = useState(0);
+  const [depEdit, setDepEdit] = useState(false);
+  const [depQuery, setDepQuery] = useState("");
+  const [depGuardando, setDepGuardando] = useState(false);
   const toolsRef = useRef<HTMLDivElement>(null);
 
   // Leaflet (imperativo) — vive en refs, fuera del ciclo de render.
@@ -283,13 +302,17 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const capasRef = useRef<Capas>(capas);
   const localidadesRef = useRef<Localidad[]>([]);
   const pickingRef = useRef(false);
+  const zonaPopRef = useRef<typeof zonaPop>(null);
+  const depositosLayerRef = useRef<LayerGroup | null>(null);
+  const zonaClickRef = useRef(false);
   const userMovedRef = useRef(false);
   const introRunningRef = useRef(introOn);
   const handlersRef = useRef<{
-    onZoneClick: (z: ZonaCode) => void;
+    onZoneClick: (u: UnidadCode, lat: number, lon: number) => void;
     onLocClick: (l: Localidad) => void;
     onMapClick: (lat: number, lon: number) => void;
-  }>({ onZoneClick: () => {}, onLocClick: () => {}, onMapClick: () => {} });
+    onMapMove: () => void;
+  }>({ onZoneClick: () => {}, onLocClick: () => {}, onMapClick: () => {}, onMapMove: () => {} });
 
   // ── Matrículas elegidas y qué pinta el mapa ─────────────────────────────────
   const rowsByArt = useMemo(() => new Map(rows.map((r) => [r.articulo, r])), [rows]);
@@ -367,6 +390,20 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     return () => { cancelled = true; };
   }, [modelo]);
   useEffect(() => { localidadesRef.current = localidades; }, [localidades]);
+
+  useEffect(() => { getDepositos().then(setDepositos); }, []);
+  // Depósito efectivo de cada zona: el configurado o, si no hay, la sede.
+  const sedes = useMemo(() => {
+    const out: Partial<Record<UnidadCode, PuntoDeposito>> = {};
+    if (!modelo) return out;
+    for (const u of modelo.unidades) {
+      const d = depositos.find((x) => x.unidad === u.code);
+      const s = modelo.sedes[u.code];
+      if (d) out[u.code] = { nombre: d.localidad, lat: d.lat, lon: d.lon, propio: true };
+      else if (s) out[u.code] = { nombre: s.nombre, lat: s.lat, lon: s.lon, propio: false };
+    }
+    return out;
+  }, [modelo, depositos]);
 
   const locIdx = useMemo<LocIdx[]>(() => (localidades.length ? localidades.map((l) => {
     const nn = norm(l.nombre);
@@ -688,7 +725,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
         lyr.bindTooltip(zoneTipHtml(u, null, ""), { sticky: true, className: "mz-ztip", direction: "top", offset: [0, -8] });
         lyr.on("mouseover", () => { hoverRef.current = { zona: u.zona, sub: u.subzona ? u.code : null }; styleZones(); });
         lyr.on("mouseout", () => { hoverRef.current = { zona: null, sub: null }; styleZones(); });
-        lyr.on("click", () => handlersRef.current.onZoneClick(u.zona));
+        lyr.on("click", (e) => handlersRef.current.onZoneClick(u.code, e.latlng.lat, e.latlng.lng));
         zoneLayersRef.current[u.code] = lyr;
         unitLabelsRef.current[u.code] = L.marker(u.label, { interactive: false, icon: unitIcon(L, u.code, null) }).addTo(map);
       }
@@ -748,8 +785,10 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       if (capasRef.current.distritos) distL.addTo(map);
       if (capasRef.current.delegaciones) delegL.addTo(map);
       flechasLayerRef.current = L.layerGroup().addTo(map);
+      depositosLayerRef.current = L.layerGroup().addTo(map);
       map.on("zoomend", () => { actualizarNombres(); renderTodas(); dibujarFlechas(); actualizarNumerosRuta(); estiloRutas(); programarEtiquetas(); });
       map.on("click", (e) => handlersRef.current.onMapClick(e.latlng.lat, e.latlng.lng));
+      map.on("move zoom", () => handlersRef.current.onMapMove());
 
       styleZones();
       actualizarNombres();
@@ -773,6 +812,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       rutasRefLayerRef.current = null;
       rutasLineasRef.current = [];
       flechasLayerRef.current = null;
+      depositosLayerRef.current = null;
       lineaRef.current = null;
       ringsRef.current = [];
       for (const k of Object.keys(zoneLayers)) delete zoneLayers[k as UnidadCode];
@@ -863,9 +903,9 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   useEffect(() => {
     if (!selected || !modelo) { setRutaEstado("idle"); return; }
     let cancelled = false;
-    const units = modelo.unidades.filter((u) => modelo.sedes[u.code]);
+    const units = modelo.unidades.filter((u) => sedes[u.code]);
     setRutaEstado("loading");
-    distanciasPorRuta(selected, units.map((u) => modelo.sedes[u.code]!))
+    distanciasPorRuta(selected, units.map((u) => sedes[u.code]!))
       .then((res) => {
         if (cancelled) return;
         const r: Partial<Record<UnidadCode, Ruta | null>> = {};
@@ -875,7 +915,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       })
       .catch(() => { if (!cancelled) setRutaEstado("error"); });
     return () => { cancelled = true; };
-  }, [selected, modelo]);
+  }, [selected, modelo, sedes]);
 
   // ── Zonas con stock para la localidad elegida, de más cercana a más lejana ──
   const cercanos = useMemo(() => {
@@ -884,7 +924,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     return modelo.unidades
       .filter((u) => (metrica.values[u.code] ?? 0) > 0)
       .map((u) => {
-        const sede = modelo.sedes[u.code];
+        const sede = sedes[u.code];
         const recta = sede ? km(selected, sede) : null;
         const ruta = r ? (r[u.code] ?? null) : undefined;
         const dist = ruta ? ruta.km : recta;
@@ -893,9 +933,9 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
         return { u, sede, recta, ruta, dist, cover, qtys };
       })
       .sort((a, b) => b.cover - a.cover || (a.dist ?? Infinity) - (b.dist ?? Infinity));
-  }, [selected, metrica, modelo, rutas, elegidas]);
+  }, [selected, metrica, modelo, rutas, elegidas, sedes]);
   const mejor = cercanos?.[0] && cercanos[0].sede && (cercanos[0].dist ?? 0) >= 1 ? cercanos[0] : null;
-  const mejorKey = selected && mejor ? `${selected.id}:${mejor.u.code}` : null;
+  const mejorKey = selected && mejor?.sede ? `${selected.id}:${mejor.u.code}:${mejor.sede.lat},${mejor.sede.lon}` : null;
   const mejorCode = cercanos?.[0]?.u.code ?? null;
 
   useEffect(() => { setExpandida(mejorCode); }, [mejorCode, selected?.id, n]);
@@ -904,14 +944,14 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   useEffect(() => {
     if (!mejorKey || !selected || !modelo) return;
     const code = mejorKey.split(":")[1] as UnidadCode;
-    const sede = modelo.sedes[code];
+    const sede = sedes[code];
     if (!sede) return;
     let cancelled = false;
     trazadoRuta(selected, sede)
       .then((coords) => { if (!cancelled && coords) setTrazado({ key: mejorKey, coords }); })
       .catch(() => { /* queda la línea recta */ });
     return () => { cancelled = true; };
-  }, [mejorKey, selected, modelo]);
+  }, [mejorKey, selected, modelo, sedes]);
 
   // ── Selección de localidad: pin y encuadre ──────────────────────────────────
   useEffect(() => {
@@ -989,6 +1029,9 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   }, [zoneBounds]);
 
   const selectLoc = useCallback((l: Localidad) => {
+    // Elegida la obra, el filtro de zona del buscador ya no sirve: se limpia.
+    setZoneFilter(null);
+    setZonaPop(null);
     setSelected(l);
     setQuery(l.nombre);
     setRecents(pushRecent(l.nombre));
@@ -998,10 +1041,22 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
 
   useEffect(() => {
     handlersRef.current.onLocClick = (l) => { pickingRef.current = false; setPicking(false); selectLoc(l); };
-    // Marcando la obra, el clic sobre una zona lo resuelve onMapClick (no filtra).
-    handlersRef.current.onZoneClick = (z) => { if (pickingRef.current) return; setZoneFilter(z); flyToZone(z); };
+    // Clic en una zona → su tarjeta (stock, depósito, distancia a la obra).
+    // Marcando la obra, ese clic lo resuelve onMapClick.
+    handlersRef.current.onZoneClick = (code, lat, lon) => {
+      if (pickingRef.current) return;
+      zonaClickRef.current = true;
+      setDepEdit(false);
+      setZonaPop({ code, lat, lon });
+    };
+    handlersRef.current.onMapMove = () => { if (zonaPopRef.current) setPopTick((t) => t + 1); };
     handlersRef.current.onMapClick = (lat, lon) => {
-      if (!pickingRef.current) return;
+      if (!pickingRef.current) {
+        // Un clic fuera de las zonas cierra la tarjeta de zona.
+        if (zonaClickRef.current) zonaClickRef.current = false;
+        else setZonaPop(null);
+        return;
+      }
       const m = modeloRef.current;
       const donde = m?.ubicar(lat, lon);
       if (!m || !donde) { setAviso("Ese punto está fuera de Córdoba. Marcá dentro de la provincia."); return; }
@@ -1013,6 +1068,8 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       pickingRef.current = false;
       setPicking(false);
       setAviso(null);
+      setZoneFilter(null);
+      setZonaPop(null);
       setSelected({
         id: -Date.now(), nombre: "Punto marcado", departamento: donde.departamento, lat, lon,
         zona: u.zona, subzona: u.subzona, unidad: u.code, rol: null,
@@ -1049,6 +1106,33 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   }, []);
   // Si las tarjetas de la izquierda dejan muy poco lugar, la leyenda arranca plegada.
   const lgPoco = lgMax !== null && lgMax < 96;
+  // Con matrícula elegida, los números ya están sobre el mapa: la leyenda se pliega.
+  const hayMatricula = n > 0;
+  useEffect(() => { if (hayMatricula) setLegendClosed(true); }, [hayMatricula]);
+  useEffect(() => { zonaPopRef.current = zonaPop; }, [zonaPop]);
+  useEffect(() => {
+    if (!zonaPop) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !depEdit) setZonaPop(null); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [zonaPop, depEdit]);
+
+  // Depósitos que no son la sede: un cuadrado del color de la zona, para que la
+  // línea de distancia arranque en algo visible.
+  useEffect(() => {
+    const L = LRef.current;
+    const lyr = depositosLayerRef.current;
+    if (!mapReady || !L || !lyr) return;
+    lyr.clearLayers();
+    for (const [code, d] of Object.entries(sedes) as [UnidadCode, PuntoDeposito | undefined][]) {
+      if (!d?.propio) continue;
+      L.marker([d.lat, d.lon], {
+        keyboard: false,
+        zIndexOffset: 600,
+        icon: L.divIcon({ className: "", iconSize: [12, 12], iconAnchor: [6, 6], html: `<div class="mz-dep" style="background:${zonaColorVar(code)}"></div>` }),
+      }).bindTooltip(`Depósito ${esc(fLabel(code))} · ${esc(d.nombre)}`, { className: "mz-ptip", direction: "right", offset: [8, 0] }).addTo(lyr);
+    }
+  }, [sedes, mapReady]);
   useEffect(() => { if (lgPoco) setLegendClosed(true); }, [lgPoco]);
 
   const showGhost = useCallback((l: Localidad | null) => {
@@ -1156,6 +1240,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   // ── Intro: globo → provincia (una vez por apertura) ─────────────────────────
   useEffect(() => {
     if (!mapReady || !introRunningRef.current) return;
+    try { localStorage.setItem(INTRO_KEY, hoy()); } catch { /* sin storage */ }
     let cancelled = false;
     let raf = 0;
     let fadeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1301,9 +1386,9 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     styleZones();
   };
   const clickLegend = (code: string) => {
-    if (zoneFilter === code) { setZoneFilter(null); return; }
-    setZoneFilter(code);
     flyToZone(code);
+    const u = modeloRef.current?.unidades.find((x) => x.code === code);
+    if (u) { setDepEdit(false); setZonaPop({ code: u.code, lat: u.label[0], lon: u.label[1] }); }
   };
 
   const zfColor = zoneFilter ? zonaColorVar(zoneFilter) : "";
@@ -1331,6 +1416,125 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     if (c.ruta) return `${fmtDuracion(c.ruta.min)} en auto`;
     return rutaEstado === "loading" ? "calculando ruta…" : "en línea recta";
   };
+
+  const elegirDeposito = async (code: UnidadCode, l: Localidad) => {
+    setDepGuardando(true);
+    const err = await guardarDeposito({ unidad: code, localidad: l.nombre, lat: l.lat, lon: l.lon });
+    setDepGuardando(false);
+    if (err) { toast.error(err); return; }
+    setDepositos((prev) => [...prev.filter((d) => d.unidad !== code), { unidad: code, localidad: l.nombre, lat: l.lat, lon: l.lon }]);
+    setDepEdit(false);
+    toast.success(`Depósito de ${fLabel(code)}: ${l.nombre}`);
+  };
+  const volverASede = async (code: UnidadCode) => {
+    setDepGuardando(true);
+    const err = await quitarDeposito(code);
+    setDepGuardando(false);
+    if (err) { toast.error(err); return; }
+    setDepositos((prev) => prev.filter((d) => d.unidad !== code));
+    toast.success(`${fLabel(code)} vuelve a medir desde la sede`);
+  };
+
+  // Tarjeta de zona (clic en una zona del mapa o en la leyenda).
+  const popPt = zonaPop && mapRef.current ? mapRef.current.latLngToContainerPoint([zonaPop.lat, zonaPop.lon]) : null;
+  const tarjetaZona = (() => {
+    if (!zonaPop || !popPt || !modelo) return null;
+    const u = modelo.unidades.find((x) => x.code === zonaPop.code);
+    if (!u) return null;
+    const dep = sedes[u.code];
+    const panelW = panelRef.current?.clientWidth ?? 0;
+    const x = Math.min(Math.max(popPt.x, 170), Math.max(170, panelW - 170));
+    const arriba = popPt.y > 300;
+    const ruta = selected && rutas && rutas.id === selected.id ? rutas.r[u.code] : undefined;
+    const recta = selected && dep ? km(selected, dep) : null;
+    // Depósito: primero las localidades de la zona, después el resto.
+    const opciones = depEdit && depQuery.trim()
+      ? buscarLocalidades(depQuery, locIdx, null)
+        .sort((a, b) => Number(!inFiltro(a.l, u.code)) - Number(!inFiltro(b.l, u.code)))
+        .slice(0, 6)
+      : [];
+    return (
+      <div
+        className="mz-zpop"
+        style={{ left: x, top: popPt.y, transform: `translate(-50%, ${arriba ? "calc(-100% - 14px)" : "14px"})` }}
+      >
+        <div className="mz-zpop-head">
+          <ZoneBadge code={u.code} text={u.subzona ? `${u.zona} · ${u.code}` : u.code} />
+          <span className="mz-zpop-title">{u.delegacion}</span>
+          <button type="button" className="mz-iconbtn is-sm" title="Cerrar" onClick={() => setZonaPop(null)}>
+            <X className="w-3.5 h-3.5" strokeWidth={1.75} />
+          </button>
+        </div>
+        <div className="mz-zpop-sec">
+          {n === 0 ? (
+            <span className="mz-zpop-muted">Elegí una matrícula para ver su stock en esta zona.</span>
+          ) : elegidas.map(({ a, row, s: st }) => {
+            const q = st[u.code] ?? 0;
+            return (
+              <div key={a} className="mz-zpop-fila">
+                <span className="mz-mono">{a}</span>
+                <span className={`mz-mono${q > 0 ? "" : " is-off"}`}>{q > 0 ? `${fmtNum(q)}${row?.udmPrimaria ? " " + row.udmPrimaria : ""}` : "sin stock"}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mz-zpop-sec">
+          <div className="mz-zpop-fila">
+            <span className="mz-zpop-k">Depósito</span>
+            <span>{dep?.nombre ?? "—"}{dep && !dep.propio ? <small className="mz-zpop-muted"> · sede</small> : null}</span>
+          </div>
+          {selected && recta !== null && (
+            <div className="mz-zpop-fila">
+              <span className="mz-zpop-k">A la obra</span>
+              <span className="mz-mono">
+                {recta < 1 ? "en la obra" : `${fmtKm(ruta ? ruta.km : recta)}${ruta ? ` · ${fmtDuracion(ruta.min)}` : " en línea recta"}`}
+              </span>
+            </div>
+          )}
+          {!depEdit ? (
+            <div className="mz-zpop-acciones">
+              <button type="button" className="mz-zpop-link" onClick={() => { setDepEdit(true); setDepQuery(""); }}>Cambiar depósito</button>
+              {dep?.propio && (
+                <button type="button" className="mz-zpop-link" disabled={depGuardando} onClick={() => volverASede(u.code)}>Volver a la sede</button>
+              )}
+            </div>
+          ) : (
+            <div className="mz-zpop-dep">
+              <input
+                className="mz-input is-mini"
+                autoFocus
+                value={depQuery}
+                placeholder="Localidad del depósito"
+                aria-label="Localidad del depósito"
+                disabled={depGuardando}
+                onChange={(e) => setDepQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setDepEdit(false);
+                  if (e.key === "Enter" && opciones[0]) elegirDeposito(u.code, opciones[0].l);
+                }}
+              />
+              {opciones.map((it) => (
+                <button key={it.l.id} type="button" className="mz-zpop-op" disabled={depGuardando} onClick={() => elegirDeposito(u.code, it.l)}>
+                  <span>{it.l.nombre}</span><small>{it.l.departamento}</small>
+                </button>
+              ))}
+              {depQuery.trim() && !opciones.length && <span className="mz-zpop-muted">Sin resultados</span>}
+              <button type="button" className="mz-zpop-link" onClick={() => setDepEdit(false)}>Cancelar</button>
+            </div>
+          )}
+        </div>
+        {!selected && (
+          <button
+            type="button"
+            className="mz-zpop-link is-pie"
+            onClick={() => { setZoneFilter(u.code); setZonaPop(null); qRef.current?.focus(); }}
+          >
+            Buscar la obra en esta zona
+          </button>
+        )}
+      </div>
+    );
+  })();
 
   const capasItems: { key: keyof Capas; label: string }[] = [
     { key: "delegaciones", label: "Mostrar delegaciones" },
@@ -1652,6 +1856,8 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
           </div>
         )}
 
+        {tarjetaZona}
+
         {/* Tarjeta de detalle */}
         <aside className={`mz-card${selected ? " is-open" : ""}`} aria-live="polite">
           {selected && unidadSel && (
@@ -1691,7 +1897,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
                           {distDerecha(c, i === 0)}
                           <span className="mz-stock-km">
                             <span className="mz-mono" style={{ color: "var(--ido-text)" }}>{fmtNum(c.qtys[0].q)}</span>{udm ? ` ${udm}` : ""} en stock
-                            {como ? ` · ${como}` : ""}{i === 0 ? " · la más cercana" : ""}
+                            {como ? ` · ${como}` : ""}{c.sede?.propio ? ` · desde ${c.sede.nombre}` : ""}{i === 0 ? " · la más cercana" : ""}
                           </span>
                         </div>
                       );
@@ -1715,7 +1921,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
                                 {distDerecha(c, best)}
                                 <span className="mz-stock-km">
                                   <span className={`mz-cover mz-mono${c.cover === n ? " is-full" : ""}`}>{c.cover}/{n}</span> matrículas
-                                  {comoSeMidio(c) ? ` · ${comoSeMidio(c)}` : ""}
+                                  {comoSeMidio(c) ? ` · ${comoSeMidio(c)}` : ""}{c.sede?.propio ? ` · desde ${c.sede.nombre}` : ""}
                                 </span>
                                 {open && (
                                   <div className="mz-stock-det">

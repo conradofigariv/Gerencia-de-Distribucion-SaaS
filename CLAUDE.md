@@ -126,7 +126,7 @@ nueva o se lo recordés vos en el chat.
 | servicios-resumen | `seguimiento` (lectura + edición inline; «Traer del Buscador» reemplaza solo lo que trajo la pestaña elegida — `origen='buscador'` + `buscador_tab_id`, RPC atómica `gd_seguimiento_traer_de_pestana` en `supabase/seguimiento_buscador_tab.sql`; ver `enviarMarcadasASeguimiento` en `lib/buscadorTabs.ts`) |
 | matriculas | `matriculas` |
 | matriculas-familias | `familias`, `familia_matriculas`, `matricula_tipo`, `matriculas` (lectura del catálogo) — SQL en [`docs/matriculas-familias.md`](docs/matriculas-familias.md) |
-| stock-zona | `stock_uploads`, `familias` + `familia_matriculas` + `matricula_tipo` (lectura para el filtro), `matriculas` (lectura del catálogo) — SQL en [`docs/stock-zona.md`](docs/stock-zona.md) |
+| stock-zona | `stock_uploads`, `stock_zona_depositos` (depósito de cada zona para el mapa — `supabase/stock_zona_depositos.sql`), `familias` + `familia_matriculas` + `matricula_tipo` (lectura para el filtro), `matriculas` (lectura del catálogo) — SQL en [`docs/stock-zona.md`](docs/stock-zona.md) |
 | transformadores-carga | `planillas_reserva` |
 | transformadores-tabla | `planillas_reserva` (lectura) |
 | transformadores-resumen | `planillas_reserva`, `transformador_alarms` |

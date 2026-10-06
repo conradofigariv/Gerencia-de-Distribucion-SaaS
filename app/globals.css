@@ -2166,3 +2166,25 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
 .mz-rref { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); white-space: nowrap; padding: 0 4px; border-radius: 4px; background: color-mix(in srgb, var(--ido-base) 85%, transparent); border: 1px solid color-mix(in srgb, var(--ido-map-ruta) 30%, transparent); color: color-mix(in srgb, var(--ido-map-ruta) 85%, transparent); font-size: 9.5px; font-weight: 500; letter-spacing: 0.02em; pointer-events: none; transition: opacity 200ms var(--ido-ease); }
 .mz-rref.is-principal { border-color: color-mix(in srgb, var(--ido-map-ruta) 45%, transparent); }
 .mz-panel.has-recorrido .mz-rref { opacity: 0.45; }
+
+/* Tarjeta de zona (clic en una zona o en la leyenda) */
+.mz-zpop { position: absolute; z-index: 990; width: 300px; background: var(--ido-elevated); border: 1px solid var(--ido-border-strong); border-radius: 10px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; animation: mz-fade 140ms var(--ido-ease) both; }
+.mz-zpop-head { display: flex; align-items: center; gap: 8px; }
+.mz-zpop-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mz-zpop-sec { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--ido-row-line); }
+.mz-zpop-fila { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12px; }
+.mz-zpop-fila .is-off { color: var(--ido-placeholder); }
+.mz-zpop-k { color: var(--ido-text-2); }
+.mz-zpop-muted { font-size: 12px; color: var(--ido-text-2); }
+.mz-zpop-acciones { display: flex; gap: 12px; }
+.mz-zpop-link { align-self: flex-start; border: 0; background: transparent; padding: 0; color: var(--ido-text-2); font-size: 11.5px; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; cursor: pointer; }
+.mz-zpop-link:hover { color: var(--ido-text); }
+.mz-zpop-link:disabled { opacity: 0.5; cursor: default; }
+.mz-zpop-link.is-pie { padding-top: 8px; border-top: 1px solid var(--ido-row-line); align-self: stretch; text-align: left; }
+.mz-zpop-dep { display: flex; flex-direction: column; gap: 4px; }
+.mz-input.is-mini { height: 30px; padding: 0 10px; box-shadow: none; background: var(--ido-base); font-size: 12px; }
+.mz-zpop-op { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ido-text); font-size: 12px; padding: 5px 8px; cursor: pointer; text-align: left; }
+.mz-zpop-op:hover { background: rgba(255, 255, 255, 0.06); }
+.mz-zpop-op small { color: var(--ido-text-2); font-size: 11px; }
+@media (max-width: 899px) { .mz-zpop { width: min(300px, calc(100% - 24px)); } }
+.mz-dep { width: 12px; height: 12px; border-radius: 3px; border: 2px solid var(--ido-base); box-shadow: 0 0 0 1px var(--ido-border-strong); }
