@@ -11,11 +11,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CircleMarker, FeatureGroup, FitBoundsOptions, LatLngBounds, LayerGroup, Map as LMap, Marker, Polyline } from "leaflet";
 import type { GeoPermissibleObjects } from "d3-geo";
 import {
-  Check, ChevronUp, ChevronDown, Clock, Copy, ExternalLink, Layers, MapPin, Maximize, Minus, Plus, RotateCw, Search,
+  Check, ChevronUp, ChevronDown, Clock, Copy, Crosshair, ExternalLink, Layers, MapPin, Maximize, Minus, Plus, RotateCw, Search,
   TriangleAlert, X,
 } from "lucide-react";
 import {
-  armarModelo, cargarGeo, km, unidadDeStock, zonaColorVar,
+  armarModelo, cargarGeo, cargarLocalidadesGeoref, km, unidadDeStock, zonaColorVar,
   type LatLng, type Localidad, type MapaModelo, type Unidad, type UnidadCode, type ZonaCode,
 } from "@/lib/mapaZonas";
 import { distanciasPorRuta, fmtDuracion, trazadoRuta, type Ruta } from "@/lib/ruteo";
@@ -244,6 +244,13 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const [rutas, setRutas] = useState<{ id: number; r: Partial<Record<UnidadCode, Ruta | null>> } | null>(null);
   const [rutaEstado, setRutaEstado] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [trazado, setTrazado] = useState<{ key: string; coords: LatLng[] } | null>(null);
+  // Localidades: arranca con la lista embebida y se completa con Georef.
+  const [localidades, setLocalidades] = useState<Localidad[]>([]);
+  const [georefFallo, setGeorefFallo] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [lgMax, setLgMax] = useState<number | null>(null);
+  const toolsRef = useRef<HTMLDivElement>(null);
 
   // Leaflet (imperativo) — vive en refs, fuera del ciclo de render.
   const LRef = useRef<LeafletNS | null>(null);
@@ -266,12 +273,15 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const selZoneRef = useRef<ZonaCode | null>(null);
   const metricaRef = useRef<Metrica | null>(null);
   const capasRef = useRef<Capas>(capas);
+  const localidadesRef = useRef<Localidad[]>([]);
+  const pickingRef = useRef(false);
   const userMovedRef = useRef(false);
   const introRunningRef = useRef(introOn);
-  const handlersRef = useRef<{ onZoneClick: (z: ZonaCode) => void; onLocClick: (l: Localidad) => void }>({
-    onZoneClick: () => {},
-    onLocClick: () => {},
-  });
+  const handlersRef = useRef<{
+    onZoneClick: (z: ZonaCode) => void;
+    onLocClick: (l: Localidad) => void;
+    onMapClick: (lat: number, lon: number) => void;
+  }>({ onZoneClick: () => {}, onLocClick: () => {}, onMapClick: () => {} });
 
   // ── Matrículas elegidas y qué pinta el mapa ─────────────────────────────────
   const rowsByArt = useMemo(() => new Map(rows.map((r) => [r.articulo, r])), [rows]);
@@ -339,13 +349,24 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     return () => { cancelled = true; clearTimeout(skT); };
   }, [loadNonce]);
 
-  const locIdx = useMemo<LocIdx[]>(() => (modelo ? modelo.localidades.map((l) => {
+  useEffect(() => {
+    if (!modelo) return;
+    setLocalidades(modelo.localidades);
+    let cancelled = false;
+    cargarLocalidadesGeoref()
+      .then((rows) => { if (!cancelled) { setLocalidades(modelo.fusionar(rows)); setGeorefFallo(false); } })
+      .catch(() => { if (!cancelled) setGeorefFallo(true); });
+    return () => { cancelled = true; };
+  }, [modelo]);
+  useEffect(() => { localidadesRef.current = localidades; }, [localidades]);
+
+  const locIdx = useMemo<LocIdx[]>(() => (localidades.length ? localidades.map((l) => {
     const nn = norm(l.nombre);
     const words: { w: string; p: number }[] = [];
     let p = 0;
     for (const w of nn.split(" ")) { words.push({ w, p }); p += w.length + 1; }
     return { l, n: nn, words };
-  }) : []), [modelo]);
+  }) : []), [localidades]);
 
   // ── Estilo de zonas (hover / selección / stock) ─────────────────────────────
   const styleZones = useCallback(() => {
@@ -451,7 +472,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     const z = map.getZoom();
     const cell = 56;
     const groups = new Map<string, Localidad[]>();
-    for (const l of m.localidades) {
+    for (const l of localidadesRef.current.length ? localidadesRef.current : m.localidades) {
       // Las que ya tienen anillo visible no se repiten como punto.
       if (l.rol === "delegacion" && c.delegaciones) continue;
       if (l.rol === "distrito" && c.distritos) continue;
@@ -588,6 +609,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       if (capasRef.current.distritos) distL.addTo(map);
       if (capasRef.current.delegaciones) delegL.addTo(map);
       map.on("zoomend", () => { actualizarNombres(); renderTodas(); });
+      map.on("click", (e) => handlersRef.current.onMapClick(e.latlng.lat, e.latlng.lng));
 
       styleZones();
       actualizarNombres();
@@ -720,7 +742,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       interactive: false, zIndexOffset: 1000,
       icon: L.divIcon({
         className: "", iconSize: [16, 16], iconAnchor: [8, 8],
-        html: `<div class="mz-pulse"><span class="mz-ring"></span><span class="mz-ring"></span><span class="mz-ring"></span><span class="mz-core"></span><span class="mz-pulse-label">${esc(selected.nombre)}</span></div>`,
+        html: `<div class="mz-pulse"><span class="mz-ring"></span><span class="mz-ring"></span><span class="mz-ring"></span><span class="mz-core"></span><span class="mz-pulse-label">${esc(selected.marcado ? "Obra" : selected.nombre)}</span></div>`,
       }),
     }).addTo(map);
     const sede = mejor?.sede;
@@ -783,9 +805,59 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const clearSelection = useCallback(() => { setSelected(null); setQuery(""); }, []);
 
   useEffect(() => {
-    handlersRef.current.onLocClick = selectLoc;
-    handlersRef.current.onZoneClick = (z) => { setZoneFilter(z); flyToZone(z); };
+    handlersRef.current.onLocClick = (l) => { pickingRef.current = false; setPicking(false); selectLoc(l); };
+    // Marcando la obra, el clic sobre una zona lo resuelve onMapClick (no filtra).
+    handlersRef.current.onZoneClick = (z) => { if (pickingRef.current) return; setZoneFilter(z); flyToZone(z); };
+    handlersRef.current.onMapClick = (lat, lon) => {
+      if (!pickingRef.current) return;
+      const m = modeloRef.current;
+      const donde = m?.ubicar(lat, lon);
+      if (!m || !donde) { setAviso("Ese punto está fuera de Córdoba. Marcá dentro de la provincia."); return; }
+      const lista = localidadesRef.current.length ? localidadesRef.current : m.localidades;
+      let cerca = lista[0];
+      let dMin = Infinity;
+      for (const l of lista) { const d = km({ lat, lon }, l); if (d < dMin) { dMin = d; cerca = l; } }
+      const u = donde.unidad;
+      pickingRef.current = false;
+      setPicking(false);
+      setAviso(null);
+      setSelected({
+        id: -Date.now(), nombre: "Punto marcado", departamento: donde.departamento, lat, lon,
+        zona: u.zona, subzona: u.subzona, unidad: u.code, rol: null,
+        marcado: { cerca: cerca?.nombre ?? "", km: dMin },
+      });
+      setQuery(cerca ? `Punto marcado · cerca de ${cerca.nombre}` : "Punto marcado");
+    };
   }, [selectLoc, flyToZone]);
+
+  useEffect(() => {
+    pickingRef.current = picking;
+    if (!picking) return;
+    setAviso(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPicking(false); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [picking]);
+
+  // La leyenda usa el alto que deja libre la columna de tarjetas de la izquierda.
+  useEffect(() => {
+    const tools = toolsRef.current;
+    const panel = panelRef.current;
+    if (!tools || !panel) return;
+    const medir = () => {
+      const libre = panel.clientHeight - (tools.offsetTop + tools.offsetHeight) - 16 - 16 - 38 - 38;
+      setLgMax(Math.max(0, Math.floor(libre)));
+    };
+    medir();
+    const ro = new ResizeObserver(medir);
+    window.addEventListener("resize", medir);
+    ro.observe(tools);
+    ro.observe(panel);
+    return () => { ro.disconnect(); window.removeEventListener("resize", medir); };
+  }, []);
+  // Si las tarjetas de la izquierda dejan muy poco lugar, la leyenda arranca plegada.
+  const lgPoco = lgMax !== null && lgMax < 96;
+  useEffect(() => { if (lgPoco) setLegendClosed(true); }, [lgPoco]);
 
   const showGhost = useCallback((l: Localidad | null) => {
     const L = LRef.current;
@@ -813,14 +885,14 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     if (!modelo) return { head: null, items: [], empty: false };
     if (!query.trim()) {
       const items = recents
-        .map((nm) => modelo.localidades.find((l) => l.nombre === nm))
+        .map((nm) => localidades.find((l) => l.nombre === nm))
         .filter((l): l is Localidad => !!l && inFiltro(l, zoneFilter))
         .map((l) => ({ l, h: [0, 0] as [number, number] }));
       return { head: items.length ? "Búsquedas recientes" : null, items, empty: false };
     }
     const items = buscarLocalidades(query, locIdx, zoneFilter);
     return { head: null, items, empty: items.length === 0 };
-  }, [modelo, query, recents, zoneFilter, locIdx]);
+  }, [modelo, query, recents, zoneFilter, locIdx, localidades]);
   const ddOpen = focused && ready && (locList.items.length > 0 || locList.empty);
 
   const chooseLoc = (i: number) => {
@@ -1075,170 +1147,202 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     <div ref={wrapRef} style={{ height }}>
       <div
         ref={panelRef}
-        className={`mz-panel${introOn ? " is-intro" : ""}${fading ? " is-fading" : ""}${selected ? " has-card" : ""}`}
+        className={`mz-panel${introOn ? " is-intro" : ""}${fading ? " is-fading" : ""}${selected ? " has-card" : ""}${picking ? " is-picking" : ""}`}
         style={{ height: "100%" }}
       >
         <canvas ref={canvasRef} className="mz-globe" />
         <div ref={mapElRef} className="mz-map" />
 
-        {/* Buscador de localidades */}
-        <div className="mz-ui mz-search">
-          <div className="mz-box">
-            <Search className="mz-lupa" strokeWidth={1.5} />
-            <input
-              ref={qRef}
-              className="mz-input"
-              value={query}
-              disabled={!ready}
-              placeholder={zoneFilter ? `Buscar en ${fLabel(zoneFilter).toLowerCase()} · ${zfDelegacion}` : "Buscar pueblo o ciudad"}
-              autoComplete="off"
-              spellCheck={false}
-              aria-label="Buscar pueblo o ciudad"
-              onChange={(e) => { setQuery(e.target.value); setAct(e.target.value.trim() ? 0 : -1); showGhost(null); }}
-              onFocus={() => { setFocused(true); setAct(-1); }}
-              onBlur={() => { setFocused(false); setAct(-1); showGhost(null); }}
-              onKeyDown={onQueryKey}
-            />
-            {zoneFilter ? (
-              <button
-                type="button"
-                className="mz-zfilter"
-                title="Quitar filtro de zona"
-                style={{ background: `color-mix(in srgb, ${zfColor} 15%, transparent)`, color: zfColor }}
-                onMouseDown={(e) => { e.preventDefault(); setZoneFilter(null); }}
-              >
-                {fLabel(zoneFilter)}<X className="w-3 h-3" strokeWidth={2} />
-              </button>
-            ) : !focused && <span className="mz-kbd mz-mono">/</span>}
+        {/* Aviso del modo «Marcar en el mapa» */}
+        {(picking || aviso) && (
+          <div className="mz-ui mz-hint" role="status">
+            <Crosshair className="w-3.5 h-3.5" strokeWidth={1.75} />
+            <span>{aviso ?? "Hacé clic en el mapa donde es la obra"}</span>
+            <button type="button" className="mz-hint-x" onClick={() => { setPicking(false); setAviso(null); }}>
+              {picking ? "Cancelar · Esc" : "Cerrar"}
+            </button>
           </div>
-          {ddOpen && (
-            <div className="mz-dd" role="listbox">
-              {locList.head && <div className="mz-dd-head">{locList.head}</div>}
-              {locList.empty ? (
-                <div className="mz-dd-empty">
-                  <MapPin className="mz-ic w-4 h-4" strokeWidth={1.5} />
-                  No encontramos esa localidad{zoneFilter ? ` en ${fLabel(zoneFilter).replace("Zona", "la zona")}` : ""}
+        )}
+
+        {/* Columna izquierda: 1) qué matrícula · 2) dónde es la obra */}
+        <div ref={toolsRef} className="mz-ui mz-tools">
+          <div className="mz-step">
+            <div className="mz-step-head">
+              <span>{n <= 1 ? "Matrícula" : `${n} matrículas`}</span>
+              {n > 0 && (
+                <button type="button" className="mz-iconbtn is-sm" title={n === 1 ? "Quitar matrícula" : "Quitar todas"} onClick={() => onArticulosChange([])}>
+                  <X className="w-3.5 h-3.5" strokeWidth={1.75} />
+                </button>
+              )}
+            </div>
+            {n > 0 && (
+              <>
+                <div className="mz-mat-list">
+                  {elegidas.map(({ a, row }) => (
+                    <div key={a} className="mz-mat-item" title={row?.descArticulo || undefined}>
+                      <div className="mz-mat-main">
+                        <span className="mz-mat-code mz-mono">{a}</span>
+                        <span className="mz-mat-desc">{row?.descArticulo || "Sin datos de stock"}</span>
+                      </div>
+                      <span className="mz-mono mz-mat-qty">{fmtNum(row?.total ?? 0)}</span>
+                      {n > 1 && (
+                        <button type="button" className="mz-iconbtn is-sm" title="Quitar" onClick={() => quitar(a)}>
+                          <X className="w-3 h-3" strokeWidth={1.75} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ) : locList.items.map((it, i) => (
-                <div
-                  key={it.l.id}
-                  role="option"
-                  aria-selected={i === act}
-                  className={`mz-dd-item${i === act ? " is-act" : ""}`}
-                  onMouseEnter={() => { setAct(i); showGhost(it.l); }}
-                  onMouseLeave={() => showGhost(null)}
-                  onMouseDown={(e) => { e.preventDefault(); chooseLoc(i); }}
-                >
-                  {locList.head ? <Clock className="mz-ic" strokeWidth={1.5} /> : <MapPin className="mz-ic" strokeWidth={1.5} />}
-                  <div className="mz-dd-main">
-                    <span className="mz-dd-name"><Highlight text={it.l.nombre} h={it.h} /></span>
-                    <span className="mz-dd-dep">{it.l.departamento}</span>
-                  </div>
-                  <LocBadge l={it.l} />
+                <div className="mz-mat-sum">
+                  {n === 1 ? (
+                    zonasConStock > 0
+                      ? <><b className="mz-mono">{fmtNum(elegidas[0].row?.total ?? 0)}</b> {udm} en {zonasConStock} zona{zonasConStock !== 1 ? "s" : ""}</>
+                      : "Sin stock en ninguna zona"
+                  ) : zonasCompletas.length > 0 ? (
+                    <span className="mz-mat-zonas">Todas en {zonasCompletas.map((c) => <ZoneBadge key={c} code={c} />)}</span>
+                  ) : maxCover > 0 ? (
+                    <>Ninguna zona tiene las {n} · máx. <b className="mz-mono">{maxCover}/{n}</b></>
+                  ) : "Sin stock en ninguna zona"}
                 </div>
-              ))}
-              {locList.items.length > 0 && (
-                <div className="mz-dd-foot">
-                  <span><span className="mz-mono">↑ ↓</span> navegar</span>
-                  <span><span className="mz-mono">↵</span> elegir</span>
-                  <span><span className="mz-mono">esc</span> cerrar</span>
+              </>
+            )}
+            <div className="mz-box">
+              <Search className="mz-lupa" strokeWidth={1.5} />
+              <input
+                className="mz-input"
+                value={matQuery}
+                placeholder={n > 0 ? "Agregar otra" : "Número o nombre"}
+                autoComplete="off"
+                spellCheck={false}
+                aria-label="Buscar matrícula"
+                onChange={(e) => { setMatQuery(e.target.value); setMatAct(e.target.value.trim() ? 0 : -1); }}
+                onFocus={() => { setMatFocused(true); setMatAct(-1); }}
+                onBlur={() => { setMatFocused(false); setMatAct(-1); }}
+                onKeyDown={onMatKey}
+              />
+              {matDdOpen && (
+                <div className="mz-dd" role="listbox">
+                  {matList.head && (
+                    <div className="mz-dd-head mz-dd-head-row">
+                      <span>{matList.head}</span>
+                      {fijadasDisponibles.length > 1 && (
+                        <button
+                          type="button"
+                          className="mz-dd-action"
+                          onMouseDown={(e) => { e.preventDefault(); agregar(fijadasDisponibles.map((r) => r.articulo)); }}
+                        >
+                          Agregar todas
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {matList.empty ? (
+                    <div className="mz-dd-empty">No encontramos esa matrícula</div>
+                  ) : matList.items.map((r, i) => (
+                    <div
+                      key={r.articulo}
+                      role="option"
+                      aria-selected={i === matAct}
+                      className={`mz-dd-item${i === matAct ? " is-act" : ""}`}
+                      onMouseEnter={() => setMatAct(i)}
+                      onMouseDown={(e) => { e.preventDefault(); chooseMat(i); }}
+                    >
+                      <div className="mz-dd-main">
+                        <span className="mz-dd-name mz-mono">{r.articulo}</span>
+                        <span className="mz-dd-dep">{r.descArticulo || "—"}</span>
+                      </div>
+                      <span className="mz-mono" style={{ fontSize: 12, color: r.total > 0 ? "var(--ido-text)" : "var(--ido-text-2)" }}>
+                        {fmtNum(r.total)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* Matrículas (arriba a la izquierda) */}
-        <div className="mz-ui mz-tools">
-          {n > 0 && (
-            <div className="mz-mat">
-              <div className="mz-mat-head">
-                <span>{n === 1 ? "Matrícula" : `${n} matrículas`}</span>
-                <button type="button" className="mz-iconbtn" title={n === 1 ? "Quitar matrícula" : "Quitar todas"} onClick={() => onArticulosChange([])}>
+          <div className="mz-step">
+            <div className="mz-step-head">
+              <span>Dónde es la obra</span>
+              {selected && (
+                <button type="button" className="mz-iconbtn is-sm" title="Quitar" onClick={clearSelection}>
                   <X className="w-3.5 h-3.5" strokeWidth={1.75} />
                 </button>
-              </div>
-              <div className="mz-mat-list">
-                {elegidas.map(({ a, row }) => (
-                  <div key={a} className="mz-mat-item" title={row?.descArticulo || undefined}>
-                    <div className="mz-mat-main">
-                      <span className="mz-mat-code mz-mono">{a}</span>
-                      <span className="mz-mat-desc">{row?.descArticulo || "Sin datos de stock"}</span>
-                    </div>
-                    <span className="mz-mono mz-mat-qty">{fmtNum(row?.total ?? 0)}</span>
-                    {n > 1 && (
-                      <button type="button" className="mz-iconbtn is-sm" title="Quitar" onClick={() => quitar(a)}>
-                        <X className="w-3 h-3" strokeWidth={1.75} />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <div className="mz-mat-sum">
-                {n === 1 ? (
-                  zonasConStock > 0
-                    ? <><b className="mz-mono">{fmtNum(elegidas[0].row?.total ?? 0)}</b> {udm} en {zonasConStock} zona{zonasConStock !== 1 ? "s" : ""}</>
-                    : "Sin stock en ninguna zona"
-                ) : zonasCompletas.length > 0 ? (
-                  <span className="mz-mat-zonas">Todas en {zonasCompletas.map((c) => <ZoneBadge key={c} code={c} />)}</span>
-                ) : maxCover > 0 ? (
-                  <>Ninguna zona tiene las {n} · máx. <b className="mz-mono">{maxCover}/{n}</b></>
-                ) : "Sin stock en ninguna zona"}
-              </div>
+              )}
             </div>
-          )}
-          <div className="mz-box" style={{ marginTop: n > 0 ? 8 : 0 }}>
-            <Search className="mz-lupa" strokeWidth={1.5} />
-            <input
-              className="mz-input"
-              value={matQuery}
-              placeholder={n > 0 ? "Agregar otra matrícula" : "Ver stock de una matrícula"}
-              autoComplete="off"
-              spellCheck={false}
-              aria-label="Buscar matrícula"
-              onChange={(e) => { setMatQuery(e.target.value); setMatAct(e.target.value.trim() ? 0 : -1); }}
-              onFocus={() => { setMatFocused(true); setMatAct(-1); }}
-              onBlur={() => { setMatFocused(false); setMatAct(-1); }}
-              onKeyDown={onMatKey}
-            />
-            {matDdOpen && (
-              <div className="mz-dd" role="listbox">
-                {matList.head && (
-                  <div className="mz-dd-head mz-dd-head-row">
-                    <span>{matList.head}</span>
-                    {fijadasDisponibles.length > 1 && (
-                      <button
-                        type="button"
-                        className="mz-dd-action"
-                        onMouseDown={(e) => { e.preventDefault(); agregar(fijadasDisponibles.map((r) => r.articulo)); }}
-                      >
-                        Agregar todas
-                      </button>
-                    )}
-                  </div>
-                )}
-                {matList.empty ? (
-                  <div className="mz-dd-empty">No encontramos esa matrícula</div>
-                ) : matList.items.map((r, i) => (
-                  <div
-                    key={r.articulo}
-                    role="option"
-                    aria-selected={i === matAct}
-                    className={`mz-dd-item${i === matAct ? " is-act" : ""}`}
-                    onMouseEnter={() => setMatAct(i)}
-                    onMouseDown={(e) => { e.preventDefault(); chooseMat(i); }}
-                  >
-                    <div className="mz-dd-main">
-                      <span className="mz-dd-name mz-mono">{r.articulo}</span>
-                      <span className="mz-dd-dep">{r.descArticulo || "—"}</span>
+            <div className="mz-box">
+              <Search className="mz-lupa" strokeWidth={1.5} />
+              <input
+                ref={qRef}
+                className="mz-input"
+                value={query}
+                disabled={!ready}
+                placeholder={zoneFilter ? `Buscar en ${fLabel(zoneFilter).toLowerCase()}` : "Escribí la localidad"}
+                autoComplete="off"
+                spellCheck={false}
+                aria-label="Dónde es la obra"
+                onChange={(e) => { setQuery(e.target.value); setAct(e.target.value.trim() ? 0 : -1); showGhost(null); }}
+                onFocus={(e) => { setFocused(true); setAct(-1); if (selected) e.currentTarget.select(); }}
+                onBlur={() => { setFocused(false); setAct(-1); showGhost(null); }}
+                onKeyDown={onQueryKey}
+              />
+              {zoneFilter ? (
+                <button
+                  type="button"
+                  className="mz-zfilter"
+                  title="Quitar filtro de zona"
+                  style={{ background: `color-mix(in srgb, ${zfColor} 15%, transparent)`, color: zfColor }}
+                  onMouseDown={(e) => { e.preventDefault(); setZoneFilter(null); }}
+                >
+                  {fLabel(zoneFilter)}<X className="w-3 h-3" strokeWidth={2} />
+                </button>
+              ) : !focused && !query && <span className="mz-kbd mz-mono">/</span>}
+              {ddOpen && (
+                <div className="mz-dd" role="listbox">
+                  {locList.head && <div className="mz-dd-head">{locList.head}</div>}
+                  {locList.empty ? (
+                    <div className="mz-dd-empty">
+                      <MapPin className="mz-ic w-4 h-4" strokeWidth={1.5} />
+                      No la encontramos{zoneFilter ? ` en ${fLabel(zoneFilter).replace("Zona", "la zona")}` : ""}. Usá «Marcar en el mapa».
                     </div>
-                    <span className="mz-mono" style={{ fontSize: 12, color: r.total > 0 ? "var(--ido-text)" : "var(--ido-text-2)" }}>
-                      {fmtNum(r.total)}
-                    </span>
-                  </div>
-                ))}
+                  ) : locList.items.map((it, i) => (
+                    <div
+                      key={it.l.id}
+                      role="option"
+                      aria-selected={i === act}
+                      className={`mz-dd-item${i === act ? " is-act" : ""}`}
+                      onMouseEnter={() => { setAct(i); showGhost(it.l); }}
+                      onMouseLeave={() => showGhost(null)}
+                      onMouseDown={(e) => { e.preventDefault(); chooseLoc(i); }}
+                    >
+                      {locList.head ? <Clock className="mz-ic" strokeWidth={1.5} /> : <MapPin className="mz-ic" strokeWidth={1.5} />}
+                      <div className="mz-dd-main">
+                        <span className="mz-dd-name"><Highlight text={it.l.nombre} h={it.h} /></span>
+                        <span className="mz-dd-dep">{it.l.departamento}</span>
+                      </div>
+                      <LocBadge l={it.l} />
+                    </div>
+                  ))}
+                  {locList.items.length > 0 && (
+                    <div className="mz-dd-foot">
+                      <span><span className="mz-mono">↑ ↓</span> navegar</span>
+                      <span><span className="mz-mono">↵</span> elegir</span>
+                      <span><span className="mz-mono">esc</span> cerrar</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            {selected && (
+              <div className="mz-obra-sel">
+                <LocBadge l={selected} />
+                <span>{selected.marcado ? `a ${fmtKm(selected.marcado.km)} de ${selected.marcado.cerca}` : `Depto. ${selected.departamento}`}</span>
               </div>
             )}
+            <button type="button" className={`mz-pick${picking ? " is-on" : ""}`} disabled={!ready} onClick={() => setPicking((v) => !v)}>
+              <Crosshair className="w-3.5 h-3.5" strokeWidth={1.75} />{picking ? "Cancelar" : "Marcar en el mapa"}
+            </button>
+            {georefFallo && <span className="mz-step-note">Lista reducida: no se pudo traer el listado completo de localidades.</span>}
           </div>
         </div>
 
@@ -1288,7 +1392,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
             </button>
             <div className="mz-lg-body">
               <div className="mz-lg-inner">
-                <div className="mz-lg-list">
+                <div className="mz-lg-list" style={lgMax !== null ? { maxHeight: Math.max(lgMax, 96), overflowY: "auto" } : undefined}>
                   {modelo.zonas.map((z) => {
                     const units: UnidadCode[] = z.subzonas ? z.subzonas.map((s) => s.code) : [z.code as UnidadCode];
                     const dato = legendDato(units);
@@ -1350,41 +1454,21 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
             <>
               <div className="mz-card-head">
                 <div className="mz-card-title">
-                  <h2>{selected.nombre}</h2>
-                  <p>Departamento {selected.departamento}</p>
+                  <h2>{selected.marcado ? "Obra (punto marcado)" : selected.nombre}</h2>
+                  <p>
+                    Departamento {selected.departamento}
+                    {selected.marcado && selected.marcado.cerca ? ` · a ${fmtKm(selected.marcado.km)} de ${selected.marcado.cerca}` : ""}
+                  </p>
                 </div>
                 <button type="button" className="mz-iconbtn" title="Cerrar" onClick={clearSelection}>
                   <X className="w-3.5 h-3.5" strokeWidth={1.75} />
                 </button>
               </div>
               <div className="mz-card-body">
-                <div className="mz-kv"><span className="mz-k">Zona</span><span className="mz-v"><ZoneBadge code={selected.zona} /></span></div>
-                {selected.subzona && (
-                  <div className="mz-kv"><span className="mz-k">Subzona</span><span className="mz-v"><ZoneBadge code={selected.subzona} /></span></div>
-                )}
-                <div className="mz-kv"><span className="mz-k">Delegación sede</span><span className="mz-v">{unidadSel.delegacion}</span></div>
-                <div className="mz-kv">
-                  <span className="mz-k">Distrito más cercano</span>
-                  <span className="mz-v">
-                    {selected.rol === "distrito" ? "Es distrito" : distritoCercano
-                      ? <>{distritoCercano.d.nombre} <small className="mz-mono">{fmtKm(distritoCercano.k)}</small></>
-                      : "—"}
-                  </span>
-                </div>
-                <div className="mz-kv">
-                  <span className="mz-k">Coordenadas</span>
-                  <span className="mz-v">
-                    <span className="mz-mono" style={{ fontSize: 12 }}>{coord}</span>
-                    <button type="button" className="mz-iconbtn" title="Copiar coordenadas" onClick={copyCoord}>
-                      {copied ? <Check className="w-3.5 h-3.5" strokeWidth={2.5} style={{ color: "var(--ido-accent)" }} /> : <Copy className="w-3.5 h-3.5" strokeWidth={1.5} />}
-                    </button>
-                  </span>
-                </div>
-
                 {n === 0 ? (
                   <div className="mz-future">
                     <span className="mz-t">Stock más cercano</span>
-                    <span className="mz-s">Elegí una o varias matrículas en «Ver stock de una matrícula» para ver en qué zonas hay stock y a qué distancia.</span>
+                    <span className="mz-s">Elegí una o varias matrículas en la tarjeta «Matrícula» para ver en qué zonas hay stock y a qué distancia.</span>
                   </div>
                 ) : !cercanos || cercanos.length === 0 ? (
                   <div className="mz-future">
@@ -1438,6 +1522,31 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
                     })}
                   </div>
                 )}
+
+                <div className="mz-detalles">
+                  <div className="mz-kv"><span className="mz-k">Zona</span><span className="mz-v"><ZoneBadge code={selected.zona} /></span></div>
+                  {selected.subzona && (
+                    <div className="mz-kv"><span className="mz-k">Subzona</span><span className="mz-v"><ZoneBadge code={selected.subzona} /></span></div>
+                  )}
+                  <div className="mz-kv"><span className="mz-k">Delegación sede</span><span className="mz-v">{unidadSel.delegacion}</span></div>
+                  <div className="mz-kv">
+                    <span className="mz-k">Distrito más cercano</span>
+                    <span className="mz-v">
+                      {selected.rol === "distrito" ? "Es distrito" : distritoCercano
+                        ? <>{distritoCercano.d.nombre} <small className="mz-mono">{fmtKm(distritoCercano.k)}</small></>
+                        : "—"}
+                    </span>
+                  </div>
+                  <div className="mz-kv">
+                    <span className="mz-k">Coordenadas</span>
+                    <span className="mz-v">
+                      <span className="mz-mono" style={{ fontSize: 12 }}>{coord}</span>
+                      <button type="button" className="mz-iconbtn" title="Copiar coordenadas" onClick={copyCoord}>
+                        {copied ? <Check className="w-3.5 h-3.5" strokeWidth={2.5} style={{ color: "var(--ido-accent)" }} /> : <Copy className="w-3.5 h-3.5" strokeWidth={1.5} />}
+                      </button>
+                    </span>
+                  </div>
+                </div>
               </div>
               <div className="mz-card-foot">
                 <a className="mz-btn2 is-wide" href={`https://www.google.com/maps?q=${selected.lat},${selected.lon}`} target="_blank" rel="noopener noreferrer">

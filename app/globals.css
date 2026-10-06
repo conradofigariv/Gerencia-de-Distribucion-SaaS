@@ -1944,9 +1944,7 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
 }
 
 /* Buscadores (localidad centrado arriba · matrícula arriba a la izquierda) */
-.mz-search { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); width: min(520px, calc(100% - 560px)); z-index: 1000; transition: left 200ms var(--ido-ease); }
-.mz-panel.has-card .mz-search { left: calc((100% - 76px) / 2); width: min(520px, calc(100% - 628px)); }
-.mz-tools { position: absolute; top: 16px; left: 16px; width: 240px; z-index: 1001; }
+.mz-tools { position: absolute; top: 16px; left: 16px; width: 252px; z-index: 1001; display: flex; flex-direction: column; gap: 8px; }
 .mz-box { position: relative; }
 .mz-box .mz-lupa { position: absolute; left: 14px; top: 12px; width: 14px; height: 14px; color: var(--ido-text-2); pointer-events: none; }
 .mz-input { width: 100%; height: 38px; padding: 0 84px 0 38px; background: var(--ido-elevated); border: 1px solid var(--ido-border); border-radius: 8px; color: var(--ido-text); font-size: 13px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); transition: border-color 120ms var(--ido-ease), box-shadow 120ms var(--ido-ease); }
@@ -1971,8 +1969,6 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
 .mz-dd-foot { display: flex; gap: 12px; padding: 6px 10px 4px; border-top: 1px solid var(--ido-border); margin-top: 4px; font-size: 11px; color: var(--ido-text-2); }
 
 /* Matrículas elegidas (arriba a la izquierda) */
-.mz-mat { background: var(--ido-elevated); border: 1px solid var(--ido-border); border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); padding: 6px 6px 10px 12px; display: flex; flex-direction: column; gap: 4px; animation: mz-fade 160ms var(--ido-ease) both; }
-.mz-mat-head { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ido-text-2); }
 .mz-mat-list { display: flex; flex-direction: column; max-height: 184px; overflow-y: auto; margin-right: -2px; }
 .mz-mat-item { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 2px 0; border-bottom: 1px solid var(--ido-row-line); }
 .mz-mat-item:last-child { border-bottom: 0; }
@@ -2069,8 +2065,7 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
 
 /* Pantallas angostas: buscadores apilados a todo el ancho, tarjeta como hoja inferior. */
 @media (max-width: 899px) {
-  .mz-search, .mz-panel.has-card .mz-search { left: 12px; right: 12px; transform: none; width: auto; top: 12px; }
-  .mz-tools { top: 58px; left: 12px; right: 12px; width: auto; }
+  .mz-tools { top: 12px; left: 12px; right: 12px; width: auto; }
   .mz-tools .mz-dd { width: auto; }
   .mz-mat-list { max-height: 112px; }
   .mz-legend { left: 12px; bottom: 12px; width: 200px; }
@@ -2119,3 +2114,38 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
 .mz-stock-det { grid-column: 1 / 4; display: flex; flex-direction: column; gap: 2px; padding: 4px 0 2px; }
 .mz-stock-det > div { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--ido-text); }
 .mz-stock-det > div.is-off { color: var(--ido-placeholder); }
+
+/* Columna izquierda: tarjetas «Matrícula» y «Dónde es la obra» */
+.mz-step { background: var(--ido-elevated); border: 1px solid var(--ido-border); border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); padding: 8px 8px 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.mz-step-head { min-height: 22px; display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ido-text-2); }
+.mz-step .mz-box { margin-right: 2px; }
+.mz-step .mz-input { height: 34px; background: var(--ido-base); box-shadow: none; }
+.mz-step .mz-input:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ido-accent) 15%, transparent); }
+.mz-step .mz-box .mz-lupa { top: 10px; }
+.mz-step .mz-kbd { top: 7px; }
+.mz-step .mz-zfilter { top: 6px; }
+.mz-step .mz-dd { position: absolute; top: calc(100% + 6px); left: 0; width: 360px; z-index: 5; }
+.mz-obra-sel { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ido-text-2); min-width: 0; }
+.mz-obra-sel > span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mz-pick { height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px dashed var(--ido-border-strong); border-radius: 8px; background: transparent; color: var(--ido-text-2); font-size: 12px; cursor: pointer; margin-right: 2px; transition: color 120ms var(--ido-ease), border-color 120ms var(--ido-ease), background 120ms var(--ido-ease); }
+.mz-pick:hover { color: var(--ido-text); border-color: rgba(255, 255, 255, 0.3); }
+.mz-pick.is-on { border-style: solid; border-color: var(--ido-accent); color: var(--ido-text); background: color-mix(in srgb, var(--ido-accent) 10%, transparent); }
+.mz-pick:disabled { opacity: 0.5; cursor: default; }
+.mz-step-note { font-size: 11px; color: var(--ido-warning); }
+
+/* Modo «Marcar en el mapa» */
+.mz-panel.is-picking .leaflet-container, .mz-panel.is-picking .leaflet-interactive { cursor: crosshair !important; }
+.mz-hint { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); z-index: 1003; display: inline-flex; align-items: center; gap: 10px; height: 36px; padding: 0 6px 0 12px; border-radius: 999px; background: var(--ido-elevated); border: 1px solid color-mix(in srgb, var(--ido-accent) 45%, transparent); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); color: var(--ido-text); font-size: 12px; white-space: nowrap; animation: mz-fade 160ms var(--ido-ease) both; }
+.mz-hint svg { color: var(--ido-accent); }
+.mz-hint-x { height: 24px; padding: 0 10px; border: 0; border-radius: 999px; background: var(--ido-border); color: var(--ido-text-2); font-size: 11px; cursor: pointer; }
+.mz-hint-x:hover { color: var(--ido-text); }
+
+/* Tarjeta: detalles de la localidad debajo del stock */
+.mz-detalles { margin-top: 16px; border-top: 1px solid var(--ido-row-line); }
+@media (max-width: 899px) {
+  .mz-step .mz-dd { width: auto; right: 0; }
+  .mz-hint { top: auto; bottom: 64px; }
+}
+.mz-card-body > .mz-stock:first-child, .mz-card-body > .mz-future:first-child { margin-top: 10px; }
+/* Clic en una zona: sin el contorno de foco global (dibujaba el rectángulo del polígono). */
+.mz-panel .leaflet-container:focus, .mz-panel .leaflet-interactive:focus { outline: none; }

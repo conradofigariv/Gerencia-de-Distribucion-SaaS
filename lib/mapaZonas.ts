@@ -94,6 +94,25 @@ export interface MapaModelo {
   localidades: Localidad[];
   /** Coordenadas de la sede de cada unidad (para distancias). */
   sedes: Record<UnidadCode, Localidad | undefined>;
+  /** Zona y departamento de un punto cualquiera (null si cae fuera de Córdoba). */
+  ubicar: (lat: number, lon: number) => { unidad: Unidad; departamento: string } | null;
+  /** Suma las localidades de Georef a la lista embebida (sin duplicar). */
+  fusionar: (externas: LocalidadExterna[]) => Localidad[];
+}
+
+/** Localidad tal como llega de Georef (nombre puede venir en mayúsculas). */
+export interface LocalidadExterna { nombre: string; departamento: string; lat: number; lon: number }
+
+/** Minúsculas y sin acentos — para comparar nombres de distintas fuentes. */
+export const normNombre = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+const MINUSCULAS = new Set(["de", "del", "la", "las", "los", "el", "y", "e", "en"]);
+// «VILLA DEL ROSARIO» → «Villa del Rosario». Si ya viene con minúsculas, se respeta.
+function titulo(s: string): string {
+  if (/[a-zà-ÿ]/.test(s)) return s;
+  return s.toLowerCase().split(/(\s+|-)/).map((w, i) =>
+    i > 0 && MINUSCULAS.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1),
+  ).join("");
 }
 
 const pk = (p: LatLng) => p[0].toFixed(4) + "," + p[1].toFixed(4);
@@ -146,10 +165,15 @@ const DISTRITOS: Partial<Record<UnidadCode, string[]>> = {
 };
 
 // Distritos y delegaciones que EPEC asigna a una zona distinta de la de su departamento.
-const ZONA_FORZADA: Record<string, UnidadCode> = { "Villa Carlos Paz": "BS", "Río Segundo": "H" };
+// Claves normalizadas (sin acentos, minúsculas) para que también matcheen los
+// nombres de Georef, que vienen en mayúsculas y sin tildes.
+const ZONA_FORZADA: Record<string, UnidadCode> = { "villa carlos paz": "BS", "rio segundo": "H" };
 for (const [z, list] of Object.entries(DISTRITOS) as [UnidadCode, string[]][]) {
-  for (const n of list) ZONA_FORZADA[n] = ZONA_FORZADA[n] || z;
+  for (const n of list) ZONA_FORZADA[normNombre(n)] = ZONA_FORZADA[normNombre(n)] || z;
 }
+const DISTRITOS_NORM: Partial<Record<UnidadCode, Set<string>>> = Object.fromEntries(
+  (Object.entries(DISTRITOS) as [UnidadCode, string[]][]).map(([z, list]) => [z, new Set(list.map(normNombre))]),
+);
 
 // Subconjunto real de Georef (nombre, departamento, lat, lon).
 const EMBEBIDO = `Córdoba|Capital|-31.4201|-64.1888
@@ -245,6 +269,8 @@ export interface Localidad {
   subzona: "BN" | "BS" | null;
   unidad: UnidadCode;
   rol: "delegacion" | "distrito" | null;
+  /** Punto marcado a mano en el mapa (no es una localidad con nombre). */
+  marcado?: { cerca: string; km: number };
 }
 
 function inside(pt: LatLng, ring: LatLng[]): boolean {
@@ -311,15 +337,18 @@ export function armarModelo(geo: GeoCordoba): MapaModelo {
   });
 
   const unidadPorCode = new Map(unidades.map((u) => [u.code, u]));
+  const deptoEn = (lat: number, lon: number) => deps.find((dep) => inside([lat, lon], dep.ring)) ?? null;
   const zonaDe = (lat: number, lon: number, nombre: string): UnidadCode | null => {
-    if (ZONA_FORZADA[nombre]) return ZONA_FORZADA[nombre];
-    const d = deps.find((dep) => inside([lat, lon], dep.ring));
+    const forzada = ZONA_FORZADA[normNombre(nombre)];
+    if (forzada) return forzada;
+    const d = deptoEn(lat, lon);
     return d ? (d.zone as UnidadCode) : null;
   };
   const rol = (nombre: string, unidad: UnidadCode): Localidad["rol"] => {
     const u = unidadPorCode.get(unidad);
-    if (u && u.sede === nombre) return "delegacion";
-    if ((DISTRITOS[unidad] || []).includes(nombre)) return "distrito";
+    const n = normNombre(nombre);
+    if (u && normNombre(u.sede) === n) return "delegacion";
+    if (DISTRITOS_NORM[unidad]?.has(n)) return "distrito";
     return null;
   };
 
@@ -338,7 +367,80 @@ export function armarModelo(geo: GeoCordoba): MapaModelo {
     unidades.map((u) => [u.code, localidades.find((l) => l.nombre === u.sede)]),
   ) as Record<UnidadCode, Localidad | undefined>;
 
-  return { zonas, unidades, contorno: geo.contorno, marChiquita: MAR_CHIQUITA, localidades, sedes };
+  const ubicar = (lat: number, lon: number) => {
+    const d = deptoEn(lat, lon);
+    const u = d ? unidadPorCode.get(d.zone as UnidadCode) : undefined;
+    return d && u ? { unidad: u, departamento: d.name } : null;
+  };
+
+  // Georef trae cientos de localidades; las que ya están en la lista embebida
+  // (mismo nombre y departamento) conservan el objeto propio — nombre con
+  // tildes y rol de delegación/distrito —, así un anillo y el buscador apuntan
+  // a la misma localidad.
+  const fusionar = (externas: LocalidadExterna[]): Localidad[] => {
+    const clave = (n: string, d: string) => normNombre(n) + "|" + normNombre(d);
+    const propias = new Map(localidades.map((l) => [clave(l.nombre, l.departamento), l]));
+    const vistas = new Set<string>();
+    const out: Localidad[] = [];
+    let id = 100000;
+    for (const e of externas) {
+      const k = clave(e.nombre, e.departamento);
+      if (vistas.has(k)) continue;
+      vistas.add(k);
+      const propia = propias.get(k);
+      if (propia) { out.push(propia); continue; }
+      const code = zonaDe(e.lat, e.lon, e.nombre);
+      const u = code ? unidadPorCode.get(code) : undefined;
+      if (!u) continue;
+      out.push({
+        id: id++, nombre: titulo(e.nombre), departamento: e.departamento, lat: e.lat, lon: e.lon,
+        zona: u.zona, subzona: u.subzona, unidad: u.code, rol: rol(e.nombre, u.code),
+      });
+    }
+    for (const l of localidades) if (!vistas.has(clave(l.nombre, l.departamento))) out.push(l);
+    return out;
+  };
+
+  return { zonas, unidades, contorno: geo.contorno, marChiquita: MAR_CHIQUITA, localidades, sedes, ubicar, fusionar };
+}
+
+// ─── Localidades completas desde Georef (API pública de datos.gob.ar) ─────────
+const GEOREF = "https://apis.datos.gob.ar/georef/api/localidades?provincia=cordoba&max=5000&campos=nombre,departamento.nombre,centroide";
+const GEOREF_CACHE = "mapa.localidades.georef.v1";
+const GEOREF_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+let georefPromise: Promise<LocalidadExterna[]> | null = null;
+/** Todas las localidades de Córdoba. Cacheadas 30 días en este navegador. */
+export function cargarLocalidadesGeoref(): Promise<LocalidadExterna[]> {
+  if (georefPromise) return georefPromise;
+  try {
+    const raw = localStorage.getItem(GEOREF_CACHE);
+    if (raw) {
+      const c = JSON.parse(raw) as { t?: number; rows?: LocalidadExterna[] };
+      if (c.t && Date.now() - c.t < GEOREF_TTL_MS && Array.isArray(c.rows) && c.rows.length) {
+        georefPromise = Promise.resolve(c.rows);
+        return georefPromise;
+      }
+    }
+  } catch { /* sin storage o caché corrupta: se vuelve a pedir */ }
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 10000);
+  georefPromise = fetch(GEOREF, { signal: ctrl.signal })
+    .then((r) => {
+      if (!r.ok) throw new Error("georef " + r.status);
+      return r.json() as Promise<{ localidades?: { nombre?: string; departamento?: { nombre?: string }; centroide?: { lat?: number; lon?: number } }[] }>;
+    })
+    .then((d) => {
+      const rows: LocalidadExterna[] = (d.localidades ?? [])
+        .filter((l) => l.nombre && l.centroide?.lat != null && l.centroide?.lon != null)
+        .map((l) => ({ nombre: l.nombre!, departamento: l.departamento?.nombre ?? "", lat: l.centroide!.lat!, lon: l.centroide!.lon! }));
+      if (!rows.length) throw new Error("georef vacío");
+      try { localStorage.setItem(GEOREF_CACHE, JSON.stringify({ t: Date.now(), rows })); } catch { /* sin storage */ }
+      return rows;
+    })
+    .catch((e) => { georefPromise = null; throw e; })
+    .finally(() => clearTimeout(t));
+  return georefPromise;
 }
 
 let geoPromise: Promise<GeoCordoba> | null = null;
