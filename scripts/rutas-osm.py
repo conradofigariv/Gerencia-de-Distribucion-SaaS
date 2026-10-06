@@ -59,15 +59,29 @@ def norm_ref(ref):
     if m: return f"AU {m.group(2)}"
     return ref.split(";")[0].strip()
 
+def ref_de_nombre(nombre):
+    m = re.search(r"\bRuta\s+(Nacional|Provincial)?\s*([A-Z]?-?\d+[A-Z]?)\b", nombre or "", re.I)
+    if not m: return None
+    tipo = "RP" if (m.group(1) or "").lower().startswith("prov") else "RN"
+    return norm_ref(tipo + m.group(2).replace("-", ""))
+
+def km_ll(a, b):
+    R = 6371; t = math.radians
+    dlat = t(b[1] - a[1]); dlon = t(b[0] - a[0])
+    return 2 * R * math.asin(math.sqrt(math.sin(dlat / 2) ** 2 + math.cos(t(a[1])) * math.cos(t(b[1])) * math.sin(dlon / 2) ** 2))
+CORDOBA = (-64.19, -31.42)   # centro de la capital: ahí las «primary» sin número son avenidas urbanas
+
 CLASE = {"motorway": "principal", "trunk": "principal", "primary": "ruta"}
 grupos = defaultdict(list)   # (ref, clase) -> lista de tramos [[lon,lat],...]
 for f in g["features"]:
     p = f["properties"]; geom = f["geometry"]
     if not geom or geom["type"] != "LineString": continue
     clase = CLASE.get(p.get("highway"))
-    ref = norm_ref(p.get("ref"))
-    if not clase or (not ref and clase != "principal"): continue   # avenidas urbanas sin número: fuera
+    ref = norm_ref(p.get("ref")) or ref_de_nombre(p.get("name"))
     pts = geom["coordinates"]
+    if not clase: continue
+    # Sin número: se conserva salvo que sea una avenida dentro de la ciudad de Córdoba.
+    if not ref and clase != "principal" and km_ll(pts[len(pts) // 2], CORDOBA) < 15: continue
     flags = [dentro(x, y) for x, y in pts]
     tramo = []
     for i, (pt, ok) in enumerate(zip(pts, flags)):
@@ -117,10 +131,14 @@ def dp(pts, tol):
     pila = [(0, len(pts) - 1)]
     while pila:
         s, e = pila.pop()
-        ax, ay = pts[s]; bx, by = pts[e]; dx, dy = bx - ax, by - ay; L = math.hypot(dx, dy) or 1e-12
+        ax, ay = pts[s]; bx, by = pts[e]; dx, dy = bx - ax, by - ay; L2 = dx * dx + dy * dy
         imax, dmax = -1, -1
         for i in range(s + 1, e):
-            px, py = pts[i]; d = abs(dy * px - dx * py + bx * ay - by * ax) / L
+            px, py = pts[i]
+            # Distancia al SEGMENTO (no a la recta infinita): con extremos iguales
+            # —anillos como la Circunvalación— la recta no existe y se perdía todo.
+            t = 0 if L2 == 0 else max(0, min(1, ((px - ax) * dx + (py - ay) * dy) / L2))
+            d = math.hypot(px - (ax + t * dx), py - (ay + t * dy))
             if d > dmax: imax, dmax = i, d
         if dmax > tol: keep[imax] = True; pila += [(s, imax), (imax, e)]
     return [p for p, k in zip(pts, keep) if k]
@@ -134,10 +152,10 @@ def km(a, b):
 rutas = []; etiquetas = []; total = 0
 for (ref, clase), tramos in grupos.items():
     for linea in unir(tramos):
-        s = dp(linea, 0.0004)
+        s = dp(linea, 0.0001)   # ~10 m: conserva curvas y accesos
         if len(s) < 2: continue
         largo = sum(km(s[i - 1], s[i]) for i in range(1, len(s)))
-        if largo < 0.3: continue
+        if largo < 0.05: continue
         total += len(s)
         rutas.append({"t": clase, "r": ref, "c": [[round(y, 5), round(x, 5)] for x, y in s]})
         # Número de ruta: uno cada ~45 km de trazado (mín. uno por tramo de 8 km+).
