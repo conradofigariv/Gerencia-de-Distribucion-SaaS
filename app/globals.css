@@ -1894,6 +1894,7 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
   --ido-map-depto: rgba(255, 255, 255, 0.06);
   --ido-map-laguna-line: rgba(91, 141, 239, 0.35);
   --ido-map-laguna-fill: #16243a;
+  --ido-map-ruta: #cdbf95; /* rutas principales: tono ruta, distinto de las 8 zonas */
 }
 .mz-panel {
   position: relative;
@@ -2041,7 +2042,9 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
 .mz-stock-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px 10px; padding: 8px 0; border-bottom: 1px solid var(--ido-row-line); }
 .mz-stock-row.is-best { box-shadow: inset 2px 0 0 var(--ido-accent); padding-left: 10px; }
 .mz-stock-del { font-size: 12px; color: var(--ido-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mz-stock-qty { font-size: 13px; font-weight: 500; text-align: right; }
+.mz-stock-dist { font-size: 13px; font-weight: 600; text-align: right; white-space: nowrap; color: var(--ido-text); }
+.mz-stock-dist.is-best { color: var(--ido-accent); }
+.mz-stock-dist.is-na { color: var(--ido-text-2); font-weight: 400; }
 .mz-stock-km { grid-column: 2 / 4; font-size: 11px; color: var(--ido-text-2); }
 .mz-stock-km b { color: var(--ido-accent); font-weight: 600; }
 .mz-future { margin-top: 16px; border: 1px dashed rgba(255, 255, 255, 0.2); border-radius: 10px; padding: 14px 12px; display: flex; flex-direction: column; gap: 4px; }
@@ -2109,7 +2112,7 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
 .mz-stock-grupo + .mz-stock-grupo { margin-top: 14px; }
 .mz-stock-row.is-click { cursor: pointer; border-radius: 6px; transition: background 100ms var(--ido-ease); }
 .mz-stock-row.is-click:hover { background: rgba(255, 255, 255, 0.04); }
-.mz-cover { font-size: 12px; font-weight: 600; text-align: right; color: var(--ido-text-2); }
+.mz-cover { font-size: 12px; font-weight: 600; color: var(--ido-text); }
 .mz-cover.is-full { color: var(--ido-accent); }
 .mz-stock-det { grid-column: 1 / 4; display: flex; flex-direction: column; gap: 2px; padding: 4px 0 2px; }
 .mz-stock-det > div { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--ido-text); }
@@ -2149,3 +2152,8 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
 .mz-card-body > .mz-stock:first-child, .mz-card-body > .mz-future:first-child { margin-top: 10px; }
 /* Clic en una zona: sin el contorno de foco global (dibujaba el rectángulo del polígono). */
 .mz-panel .leaflet-container:focus, .mz-panel .leaflet-interactive:focus { outline: none; }
+
+/* Flechas sobre la línea de distancia: van desde el stock hacia la obra */
+.mz-flecha { width: 16px; height: 16px; display: grid; place-items: center; filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.95)); pointer-events: none; }
+.mz-flecha path { fill: none; stroke: var(--ido-text); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.mz-rutak { display: inline-block; width: 14px; height: 2px; border-radius: 2px; background: var(--ido-map-ruta); }

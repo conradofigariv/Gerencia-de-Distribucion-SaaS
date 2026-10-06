@@ -41,7 +41,7 @@ interface MapaZonasProps {
 /** Qué pinta el mapa: cantidad (1 matrícula) o cuántas matrículas tiene cada zona (2+). */
 interface Metrica { kind: "qty" | "cover"; values: PorUnidad; max: number }
 
-interface Capas { delegaciones: boolean; distritos: boolean; todas: boolean }
+interface Capas { delegaciones: boolean; distritos: boolean; todas: boolean; rutas: boolean }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -76,12 +76,12 @@ function pushRecent(name: string): string[] {
 }
 
 function readCapas(): Capas {
-  const def: Capas = { delegaciones: true, distritos: true, todas: false };
+  const def: Capas = { delegaciones: true, distritos: true, todas: false, rutas: true };
   try {
     const v: unknown = JSON.parse(localStorage.getItem(CAPAS_KEY) || "null");
     if (v && typeof v === "object") {
       const o = v as Partial<Capas>;
-      return { delegaciones: o.delegaciones !== false, distritos: o.distritos !== false, todas: o.todas === true };
+      return { delegaciones: o.delegaciones !== false, distritos: o.distritos !== false, todas: o.todas === true, rutas: o.rutas !== false };
     }
   } catch { /* sin storage */ }
   return def;
@@ -265,6 +265,10 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const delegLayerRef = useRef<LayerGroup | null>(null);
   const distLayerRef = useRef<LayerGroup | null>(null);
   const todasLayerRef = useRef<LayerGroup | null>(null);
+  const rutasLayerRef = useRef<LayerGroup | null>(null);
+  const rutasCargadasRef = useRef(false);
+  const flechasLayerRef = useRef<LayerGroup | null>(null);
+  const lineaRef = useRef<LatLng[] | null>(null);
   const ringsRef = useRef<{ m: CircleMarker; l: Localidad; fijo: boolean }[]>([]);
   const pinRef = useRef<Marker | null>(null);
   const routeRef = useRef<Polyline | null>(null);
@@ -506,6 +510,50 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     });
   }, []);
 
+  // ── Flechas sobre la línea de distancia: van desde el stock HACIA la obra ───
+  // Se ubican cada ~90 px de pantalla, por eso se recalculan al cambiar el zoom.
+  const dibujarFlechas = useCallback(() => {
+    const L = LRef.current;
+    const map = mapRef.current;
+    const lyr = flechasLayerRef.current;
+    if (!L || !map || !lyr) return;
+    lyr.clearLayers();
+    const linea = lineaRef.current;
+    if (!linea || linea.length < 2) return;
+    // La línea se guarda obra → sede; las flechas recorren sede → obra.
+    const pts = linea.slice().reverse().map((p) => map.latLngToLayerPoint(p));
+    const segs: { a: { x: number; y: number }; b: { x: number; y: number }; len: number }[] = [];
+    let total = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const len = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      if (len > 0) { segs.push({ a: pts[i - 1], b: pts[i], len }); total += len; }
+    }
+    if (total < 60) return;
+    const paso = Math.max(90, total / 40);
+    let d = Math.min(paso / 2, total / 2);
+    let si = 0;
+    let acum = 0;
+    while (d < total - 24) {
+      while (si < segs.length - 1 && acum + segs[si].len < d) { acum += segs[si].len; si++; }
+      const sg = segs[si];
+      const t = Math.min(1, Math.max(0, (d - acum) / sg.len));
+      const x = sg.a.x + (sg.b.x - sg.a.x) * t;
+      const y = sg.a.y + (sg.b.y - sg.a.y) * t;
+      const ang = (Math.atan2(sg.b.y - sg.a.y, sg.b.x - sg.a.x) * 180) / Math.PI;
+      L.marker(map.layerPointToLatLng([x, y]), {
+        interactive: false,
+        keyboard: false,
+        icon: L.divIcon({
+          className: "",
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
+          html: `<div class="mz-flecha" style="transform:rotate(${ang.toFixed(1)}deg)"><svg viewBox="0 0 14 14" width="16" height="16"><path d="M4 2.5 9.5 7 4 11.5"/></svg></div>`,
+        }),
+      }).addTo(lyr);
+      d += paso;
+    }
+  }, []);
+
   // ── Construcción del mapa ───────────────────────────────────────────────────
   useEffect(() => {
     if (!modelo) return;
@@ -524,7 +572,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
 
       const map = L.map(mapEl, { zoomControl: false, attributionControl: true, zoomSnap: 0, zoomDelta: 1, minZoom: 6, maxZoom: 13 });
       mapRef.current = map;
-      map.attributionControl.setPrefix(false).addAttribution("Límites departamentales: IGN · Rutas: OSRM / OpenStreetMap");
+      map.attributionControl.setPrefix(false).addAttribution("Límites: IGN · Rutas: Natural Earth · Recorridos: OSRM / OpenStreetMap");
       const provBounds = L.latLngBounds(modelo.contorno.flat());
       provBoundsRef.current = provBounds;
       map.setView(provBounds.getCenter(), 7, { animate: false });
@@ -582,6 +630,9 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       L.polygon(modelo.marChiquita, {
         color: v("--ido-map-laguna-line"), weight: 1, fillColor: v("--ido-map-laguna-fill"), fillOpacity: 0.9, interactive: false,
       }).bindTooltip("Laguna Mar Chiquita", { className: "mz-ptip" }).addTo(map);
+      // Rutas principales: grupo vacío, se llena bajo demanda (capa «rutas»).
+      rutasLayerRef.current = L.layerGroup();
+      rutasCargadasRef.current = false;
       L.polyline(modelo.contorno, { color: v("--ido-map-contorno"), weight: 1.25, interactive: false, lineJoin: "round" }).addTo(map);
       for (const mk of [...Object.values(unitLabelsRef.current), ...Object.values(bigLabelsRef.current)]) mk?.setZIndexOffset(500);
 
@@ -608,7 +659,8 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       }
       if (capasRef.current.distritos) distL.addTo(map);
       if (capasRef.current.delegaciones) delegL.addTo(map);
-      map.on("zoomend", () => { actualizarNombres(); renderTodas(); });
+      flechasLayerRef.current = L.layerGroup().addTo(map);
+      map.on("zoomend", () => { actualizarNombres(); renderTodas(); dibujarFlechas(); });
       map.on("click", (e) => handlersRef.current.onMapClick(e.latlng.lat, e.latlng.lng));
 
       styleZones();
@@ -628,6 +680,9 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       delegLayerRef.current = null;
       distLayerRef.current = null;
       todasLayerRef.current = null;
+      rutasLayerRef.current = null;
+      flechasLayerRef.current = null;
+      lineaRef.current = null;
       ringsRef.current = [];
       for (const k of Object.keys(zoneLayers)) delete zoneLayers[k as UnidadCode];
       zoneBordersRef.current = {};
@@ -636,7 +691,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       bigLabelsRef.current = {};
       setMapReady(false);
     };
-  }, [modelo, styleZones, unitIcon, actualizarNombres, renderTodas]);
+  }, [modelo, styleZones, unitIcon, actualizarNombres, renderTodas, dibujarFlechas]);
 
   // ── Capas: mostrar/ocultar y recordar en este dispositivo ───────────────────
   useEffect(() => {
@@ -651,7 +706,25 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     };
     toggle(delegLayerRef.current, capas.delegaciones);
     toggle(distLayerRef.current, capas.distritos);
+    toggle(rutasLayerRef.current, capas.rutas);
     renderTodas();
+    // Primera vez que se prende la capa de rutas: descargar y dibujar.
+    const L = LRef.current;
+    const lyr = rutasLayerRef.current;
+    if (capas.rutas && L && lyr && !rutasCargadasRef.current) {
+      rutasCargadasRef.current = true;
+      fetch("/geo/rutas-cordoba.json")
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error("rutas " + r.status))))
+        .then((d: { rutas?: { t: string; c: LatLng[] }[] }) => {
+          if (rutasLayerRef.current !== lyr || !panelRef.current) return;
+          const color = getComputedStyle(panelRef.current).getPropertyValue("--ido-map-ruta").trim();
+          for (const r of d.rutas ?? []) {
+            const principal = r.t === "principal";
+            L.polyline(r.c, { color, weight: principal ? 1.8 : 1.2, opacity: principal ? 0.8 : 0.55, interactive: false, lineJoin: "round" }).addTo(lyr);
+          }
+        })
+        .catch(() => { rutasCargadasRef.current = false; });
+    }
   }, [capas, mapReady, renderTodas]);
 
   useEffect(() => {
@@ -766,15 +839,17 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     const map = mapRef.current;
     if (!mapReady || !L || !map) return;
     if (routeRef.current) { map.removeLayer(routeRef.current); routeRef.current = null; }
-    if (!selected || !mejor?.sede) return;
+    lineaRef.current = null;
+    if (!selected || !mejor?.sede) { dibujarFlechas(); return; }
     const color = getComputedStyle(panelRef.current!).getPropertyValue("--ido-text").trim();
     const real = trazado && trazado.key === mejorKey ? trazado.coords : null;
+    const puntos: LatLng[] = real ?? [[selected.lat, selected.lon], [mejor.sede.lat, mejor.sede.lon]];
     routeRef.current = real
-      ? L.polyline(real, { color, weight: 2, opacity: 0.8, interactive: false, lineJoin: "round" }).addTo(map)
-      : L.polyline([[selected.lat, selected.lon], [mejor.sede.lat, mejor.sede.lon]], {
-        color, weight: 1.25, opacity: 0.7, dashArray: "4 5", interactive: false,
-      }).addTo(map);
-  }, [selected, mejor, mejorKey, trazado, mapReady]);
+      ? L.polyline(puntos, { color, weight: 2, opacity: 0.75, interactive: false, lineJoin: "round" }).addTo(map)
+      : L.polyline(puntos, { color, weight: 1.25, opacity: 0.7, dashArray: "4 5", interactive: false }).addTo(map);
+    lineaRef.current = puntos;
+    dibujarFlechas();
+  }, [selected, mejor, mejorKey, trazado, mapReady, dibujarFlechas]);
 
   // ── Acciones ────────────────────────────────────────────────────────────────
   const zoneBounds = useCallback((code: string) => {
@@ -1126,20 +1201,25 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const maxCover = metrica?.kind === "cover" ? Math.max(0, ...Object.values(metrica.values).map((v) => v ?? 0)) : 0;
   const zonasConStock = metrica ? Object.values(metrica.values).filter((v) => (v ?? 0) > 0).length : 0;
 
-  const distTexto = (c: NonNullable<typeof cercanos>[number], destacar: boolean) => {
-    if (c.recta === null) return <>Sin ubicación de sede</>;
-    if (c.recta < 1) return destacar ? <b>En esta localidad</b> : <>En esta localidad</>;
-    const num = c.ruta ? fmtKm(c.ruta.km) : fmtKm(c.recta);
-    const extra = c.ruta
-      ? ` · ${fmtDuracion(c.ruta.min)} en auto`
-      : rutaEstado === "loading" ? " en línea recta · calculando ruta…" : " en línea recta";
-    return <>{destacar ? <b className="mz-mono">{num}</b> : <span className="mz-mono">{num}</span>}{extra} · {c.sede?.nombre}</>;
+  // Distancia: el dato principal de cada fila, a la derecha.
+  const distDerecha = (c: NonNullable<typeof cercanos>[number], destacar: boolean) => {
+    if (c.recta === null) return <span className="mz-stock-dist is-na">—</span>;
+    if (c.recta < 1) return <span className={`mz-stock-dist${destacar ? " is-best" : ""}`}>En la obra</span>;
+    const v = c.ruta ? c.ruta.km : c.recta;
+    return <span className={`mz-stock-dist mz-mono${destacar ? " is-best" : ""}`}>{fmtKm(v)}</span>;
+  };
+  // Cómo se midió: tiempo en auto, o aviso de línea recta.
+  const comoSeMidio = (c: NonNullable<typeof cercanos>[number]) => {
+    if (c.recta === null || c.recta < 1) return null;
+    if (c.ruta) return `${fmtDuracion(c.ruta.min)} en auto`;
+    return rutaEstado === "loading" ? "calculando ruta…" : "en línea recta";
   };
 
   const capasItems: { key: keyof Capas; label: string }[] = [
     { key: "delegaciones", label: "Mostrar delegaciones" },
     { key: "distritos", label: "Mostrar distritos" },
     { key: "todas", label: "Mostrar todas las localidades" },
+    { key: "rutas", label: "Mostrar rutas principales" },
   ];
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -1442,6 +1522,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
                   <span><i className="mz-ringk" style={{ borderColor: "var(--ido-error)" }} />Delegación</span>
                   <span><i className="mz-ringk" style={{ borderColor: "var(--ido-cat-1)" }} />Distrito</span>
                   {capas.todas && <span><i className="mz-dot is-key" />Localidad</span>}
+                  {capas.rutas && <span><i className="mz-rutak" />Ruta</span>}
                 </div>
               </div>
             </div>
@@ -1478,14 +1559,20 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
                 ) : n === 1 ? (
                   <div className="mz-stock">
                     <span className="mz-stock-t">Stock más cercano</span>
-                    {cercanos.map((c, i) => (
-                      <div key={c.u.code} className={`mz-stock-row${i === 0 ? " is-best" : ""}`}>
-                        <ZoneBadge code={c.u.code} />
-                        <span className="mz-stock-del">{c.u.delegacion}</span>
-                        <span className="mz-stock-qty mz-mono">{fmtNum(c.qtys[0].q)}{udm ? <small style={{ color: "var(--ido-text-2)", fontSize: 11 }}> {udm}</small> : null}</span>
-                        <span className="mz-stock-km">{distTexto(c, i === 0)}</span>
-                      </div>
-                    ))}
+                    {cercanos.map((c, i) => {
+                      const como = comoSeMidio(c);
+                      return (
+                        <div key={c.u.code} className={`mz-stock-row${i === 0 ? " is-best" : ""}`}>
+                          <ZoneBadge code={c.u.code} />
+                          <span className="mz-stock-del">{c.u.delegacion}</span>
+                          {distDerecha(c, i === 0)}
+                          <span className="mz-stock-km">
+                            <span className="mz-mono" style={{ color: "var(--ido-text)" }}>{fmtNum(c.qtys[0].q)}</span>{udm ? ` ${udm}` : ""} en stock
+                            {como ? ` · ${como}` : ""}{i === 0 ? " · la más cercana" : ""}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="mz-stock">
@@ -1502,8 +1589,11 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
                               <div key={c.u.code} className={`mz-stock-row is-click${best ? " is-best" : ""}`} onClick={() => setExpandida(open ? null : c.u.code)}>
                                 <ZoneBadge code={c.u.code} />
                                 <span className="mz-stock-del">{c.u.delegacion}</span>
-                                <span className={`mz-cover mz-mono${c.cover === n ? " is-full" : ""}`}>{c.cover}/{n}</span>
-                                <span className="mz-stock-km">{distTexto(c, best)}</span>
+                                {distDerecha(c, best)}
+                                <span className="mz-stock-km">
+                                  <span className={`mz-cover mz-mono${c.cover === n ? " is-full" : ""}`}>{c.cover}/{n}</span> matrículas
+                                  {comoSeMidio(c) ? ` · ${comoSeMidio(c)}` : ""}
+                                </span>
                                 {open && (
                                   <div className="mz-stock-det">
                                     {c.qtys.map(({ a, q }) => (
