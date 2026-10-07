@@ -18,7 +18,7 @@ import {
   armarModelo, cargarGeo, cargarLocalidadesGeoref, km, unidadDeStock, zonaColorVar, zonaForzada,
   type LatLng, type Localidad, type MapaModelo, type Unidad, type UnidadCode, type ZonaCode,
 } from "@/lib/mapaZonas";
-import { distanciasPorRuta, fmtDuracion, trazadoRuta, type Ruta } from "@/lib/ruteo";
+import { distanciasPorRuta, fmtDuracion, trazadoRuta, type Recorrido, type Ruta } from "@/lib/ruteo";
 import { getDepositos, guardarDeposito, quitarDeposito, type Deposito } from "@/lib/stockDepositos";
 import { toast } from "sonner";
 
@@ -271,7 +271,9 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
 
   const [rutas, setRutas] = useState<{ key: string; r: Partial<Record<UnidadCode, Ruta | null>> } | null>(null);
   const [rutaEstado, setRutaEstado] = useState<"idle" | "loading" | "ok" | "error">("idle");
-  const [trazado, setTrazado] = useState<{ key: string; coords: LatLng[] } | null>(null);
+  const [trazado, setTrazado] = useState<({ key: string } & Recorrido) | null>(null);
+  // Tramo del recorrido resaltado (hover en la lista de la tarjeta).
+  const [tramoAct, setTramoAct] = useState<number | null>(null);
   // Localidades: arranca con la lista embebida y se completa con Georef.
   const [localidades, setLocalidades] = useState<Localidad[]>([]);
   const [georefFallo, setGeorefFallo] = useState(false);
@@ -313,6 +315,8 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const ringsRef = useRef<{ m: CircleMarker; l: Localidad; fijo: boolean }[]>([]);
   const pinRef = useRef<Marker | null>(null);
   const routeRef = useRef<Polyline | null>(null);
+  const tramosLayerRef = useRef<LayerGroup | null>(null);
+  const tramoHlRef = useRef<Polyline | null>(null);
   const ghostRef = useRef<Marker | null>(null);
   const hoverRef = useRef<{ zona: ZonaCode | null; sub: UnidadCode | null }>({ zona: null, sub: null });
   const selZoneRef = useRef<ZonaCode | null>(null);
@@ -633,6 +637,8 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     // Intercalar lecturas y escrituras forzaba un layout por cada nombre.
     const grupos: HTMLElement[][] = [];
     const ubicar = (els: HTMLElement[]) => { grupos.push(els); };
+    // Nombres de las rutas del recorrido: lo que se está mirando, antes que el resto.
+    ubicar(Array.from(panel.querySelectorAll<HTMLElement>(".mz-tramo")));
     const deleg: HTMLElement[] = [];
     const dist: HTMLElement[] = [];
     for (const r of ringsRef.current) {
@@ -814,11 +820,9 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       }
 
       // Límites internos de departamento (muy tenues, sin los de adentro de la
-      // Zona A — ver lineasDepto), laguna y contorno provincial.
+      // Zona A — ver lineasDepto) y contorno provincial. La laguna Mar Chiquita no
+      // se dibuja: es un hueco sin zona del trazado oficial y ya se ve como tal.
       L.polyline(modelo.lineasDepto, { color: v("--ido-map-depto"), weight: 0.6, interactive: false, lineJoin: "round" }).addTo(map);
-      L.polygon(modelo.marChiquita, {
-        color: v("--ido-map-laguna-line"), weight: 1, fillColor: v("--ido-map-laguna-fill"), fillOpacity: 0.9, interactive: false,
-      }).bindTooltip("Laguna Mar Chiquita", { className: "mz-ptip" }).addTo(map);
       // Rutas principales: grupo vacío, se llena bajo demanda (capa «rutas»).
       rutasLayerRef.current = L.layerGroup();
       rutasRefLayerRef.current = L.layerGroup();
@@ -850,6 +854,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       if (capasRef.current.distritos) distL.addTo(map);
       if (capasRef.current.delegaciones) delegL.addTo(map);
       flechasLayerRef.current = L.layerGroup().addTo(map);
+      tramosLayerRef.current = L.layerGroup().addTo(map);
       depositosLayerRef.current = L.layerGroup().addTo(map);
       map.on("zoomend", () => { actualizarNombres(); dibujarFlechas(); actualizarNumerosRuta(); estiloRutas(); programarEtiquetas(); });
       // moveend llega también después de cada zoom.
@@ -879,6 +884,8 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       rutasRefLayerRef.current = null;
       rutasLineasRef.current = [];
       flechasLayerRef.current = null;
+      tramosLayerRef.current = null;
+      tramoHlRef.current = null;
       depositosLayerRef.current = null;
       lineaRef.current = null;
       ringsRef.current = [];
@@ -1020,7 +1027,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     if (!sede) return;
     let cancelled = false;
     trazadoRuta(selected, sede)
-      .then((coords) => { if (!cancelled && coords) setTrazado({ key: mejorKey, coords }); })
+      .then((rec) => { if (!cancelled && rec) setTrazado({ key: mejorKey, ...rec }); })
       .catch(() => { /* queda la línea recta */ });
     return () => { cancelled = true; };
   }, [mejorKey, selected, modelo, sedes]);
@@ -1070,17 +1077,56 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     const map = mapRef.current;
     if (!mapReady || !L || !map) return;
     if (routeRef.current) { map.removeLayer(routeRef.current); routeRef.current = null; }
+    tramosLayerRef.current?.clearLayers();
+    tramoHlRef.current = null;
     lineaRef.current = null;
-    if (!selected || !mejor?.sede) { dibujarFlechas(); return; }
-    const color = getComputedStyle(panelRef.current!).getPropertyValue("--ido-text").trim();
-    const real = trazado && trazado.key === mejorKey ? trazado.coords : null;
+    if (!selected || !mejor?.sede) { dibujarFlechas(); programarEtiquetas(); return; }
+    const css = getComputedStyle(panelRef.current!);
+    const color = css.getPropertyValue("--ido-text").trim();
+    const rec = trazado && trazado.key === mejorKey ? trazado : null;
+    const real = rec ? rec.coords : null;
+    // Por qué rutas pasa: un cartel con el número (o el nombre) en la mitad de cada
+    // tramo y un punto donde cambia de ruta.
+    const tl = tramosLayerRef.current;
+    if (rec && tl) {
+      const base = css.getPropertyValue("--ido-base").trim();
+      rec.tramos.forEach((t, i) => {
+        if (i > 0) {
+          L.circleMarker(t.coords[0], { radius: 3.5, weight: 1.5, color: base, fillColor: color, fillOpacity: 1, interactive: false }).addTo(tl);
+        }
+        const txt = t.ruta ?? t.nombre;
+        if (!txt) return;
+        L.marker(t.mitad, {
+          interactive: false, keyboard: false, zIndexOffset: 600,
+          icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<div class="mz-tramo${t.ruta ? "" : " is-calle"}" data-i="${i}">${esc(txt.length > 26 ? txt.slice(0, 25) + "…" : txt)}</div>` }),
+        }).addTo(tl);
+      });
+    }
     const puntos: LatLng[] = real ?? [[selected.lat, selected.lon], [mejor.sede.lat, mejor.sede.lon]];
     routeRef.current = real
       ? L.polyline(puntos, { color, weight: 2, opacity: 0.75, interactive: false, lineJoin: "round" }).addTo(map)
       : L.polyline(puntos, { color, weight: 1.25, opacity: 0.7, dashArray: "4 5", interactive: false }).addTo(map);
     lineaRef.current = puntos;
     dibujarFlechas();
-  }, [selected, mejor, mejorKey, trazado, mapReady, dibujarFlechas]);
+    programarEtiquetas();
+  }, [selected, mejor, mejorKey, trazado, mapReady, dibujarFlechas, programarEtiquetas]);
+
+  // Tramo resaltado desde la lista de la tarjeta: se repinta encima y su cartel se marca.
+  const recorrido = trazado && mejorKey && trazado.key === mejorKey ? trazado : null;
+  useEffect(() => {
+    const L = LRef.current;
+    const map = mapRef.current;
+    if (!mapReady || !L || !map) return;
+    if (tramoHlRef.current) { map.removeLayer(tramoHlRef.current); tramoHlRef.current = null; }
+    panelRef.current?.querySelectorAll(".mz-tramo.is-act").forEach((el) => el.classList.remove("is-act"));
+    const t = tramoAct !== null ? recorrido?.tramos[tramoAct] : undefined;
+    if (!t) return;
+    const c = getComputedStyle(panelRef.current!).getPropertyValue("--ido-accent").trim();
+    tramoHlRef.current = L.polyline(t.coords, { color: c, weight: 4, opacity: 0.9, interactive: false, lineJoin: "round", lineCap: "round" }).addTo(map);
+    const el = panelRef.current?.querySelector<HTMLElement>(`.mz-tramo[data-i="${tramoAct}"]`);
+    if (el) { el.classList.add("is-act"); el.style.visibility = ""; }
+  }, [tramoAct, recorrido, mapReady]);
+  useEffect(() => { setTramoAct(null); }, [mejorKey]);
 
   const hayRecorrido = !!(selected && mejor?.sede);
   useEffect(() => {
@@ -2091,6 +2137,36 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
                         </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {recorrido && mejor?.sede && recorrido.tramos.length > 0 && (
+                  <div className="mz-recorrido">
+                    <span className="mz-stock-t">
+                      Recorrido desde {mejor.sede.nombre}
+                      <small>
+                        {recorrido.tramos.filter((t) => t.ruta || t.nombre).length > 1
+                          ? ` · ${recorrido.tramos.length - 1} ${recorrido.tramos.length - 1 === 1 ? "cambio" : "cambios"} de ruta`
+                          : " · sin cambios de ruta"}
+                      </small>
+                    </span>
+                    {/* La consulta va obra → depósito; se lista como se maneja: depósito → obra. */}
+                    <ol>
+                      {recorrido.tramos.map((t, i) => ({ t, i })).reverse().map(({ t, i }) => (
+                        <li
+                          key={i}
+                          className={tramoAct === i ? "is-act" : undefined}
+                          onMouseEnter={() => setTramoAct(i)}
+                          onMouseLeave={() => setTramoAct(null)}
+                        >
+                          <span className="mz-rec-nom">
+                            {t.ruta && <b className="mz-mono">{t.ruta}</b>}
+                            {t.nombre ? <span>{t.nombre}</span> : !t.ruta ? <span className="is-muted">Calles locales</span> : null}
+                          </span>
+                          <span className="mz-mono mz-rec-km">{fmtKm(t.km)}</span>
+                        </li>
+                      ))}
+                    </ol>
                   </div>
                 )}
 

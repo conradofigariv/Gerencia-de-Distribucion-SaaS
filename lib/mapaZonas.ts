@@ -103,7 +103,6 @@ export interface MapaModelo {
   contorno: LatLng[][];
   /** Límites internos de departamento (cada arista una vez), sin los que cruzan la Zona A. */
   lineasDepto: LatLng[][];
-  marChiquita: LatLng[];
   localidades: Localidad[];
   /** Coordenadas de la sede de cada unidad (para distancias). */
   sedes: Record<UnidadCode, Localidad | undefined>;
@@ -162,9 +161,6 @@ function chain(edges: [LatLng, LatLng][]): LatLng[][] {
   edges.forEach((e, i) => { if (!used.has(i)) out.push(walk(i, e[0])); });
   return out;
 }
-
-// Laguna de Mar Chiquita, contorno aproximado.
-const MAR_CHIQUITA: LatLng[] = [[-30.40,-62.70],[-30.41,-62.58],[-30.46,-62.45],[-30.55,-62.37],[-30.66,-62.35],[-30.76,-62.40],[-30.85,-62.50],[-30.92,-62.63],[-30.95,-62.78],[-30.92,-62.92],[-30.85,-63.02],[-30.75,-63.08],[-30.64,-63.09],[-30.55,-63.03],[-30.48,-62.93],[-30.43,-62.82]];
 
 // Distritos de cada zona (los que figuran en el diseño).
 const DISTRITOS: Partial<Record<UnidadCode, string[]>> = {
@@ -475,7 +471,7 @@ export function armarModelo(geo: GeoCordoba): MapaModelo {
   }
   const lineasDepto = chain(aristas);
 
-  return { zonas, unidades, contorno: geo.contorno, lineasDepto, marChiquita: MAR_CHIQUITA, localidades, sedes, ubicar, fusionar };
+  return { zonas, unidades, contorno: geo.contorno, lineasDepto, localidades, sedes, ubicar, fusionar };
 }
 
 // ─── Localidades completas desde Georef (API pública de datos.gob.ar) ─────────
