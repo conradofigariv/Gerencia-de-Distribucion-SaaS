@@ -1,9 +1,9 @@
 // Capa de datos del mapa de zonas EPEC (Córdoba). Portado de `datos-mapa.js`
-// del import de Claude Design «MapaZonas». La geometría (límites IGN de los 26
-// departamentos) vive en `public/geo/cordoba.json` y se carga bajo demanda.
-// Las zonas siguen a los departamentos salvo donde EPEC corta distinto: la
-// Zona A (Capital + Gran Córdoba) trae su propio polígono en `zonas`, y A, D, E
-// y H ya vienen recortadas entre sí (ver docs/stock-zona.md → «Forma de las zonas»).
+// del import de Claude Design «MapaZonas». La geometría vive en
+// `public/geo/cordoba.json` y se carga bajo demanda: límites IGN de los 26
+// departamentos (fondo y nombre del departamento) y, en `zonas`, el trazado
+// OFICIAL de EPEC de cada zona (KMZ «Zonas»), recortado a la provincia — ver
+// docs/stock-zona.md → «Forma de las zonas».
 
 export type LatLng = [number, number];
 
@@ -14,8 +14,10 @@ export interface GeoCordoba {
   departamentos: GeoDepartamento[];
   bordesZona: Record<string, LatLng[][]>;
   contorno: LatLng[][];
-  /** Forma propia de las zonas que no coinciden con sus departamentos. */
+  /** Trazado oficial de cada unidad (A, BN, BS, C…H). */
   zonas?: Partial<Record<string, Poligono[]>>;
+  /** Divisoria interna de las zonas con subzonas (B: BN / BS). */
+  divisorias?: Partial<Record<string, LatLng[][]>>;
 }
 
 /** Zona territorial A–H. */
@@ -35,7 +37,7 @@ const ZONAS_DEF: ZonaDef[] = [
       { code: "BS", delegacion: "Villa Carlos Paz", label: [-31.70, -65.20], sede: "Villa Carlos Paz" },
     ],
   },
-  { code: "C", delegacion: "Villa María", label: [-32.25, -63.45], sede: "Villa María" },
+  { code: "C", delegacion: "Villa María", label: [-32.56, -63.72], sede: "Villa María" },
   { code: "D", delegacion: "San Francisco", label: [-31.15, -62.75], sede: "San Francisco" },
   { code: "E", delegacion: "Río Ceballos", label: [-30.20, -63.95], sede: "Río Ceballos" },
   { code: "F", delegacion: "Río Cuarto", label: [-34.10, -64.20], sede: "Río Cuarto" },
@@ -166,7 +168,9 @@ const MAR_CHIQUITA: LatLng[] = [[-30.40,-62.70],[-30.41,-62.58],[-30.46,-62.45],
 
 // Distritos de cada zona (los que figuran en el diseño).
 const DISTRITOS: Partial<Record<UnidadCode, string[]>> = {
-  BN: ["Serrezuela", "Cruz del Eje", "Capilla del Monte", "La Cumbre", "Parque Siquimán"],
+  BN: ["Serrezuela", "Cruz del Eje", "Capilla del Monte", "La Cumbre"],
+  // En el KMZ oficial Parque Siquimán cae en Zona I (B Sur), no en B Norte como en el diseño.
+  BS: ["Parque Siquimán"],
   C: ["James Craik", "Tancacha", "General Cabrera", "Ucacha", "Pascanas", "Laborde", "Wenceslao Escalante", "Ballesteros", "Alto Alegre"],
   D: ["Devoto", "Balnearia", "Santiago Temple"],
   E: ["San Francisco del Chañar", "Villa de María", "Villa del Totoral", "Villa Allende", "La Calera"],
@@ -175,19 +179,15 @@ const DISTRITOS: Partial<Record<UnidadCode, string[]>> = {
   H: ["Río Segundo"],
 };
 
-// Distritos y delegaciones que EPEC asigna a una zona distinta de la de su departamento.
-// Claves normalizadas (sin acentos, minúsculas) para que también matcheen los
-// nombres de Georef, que vienen en mayúsculas y sin tildes.
-// Estación General Paz cae justo en la punta norte de la franja de A (en el mapa
-// de EPEC el punto del pueblo está sobre el borde): se fuerza para no depender
-// de ±1 km de trazado.
-const ZONA_FORZADA: Record<string, UnidadCode> = {
-  "villa carlos paz": "BS", "rio segundo": "H", "general paz": "A", "estacion general paz": "A",
-};
+// Los distritos van siempre a su zona aunque su centroide de Georef caiga del otro
+// lado de un borde (el trazado oficial es a mano alzada, ±1 km). Hoy todos
+// coinciden con el KMZ. Claves normalizadas (sin acentos, minúsculas) para que
+// también matcheen los nombres de Georef, que vienen en mayúsculas y sin tildes.
+const ZONA_FORZADA: Record<string, UnidadCode> = {};
 for (const [z, list] of Object.entries(DISTRITOS) as [UnidadCode, string[]][]) {
   for (const n of list) ZONA_FORZADA[normNombre(n)] = ZONA_FORZADA[normNombre(n)] || z;
 }
-/** Zona que EPEC le asigna a una localidad aunque su departamento diga otra (o undefined). */
+/** Zona fija de un distrito (o undefined: se ubica por el trazado). */
 export const zonaForzada = (nombre: string): UnidadCode | undefined => ZONA_FORZADA[normNombre(nombre)];
 const DISTRITOS_NORM: Partial<Record<UnidadCode, Set<string>>> = Object.fromEntries(
   (Object.entries(DISTRITOS) as [UnidadCode, string[]][]).map(([z, list]) => [z, new Set(list.map(normNombre))]),
@@ -336,7 +336,14 @@ export function armarModelo(geo: GeoCordoba): MapaModelo {
       unidades.push(u);
       return u;
     });
-    // Borde exterior (aristas de una sola subzona) y divisoria interna (compartidas).
+    // Con trazado oficial, borde y divisoria vienen precalculados.
+    const divOficial = geo.divisorias?.[z.code];
+    if (divOficial?.length && geo.bordesZona[z.code]) {
+      const longest = divOficial.slice().sort((a, b) => b.length - a.length)[0];
+      const label = longest[Math.floor(longest.length / 2)] || z.label;
+      return { code: z.code, delegacion: z.delegacion, label, subzonas: subs, bordes: geo.bordesZona[z.code], divisoria: divOficial };
+    }
+    // Sin trazado: borde exterior (aristas de una sola subzona) y divisoria interna (compartidas).
     const codes = subs.map((s) => s.code as string);
     const own = new Map<string, { e: [LatLng, LatLng]; z: string[] }>();
     deps.filter((d) => codes.includes(d.zone)).forEach((dep) => dep.ring.forEach((a, i) => {
@@ -360,12 +367,33 @@ export function armarModelo(geo: GeoCordoba): MapaModelo {
 
   const unidadPorCode = new Map(unidades.map((u) => [u.code, u]));
   const deptoEn = (lat: number, lon: number) => deps.find((dep) => inside([lat, lon], dep.ring)) ?? null;
-  // La zona sale de la superficie de cada unidad (no del departamento: A corta
-  // pedazos de Colón, Santa María y Río Primero). Si el punto cae justo en una
-  // costura entre polígonos, se usa el departamento.
+  // La zona sale del trazado oficial de cada unidad (no del departamento: las
+  // zonas de EPEC cortan departamentos). Un punto de la provincia que no cae en
+  // ninguna — laguna Mar Chiquita, salinas, o justo en una costura — va a la
+  // zona más cercana.
+  const masCercana = (lat: number, lon: number): Unidad | null => {
+    const kx = Math.cos((lat * Math.PI) / 180);
+    let best: Unidad | null = null;
+    let dMin = Infinity;
+    for (const u of unidades) {
+      for (const poly of u.areas) {
+        const r = poly[0];
+        for (let i = 0; i < r.length; i++) {
+          const a = r[i];
+          const b = r[(i + 1) % r.length];
+          const ax = (a[1] - lon) * kx, ay = a[0] - lat, bx = (b[1] - lon) * kx, by = b[0] - lat;
+          const dx = bx - ax, dy = by - ay;
+          const t = dx || dy ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy))) : 0;
+          const d = (ax + t * dx) ** 2 + (ay + t * dy) ** 2;
+          if (d < dMin) { dMin = d; best = u; }
+        }
+      }
+    }
+    return best;
+  };
   const unidadEn = (lat: number, lon: number): Unidad | null =>
     unidades.find((u) => u.areas.some((p) => enPoligono([lat, lon], p)))
-    ?? unidadPorCode.get(deptoEn(lat, lon)?.zone as UnidadCode) ?? null;
+    ?? (deptoEn(lat, lon) ? masCercana(lat, lon) : null);
   const zonaDe = (lat: number, lon: number, nombre: string): UnidadCode | null => {
     const forzada = ZONA_FORZADA[normNombre(nombre)];
     if (forzada) return forzada;
