@@ -16,6 +16,7 @@
 
 ## Comandos Útiles
 - **Instalar:** `npm install`
+- **Agregar una dependencia:** `pnpm add <paquete>` — Vercel instala con **pnpm** y `pnpm-lock.yaml` congelado: si se agrega con npm, el deploy falla con `ERR_PNPM_OUTDATED_LOCKFILE`. Si ya se usó npm, correr `pnpm install --lockfile-only` y commitear `pnpm-lock.yaml`.
 - **Desarrollo:** `npm run dev`
 - **Build:** `npm run build`
 - **Lint:** `npm run lint`
