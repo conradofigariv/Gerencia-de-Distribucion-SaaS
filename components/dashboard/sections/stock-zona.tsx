@@ -1510,6 +1510,7 @@ export function StockZonaSection() {
               pinned={pinnedArticulos}
               articulos={mapaArticulos}
               onArticulosChange={setMapaArticulos}
+              cargas={uploads}
             />
           </div>
         )}

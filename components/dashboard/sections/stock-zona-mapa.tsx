@@ -8,10 +8,10 @@
 
 import "leaflet/dist/leaflet.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CircleMarker, FeatureGroup, FitBoundsOptions, LatLngBounds, LayerGroup, Map as LMap, Marker, Polyline } from "leaflet";
+import type { CircleMarker, FeatureGroup, FitBoundsOptions, LatLngBounds, LayerGroup, Map as LMap, Marker, Polyline, Renderer } from "leaflet";
 import type { GeoPermissibleObjects } from "d3-geo";
 import {
-  Check, ChevronUp, ChevronDown, Clock, Copy, Crosshair, ExternalLink, Layers, MapPin, Maximize, Minus, Plus, RotateCw, Search,
+  Check, ChevronUp, ChevronDown, Clock, Copy, Crosshair, ExternalLink, FileDown, Layers, Loader2, MapPin, Maximize, Minus, Plus, RotateCw, Search,
   TriangleAlert, X,
 } from "lucide-react";
 import {
@@ -21,6 +21,7 @@ import {
 import { distanciasPorRuta, fmtDuracion, trazadoRuta, type Recorrido, type Ruta } from "@/lib/ruteo";
 import { getDepositos, guardarDeposito, quitarDeposito, type Deposito } from "@/lib/stockDepositos";
 import { toast } from "sonner";
+import type { DatosPdf } from "@/lib/mapaPdf";
 
 type LeafletNS = typeof import("leaflet");
 type PorUnidad = Partial<Record<UnidadCode, number>>;
@@ -38,6 +39,8 @@ interface MapaZonasProps {
   pinned: string[];
   articulos: string[];
   onArticulosChange: (articulos: string[]) => void;
+  /** Cuándo se cargó el stock de cada zona (código de stock ZA…ZI) — va al PDF. */
+  cargas?: { zona: string; uploadedAt: string }[];
 }
 
 /** Qué pinta el mapa: cantidad (1 matrícula) o cuántas matrículas tiene cada zona (2+). */
@@ -58,6 +61,12 @@ const ZOOM_NOMBRE_DELEGACION = 8;
 const ZOOM_NOMBRE_DISTRITO = 9.25;
 const ZOOM_NOMBRE_LOCALIDAD = 10;
 const ZOOM_NUMERO_RUTA = 8;
+// Puntito de localidad: casi un píxel a escala provincial, se agranda y gana
+// opacidad al acercar (zoom 7 → 11).
+function puntoLocalidad(z: number) {
+  const t = Math.min(1, Math.max(0, (z - 7) / 4));
+  return { r: 1.2 + 3.3 * t, op: 0.45 + 0.45 * t };
+}
 
 const fmtNum = (n: number) => n.toLocaleString("es-AR", { maximumFractionDigits: 2 });
 const fmtKm = (n: number) => n.toFixed(1).replace(".", ",") + " km";
@@ -235,7 +244,7 @@ function introPendiente(): boolean {
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
-export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }: MapaZonasProps) {
+export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, cargas = [] }: MapaZonasProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const mapElRef = useRef<HTMLDivElement>(null);
@@ -318,6 +327,8 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   const tramosLayerRef = useRef<LayerGroup | null>(null);
   const tramoHlRef = useRef<Polyline | null>(null);
   const ghostRef = useRef<Marker | null>(null);
+  const locRendererRef = useRef<Renderer | null>(null);
+  const colorLocRef = useRef("");
   const hoverRef = useRef<{ zona: ZonaCode | null; sub: UnidadCode | null }>({ zona: null, sub: null });
   const selZoneRef = useRef<ZonaCode | null>(null);
   const metricaRef = useRef<Metrica | null>(null);
@@ -539,19 +550,25 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
     }
   }, []);
 
-  // ── Capa «todas las localidades» (puntos + agrupados por cercanía) ──────────
+  // ── Capa «todas las localidades»: puntitos que crecen con el zoom ─────────
+  // Antes se agrupaban por cercanía en burbujas con un contador; a escala
+  // provincial eran decenas de números que no decían nada. Ahora cada localidad
+  // es un punto chico (canvas: cientos sin costo de DOM) que gana tamaño y
+  // opacidad al acercar; el nombre aparece al pasar el mouse y queda fijo desde
+  // ZOOM_NOMBRE_LOCALIDAD.
   const renderTodas = useCallback(() => {
     const L = LRef.current;
     const map = mapRef.current;
     const m = modeloRef.current;
     const lyr = todasLayerRef.current;
-    if (!L || !map || !m || !lyr) return;
+    const renderer = locRendererRef.current;
+    if (!L || !map || !m || !lyr || !renderer) return;
     lyr.clearLayers();
     const c = capasRef.current;
     if (!c.todas) return;
     const z = map.getZoom();
-    const cell = 56;
-    const groups = new Map<string, Localidad[]>();
+    const { r, op } = puntoLocalidad(z);
+    const fijo = z >= ZOOM_NOMBRE_LOCALIDAD;
     // Solo lo visible (con margen): a zoom alto son cientos de marcadores fuera de pantalla.
     const vista = map.getBounds().pad(0.3);
     for (const l of localidadesRef.current.length ? localidadesRef.current : m.localidades) {
@@ -559,34 +576,15 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       // Las que ya tienen anillo visible no se repiten como punto.
       if (l.rol === "delegacion" && c.delegaciones) continue;
       if (l.rol === "distrito" && c.distritos) continue;
-      const p = map.project([l.lat, l.lon], z);
-      const k = Math.floor(p.x / cell) + ":" + Math.floor(p.y / cell);
-      const g = groups.get(k);
-      if (g) g.push(l); else groups.set(k, [l]);
+      const mk = L.circleMarker([l.lat, l.lon], {
+        renderer, radius: r, stroke: false, fillColor: colorLocRef.current, fillOpacity: op,
+      });
+      mk.bindTooltip(esc(l.nombre), { permanent: fijo, className: fijo ? "mz-ptip mz-plabel is-loc" : "mz-ptip", direction: "right", offset: [r + 3, 0] });
+      mk.on("mouseover", () => mk.setStyle({ radius: r + 1.5, fillOpacity: 1 }));
+      mk.on("mouseout", () => mk.setStyle({ radius: r, fillOpacity: op }));
+      mk.on("click", () => handlersRef.current.onLocClick(l));
+      lyr.addLayer(mk);
     }
-    const fijo = z >= ZOOM_NOMBRE_LOCALIDAD;
-    groups.forEach((g) => {
-      if (g.length === 1 || z >= 11) {
-        for (const l of g) {
-          const mk = L.marker([l.lat, l.lon], {
-            icon: L.divIcon({ className: "", iconSize: [6, 6], iconAnchor: [3, 3], html: '<div class="mz-dot"></div>' }),
-          });
-          mk.bindTooltip(esc(l.nombre), { permanent: fijo, className: fijo ? "mz-ptip mz-plabel is-loc" : "mz-ptip", direction: "right", offset: [6, 0] });
-          mk.on("click", () => handlersRef.current.onLocClick(l));
-          lyr.addLayer(mk);
-        }
-      } else {
-        const lat = g.reduce((a, l) => a + l.lat, 0) / g.length;
-        const lon = g.reduce((a, l) => a + l.lon, 0) / g.length;
-        const s = Math.min(36, 20 + g.length * 1.5);
-        const mk = L.marker([lat, lon], {
-          icon: L.divIcon({ className: "", iconSize: [s, s], iconAnchor: [s / 2, s / 2], html: `<div class="mz-cl mz-mono" style="width:${s}px;height:${s}px">${g.length}</div>` }),
-        });
-        mk.bindTooltip(esc(g.map((l) => l.nombre).join(" · ")), { className: "mz-ptip", direction: "right", offset: [s / 2, 0] });
-        mk.on("click", () => map.flyTo([lat, lon], Math.min(z + 2, 12), { duration: 0.6 }));
-        lyr.addLayer(mk);
-      }
-    });
   }, []);
 
   // ── Estilo de rutas: contexto, no protagonista ──────────────────────────────
@@ -832,6 +830,8 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
 
       // Capas: todas las localidades (abajo), distritos (anillo azul) y delegaciones (anillo rojo).
       todasLayerRef.current = L.layerGroup().addTo(map);
+      locRendererRef.current = L.canvas({ padding: 0.3 });
+      colorLocRef.current = v("--ido-text-2");
       const distL = L.layerGroup();
       const delegL = L.layerGroup();
       distLayerRef.current = distL;
@@ -880,6 +880,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
       delegLayerRef.current = null;
       distLayerRef.current = null;
       todasLayerRef.current = null;
+      locRendererRef.current = null;
       rutasLayerRef.current = null;
       rutasRefLayerRef.current = null;
       rutasLineasRef.current = [];
@@ -1517,6 +1518,66 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
   }, [selected, modelo]);
   const coord = selected ? `${selected.lat.toFixed(4)}, ${selected.lon.toFixed(4)}` : "";
 
+  // ── Exportar a PDF: captura del panel + los datos del momento en texto ─────
+  const [exportando, setExportando] = useState(false);
+  const exportarPdf = async () => {
+    const panel = panelRef.current;
+    if (!panel || !modelo || exportando) return;
+    setExportando(true);
+    try {
+      const r = rutas && rutas.key === rutasKey ? rutas.r : null;
+      const orden = new Map((cercanos ?? []).map((c, i) => [c.u.code, i]));
+      const filas = modelo.unidades
+        .map((u) => {
+          const sede = sedes[u.code];
+          const recta = selected && sede ? km(selected, sede) : null;
+          const ruta = r?.[u.code] ?? null;
+          const notas = [
+            recta === null ? "" : recta < 1 ? "en la obra" : ruta ? `por ruta · ${fmtDuracion(ruta.min)}` : "en línea recta",
+            sede?.propio ? `desde ${sede.nombre}` : "",
+          ].filter(Boolean);
+          return {
+            code: u.code,
+            fila: {
+              zona: u.subzona ? `B · ${u.code}` : u.code,
+              delegacion: u.delegacion,
+              cantidades: elegidas.map(({ s: st }) => st[u.code] ?? 0),
+              km: recta === null ? null : recta < 1 ? 0 : (ruta ? ruta.km : recta),
+              nota: notas.join(" · "),
+            },
+          };
+        })
+        // Con obra: primero las zonas con stock en el orden de «Stock más cercano».
+        .sort((a, b) => (orden.get(a.code) ?? 99) - (orden.get(b.code) ?? 99))
+        .map((x) => x.fila);
+      const datos: DatosPdf = {
+        generado: new Date(),
+        matriculas: elegidas.map(({ a, row }) => ({ codigo: a, descripcion: row?.descArticulo || "Sin datos de stock", total: row?.total ?? 0, udm: row?.udmPrimaria ?? "" })),
+        obra: selected
+          ? { nombre: selected.marcado ? "Punto marcado" : selected.nombre, detalle: `Depto. ${selected.departamento} · zona ${selected.subzona ?? selected.zona} · ${coord}` }
+          : null,
+        filas,
+        recorrido: recorrido && mejor?.sede
+          ? { desde: mejor.sede.nombre, tramos: recorrido.tramos.slice().reverse().map((t) => ({ nombre: [t.ruta, t.nombre].filter(Boolean).join(" ") || "Calles locales", km: t.km })) }
+          : null,
+        cargas: cargas.slice().sort((a, b) => a.zona.localeCompare(b.zona))
+          .map((c) => ({ zona: c.zona, fecha: new Date(c.uploadedAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) })),
+      };
+      const quien = n === 1 ? articulos[0] : n > 1 ? `${n}-matriculas` : "zonas";
+      const { exportarMapaPdf } = await import("@/lib/mapaPdf");
+      await exportarMapaPdf(panel, datos, {
+        fondo: getComputedStyle(panel).getPropertyValue("--ido-base").trim(),
+        // Botones y ayudas de uso no van en la captura.
+        excluir: ["mz-zoom", "mz-globe", "mz-hint", "mz-ver-resultado", "mz-dd", "mz-kbd", "leaflet-control-zoom"],
+        archivo: `mapa-stock-${quien}-${hoy()}.pdf`,
+      });
+    } catch {
+      toast.error("No se pudo generar el PDF del mapa");
+    } finally {
+      setExportando(false);
+    }
+  };
+
   const copyCoord = () => {
     try { void navigator.clipboard?.writeText(coord); } catch { /* sin portapapeles */ }
     setCopied(true);
@@ -1959,6 +2020,10 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange }
               <Layers className="w-3.5 h-3.5" strokeWidth={1.75} />Capas
             </button>
           </div>
+          <button type="button" className="mz-btn2 mz-fullview" disabled={!ready || exportando} onClick={exportarPdf} title="Descargar el mapa y los datos de este momento">
+            {exportando ? <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.75} /> : <FileDown className="w-3.5 h-3.5" strokeWidth={1.75} />}
+            {exportando ? "Generando…" : "Exportar PDF"}
+          </button>
           <button type="button" className="mz-btn2 mz-fullview" onClick={fullView}>
             <Maximize className="w-3.5 h-3.5" strokeWidth={1.75} />Vista completa
           </button>
