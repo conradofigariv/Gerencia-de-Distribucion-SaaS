@@ -63,6 +63,9 @@ const ZOOM_NOMBRE_DELEGACION = 8;
 const ZOOM_NOMBRE_DISTRITO = 9.25;
 const ZOOM_NOMBRE_LOCALIDAD = 10;
 const ZOOM_NUMERO_RUTA = 8;
+// Con matrícula elegida, desde este zoom la etiqueta de stock de cada zona (letra
+// + cantidad) se muda a la ciudad de su depósito; más lejos queda en el centro.
+const ZOOM_STOCK_EN_DEPOSITO = 8.5;
 // Puntito de localidad según zoom y tamaño del pueblo. Escalón por habitantes:
 // 0 sin dato (parajes, < 1000) · 1 < 5 mil · 2 < 20 mil · 3 < 100 mil · 4 más.
 const escalonPob = (pob?: number) => (!pob ? 0 : pob < 5000 ? 1 : pob < 20000 ? 2 : pob < 100000 ? 3 : 4);
@@ -535,8 +538,22 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
     }
   }, []);
 
-  const unitIcon = useCallback((L: LeafletNS, code: UnidadCode, met: Metrica | null) => {
+  const unitIcon = useCallback((L: LeafletNS, code: UnidadCode, met: Metrica | null, deposito: string | null = null, udmTxt = "") => {
     const v = met?.values[code] ?? 0;
+    if (deposito !== null) {
+      // En la ciudad del depósito: píldora a la derecha del punto, donde iría el
+      // nombre de la ciudad — lo lleva adentro (el nombre suelto queda tapado y
+      // el resolvedor lo oculta).
+      const dato = !met || v <= 0 ? ""
+        : met.kind === "qty" ? `<span class="mz-mono">${fmtNum(v)}${udmTxt ? ` <small>${esc(udmTxt)}</small>` : ""}</span>`
+        : `<span class="mz-mono${v === met.max ? " is-full" : ""}">${v}/${met.max}</span>`;
+      return L.divIcon({
+        className: "",
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+        html: `<div class="mz-zlabel-dep${dato ? "" : " is-vacia"}"><span class="mz-zcode is-sm" style="background:${zonaColorVar(code)}">${code}</span><span class="mz-dep-nom">${esc(deposito)}</span>${dato}</div>`,
+      });
+    }
     // Sin stock no se muestra dato: la zona ya queda atenuada.
     const dato = !met || v <= 0 ? ""
       : met.kind === "qty" ? `<div class="mz-qty mz-mono">${fmtNum(v)}</div>`
@@ -548,6 +565,32 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
       html: `<div class="mz-zlabel"><div class="mz-zcode" style="background:${zonaColorVar(code)}">${code}</div>${dato}</div>`,
     });
   }, []);
+
+  // ── Etiqueta de stock: en el centro de la zona o, de cerca, en su depósito ──
+  const sedesRef = useRef<Partial<Record<UnidadCode, PuntoDeposito>>>({});
+  const udmRef = useRef("");
+  const enDepositoRef = useRef<Partial<Record<UnidadCode, boolean>>>({});
+  const ubicarEtiquetasZona = useCallback((forzar = false) => {
+    const L = LRef.current;
+    const map = mapRef.current;
+    const m = modeloRef.current;
+    if (!L || !map || !m) return;
+    const met = metricaRef.current;
+    const cerca = map.getZoom() >= ZOOM_STOCK_EN_DEPOSITO;
+    let cambio = false;
+    for (const u of m.unidades) {
+      const mk = unitLabelsRef.current[u.code];
+      if (!mk) continue;
+      const sede = sedesRef.current[u.code];
+      const dep = !!(met && sede && cerca);
+      if (!forzar && enDepositoRef.current[u.code] === dep) continue;
+      enDepositoRef.current[u.code] = dep;
+      mk.setLatLng(dep && sede ? [sede.lat, sede.lon] : u.label);
+      mk.setIcon(unitIcon(L, u.code, met, dep && sede ? sede.nombre : null, udmRef.current));
+      cambio = true;
+    }
+    if (cambio) styleZones(); // el ícono nuevo vuelve con opacidad 1
+  }, [unitIcon, styleZones]);
 
   // ── Nombres fijos según zoom (delegaciones / distritos) ─────────────────────
   const actualizarNombres = useCallback(() => {
@@ -651,7 +694,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
     const ocupados: DOMRect[] = [];
     const choca = (r: DOMRect) => ocupados.some((o) =>
       r.left < o.right + PAD && r.right > o.left - PAD && r.top < o.bottom + PAD && r.bottom > o.top - PAD);
-    panel.querySelectorAll<HTMLElement>(".mz-zcode, .mz-zcode-b, .mz-qty, .mz-pulse-label").forEach((el) => {
+    panel.querySelectorAll<HTMLElement>(".mz-zcode, .mz-zcode-b, .mz-qty, .mz-zlabel-dep, .mz-pulse-label").forEach((el) => {
       const r = el.getBoundingClientRect();
       if (r.width) ocupados.push(r);
     });
@@ -881,7 +924,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
       flechasLayerRef.current = L.layerGroup().addTo(map);
       tramosLayerRef.current = L.layerGroup().addTo(map);
       depositosLayerRef.current = L.layerGroup().addTo(map);
-      map.on("zoomend", () => { actualizarNombres(); dibujarFlechas(); actualizarNumerosRuta(); estiloRutas(); programarEtiquetas(); });
+      map.on("zoomend", () => { ubicarEtiquetasZona(); actualizarNombres(); dibujarFlechas(); actualizarNumerosRuta(); estiloRutas(); programarEtiquetas(); });
       // moveend llega también después de cada zoom.
       map.on("moveend", () => { if (capasRef.current.todas) { renderTodas(); programarEtiquetas(); } });
       map.on("click", (e) => handlersRef.current.onMapClick(e.latlng.lat, e.latlng.lng));
@@ -916,13 +959,14 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
       lineaRef.current = null;
       ringsRef.current = [];
       for (const k of Object.keys(zoneLayers)) delete zoneLayers[k as UnidadCode];
+      enDepositoRef.current = {};
       zoneBordersRef.current = {};
       zoneDividersRef.current = {};
       unitLabelsRef.current = {};
       bigLabelsRef.current = {};
       setMapReady(false);
     };
-  }, [modelo, styleZones, unitIcon, actualizarNombres, renderTodas, dibujarFlechas, actualizarNumerosRuta, estiloRutas, programarEtiquetas]);
+  }, [modelo, styleZones, unitIcon, ubicarEtiquetasZona, actualizarNombres, renderTodas, dibujarFlechas, actualizarNumerosRuta, estiloRutas, programarEtiquetas]);
 
   // ── Capas: mostrar/ocultar y recordar en este dispositivo ───────────────────
   useEffect(() => {
@@ -991,13 +1035,17 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
     const L = LRef.current;
     const m = modeloRef.current;
     if (!mapReady || !L || !m) return;
-    for (const u of m.unidades) {
-      unitLabelsRef.current[u.code]?.setIcon(unitIcon(L, u.code, metrica));
-      zoneLayersRef.current[u.code]?.setTooltipContent(zoneTipHtml(u, metrica, udm));
-    }
+    udmRef.current = udm;
+    for (const u of m.unidades) zoneLayersRef.current[u.code]?.setTooltipContent(zoneTipHtml(u, metrica, udm));
+    ubicarEtiquetasZona(true);
     styleZones();
     programarEtiquetas();
-  }, [metrica, udm, mapReady, styleZones, unitIcon, programarEtiquetas]);
+  }, [metrica, udm, mapReady, styleZones, ubicarEtiquetasZona, programarEtiquetas]);
+  // Cambió un depósito: las etiquetas que están en depósito se mudan al nuevo.
+  useEffect(() => {
+    sedesRef.current = sedes;
+    if (mapReady) { ubicarEtiquetasZona(true); programarEtiquetas(); }
+  }, [sedes, mapReady, ubicarEtiquetasZona, programarEtiquetas]);
 
   // ── Distancias por ruta desde la localidad elegida a cada sede ──────────────
   useEffect(() => {
