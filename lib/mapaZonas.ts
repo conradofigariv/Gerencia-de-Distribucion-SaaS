@@ -285,6 +285,8 @@ export interface Localidad {
   rol: "delegacion" | "distrito" | null;
   /** Punto marcado a mano en el mapa (no es una localidad con nombre). */
   marcado?: { cerca: string; km: number };
+  /** Habitantes (GeoNames, ≥ 1000). Sin dato = paraje o localidad chica. */
+  pob?: number;
 }
 
 const enPoligono = (pt: LatLng, poly: Poligono) => inside(pt, poly[0]) && !poly.slice(1).some((h) => inside(pt, h));
@@ -511,6 +513,45 @@ export function cargarLocalidadesGeoref(): Promise<LocalidadExterna[]> {
     .catch((e) => { georefPromise = null; throw e; })
     .finally(() => clearTimeout(t));
   return georefPromise;
+}
+
+// ─── Población (tamaño de los puntos del mapa) ────────────────────────────────
+/** [nombre, lat, lon, habitantes] — `public/geo/poblacion-cordoba.json`, ver scripts/poblacion-geonames.js. */
+export type FilaPoblacion = [string, number, number, number];
+
+let pobPromise: Promise<FilaPoblacion[]> | null = null;
+export function cargarPoblacion(): Promise<FilaPoblacion[]> {
+  if (!pobPromise) {
+    pobPromise = fetch("/geo/poblacion-cordoba.json")
+      .then((r) => (r.ok ? (r.json() as Promise<FilaPoblacion[]>) : Promise.reject(new Error("pob " + r.status))))
+      .catch((e) => { pobPromise = null; throw e; });
+  }
+  return pobPromise;
+}
+
+/**
+ * Suma los habitantes a cada localidad: mismo nombre (normalizado) y a menos de
+ * 8 km. Solo por nombre — por cercanía un barrio o un paraje se quedaría con la
+ * población de la ciudad de al lado.
+ */
+export function asignarPoblacion(locs: Localidad[], tabla: FilaPoblacion[]): Localidad[] {
+  const porNombre = new Map<string, FilaPoblacion[]>();
+  for (const f of tabla) {
+    const k = normNombre(f[0]);
+    const l = porNombre.get(k);
+    if (l) l.push(f); else porNombre.set(k, [f]);
+  }
+  return locs.map((l) => {
+    const cands = porNombre.get(normNombre(l.nombre));
+    if (!cands) return l;
+    let best: FilaPoblacion | null = null;
+    let dMin = 8;
+    for (const f of cands) {
+      const d = km(l, { lat: f[1], lon: f[2] });
+      if (d < dMin) { dMin = d; best = f; }
+    }
+    return best ? { ...l, pob: best[3] } : l;
+  });
 }
 
 let geoPromise: Promise<GeoCordoba> | null = null;

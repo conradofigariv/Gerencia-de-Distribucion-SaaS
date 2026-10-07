@@ -15,8 +15,8 @@ import {
   TriangleAlert, X,
 } from "lucide-react";
 import {
-  armarModelo, cargarGeo, cargarLocalidadesGeoref, km, unidadDeStock, zonaColorVar, zonaForzada,
-  type LatLng, type Localidad, type MapaModelo, type Unidad, type UnidadCode, type ZonaCode,
+  armarModelo, asignarPoblacion, cargarGeo, cargarLocalidadesGeoref, cargarPoblacion, km, unidadDeStock, zonaColorVar, zonaForzada,
+  type FilaPoblacion, type LatLng, type Localidad, type MapaModelo, type Unidad, type UnidadCode, type ZonaCode,
 } from "@/lib/mapaZonas";
 import { distanciasPorRuta, fmtDuracion, trazadoRuta, type Recorrido, type Ruta } from "@/lib/ruteo";
 import { getDepositos, guardarDeposito, quitarDeposito, type Deposito } from "@/lib/stockDepositos";
@@ -61,12 +61,21 @@ const ZOOM_NOMBRE_DELEGACION = 8;
 const ZOOM_NOMBRE_DISTRITO = 9.25;
 const ZOOM_NOMBRE_LOCALIDAD = 10;
 const ZOOM_NUMERO_RUTA = 8;
-// Puntito de localidad: casi un píxel a escala provincial, se agranda y gana
-// opacidad al acercar (zoom 7 → 11).
-function puntoLocalidad(z: number) {
+// Puntito de localidad según zoom y tamaño del pueblo. Escalón por habitantes:
+// 0 sin dato (parajes, < 1000) · 1 < 5 mil · 2 < 20 mil · 3 < 100 mil · 4 más.
+const escalonPob = (pob?: number) => (!pob ? 0 : pob < 5000 ? 1 : pob < 20000 ? 2 : pob < 100000 ? 3 : 4);
+// De lejos (zoom 7) casi un píxel y la diferencia por tamaño se nota más; al
+// acercar (zoom 11) todos crecen y la diferencia se achica (ya se lee el nombre).
+function puntoLocalidad(z: number, escalon: number) {
   const t = Math.min(1, Math.max(0, (z - 7) / 4));
-  return { r: 1.2 + 3.3 * t, op: 0.45 + 0.45 * t };
+  return {
+    r: 1.2 + 3.3 * t + escalon * (1 - 0.4 * t),
+    op: Math.min(1, (escalon ? 0.4 : 0.3) + 0.45 * t + 0.08 * escalon),
+  };
 }
+// Desde qué zoom queda fijo el nombre: las ciudades grandes se leen de lejos.
+const ZOOM_NOMBRE_POR_ESCALON = [ZOOM_NOMBRE_LOCALIDAD + 0.5, ZOOM_NOMBRE_LOCALIDAD, 9.25, 8.5, 7.5];
+const fmtHab = (n: number) => `${n.toLocaleString("es-AR")} hab.`;
 
 const fmtNum = (n: number) => n.toLocaleString("es-AR", { maximumFractionDigits: 2 });
 const fmtKm = (n: number) => n.toFixed(1).replace(".", ",") + " km";
@@ -427,7 +436,14 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
       .catch(() => { if (!cancelled) setGeorefFallo(true); });
     return () => { cancelled = true; };
   }, [modelo]);
-  useEffect(() => { localidadesRef.current = localidades; }, [localidades]);
+  // Habitantes por localidad (tamaño de los puntos). Si no carga, todos iguales.
+  const [poblacion, setPoblacion] = useState<FilaPoblacion[] | null>(null);
+  useEffect(() => { cargarPoblacion().then(setPoblacion).catch(() => { /* puntos sin tamaño */ }); }, []);
+  const localidadesPob = useMemo(
+    () => (poblacion ? asignarPoblacion(localidades, poblacion) : localidades),
+    [localidades, poblacion],
+  );
+  useEffect(() => { localidadesRef.current = localidadesPob; }, [localidadesPob]);
 
   useEffect(() => { getDepositos().then(setDepositos); }, []);
   // Depósito efectivo de cada zona: el configurado o, si no hay, la sede.
@@ -554,8 +570,9 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
   // Antes se agrupaban por cercanía en burbujas con un contador; a escala
   // provincial eran decenas de números que no decían nada. Ahora cada localidad
   // es un punto chico (canvas: cientos sin costo de DOM) que gana tamaño y
-  // opacidad al acercar; el nombre aparece al pasar el mouse y queda fijo desde
-  // ZOOM_NOMBRE_LOCALIDAD.
+  // opacidad al acercar, más grande cuanto más habitantes tiene; el nombre
+  // aparece al pasar el mouse y queda fijo antes cuanto más grande es el pueblo
+  // (ZOOM_NOMBRE_POR_ESCALON).
   const renderTodas = useCallback(() => {
     const L = LRef.current;
     const map = mapRef.current;
@@ -567,19 +584,25 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
     const c = capasRef.current;
     if (!c.todas) return;
     const z = map.getZoom();
-    const { r, op } = puntoLocalidad(z);
-    const fijo = z >= ZOOM_NOMBRE_LOCALIDAD;
     // Solo lo visible (con margen): a zoom alto son cientos de marcadores fuera de pantalla.
+    // De más grande a más chica: el resolvedor de nombres ubica primero las ciudades.
     const vista = map.getBounds().pad(0.3);
-    for (const l of localidadesRef.current.length ? localidadesRef.current : m.localidades) {
-      if (!vista.contains([l.lat, l.lon])) continue;
+    const lista = (localidadesRef.current.length ? localidadesRef.current : m.localidades)
+      .filter((l) => vista.contains([l.lat, l.lon]))
+      .sort((a, b) => (b.pob ?? 0) - (a.pob ?? 0));
+    for (const l of lista) {
       // Las que ya tienen anillo visible no se repiten como punto.
       if (l.rol === "delegacion" && c.delegaciones) continue;
       if (l.rol === "distrito" && c.distritos) continue;
+      const esc0 = escalonPob(l.pob);
+      const { r, op } = puntoLocalidad(z, esc0);
+      const fijo = z >= ZOOM_NOMBRE_POR_ESCALON[esc0];
       const mk = L.circleMarker([l.lat, l.lon], {
         renderer, radius: r, stroke: false, fillColor: colorLocRef.current, fillOpacity: op,
       });
-      mk.bindTooltip(esc(l.nombre), { permanent: fijo, className: fijo ? "mz-ptip mz-plabel is-loc" : "mz-ptip", direction: "right", offset: [r + 3, 0] });
+      // Fijo: solo el nombre. Al pasar el mouse: nombre y habitantes.
+      const tip = esc(l.nombre) + (l.pob && !fijo ? ` <span class="mz-mono" style="opacity:.6">· ${fmtHab(l.pob)}</span>` : "");
+      mk.bindTooltip(tip, { permanent: fijo, className: fijo ? "mz-ptip mz-plabel is-loc" : "mz-ptip", direction: "right", offset: [r + 3, 0] });
       mk.on("mouseover", () => mk.setStyle({ radius: r + 1.5, fillOpacity: 1 }));
       mk.on("mouseout", () => mk.setStyle({ radius: r, fillOpacity: op }));
       mk.on("click", () => handlersRef.current.onLocClick(l));
@@ -728,7 +751,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
     if (!mapReady || !capasRef.current.todas) return;
     renderTodas();
     programarEtiquetas();
-  }, [localidades, mapReady, renderTodas, programarEtiquetas]);
+  }, [localidadesPob, mapReady, renderTodas, programarEtiquetas]);
 
   // ── Construcción del mapa ───────────────────────────────────────────────────
   useEffect(() => {
@@ -759,7 +782,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
 
       const map = L.map(mapEl, { zoomControl: false, attributionControl: true, zoomSnap: 0, zoomDelta: 1, minZoom: 6, maxZoom: 13 });
       mapRef.current = map;
-      map.attributionControl.setPrefix(false).addAttribution("Límites: IGN · Rutas: © OpenStreetMap (ODbL) · Recorridos: OSRM");
+      map.attributionControl.setPrefix(false).addAttribution("Límites: IGN · Rutas: © OpenStreetMap (ODbL) · Recorridos: OSRM · Población: GeoNames (CC BY)");
       const provBounds = L.latLngBounds(modelo.contorno.flat());
       provBoundsRef.current = provBounds;
       map.setView(provBounds.getCenter(), 7, { animate: false });
