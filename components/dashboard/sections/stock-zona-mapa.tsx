@@ -22,6 +22,8 @@ import { distanciasPorRuta, fmtDuracion, trazadoRuta, type Recorrido, type Ruta 
 import { getDepositos, guardarDeposito, quitarDeposito, type Deposito } from "@/lib/stockDepositos";
 import { toast } from "sonner";
 import type { DatosPdf } from "@/lib/mapaPdf";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type LeafletNS = typeof import("leaflet");
 type PorUnidad = Partial<Record<UnidadCode, number>>;
@@ -1543,6 +1545,8 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
 
   // ── Exportar a PDF: captura del panel + los datos del momento en texto ─────
   const [exportando, setExportando] = useState(false);
+  // Vista previa: el PDF ya armado y sus hojas como imagen. Se descarga desde ahí.
+  const [previa, setPrevia] = useState<{ blob: Blob; archivo: string; hojas: string[] } | null>(null);
   const exportarPdf = async () => {
     const panel = panelRef.current;
     if (!panel || !modelo || exportando) return;
@@ -1587,13 +1591,15 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
           .map((c) => ({ zona: c.zona, fecha: new Date(c.uploadedAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) })),
       };
       const quien = n === 1 ? articulos[0] : n > 1 ? `${n}-matriculas` : "zonas";
-      const { exportarMapaPdf } = await import("@/lib/mapaPdf");
-      await exportarMapaPdf(panel, datos, {
+      const { generarMapaPdf, hojasComoImagen } = await import("@/lib/mapaPdf");
+      const blob = await generarMapaPdf(panel, datos, {
         fondo: getComputedStyle(panel).getPropertyValue("--ido-base").trim(),
         // Botones y ayudas de uso no van en la captura.
         excluir: ["mz-zoom", "mz-globe", "mz-hint", "mz-ver-resultado", "mz-dd", "mz-kbd", "leaflet-control-zoom"],
-        archivo: `mapa-stock-${quien}-${hoy()}.pdf`,
       });
+      // Si la vista previa no se puede dibujar, el diálogo igual deja descargar.
+      const hojas = await hojasComoImagen(blob, 880).catch(() => [] as string[]);
+      setPrevia({ blob, archivo: `mapa-stock-${quien}-${hoy()}.pdf`, hojas });
     } catch {
       toast.error("No se pudo generar el PDF del mapa");
     } finally {
@@ -2043,7 +2049,7 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
               <Layers className="w-3.5 h-3.5" strokeWidth={1.75} />Capas
             </button>
           </div>
-          <button type="button" className="mz-btn2 mz-fullview" disabled={!ready || exportando} onClick={exportarPdf} title="Descargar el mapa y los datos de este momento">
+          <button type="button" className="mz-btn2 mz-fullview" disabled={!ready || exportando} onClick={exportarPdf} title="Vista previa y descarga del mapa con los datos de este momento">
             {exportando ? <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.75} /> : <FileDown className="w-3.5 h-3.5" strokeWidth={1.75} />}
             {exportando ? "Generando…" : "Exportar PDF"}
           </button>
@@ -2291,6 +2297,39 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
             </>
           )}
         </aside>
+
+        {/* Vista previa del PDF */}
+        <Dialog open={!!previa} onOpenChange={(o) => { if (!o) setPrevia(null); }}>
+          <DialogContent className="ido-terminal sm:max-w-4xl max-h-[92vh] grid-rows-[auto_minmax(0,1fr)_auto]">
+            <DialogHeader>
+              <DialogTitle>Vista previa del PDF</DialogTitle>
+              <DialogDescription>
+                {previa ? `${previa.archivo} · ${previa.hojas.length || "?"} ${previa.hojas.length === 1 ? "hoja" : "hojas"}` : ""}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mz-pdfprev">
+              {previa && previa.hojas.length > 0 ? previa.hojas.map((src, i) => (
+                // eslint-disable-next-line @next/next/no-img-element -- data URL generada en el momento
+                <img key={i} src={src} alt={`Hoja ${i + 1} del PDF`} />
+              )) : (
+                <p className="mz-pdfprev-vacia">No se pudo mostrar la vista previa en este navegador. Podés descargar el PDF igual.</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPrevia(null)}>Cerrar</Button>
+              <Button
+                onClick={async () => {
+                  if (!previa) return;
+                  const { descargarPdf } = await import("@/lib/mapaPdf");
+                  descargarPdf(previa.blob, previa.archivo);
+                  setPrevia(null);
+                }}
+              >
+                <FileDown className="w-4 h-4" strokeWidth={1.75} />Descargar PDF
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Carga */}
         {status === "loading" && showSkel && (

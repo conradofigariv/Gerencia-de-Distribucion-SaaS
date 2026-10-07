@@ -42,11 +42,12 @@ async function capturar(panel: HTMLElement, fondo: string, excluir: string[]): P
   return { url, w: panel.clientWidth, h: panel.clientHeight };
 }
 
-export async function exportarMapaPdf(
+/** Arma el PDF (no lo descarga: primero se muestra la vista previa). */
+export async function generarMapaPdf(
   panel: HTMLElement,
   datos: DatosPdf,
-  opts: { fondo: string; excluir: string[]; archivo: string },
-): Promise<void> {
+  opts: { fondo: string; excluir: string[] },
+): Promise<Blob> {
   const [img, { jsPDF }] = await Promise.all([capturar(panel, opts.fondo, opts.excluir), import("jspdf")]);
   const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const W = 297;
@@ -165,5 +166,46 @@ export async function exportarMapaPdf(
     }
   }
 
-  pdf.save(opts.archivo);
+  return pdf.output("blob");
+}
+
+/** Descarga un PDF ya generado. */
+export function descargarPdf(blob: Blob, archivo: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = archivo;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * Hojas del PDF como imágenes, para la vista previa. Se dibujan con pdf.js en
+ * vez de mostrar el PDF en un <iframe>: los navegadores del celular no muestran
+ * PDFs embebidos (o solo la primera hoja).
+ */
+export async function hojasComoImagen(blob: Blob, anchoPx: number): Promise<string[]> {
+  // Mismo truco que lib/parse-consumo-pdf.ts: con el worker ya cargado en
+  // globalThis, pdf.js no intenta resolver la ruta del worker en runtime.
+  const g = globalThis as { pdfjsWorker?: unknown };
+  if (!g.pdfjsWorker) g.pdfjsWorker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const tarea = pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) });
+  const doc = await tarea.promise;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const out: string[] = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const page = await doc.getPage(n);
+    const base = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: (anchoPx / base.width) * dpr });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    await page.render({ canvas, viewport }).promise;
+    out.push(canvas.toDataURL("image/png"));
+  }
+  await tarea.destroy();
+  return out;
 }

@@ -2167,6 +2167,10 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
 .mz-tramo { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); white-space: nowrap; padding: 1px 6px; border-radius: 4px; background: var(--ido-elevated); border: 1px solid color-mix(in srgb, var(--ido-text) 45%, transparent); color: var(--ido-text); font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; pointer-events: none; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); transition: border-color 150ms var(--ido-ease), color 150ms var(--ido-ease); }
 .mz-tramo.is-calle { font-weight: 500; color: var(--ido-text-2); }
 .mz-tramo.is-act { border-color: var(--ido-accent); color: var(--ido-accent); z-index: 1; }
+/* Vista previa del PDF (diálogo): hojas apiladas con scroll propio. */
+.mz-pdfprev { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 4px 2px; }
+.mz-pdfprev img { width: 100%; height: auto; border-radius: 4px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45); }
+.mz-pdfprev-vacia { font-size: 13px; color: var(--ido-text-2); padding: 24px 0; text-align: center; }
 .mz-recorrido { margin-top: 16px; display: flex; flex-direction: column; }
 .mz-recorrido .mz-stock-t small { font-weight: 500; letter-spacing: 0.02em; text-transform: none; color: var(--ido-placeholder); }
 .mz-recorrido ol { list-style: none; margin: 0; padding: 0; }
