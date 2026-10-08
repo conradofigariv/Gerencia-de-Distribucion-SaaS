@@ -137,7 +137,7 @@ nueva o se lo recordés vos en el chat.
 | transformadores-consumo | `consumo_transformadores` (lectura) |
 | sic-diagrama | `sic_diagrama_layout`, `sic_diagrama_active` — SQL en [`docs/sic-diagrama.md`](docs/sic-diagrama.md) |
 | informe-tecnico | `licitaciones`, `licitacion_renglones`, `licitacion_items`, `licitacion_oferentes` (+ `divisa_default`, `supabase/informe_tecnico_divisa_default.sql`), `licitacion_ofertas`, `licitacion_evaluaciones_tecnicas`, `licitacion_adjudicaciones`, `matriculas` — SQL en [`docs/informe-tecnico.md`](docs/informe-tecnico.md) |
-| plan-compras-carga | `plan_compras` (cabecera, una activa por año), `plan_compras_items` (Global), `plan_compras_familias` (Prioridad), `plan_compras_cuentas` (Resumen), RPC `plan_compras_activar` — SQL en `supabase/plan_compras.sql` y doc en [`docs/plan-compras.md`](docs/plan-compras.md) |
+| plan-compras-carga | `plan_compras` (cabecera, una activa por año), `plan_compras_items` (Global), `plan_compras_familias` (Prioridad), `plan_compras_cuentas` (Resumen) — SQL sin funciones (la activación la hace la app) en `supabase/plan_compras.sql` y doc en [`docs/plan-compras.md`](docs/plan-compras.md) |
 | buscador | `busqueda_index` (lectura), `op_datos` (descripción y zona de la OP, cargadas a mano), `buscador_tabs`, `buscador_tab_filas`, `buscador_tab_shares` (compartir), `profiles` (lectura, para elegir con quién compartir) — SQL en `supabase/buscador_tabs.sql` + `supabase/buscador_tab_shares.sql` y doc completo en [`docs/buscador.md`](docs/buscador.md) |
 | yerba | `yerba_participantes`, `yerba_compras`, `yerba_compra_marca`, `profiles` (lectura, para sumar usuarios registrados) — SQL en `supabase/yerba.sql` |
 | settings | `profiles` (incluye `nivel_acceso` y `secciones_permitidas`) |

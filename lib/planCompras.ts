@@ -174,11 +174,15 @@ function sinNulos(o: Record<string, unknown>): Record<string, unknown> {
  *
  * 1. Crea la cabecera inactiva.
  * 2. Carga ítems (de a 500, 3 requests en paralelo), familias y cuentas.
- * 3. La activa con `plan_compras_activar`, que en la misma transacción
- *    desactiva y borra la versión anterior.
+ * 3. Desactiva la versión anterior del año, activa la nueva y borra la
+ *    anterior (sus ítems se van en cascada).
  *
- * Si algo falla en el medio se borra la versión nueva (los ítems se van en
- * cascada) y el plan anterior queda como estaba.
+ * Si algo falla antes de activar, se borra la versión nueva y el plan anterior
+ * queda como estaba. El índice único parcial de la base impide que queden dos
+ * versiones activas del mismo año.
+ *
+ * Esto antes era una función en la base (plan_compras_activar). Se pasó acá
+ * porque el SQL con funciones llegaba alterado al SQL Editor de Supabase.
  */
 export async function importarPlan(
   imp: ImportacionPlan,
@@ -246,12 +250,54 @@ export async function importarPlan(
     }
 
     onProgreso?.({ fase: "activando", hechos: total, total });
-    const { error: errAct } = await supabase.rpc("plan_compras_activar", { p_plan: nuevo.id });
-    if (errAct) throw new Error(mensajeErrorPlan(errAct));
-    return { ...nuevo, activo: true };
+    await activar(nuevo);
   } catch (e) {
     // Deshace la versión a medio cargar; el plan anterior sigue activo.
     await supabase.from("plan_compras").delete().eq("id", nuevo.id);
     throw e;
+  }
+
+  // Ya activa: borrar las versiones anteriores del año (los ítems se van en
+  // cascada). Si esto falla no se pierde nada: quedan inactivas, no se ven, y
+  // la próxima importación las limpia al arrancar.
+  const { error: errBorrar } = await supabase
+    .from("plan_compras")
+    .delete()
+    .eq("anio", imp.anio)
+    .eq("activo", false);
+  if (errBorrar) console.warn("[plan-compras] no se pudo borrar la versión anterior:", errBorrar.message);
+  return { ...nuevo, activo: true };
+}
+
+/**
+ * Deja activa la versión nueva. Primero apaga la anterior y después prende la
+ * nueva: al revés chocaría con el índice único parcial (una activa por año).
+ * Si prender la nueva falla, vuelve a prender la anterior antes de propagar el
+ * error, así el año no queda sin plan visible.
+ */
+async function activar(nuevo: PlanCompras): Promise<void> {
+  const { data: previos, error: errPrev } = await supabase
+    .from("plan_compras")
+    .select("id")
+    .eq("anio", nuevo.anio)
+    .eq("activo", true);
+  if (errPrev) throw new Error(mensajeErrorPlan(errPrev));
+  const idsPrevios = ((previos ?? []) as { id: string }[]).map((p) => p.id).filter((id) => id !== nuevo.id);
+
+  if (idsPrevios.length) {
+    const { error } = await supabase.from("plan_compras").update({ activo: false }).in("id", idsPrevios);
+    if (error) throw new Error(mensajeErrorPlan(error));
+  }
+
+  const { data: activado, error: errAct } = await supabase
+    .from("plan_compras")
+    .update({ activo: true })
+    .eq("id", nuevo.id)
+    .select("id");
+  if (errAct || !activado || activado.length !== 1) {
+    if (idsPrevios.length) {
+      await supabase.from("plan_compras").update({ activo: true }).in("id", idsPrevios);
+    }
+    throw new Error(errAct ? mensajeErrorPlan(errAct) : "No se pudo activar el plan importado.");
   }
 }

@@ -89,10 +89,14 @@ se persiste: cambiar el TC recalcula las 22.950 filas sin reescribir ninguna.
 - **Mapeo por encabezado**, no por posición: las columnas con año van por patrón, así el
   mismo importador sirve para el Excel del año que viene. Si falta una columna de carga,
   se corta con el nombre de lo que falta.
-- **Versionado.** Cada importación crea una cabecera nueva **inactiva**, carga los ítems
-  (lotes de 500, 3 en paralelo) y recién al final `plan_compras_activar` la activa y borra
-  la versión anterior del año en la misma transacción. Si la subida se corta, se borra
-  lo nuevo y el plan anterior queda intacto. Un solo plan activo por año (índice parcial).
+- **Versionado.** Cada importación crea una cabecera nueva **inactiva** y carga los
+  ítems (lotes de 500, 3 en paralelo). Al final la app apaga la versión activa del
+  año, prende la nueva (si falla, vuelve a prender la anterior) y borra las inactivas.
+  Si la subida se corta antes, se borra lo nuevo y el plan anterior queda intacto.
+  Un solo plan activo por año (índice único parcial).
+- **El SQL no tiene funciones ni triggers**, a propósito: pegado en el SQL Editor
+  de Supabase, el cuerpo de las funciones llegaba alterado («syntax error at end of
+  input / LINE 0», «relation "v_anio" does not exist»). Solo tablas, índices y RLS.
 - **Pie de Global**: TC y PC USD de años anteriores se guardan en `plan_compras.pie`.
   Los del año del plan no: son fórmulas que dependen del filtro activo al guardar.
 

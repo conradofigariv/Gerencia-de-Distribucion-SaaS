@@ -21,9 +21,11 @@
 --
 -- Cómo correrlo: Supabase → SQL Editor → snippet nuevo → pegar TODO el archivo
 -- → Run (sin texto seleccionado: con una selección corre solo esa parte).
--- No usa bloques con signo pesos doble (dollar quoting) a propósito: si el
--- texto pasa por un visor que los interpreta como fórmulas, el editor recibe
--- el cuerpo vacío y falla con «syntax error at end of input / LINE 0».
+-- Solo tablas, índices y permisos: NINGUNA función ni bloque de código. Las
+-- versiones anteriores tenían funciones (plpgsql) y al pegarlas en el SQL
+-- Editor el cuerpo llegaba alterado («syntax error at end of input / LINE 0»,
+-- «relation "v_anio" does not exist»). La activación del plan importado la
+-- hace la app (lib/planCompras.ts → importarPlan).
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- ─── Esqueleto viejo ─────────────────────────────────────────────────────────
@@ -35,7 +37,7 @@
 
 -- ─── Cabecera ────────────────────────────────────────────────────────────────
 -- Cada importación del Excel crea una cabecera NUEVA (inactiva), le carga los
--- ítems y recién al final la activa con `plan_compras_activar`. Así, si la
+-- ítems y recién al final la activa (lo hace la app). Así, si la
 -- subida se corta a mitad de camino, el plan anterior sigue intacto y lo
 -- que quedó a medias se borra. Solo hay un plan ACTIVO por año (índice
 -- parcial único más abajo).
@@ -212,52 +214,12 @@ create table if not exists public.plan_compras_cuentas (
 create index if not exists idx_plan_compras_cuentas_plan
   on public.plan_compras_cuentas (plan_id, orden);
 
--- ─── updated_at ──────────────────────────────────────────────────────────────
--- Reutiliza public.set_updated_at() (definida en ido_datos.sql). Se redefine
--- acá para que este archivo se pueda correr solo, en cualquier orden.
-create or replace function public.set_updated_at()
-returns trigger
-language plpgsql
-as '
-begin
-  new.updated_at = now();
-  return new;
-end;
-';
-
+-- ─── Restos de versiones anteriores de este archivo ──────────────────────────
+-- Triggers de updated_at y la función de activación ya no se usan: si quedaron
+-- de una corrida anterior, se sacan. `updated_at` lo completa la app.
 drop trigger if exists trg_plan_compras_updated_at on public.plan_compras;
-create trigger trg_plan_compras_updated_at
-  before update on public.plan_compras
-  for each row execute function public.set_updated_at();
-
 drop trigger if exists trg_plan_compras_items_updated_at on public.plan_compras_items;
-create trigger trg_plan_compras_items_updated_at
-  before update on public.plan_compras_items
-  for each row execute function public.set_updated_at();
-
--- ─── Activar una importación ─────────────────────────────────────────────────
--- Último paso de la importación del Excel: deja activo el plan nuevo y borra
--- las versiones anteriores de ese año (sus ítems se van en cascada). Todo en
--- una sola transacción: nunca queda el año sin plan activo ni con dos.
-create or replace function public.plan_compras_activar(p_plan uuid)
-returns void
-language plpgsql
-as '
-declare
-  v_anio integer;
-begin
-  select anio into v_anio from public.plan_compras where id = p_plan for update;
-  if v_anio is null then
-    raise exception ''plan_compras_activar: no existe el plan %'', p_plan;
-  end if;
-
-  update public.plan_compras set activo = false where anio = v_anio and id <> p_plan and activo;
-  update public.plan_compras set activo = true  where id = p_plan;
-  delete from public.plan_compras where anio = v_anio and id <> p_plan;
-end;
-';
-
-grant execute on function public.plan_compras_activar(uuid) to anon, authenticated;
+drop function if exists public.plan_compras_activar(uuid);
 
 -- ─── RLS ─────────────────────────────────────────────────────────────────────
 -- Permisiva, igual que el resto de las tablas que la app opera con la anon
