@@ -75,6 +75,7 @@ export default function Dashboard() {
   const [headerProfile, setHeaderProfile]   = useState<HeaderProfile | null>(null);
   // Texto chico junto al título del header global (ej. "24.632 matrículas").
   const [matriculasSummary, setMatriculasSummary] = useState<string | null>(null);
+  const [planComprasSummary, setPlanComprasSummary] = useState<string | null>(null);
   // Permisos de sección del usuario actual — null mientras no se conoce
   // todavía (evita un parpadeo mandando a "settings" antes de tener la data).
   const [accessInfo, setAccessInfo] = useState<{ nivelAcceso: string | null; secciones: string[] | null } | null>(null);
@@ -196,7 +197,7 @@ export default function Dashboard() {
       case "indice-ido-resumen":      return <IndiceIdoResumenSection />;
       case "indice-ido-carga":        return <IndiceIdoCargaSection />;
       case "plan-compras-resumen":    return <PlanComprasResumenSection />;
-      case "plan-compras-carga":      return <PlanComprasCargaSection />;
+      case "plan-compras-carga":      return <PlanComprasCargaSection onSummaryChange={setPlanComprasSummary} />;
       case "buscador":                return <BuscadorSection />;
       case "yerba":                   return <YerbaSection />;
       default:                       return <OverviewSection />;
@@ -236,7 +237,11 @@ export default function Dashboard() {
             onMenuClick={() => setMobileSidebarOpen(true)}
             userEmail={user.email}
             userProfile={headerProfile}
-            headerExtra={activeSection === "matriculas" ? matriculasSummary : null}
+            headerExtra={
+              activeSection === "matriculas" ? matriculasSummary
+              : activeSection === "plan-compras-carga" ? planComprasSummary
+              : null
+            }
           />
           <main className="flex-1 p-4 sm:p-6 overflow-auto">
             <div key={activeSection} className="animate-in fade-in slide-in-from-bottom-4 duration-500">

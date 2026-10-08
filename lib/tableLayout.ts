@@ -11,6 +11,10 @@ export interface TableLayout {
   density?: string | null;
   /** Vista elegida en pantallas con conmutador tarjetas/tabla (§10). */
   view?: string | null;
+  /** Grupos de columnas colapsados (§4.14). */
+  colapsados?: string[] | null;
+  /** Grupos de columnas ocultos desde el menú Columnas (§4.10). */
+  ocultos?: string[] | null;
 }
 
 export function loadTableLayout(userId: string, tableId: string): TableLayout {

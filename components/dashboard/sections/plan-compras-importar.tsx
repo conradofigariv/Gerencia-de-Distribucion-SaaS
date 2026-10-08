@@ -1,0 +1,578 @@
+"use client";
+
+// Modal de importación del Excel del Plan de Compras (PC_ANUAL_GD).
+//
+// Pasos: elegir → leyendo → revisar → subiendo (o error). La lectura corre en
+// un Web Worker (lib/planComprasLeer.ts) y devuelve, además de las filas, la
+// verificación del cálculo contra los valores que el propio Excel guardó: se
+// muestra ANTES de subir para que nadie reemplace el plan sin ver si la app
+// replica bien las fórmulas.
+//
+// Solo `import type` de lib/planComprasImport: importar un valor de ahí
+// arrastraría la librería xlsx al bundle, y el lector ya vive en el worker.
+
+import { useEffect, useId, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { AlertTriangle, Check, FileSpreadsheet, Loader2, UploadCloud } from "lucide-react";
+import { leerExcelPlan, ErrorEstructuraPlan } from "@/lib/planComprasLeer";
+import {
+  importarPlan, mensajeErrorPlan,
+  type PlanCompras, type ProgresoImportacion,
+} from "@/lib/planCompras";
+import type { ImportacionPlan } from "@/lib/planComprasImport";
+
+// ─── Estado ──────────────────────────────────────────────────────────────────
+
+type Paso =
+  | { tipo: "elegir"; error: string | null }
+  | { tipo: "leyendo"; archivo: string }
+  | { tipo: "revisar"; imp: ImportacionPlan }
+  | { tipo: "subiendo"; progreso: ProgresoImportacion }
+  | { tipo: "error"; origen: "lectura" | "subida"; mensaje: string };
+
+// ─── Formato ─────────────────────────────────────────────────────────────────
+
+const nro = (v: number, maxDec = 0): string =>
+  v.toLocaleString("es-AR", { maximumFractionDigits: maxDec });
+
+/** dd/mm/yyyy HH:mm fijo: toLocaleString("es-AR") no rellena con ceros. */
+function fechaHora(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** Los ejemplos de la verificación vienen como texto con punto decimal
+ *  («1234.5»): si es un número se pasa a es-AR, si no («(vacío)», «Sin
+ *  Datos») queda igual. */
+function valorEsAR(s: string): string {
+  return /^-?\d+(\.\d+)?(e[-+]?\d+)?$/i.test(s) ? nro(Number(s), 6) : s;
+}
+
+function mensajeLectura(e: unknown): string {
+  // ErrorEstructuraPlan ya dice qué columnas faltan; el resto también viene
+  // armado por el lector («No se pudo leer el archivo: …»).
+  if (e instanceof ErrorEstructuraPlan) return e.message;
+  return e instanceof Error ? e.message : String(e);
+}
+
+/** El total de filas es casi todo el trabajo; el resto son unos pocos requests. */
+function porcentaje(p: ProgresoImportacion): number {
+  switch (p.fase) {
+    case "preparando": return 2;
+    case "items":      return 2 + (p.total > 0 ? (p.hechos / p.total) * 90 : 90);
+    case "familias":   return 94;
+    case "activando":  return 97;
+  }
+}
+
+function textoFase(p: ProgresoImportacion): string {
+  switch (p.fase) {
+    case "preparando": return "Preparando…";
+    case "items":      return `Subiendo filas: ${nro(p.hechos)} de ${nro(p.total)}`;
+    case "familias":   return "Guardando familias y cuentas…";
+    case "activando":  return "Activando el plan…";
+  }
+}
+
+const esExcel = (nombre: string) => /\.(xlsx|xlsm)$/i.test(nombre);
+
+// ─── Piezas ──────────────────────────────────────────────────────────────────
+
+const ETIQUETA: CSSProperties = {
+  fontSize: 11, fontWeight: 500, letterSpacing: ".08em", textTransform: "uppercase",
+  color: "var(--ido-text-dim)",
+};
+
+function Dato({ etiqueta, valor, className = "" }: { etiqueta: string; valor: string; className?: string }) {
+  return (
+    <div className={`min-w-0 ${className}`}>
+      <div style={{ ...ETIQUETA, marginBottom: 4 }}>{etiqueta}</div>
+      <div className="font-mono tabular-nums truncate" title={valor} style={{ fontSize: 13, color: "var(--ido-text)" }}>
+        {valor}
+      </div>
+    </div>
+  );
+}
+
+interface ColTabla {
+  titulo:  string;
+  ancho:   string;
+  derecha?: boolean;
+}
+
+/** Tabla chica de solo lectura (CSS grid, §4.11): ejemplos de diferencias y
+ *  familias que no cierran. Encabezado sticky opaco para que las filas no se
+ *  transparenten al scrollear. */
+function TablaChica({ columnas, filas }: { columnas: ColTabla[]; filas: string[][] }) {
+  const plantilla = columnas.map((c) => c.ancho).join(" ");
+  const celda = (c: ColTabla): CSSProperties => ({
+    padding: "0 8px", textAlign: c.derecha ? "right" : "left",
+    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+  });
+  return (
+    <div style={{ maxHeight: 196, overflow: "auto", border: "1px solid var(--ido-border)", borderRadius: 8 }}>
+      <div
+        className="grid items-center"
+        style={{
+          gridTemplateColumns: plantilla, height: 28, position: "sticky", top: 0,
+          background: "var(--ido-header)", borderBottom: "1px solid var(--ido-border-strong)",
+          fontSize: 10, fontWeight: 500, letterSpacing: ".1em", textTransform: "uppercase",
+          color: "var(--ido-text-dim)",
+        }}
+      >
+        {columnas.map((c) => <div key={c.titulo} style={celda(c)}>{c.titulo}</div>)}
+      </div>
+      {filas.map((f, i) => (
+        <div
+          key={i}
+          className="grid items-center font-mono tabular-nums"
+          style={{
+            gridTemplateColumns: plantilla, height: 28, fontSize: 12, color: "var(--ido-text)",
+            borderTop: i === 0 ? "none" : "1px solid var(--ido-line)",
+          }}
+        >
+          {f.map((v, j) => <div key={j} style={celda(columnas[j])} title={v}>{v}</div>)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Revisión ────────────────────────────────────────────────────────────────
+
+function Verificacion({ imp }: { imp: ImportacionPlan }) {
+  const v = imp.verificacion;
+  const famMal = v.familias.filter((f) => !f.ok);
+  const famOk = v.familias.length - famMal.length;
+  const colsMal = v.porColumna.filter((c) => c.diferencias > 0);
+
+  // Una familia de Prioridad que no cierra también es una diferencia con el
+  // Excel: el «Verificado» verde exige que coincidan celdas Y familias.
+  if (v.diferencias === 0 && famMal.length === 0) {
+    return (
+      <div
+        className="flex flex-col gap-2"
+        style={{ padding: 12, borderRadius: 8, border: "1px solid var(--ido-border)", background: "var(--ido-panel)" }}
+      >
+        <span className="ido-chip ido-badge-ok self-start">
+          <Check className="w-3 h-3" strokeWidth={2.6} />
+          Verificado
+        </span>
+        <p style={{ fontSize: 13, color: "var(--ido-text-2)" }}>
+          {nro(v.celdasComparadas)} celdas calculadas en {nro(v.porColumna.length)} columnas: 0 diferencias con el Excel
+        </p>
+        {v.familias.length > 0 && (
+          <p style={{ fontSize: 13, color: "var(--ido-text-2)" }}>
+            {nro(famOk)}/{nro(v.familias.length)} familias de Prioridad coinciden (total GD $ y cantidad)
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        borderRadius: 8, overflow: "hidden",
+        border: "1px solid color-mix(in srgb, var(--ido-warning) 20%, transparent)",
+      }}
+    >
+      <div className="ido-banner-warning" style={{ padding: "10px 12px" }}>
+        <AlertTriangle className="w-4 h-4 shrink-0" />
+        <span>
+          {v.diferencias > 0
+            ? `${nro(v.diferencias)} diferencias en ${nro(v.celdasComparadas)} celdas`
+            : `0 diferencias en ${nro(v.celdasComparadas)} celdas, pero ${nro(famMal.length)} familias de Prioridad no coinciden`}
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-3" style={{ padding: 12 }}>
+        {colsMal.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {colsMal.map((c) => (
+              <span key={c.clave} className="ido-chip ido-badge-neutral">
+                {c.titulo}
+                <span className="font-mono tabular-nums" style={{ color: "var(--ido-text)" }}>{nro(c.diferencias)}</span>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {v.ejemplos.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <TablaChica
+              columnas={[
+                { titulo: "Fila", ancho: "56px", derecha: true },
+                { titulo: "Artículo", ancho: "minmax(0, 0.9fr)" },
+                { titulo: "Columna", ancho: "minmax(0, 1.2fr)" },
+                { titulo: "Excel", ancho: "minmax(0, 1fr)", derecha: true },
+                { titulo: "App", ancho: "minmax(0, 1fr)", derecha: true },
+              ]}
+              filas={v.ejemplos.map((d) => [
+                nro(d.fila), d.articulo, imp.etiquetas[d.clave] ?? d.clave, valorEsAR(d.excel), valorEsAR(d.app),
+              ])}
+            />
+            {v.diferencias > v.ejemplos.length && (
+              <span style={{ fontSize: 12, color: "var(--ido-text-dim)" }}>
+                Se muestran las primeras {nro(v.ejemplos.length)} de {nro(v.diferencias)}.
+              </span>
+            )}
+          </div>
+        )}
+
+        {v.familias.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <span style={{ fontSize: 13, color: "var(--ido-text-2)" }}>
+              {nro(famOk)}/{nro(v.familias.length)} familias de Prioridad coinciden (total GD $ y cantidad)
+            </span>
+            {famMal.length > 0 && (
+              <TablaChica
+                columnas={[
+                  { titulo: "Familia", ancho: "minmax(0, 1.4fr)" },
+                  { titulo: "Excel $", ancho: "minmax(0, 1fr)", derecha: true },
+                  { titulo: "App $", ancho: "minmax(0, 1fr)", derecha: true },
+                  { titulo: "Cant. Excel / App", ancho: "minmax(0, 1fr)", derecha: true },
+                ]}
+                filas={famMal.map((f) => [
+                  f.familia,
+                  f.excelTotal == null ? "—" : nro(f.excelTotal, 2),
+                  nro(f.appTotal, 2),
+                  `${f.excelCantidad == null ? "—" : nro(f.excelCantidad)} / ${nro(f.appCantidad)}`,
+                ])}
+              />
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Revision({ imp, planActual }: { imp: ImportacionPlan; planActual: PlanCompras | null }) {
+  const reemplaza = planActual != null && planActual.anio === imp.anio;
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3">
+        <Dato etiqueta="Año" valor={String(imp.anio)} />
+        <Dato etiqueta="Nombre" valor={imp.nombre} className="sm:col-span-3" />
+        <Dato etiqueta="Tipo de cambio" valor={nro(imp.tipo_cambio, 4)} />
+        <Dato etiqueta="Mayoración" valor={`${nro(imp.pct_mayoracion * 100, 2)} %`} />
+        <Dato etiqueta="Filas de Global" valor={nro(imp.items.length)} />
+        <Dato etiqueta="Familias (Prioridad)" valor={nro(imp.familias.length)} />
+        <Dato etiqueta="Cuentas (Resumen)" valor={nro(imp.cuentas.length)} />
+        <Dato etiqueta="Archivo" valor={imp.archivo} className="sm:col-span-3" />
+      </div>
+
+      <Verificacion imp={imp} />
+
+      {imp.advertencias.length > 0 && (
+        <ul className="flex flex-col gap-1.5">
+          {imp.advertencias.map((a, i) => (
+            <li key={i} className="flex items-start gap-2" style={{ fontSize: 13, color: "var(--ido-text-2)" }}>
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--ido-warning)", marginTop: 3 }} />
+              <span>{a}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {reemplaza && (
+        <div
+          className="ido-banner-warning"
+          style={{
+            alignItems: "flex-start", padding: "10px 12px", borderRadius: 8,
+            border: "1px solid color-mix(in srgb, var(--ido-warning) 20%, transparent)",
+          }}
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0" style={{ marginTop: 2 }} />
+          <span>
+            Ya hay un plan {planActual.anio} cargado
+            {(planActual.importado_at || planActual.archivo) && (
+              <>
+                {" ("}importado
+                {planActual.importado_at && <> el {fechaHora(planActual.importado_at)}</>}
+                {planActual.archivo && <> desde «{planActual.archivo}»</>}
+                {")"}
+              </>
+            )}
+            . Importar lo <strong>REEMPLAZA</strong> completo.
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Modal ───────────────────────────────────────────────────────────────────
+
+export function PlanComprasImportarModal({
+  planActual, onClose, onImportado,
+}: {
+  planActual: PlanCompras | null;
+  onClose: () => void;
+  onImportado: (plan: PlanCompras, imp: ImportacionPlan) => void;
+}) {
+  const [paso, setPaso] = useState<Paso>({ tipo: "elegir", error: null });
+  const [arrastrando, setArrastrando] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Cada lectura lleva un número: si el usuario volvió a elegir (o cerró)
+  // mientras el worker leía, el resultado viejo se descarta.
+  const lecturaRef = useRef(0);
+  const tituloId = useId();
+
+  // A mitad de la subida no se cierra: importarPlan deshace la versión nueva
+  // si falla, pero solo si la promesa sigue viva para atrapar el error.
+  const puedeCerrar = paso.tipo !== "subiendo";
+  const cerrarSiSePuede = () => { if (puedeCerrar) onClose(); };
+
+  useEffect(() => {
+    if (!puedeCerrar) return;
+    // `defaultPrevented`: un desplegable de Radix abierto adentro ya consumió
+    // ese Esc (mismo criterio que useEscape de ido-kit, que no se exporta).
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape" && !e.defaultPrevented) onClose(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [puedeCerrar, onClose]);
+
+  const volverAElegir = () => {
+    lecturaRef.current++;
+    setArrastrando(false);
+    setPaso({ tipo: "elegir", error: null });
+  };
+
+  const leer = async (file: File) => {
+    if (!esExcel(file.name)) {
+      setPaso({ tipo: "elegir", error: `«${file.name}» no es un Excel: tiene que ser .xlsx o .xlsm.` });
+      return;
+    }
+    const id = ++lecturaRef.current;
+    setPaso({ tipo: "leyendo", archivo: file.name });
+    try {
+      const imp = await leerExcelPlan(file);
+      if (id === lecturaRef.current) setPaso({ tipo: "revisar", imp });
+    } catch (e) {
+      if (id === lecturaRef.current) setPaso({ tipo: "error", origen: "lectura", mensaje: mensajeLectura(e) });
+    }
+  };
+
+  const importar = async (imp: ImportacionPlan) => {
+    setPaso({ tipo: "subiendo", progreso: { fase: "preparando", hechos: 0, total: imp.items.length } });
+    try {
+      const plan = await importarPlan(imp, (progreso) => setPaso({ tipo: "subiendo", progreso }));
+      onImportado(plan, imp);
+    } catch (e) {
+      setPaso({ tipo: "error", origen: "subida", mensaje: mensajeErrorPlan(e) });
+    }
+  };
+
+  const onDrop = (e: DragEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setArrastrando(false);
+    const f = e.dataTransfer.files[0];
+    if (f) void leer(f);
+  };
+
+  // ── Cuerpo según el paso ───────────────────────────────────────────────────
+  let cuerpo: ReactNode;
+  let pie: ReactNode;
+
+  const btnCancelar = (
+    <button type="button" className="ido-btn ido-btn-text" style={{ height: 38 }} onClick={onClose}>
+      Cancelar
+    </button>
+  );
+
+  if (paso.tipo === "elegir") {
+    cuerpo = (
+      <div className="flex flex-col gap-3">
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = "copy";
+            setArrastrando(true);
+          }}
+          onDragLeave={(e) => {
+            // dragleave también salta al pasar sobre un hijo: solo cuenta si
+            // el puntero salió de la zona.
+            if (!(e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget))) setArrastrando(false);
+          }}
+          onDrop={onDrop}
+          className="flex flex-col items-center justify-center gap-3 w-full cursor-pointer"
+          style={{
+            padding: "32px 16px", borderRadius: 12,
+            border: `1px dashed ${arrastrando ? "var(--ido-accent)" : "var(--ido-border-strong)"}`,
+            background: arrastrando ? "rgba(63,207,142,.04)" : "transparent",
+            transition: "border-color 120ms var(--ido-ease), background 120ms var(--ido-ease)",
+          }}
+        >
+          <span
+            className="grid place-items-center"
+            style={{ width: 40, height: 40, borderRadius: 999, background: "var(--ido-elevated)", color: "var(--ido-text-2)" }}
+          >
+            <UploadCloud className="w-5 h-5" />
+          </span>
+          <span className="flex flex-col items-center gap-1">
+            <span style={{ fontSize: 13, color: "var(--ido-text)" }}>Soltá el archivo acá</span>
+            <span style={{ fontSize: 12, color: "var(--ido-text-2)" }}>o hacé clic para elegirlo · .xlsx / .xlsm</span>
+          </span>
+        </button>
+        <p style={{ fontSize: 13, lineHeight: 1.55, color: "var(--ido-text-2)" }}>
+          Subí el Excel del plan (PC_ANUAL_GD). Se leen las pestañas{" "}
+          <span style={{ color: "var(--ido-accent)" }}>Global</span>,{" "}
+          <span style={{ color: "var(--ido-accent)" }}>Prioridad</span> y{" "}
+          <span style={{ color: "var(--ido-accent)" }}>Resumen</span>; las columnas fórmula se{" "}
+          <span style={{ color: "var(--ido-accent)" }}>recalculan</span> y se comparan contra los valores del archivo.
+        </p>
+        {paso.error && <p style={{ fontSize: 12, color: "var(--ido-error)" }}>{paso.error}</p>}
+      </div>
+    );
+    pie = btnCancelar;
+  } else if (paso.tipo === "leyendo") {
+    cuerpo = (
+      <div className="flex flex-col items-center justify-center gap-3 text-center" style={{ padding: "32px 0" }}>
+        <Loader2 className="w-6 h-6 animate-spin" style={{ color: "var(--ido-text-2)" }} />
+        <p style={{ fontSize: 13, color: "var(--ido-text-2)" }}>
+          Leyendo «<span style={{ color: "var(--ido-text)" }}>{paso.archivo}</span>»… puede tardar unos segundos
+        </p>
+      </div>
+    );
+    pie = btnCancelar;
+  } else if (paso.tipo === "revisar") {
+    const imp = paso.imp;
+    const limpio = imp.verificacion.diferencias === 0 && imp.verificacion.familias.every((f) => f.ok);
+    cuerpo = <Revision imp={imp} planActual={planActual} />;
+    pie = (
+      <>
+        <button type="button" className="ido-btn ido-btn-text" style={{ height: 38, marginRight: "auto" }} onClick={volverAElegir}>
+          Elegir otro archivo
+        </button>
+        {btnCancelar}
+        <button type="button" className="ido-btn ido-btn-primary" style={{ height: 38 }} onClick={() => void importar(imp)}>
+          {limpio ? `Importar ${nro(imp.items.length)} filas` : "Importar igual"}
+        </button>
+      </>
+    );
+  } else if (paso.tipo === "subiendo") {
+    const p = paso.progreso;
+    cuerpo = (
+      <div className="flex flex-col gap-3" style={{ padding: "16px 0" }}>
+        <div style={{ width: "100%", height: 4, borderRadius: 999, background: "var(--ido-elevated)", overflow: "hidden" }}>
+          <div
+            style={{
+              width: `${porcentaje(p)}%`, height: "100%", borderRadius: 999, background: "var(--ido-accent)",
+              transition: "width 200ms var(--ido-ease)",
+            }}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="tabular-nums" style={{ fontSize: 13, color: "var(--ido-text)" }}>{textoFase(p)}</span>
+          <span style={{ fontSize: 12, color: "var(--ido-text-dim)" }}>No cierres la pestaña hasta que termine.</span>
+        </div>
+      </div>
+    );
+    pie = (
+      <button type="button" className="ido-btn ido-btn-primary" style={{ height: 38 }} disabled>
+        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        Importando…
+      </button>
+    );
+  } else {
+    cuerpo = (
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2.5">
+          <span
+            className="grid place-items-center shrink-0"
+            style={{ width: 34, height: 34, borderRadius: 999, background: "rgba(229,72,77,.12)", color: "var(--ido-error)" }}
+          >
+            <AlertTriangle className="w-4 h-4" />
+          </span>
+          <span style={{ fontSize: 15, fontWeight: 600, color: "var(--ido-text)" }}>
+            {paso.origen === "lectura" ? "No se pudo leer el archivo" : "No se pudo importar el plan"}
+          </span>
+        </div>
+        <p style={{ fontSize: 13, lineHeight: 1.55, color: "var(--ido-text-2)", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+          {paso.mensaje}
+        </p>
+        {paso.origen === "subida" && (
+          // importarPlan borra la versión a medio cargar antes de relanzar el error.
+          <p style={{ fontSize: 13, color: "var(--ido-text-dim)" }}>
+            No se guardó nada: si había un plan cargado, sigue como estaba.
+          </p>
+        )}
+      </div>
+    );
+    pie = (
+      <>
+        <button type="button" className="ido-btn ido-btn-text" style={{ height: 38 }} onClick={onClose}>
+          Cerrar
+        </button>
+        <button type="button" className="ido-btn ido-btn-primary" style={{ height: 38 }} onClick={volverAElegir}>
+          Elegir otro archivo
+        </button>
+      </>
+    );
+  }
+
+  return createPortal(
+    <div
+      className="ido-terminal ido-modal-overlay"
+      onClick={cerrarSiSePuede}
+      // Un archivo soltado fuera de la zona haría que el navegador lo abra (y
+      // se pierda la pantalla): el overlay lo absorbe sin hacer nada.
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "none"; }}
+      onDrop={(e) => e.preventDefault()}
+    >
+      <div
+        className="ido-modal flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={tituloId}
+        style={{ maxWidth: 640, maxHeight: "calc(100dvh - 32px)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="ido-modal-head shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <FileSpreadsheet className="w-4 h-4 shrink-0" style={{ color: "var(--ido-text-dim)" }} />
+            <span id={tituloId} className="ido-modal-title truncate">Importar Excel del plan</span>
+          </div>
+          <button
+            type="button"
+            className="ido-icon-btn"
+            onClick={cerrarSiSePuede}
+            disabled={!puedeCerrar}
+            title={puedeCerrar ? "Cerrar" : "Esperá a que termine la importación"}
+            style={puedeCerrar ? undefined : { opacity: 0.45, cursor: "not-allowed" }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto" style={{ padding: 20 }}>
+          {cuerpo}
+        </div>
+
+        <div className="ido-modal-foot shrink-0">{pie}</div>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".xlsx,.xlsm"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            // Se limpia para que volver a elegir el mismo archivo dispare onChange.
+            e.target.value = "";
+            if (f) void leer(f);
+          }}
+        />
+      </div>
+    </div>,
+    document.body,
+  );
+}
