@@ -35,8 +35,11 @@ export function cleanInput(m: MatriculaInput): MatriculaInput {
 /**
  * Descarga TODO el catálogo. Supabase corta cada respuesta en ~1000 filas, así
  * que pide la 1ª página con el conteo exacto y el resto en paralelo.
+ * `onProgreso` avisa cuántas filas llegaron (para «Cargando filas… N de TOTAL»).
  */
-export async function listMatriculas(): Promise<Matricula[]> {
+export async function listMatriculas(
+  onProgreso?: (cargadas: number, total: number) => void,
+): Promise<Matricula[]> {
   const PAGE = 1000;
   const COLS = "id, articulo, descripcion, unidad_medida, estado, mat_serv, updated_at";
   const out: Matricula[] = [];
@@ -50,6 +53,8 @@ export async function listMatriculas(): Promise<Matricula[]> {
   out.push(...((first.data ?? []) as Matricula[]));
 
   const total = first.count ?? out.length;
+  let cargadas = out.length;
+  onProgreso?.(cargadas, total);
   if (total > PAGE) {
     const requests = [];
     for (let from = PAGE; from < total; from += PAGE) {
@@ -58,7 +63,12 @@ export async function listMatriculas(): Promise<Matricula[]> {
           .from("matriculas")
           .select(COLS)
           .order("articulo", { ascending: true })
-          .range(from, from + PAGE - 1),
+          .range(from, from + PAGE - 1)
+          .then((res) => {
+            cargadas += res.data?.length ?? 0;
+            onProgreso?.(cargadas, total);
+            return res;
+          }),
       );
     }
     const results = await Promise.all(requests);

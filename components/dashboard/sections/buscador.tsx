@@ -40,7 +40,7 @@ import { getStockZonaMap } from "@/lib/stockStorage";
 import { supabase } from "@/lib/supabaseClient";
 import {
   IdoCheckbox, SortArrow, TipoPill as IdoTipoPill, monoFont, sansFont, autoFitTextWidth,
-  type Density, DENSITY_ROW_H, DENSITY_LABEL, DENSITY_ORDER, isDensity, useIdoDialogs,
+  type Density, DENSITY_ROW_H, DENSITY_LABEL, DENSITY_ORDER, isDensity, useIdoDialogs, CargandoFilas,
 } from "@/components/dashboard/ido-kit";
 import { loadTableLayout, saveTableLayout } from "@/lib/tableLayout";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -3298,7 +3298,7 @@ export function BuscadorSection() {
           style={{ background: PANEL_BG, border: PANEL_BORDER, borderRadius: 12, height: altoTabla ?? "calc(100vh - 190px)" }}
         >
           {isTabMode && loadingTab ? (
-            <div className="ido-loading flex-1"><Loader2 className="w-4 h-4 animate-spin" />Cargando pestaña…</div>
+            <CargandoFilas texto="Cargando pestaña…" className="flex-1" />
           ) : isTabMode && !tabFilas.length ? (
             <div className="ido-loading flex-1" style={{ flexDirection: "column", gap: 10, height: "auto", textAlign: "center" }}>
               <ListPlus className="w-10 h-10" style={{ opacity: 0.2 }} />
@@ -3313,12 +3313,12 @@ export function BuscadorSection() {
             // resultados en pantalla, se quedan mientras llega lo nuevo: antes
             // la tabla desaparecía en cada tecla y en cada orden, y volvía con
             // el scroll en 0 (se perdía la columna que se estaba mirando).
-            <div className="ido-loading flex-1">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              {/* Ordenar re-consulta al servidor (el orden va en la query), así
-                  que el cartel tiene que decir eso y no "cargando". */}
-              {ordenServidor ? "Ordenando…" : query.trim() ? "Buscando…" : "Cargando las OP más recientes…"}
-            </div>
+            // Ordenar re-consulta al servidor (el orden va en la query), así
+            // que el cartel tiene que decir eso y no "cargando".
+            <CargandoFilas
+              texto={ordenServidor ? "Ordenando…" : query.trim() ? "Buscando…" : "Cargando las OP más recientes…"}
+              className="flex-1"
+            />
           ) : !isTabMode && !sorted.length ? (
             <div className="ido-loading flex-1" style={{ flexDirection: "column", gap: 10, height: "auto", textAlign: "center" }}>
               <PackageOpen className="w-10 h-10" style={{ opacity: 0.2 }} />

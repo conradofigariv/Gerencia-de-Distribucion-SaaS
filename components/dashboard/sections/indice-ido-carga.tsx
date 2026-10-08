@@ -1,5 +1,6 @@
 "use client";
 
+import { CargandoFilas } from "@/components/dashboard/ido-kit";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   DataSheetGrid,
@@ -782,7 +783,7 @@ export function IndiceIdoCargaSection() {
 
         {/* ── Grid ──────────────────────────────────────────────────────── */}
         {loading ? (
-          <div className="ido-loading"><Loader2 className="w-4 h-4 animate-spin" /> Cargando…</div>
+          <CargandoFilas texto="Cargando…" />
         ) : (
           <div ref={gridWrapRef} className={`ido-grid${scrolled ? " is-scrolled" : ""}`}>
             <div style={{ position: "relative", padding: `0 ${fitted.pad}px`, transition: "padding 200ms var(--ido-ease)" }}>

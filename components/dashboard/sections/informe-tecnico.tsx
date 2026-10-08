@@ -1,5 +1,6 @@
 "use client";
 
+import { CargandoFilas } from "@/components/dashboard/ido-kit";
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -83,9 +84,7 @@ export function InformeTecnicoSection() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96 text-muted-foreground text-sm gap-2">
-        <Loader2 className="w-4 h-4 animate-spin" /> Cargando licitaciones...
-      </div>
+      <CargandoFilas texto="Cargando licitaciones…" style={{ minHeight: 384 }} />
     );
   }
 
@@ -1110,9 +1109,7 @@ function EvaluacionTab({ licitacionId }: { licitacionId: string }) {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 py-8 justify-center text-muted-foreground text-sm">
-        <Loader2 className="w-4 h-4 animate-spin" /> Cargando evaluación técnica...
-      </div>
+      <CargandoFilas texto="Cargando evaluación técnica…" />
     );
   }
 
@@ -1744,9 +1741,7 @@ function RenglonesTab({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-        <Loader2 className="w-4 h-4 animate-spin" /> Cargando renglones...
-      </div>
+      <CargandoFilas texto="Cargando renglones…" />
     );
   }
 
@@ -2149,9 +2144,7 @@ function OferentesTab({ licitacionId }: { licitacionId: string }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-        <Loader2 className="w-4 h-4 animate-spin" /> Cargando oferentes...
-      </div>
+      <CargandoFilas texto="Cargando oferentes…" />
     );
   }
 

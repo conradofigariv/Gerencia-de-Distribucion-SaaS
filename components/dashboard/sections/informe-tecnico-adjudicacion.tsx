@@ -14,6 +14,7 @@
 //   para reordenar y la alerta de umbral económico en el % vs SIC.
 // - Se eliminó la barra de ahorro.
 
+import { CargandoFilas } from "@/components/dashboard/ido-kit";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, ChevronRight, Loader2 } from "lucide-react";
@@ -422,7 +423,7 @@ export function AdjudicacionTab({ licitacion, prefs }: { licitacion: Licitacion;
 
   // ── Estados vacíos ─────────────────────────────────────────────────────────
   if (loading) return (
-    <div className="ido-terminal"><div className="ido-loading"><Loader2 className="w-4 h-4 animate-spin" /> Cargando…</div></div>
+    <div className="ido-terminal"><CargandoFilas texto="Cargando adjudicación…" /></div>
   );
   if (renglones.length === 0 || oferentes.length === 0) return (
     <div className="ido-terminal">

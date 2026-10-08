@@ -73,8 +73,11 @@ const clean = (arr: string[]): string[] =>
 /**
  * Trae TODAS las asignaciones. Supabase corta en ~1000 filas por respuesta,
  * así que pide la 1ª página con el conteo y el resto en paralelo.
+ * `onProgreso` avisa cuántas filas llegaron (para «Cargando filas… N de TOTAL»).
  */
-export async function listAsignaciones(): Promise<Asignacion[]> {
+export async function listAsignaciones(
+  onProgreso?: (cargadas: number, total: number) => void,
+): Promise<Asignacion[]> {
   const PAGE = 1000;
   const out: Asignacion[] = [];
   type Row = { familia_id: string; articulo: string };
@@ -90,11 +93,18 @@ export async function listAsignaciones(): Promise<Asignacion[]> {
   ingest(first.data as Row[]);
 
   const total = first.count ?? first.data.length;
+  let cargadas = first.data.length;
+  onProgreso?.(cargadas, total);
   if (total > PAGE) {
     const reqs = [];
     for (let from = PAGE; from < total; from += PAGE) {
       reqs.push(
-        supabase.from("familia_matriculas").select("familia_id, articulo").range(from, from + PAGE - 1),
+        supabase.from("familia_matriculas").select("familia_id, articulo").range(from, from + PAGE - 1)
+          .then((res) => {
+            cargadas += res.data?.length ?? 0;
+            onProgreso?.(cargadas, total);
+            return res;
+          }),
       );
     }
     const results = await Promise.all(reqs);

@@ -6,7 +6,7 @@
 // `.ido-terminal` — usar siempre dentro de ese contenedor (o re-aplicar la
 // clase en lo que se portalee a <body>).
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronUp, Loader2, Package, Trash2, Wrench, type LucideIcon } from "lucide-react";
 
@@ -122,6 +122,36 @@ export function autoFitTextWidth(ctx: CanvasRenderingContext2D, values: string[]
     if (w > widest) widest = w;
   }
   return Math.max(floor, Math.round(widest) + 24);
+}
+
+// ─── Cargando (.ido-cargando) ──────────────────────────────────────────────────
+// Estado de carga de una sección/tabla: spinner + texto + barra verde. Con
+// `n`/`total` (cargas paginadas que conocen el total) la barra se llena y el
+// texto dice «Cargando filas… N de TOTAL»; sin total, la barra se mueve sola.
+// Usa tokens --ido-* con respaldo al tema, así sirve también fuera de
+// `.ido-terminal`.
+
+const fmtN = (v: number) => v.toLocaleString("es-AR");
+
+export function CargandoFilas({
+  texto = "Cargando filas…", n, total, className, style,
+}: {
+  texto?: string; n?: number; total?: number; className?: string; style?: CSSProperties;
+}) {
+  const conTotal = total != null && total > 0 && n != null;
+  return (
+    <div role="status" aria-live="polite" className={`ido-cargando${className ? ` ${className}` : ""}`} style={style}>
+      <span className="ido-cargando-txt">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        {conTotal ? `${texto} ${fmtN(Math.min(n, total))} de ${fmtN(total)}` : texto}
+      </span>
+      <span className="ido-cargando-bar">
+        {conTotal
+          ? <span style={{ width: `${(Math.min(n, total) / total) * 100}%` }} />
+          : <span className="is-indet" />}
+      </span>
+    </div>
+  );
 }
 
 // ─── Modales (.ido-modal) ──────────────────────────────────────────────────────

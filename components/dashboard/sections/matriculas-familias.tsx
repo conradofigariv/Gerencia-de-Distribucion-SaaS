@@ -18,6 +18,7 @@ import {
 import { buscarPorMatriculas, rowKey } from "@/lib/busqueda";
 import { fetchTabs, createTab, fetchTabFilas, addFilas, siguienteOrden, type BuscadorTab } from "@/lib/buscadorTabs";
 import { supabase } from "@/lib/supabaseClient";
+import { CargandoFilas } from "@/components/dashboard/ido-kit";
 
 // ─── Badge de tipo (Material / Servicio) ────────────────────────────────────
 function TipoBadge({ tipo }: { tipo: ArticuloTipo }) {
@@ -577,6 +578,7 @@ export function MatriculasFamiliasSection() {
   const [catalog, setCatalog]           = useState<Map<string, MatriculaInfo>>(new Map());
   const [overrides, setOverrides]       = useState<Map<string, ArticuloTipo>>(new Map());
   const [loading, setLoading]           = useState(true);
+  const [progreso, setProgreso]         = useState<{ n: number; total: number } | null>(null);
 
   const [selectedId, setSelectedId]     = useState<string | null>(null);
   const [familiaSearch, setFamiliaSearch] = useState("");
@@ -592,8 +594,19 @@ export function MatriculasFamiliasSection() {
   // ── Carga ──────────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true);
+    setProgreso(null);
+    // Asignaciones y catálogo vienen paginados en paralelo: el contador suma
+    // los dos, y recién aparece cuando ambos informaron su total (si no, el
+    // total saltaría a mitad de carga).
+    const prog = { asig: null as null | [number, number], cat: null as null | [number, number] };
+    const avisar = () => {
+      if (prog.asig && prog.cat) setProgreso({ n: prog.asig[0] + prog.cat[0], total: prog.asig[1] + prog.cat[1] });
+    };
     const [fams, asigs, cat, ovr] = await Promise.all([
-      listFamilias(), listAsignaciones(), getMatriculasInfo(), getTipoOverrides(),
+      listFamilias(),
+      listAsignaciones((n, t) => { prog.asig = [n, t]; avisar(); }),
+      getMatriculasInfo((n, t) => { prog.cat = [n, t]; avisar(); }),
+      getTipoOverrides(),
     ]);
     setFamilias(fams);
     setAsignaciones(asigs);
@@ -749,9 +762,12 @@ export function MatriculasFamiliasSection() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-72 text-sm text-muted-foreground gap-2">
-          <Loader2 className="w-4 h-4 animate-spin" />Cargando familias…
-        </div>
+        <CargandoFilas
+          texto={progreso ? "Cargando filas…" : "Cargando familias…"}
+          n={progreso?.n}
+          total={progreso?.total}
+          style={{ minHeight: 288 }}
+        />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
           {/* Panel izquierdo: familias */}

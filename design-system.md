@@ -306,6 +306,13 @@ Tabla única de referencia — tres modos, sin valores intermedios:
 - **MapaZonas:** Leaflet 100% vectorial sin tiles, límites IGN de fondo; zonas = trazado oficial de EPEC (KMZ, ver `docs/stock-zona.md`). Panel con borde/radio de tabla; buscador flotante centrado (38px, atajo `/`, recientes, filtro de zona como chip); leyenda colapsable abajo-izq (240px, filas 32px); zoom abajo-der («Vista completa» + ±); tarjeta de detalle derecha 320px. Delegaciones anillo rojo, distritos anillo azul. Intro globo → provincia 1s ease-in-out con fundido 300ms, una vez por apertura, salteada con reduced-motion. Estados: globo, carga (skeleton), resultados del buscador, localidad seleccionada, error.
 - *Aplicado en Stock por Zona → Mapa. Agregados sobre el diseño: panel de matrículas arriba-izq (una → cantidad; varias → cobertura `k/n`), sección «Stock más cercano» de la tarjeta (antes «Próximamente») con distancia y tiempo por ruta y recorrido trazado, botón «Capas» (delegaciones / distritos / todas las localidades — el toggle del diseño pasó a este menú) y nombres fijos al acercar — ver docs/stock-zona.md.*
 
+### 4.25 Estado de carga («Cargando filas») — `<CargandoFilas>` en `ido-kit.tsx`
+- Spinner 16px + texto 13px dim + barra de 200×4px (pista `bg.elevated`, relleno `accent`, radio pill). Clase `.ido-cargando` en `globals.css`; fade de entrada de 200ms con 120ms de demora para no parpadear en cargas instantáneas.
+- **Con total conocido** (`n` + `total`, cargas paginadas): «Cargando filas… N de TOTAL» (es-AR) y la barra se llena. Lo usan Plan de compras, Matrículas, Familias, Resumen de servicios (y el hint del catálogo en Stock por zona).
+- **Sin total** (un solo pedido): texto propio («Buscando…», «Cargando licitaciones…») y la barra se desplaza en loop; con `prefers-reduced-motion` pasa a un pulso de opacidad.
+- Funciona dentro y fuera de `.ido-terminal`: los tokens `--ido-*` tienen respaldo al tema shadcn (`--muted`, `--sidebar-primary`, `--muted-foreground`).
+- Solo para el área principal que espera datos. Los spinners chiquitos de botones («Guardar», «Actualizar») y de diálogos siguen siendo un `Loader2` suelto.
+
 ## 5. Pendiente de definir
 
 El archivo de Design fuente **no** especifica de forma explícita los siguientes

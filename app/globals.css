@@ -1431,6 +1431,50 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
   font-size: 13px;
 }
 
+/* Estado de carga compartido (<CargandoFilas> en ido-kit.tsx): spinner + texto
+   + barra verde. Tokens --ido-* con respaldo al tema para secciones que no
+   están debajo de .ido-terminal. Aparece con un fade corto para no parpadear
+   en las cargas instantáneas. */
+.ido-cargando {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 140px;
+  padding: 0 24px;
+  color: var(--ido-text-dim, var(--muted-foreground));
+  font-size: 13px;
+  animation: ido-cargando-in 200ms 120ms both;
+}
+.ido-cargando-txt { display: inline-flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+.ido-cargando-bar {
+  position: relative;
+  width: 200px;
+  max-width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ido-elevated, var(--muted));
+  overflow: hidden;
+}
+.ido-cargando-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ido-accent, var(--sidebar-primary));
+  transition: width 200ms var(--ido-ease, ease);
+}
+.ido-cargando-bar > .is-indet { width: 40%; animation: ido-cargando-indet 1.1s ease-in-out infinite; }
+@keyframes ido-cargando-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ido-cargando-indet {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ido-cargando-bar > .is-indet { width: 100%; animation: ido-cargando-pulse 1.6s ease-in-out infinite; }
+  @keyframes ido-cargando-pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 0.7; } }
+}
+
 /* ── Footer ──────────────────────────────────────────────────────────────── */
 .ido-foot {
   display: flex;

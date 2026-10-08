@@ -1,5 +1,6 @@
 "use client";
 
+import { CargandoFilas } from "@/components/dashboard/ido-kit";
 import {
   useCallback, useEffect, useRef, useState,
   DragEvent, ReactNode, Component,
@@ -1449,9 +1450,7 @@ function SicDiagramaInner() {
           />
 
           {loading ? (
-            <div className="flex items-center justify-center h-full gap-2 text-sm" style={{ color: "#8a8fa6" }}>
-              <Loader2 className="w-4 h-4 animate-spin"/>Cargando...
-            </div>
+            <CargandoFilas texto="Cargando diagrama…" style={{ height: "100%" }} />
           ) : (
             <>
               {loadError && (

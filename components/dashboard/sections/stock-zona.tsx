@@ -18,7 +18,7 @@ import { markUpdated } from "@/lib/notificaciones";
 import { loadTableLayout, saveTableLayout } from "@/lib/tableLayout";
 import {
   type Density, type SortDir, DENSITY_ROW_H, DENSITY_LABEL, DENSITY_ORDER, isDensity,
-  SortArrow, IdoCheckbox, tipoMeta, TipoPill, monoFont, autoFitTextWidth,
+  SortArrow, IdoCheckbox, tipoMeta, TipoPill, monoFont, autoFitTextWidth, CargandoFilas,
 } from "@/components/dashboard/ido-kit";
 import { parseTSV, saveUpload, getUploads, removeUpload, COL_MAP } from "@/lib/stockStorage";
 import type { ZonaUpload, CompraRow } from "@/lib/stockStorage";
@@ -33,11 +33,7 @@ type Tab            = "resumen" | "mapa" | "cargar";
 // recién cuando se abre la pestaña (no suma peso a Resumen / Cargar datos).
 const MapaZonas = dynamic(() => import("./stock-zona-mapa"), {
   ssr: false,
-  loading: () => (
-    <div className="ido-loading">
-      <Loader2 className="w-4 h-4 animate-spin" /> Cargando mapa…
-    </div>
-  ),
+  loading: () => <CargandoFilas texto="Cargando mapa…" />,
 });
 
 // Caché de sesión del catálogo maestro (para que la 2da carga sea instantánea)
@@ -593,6 +589,7 @@ export function StockZonaSection() {
   // Catálogo maestro de matrículas (descripción + UDM + tipo más actualizados)
   const [matriculasInfo, setMatriculasInfo] = useState<Map<string, MatriculaInfo>>(new Map());
   const [matriculasLoading, setMatriculasLoading] = useState(false);
+  const [matriculasProg, setMatriculasProg] = useState<{ n: number; total: number } | null>(null);
 
   // Familias: solo se leen para el filtro del Resumen. La edición/carga de
   // familias se movió a la sección Matrículas → Familias.
@@ -691,7 +688,8 @@ export function StockZonaSection() {
     } catch { /* caché inválida: se ignora */ }
     // 2) Refrescar desde Supabase (en paralelo) en segundo plano
     setMatriculasLoading(true);
-    const fresh = await getMatriculasInfo();
+    setMatriculasProg(null);
+    const fresh = await getMatriculasInfo((n, total) => setMatriculasProg({ n, total }));
     setMatriculasInfo(fresh);
     setMatriculasLoading(false);
     try {
@@ -1117,9 +1115,7 @@ export function StockZonaSection() {
         {tab === "resumen" && (
           <div ref={containerRef}>
             {loading ? (
-              <div className="ido-loading">
-                <Loader2 className="w-4 h-4 animate-spin" /> Cargando datos...
-              </div>
+              <CargandoFilas texto="Cargando datos…" />
             ) : pivotMap.size === 0 ? (
               <div className="ido-loading" style={{ flexDirection: "column", gap: 12, height: 220 }}>
                 <PackageOpen className="w-10 h-10" style={{ opacity: 0.2 }} />
@@ -1191,6 +1187,7 @@ export function StockZonaSection() {
                       {matriculasLoading && (
                         <span className="inline-flex items-center gap-1">
                           {pinnedCount > 0 && "· "}<Loader2 className="w-3 h-3 animate-spin" /> catálogo…
+                          {matriculasProg && ` ${Math.min(matriculasProg.n, matriculasProg.total).toLocaleString("es-AR")} de ${matriculasProg.total.toLocaleString("es-AR")}`}
                         </span>
                       )}
                     </p>

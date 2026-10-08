@@ -23,14 +23,14 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeftRight, ArrowRight, Ban, Check, ChevronDown, Clipboard, Clock, Copy, Loader2, Save, X } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, Ban, Check, ChevronDown, Clipboard, Clock, Copy, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   listRenglonesConItems, listOferentes, listOfertas, upsertOferta, deleteOferta, updateOferentesDivisa,
   type Licitacion, type RenglonConItems, type Oferente, type Divisa, type Item,
 } from "@/lib/informeTecnico";
 import { Avatar } from "@/components/dashboard/sections/informe-tecnico-adjudicacion";
-import { sansFont } from "@/components/dashboard/ido-kit";
+import { sansFont, CargandoFilas } from "@/components/dashboard/ido-kit";
 
 // ─── Números ──────────────────────────────────────────────────────────────
 
@@ -577,7 +577,7 @@ export function OfertasTab({ licitacion }: { licitacion: Licitacion }) {
   }, [loading]);
 
   if (loading) {
-    return <div className="ido-loading" style={{ height: 240 }}><Loader2 className="w-4 h-4 animate-spin" />Cargando ofertas…</div>;
+    return <CargandoFilas texto="Cargando ofertas…" style={{ minHeight: 240 }} />;
   }
   if (!items.length) {
     return <Vacio>No hay ítems cargados. Cargalos en la pestaña <strong>Renglones e ítems</strong> primero.</Vacio>;

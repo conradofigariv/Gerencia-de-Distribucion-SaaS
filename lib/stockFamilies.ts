@@ -100,9 +100,11 @@ function normalizeMatServ(raw: string | null | undefined): ArticuloTipo {
  *
  * Para que sea rápido con ~20k+ filas: pide la primera página con el conteo
  * exacto y luego descarga el resto de las páginas EN PARALELO (Supabase limita
- * cada respuesta a ~1000 filas).
+ * cada respuesta a ~1000 filas). `onProgreso` avisa cuántas filas llegaron.
  */
-export async function getMatriculasInfo(): Promise<Map<string, MatriculaInfo>> {
+export async function getMatriculasInfo(
+  onProgreso?: (cargadas: number, total: number) => void,
+): Promise<Map<string, MatriculaInfo>> {
   const PAGE = 1000;
   const COLS = "articulo, descripcion, unidad_medida, mat_serv";
   const map = new Map<string, MatriculaInfo>();
@@ -127,12 +129,19 @@ export async function getMatriculasInfo(): Promise<Map<string, MatriculaInfo>> {
   ingest(first.data as Row[]);
 
   const total = first.count ?? first.data.length;
+  let cargadas = first.data.length;
+  onProgreso?.(cargadas, total);
   if (total > PAGE) {
     // Resto de páginas en paralelo
     const requests = [];
     for (let from = PAGE; from < total; from += PAGE) {
       requests.push(
-        supabase.from("matriculas").select(COLS).range(from, from + PAGE - 1),
+        supabase.from("matriculas").select(COLS).range(from, from + PAGE - 1)
+          .then((res) => {
+            cargadas += res.data?.length ?? 0;
+            onProgreso?.(cargadas, total);
+            return res;
+          }),
       );
     }
     const results = await Promise.all(requests);

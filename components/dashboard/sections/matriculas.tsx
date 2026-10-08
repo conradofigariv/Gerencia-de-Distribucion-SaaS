@@ -13,7 +13,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { loadTableLayout, saveTableLayout } from "@/lib/tableLayout";
 import {
   type Density, type SortDir, DENSITY_ROW_H, DENSITY_LABEL, DENSITY_ORDER, isDensity,
-  SortArrow, IdoCheckbox, TipoPill, monoFont, sansFont, autoFitTextWidth, IdoConfirmModal,
+  SortArrow, IdoCheckbox, TipoPill, monoFont, sansFont, autoFitTextWidth, IdoConfirmModal, CargandoFilas,
 } from "@/components/dashboard/ido-kit";
 import {
   listMatriculas, createMatricula, updateMatricula, deleteMatricula, deleteMatriculasBulk,
@@ -344,6 +344,7 @@ const DeleteConfirm = IdoConfirmModal;
 export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (label: string | null) => void } = {}) {
   const [rows, setRows]       = useState<Matricula[]>([]);
   const [loading, setLoading] = useState(true);
+  const [progreso, setProgreso] = useState<{ n: number; total: number } | null>(null);
   const [search, setSearch]   = useState("");
   const [tipoFilter, setTipoFilter] = useState<TipoFilter>("todos");
   const onTipoFilter = useCallback((v: string) => setTipoFilter(v as TipoFilter), []);
@@ -452,8 +453,9 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
   // ── Datos ──────────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true);
+    setProgreso(null);
     try {
-      setRows(await listMatriculas());
+      setRows(await listMatriculas((n, total) => setProgreso({ n, total })));
     } catch (e) {
       toast.error(`Error al cargar matrículas: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
@@ -931,9 +933,12 @@ export function MatriculasSection({ onSummaryChange }: { onSummaryChange?: (labe
 
             {/* Cuerpo */}
             {loading ? (
-              <div className="ido-loading" style={{ height: 200 }}>
-                <Loader2 className="w-4 h-4 animate-spin" /> Cargando matrículas…
-              </div>
+              <CargandoFilas
+                texto={progreso ? "Cargando filas…" : "Cargando matrículas…"}
+                n={progreso?.n}
+                total={progreso?.total}
+                style={{ minHeight: 200 }}
+              />
             ) : filtered.length === 0 ? (
               <div className="ido-loading" style={{ flexDirection: "column", gap: 10, height: 220, textAlign: "center", padding: "0 24px" }}>
                 <AlertTriangle className="w-5 h-5" style={{ color: "var(--ido-warning)" }} />

@@ -7,14 +7,14 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { toast } from "sonner";
 import {
-  Search, RefreshCw, Loader2, AlertTriangle, FileSpreadsheet, Columns3, ChevronLeft, X,
+  Search, RefreshCw, AlertTriangle, FileSpreadsheet, Columns3, ChevronLeft, X,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { loadTableLayout, saveTableLayout } from "@/lib/tableLayout";
 import { tipoFromMatServ } from "@/lib/matriculas";
 import {
   type Density, type SortDir, DENSITY_ROW_H, DENSITY_LABEL, DENSITY_ORDER, isDensity,
-  SortArrow, IdoCheckbox, TipoPill, monoFont, sansFont, autoFitTextWidth,
+  SortArrow, IdoCheckbox, TipoPill, monoFont, sansFont, autoFitTextWidth, CargandoFilas,
 } from "@/components/dashboard/ido-kit";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -782,19 +782,12 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
             </button>
           </div>
         ) : cargando ? (
-          <div className="ido-loading" style={{ flex: 1, flexDirection: "column", gap: 10 }}>
-            <span className="flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              {progreso
-                ? `Cargando filas… ${progreso.n.toLocaleString("es-AR")} de ${progreso.total.toLocaleString("es-AR")}`
-                : "Cargando plan…"}
-            </span>
-            {progreso && (
-              <span style={{ width: 200, height: 4, borderRadius: 999, background: "var(--ido-elevated)", overflow: "hidden" }}>
-                <span style={{ display: "block", height: "100%", width: `${(progreso.n / Math.max(1, progreso.total)) * 100}%`, background: "var(--ido-accent)", transition: "width 200ms var(--ido-ease)" }} />
-              </span>
-            )}
-          </div>
+          <CargandoFilas
+            texto={progreso ? "Cargando filas…" : "Cargando plan…"}
+            n={progreso?.n}
+            total={progreso?.total}
+            style={{ flex: 1 }}
+          />
         ) : vacio ? (
           <div className="ido-loading" style={{ flexDirection: "column", gap: 12, flex: 1, textAlign: "center", padding: "0 24px" }}>
             <FileSpreadsheet className="w-6 h-6" style={{ color: "var(--ido-text-2)" }} />

@@ -1,5 +1,6 @@
 "use client";
 
+import { CargandoFilas } from "@/components/dashboard/ido-kit";
 import React, { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabaseClient";
@@ -268,9 +269,7 @@ export function TransformadoresTablaSection() {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-12">
-        <Loader2 className="w-6 h-6 text-accent animate-spin" />
-      </div>
+      <CargandoFilas texto="Cargando planillas…" />
     );
   }
 

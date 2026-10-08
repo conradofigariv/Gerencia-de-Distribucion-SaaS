@@ -1,5 +1,6 @@
 "use client";
 
+import { CargandoFilas } from "@/components/dashboard/ido-kit";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Gauge, Loader2, RefreshCw, Calendar, SlidersHorizontal, ChevronDown, Download, X,
@@ -478,9 +479,11 @@ export function IndiceIdoResumenSection() {
         {/* ── Tabla calculada (CSS grid, ancho ajustado al viewport) ──────── */}
         <div style={{ position: "relative", marginTop: 16, borderTop: "1px solid var(--ido-line)" }}>
           <div ref={containerRef} style={{ overflowX: "auto" }}>
-            {calc.length === 0 ? (
+            {calc.length === 0 && loading ? (
+              <CargandoFilas texto="Cargando…" />
+            ) : calc.length === 0 ? (
               <div className="ido-loading" style={{ height: 140 }}>
-                {loading ? "Cargando…" : `Sin datos para el período ${periodo}. Cargá valores en "Carga de datos".`}
+                {`Sin datos para el período ${periodo}. Cargá valores en "Carga de datos".`}
               </div>
             ) : (
               <div style={{ padding: `0 ${fitted.pad}px`, transition: "padding 200ms var(--ido-ease)" }}>

@@ -32,6 +32,7 @@ import {
 import { fetchTabs, enviarMarcadasASeguimiento, type BuscadorTab } from "@/lib/buscadorTabs";
 import { getPreference, setPreference } from "@/lib/userPreferences";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CargandoFilas } from "@/components/dashboard/ido-kit";
 
 // Preferencia (por usuario) con el id de la pestaña de la que se trae.
 const PREF_TAB_FUENTE = "servicios-resumen-tab-fuente";
@@ -192,6 +193,7 @@ export function ServiciosResumenSection() {
   // Carga única de los datos; todo lo demás se deriva en memoria.
   const [allRows,     setAllRows]     = useState<SeguimientoRow[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+  const [progreso, setProgreso] = useState<{ n: number; total: number } | null>(null);
 
   // Pestaña del Buscador que alimenta esta pantalla. Se resuelve por NOMBRE,
   // fija — mismo criterio que la tarjeta «Próximas Entregas» de
@@ -487,13 +489,21 @@ export function ServiciosResumenSection() {
   };
 
   /** Relee `seguimiento`. Se usa en la carga inicial y después de sincronizar
-   *  desde el Buscador, que inserta filas nuevas en esa tabla. */
-  const recargarSeguimiento = async () => {
+   *  desde el Buscador, que inserta filas nuevas en esa tabla. Con
+   *  `onProgreso` pide antes el conteo para mostrar «Cargando filas… N de TOTAL». */
+  const recargarSeguimiento = async (onProgreso?: (n: number, total: number) => void) => {
+    let total = 0;
+    if (onProgreso) {
+      const { count } = await supabase.from("seguimiento").select("*", { count: "exact", head: true });
+      total = count ?? 0;
+    }
     const PAGE = 1000; const all: SeguimientoRow[] = []; let from = 0;
     while (true) {
       const { data, error } = await supabase.from("seguimiento").select("*").range(from, from + PAGE - 1);
       if (error || !data?.length) break;
-      all.push(...data); if (data.length < PAGE) break; from += PAGE;
+      all.push(...data);
+      onProgreso?.(all.length, Math.max(total, all.length));
+      if (data.length < PAGE) break; from += PAGE;
     }
     setAllRows(all);
   };
@@ -506,7 +516,7 @@ export function ServiciosResumenSection() {
         // Ya no se carga la clasificación Material/Servicio: se usaba solo para
         // el filtro «Solo servicios», que se quitó. Lo que llega acá ya viene
         // elegido desde la pestaña del Buscador.
-        await recargarSeguimiento();
+        await recargarSeguimiento((n, total) => setProgreso({ n, total }));
       } catch { /* la UI degrada con datos vacíos */ }
       setLoadingData(false);
     })();
@@ -982,9 +992,12 @@ export function ServiciosResumenSection() {
         </div>
 
         {tableLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-5 h-5 text-accent animate-spin" />
-          </div>
+          <CargandoFilas
+            texto={progreso ? "Cargando filas…" : "Cargando seguimiento…"}
+            n={progreso?.n}
+            total={progreso?.total}
+            style={{ minHeight: 160 }}
+          />
         ) : tableRows.length === 0 ? (
           <div className="py-12 text-center text-sm text-muted-foreground">
             Sin resultados para los filtros seleccionados

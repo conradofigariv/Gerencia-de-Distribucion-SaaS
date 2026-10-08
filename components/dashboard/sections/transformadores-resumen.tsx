@@ -1,5 +1,6 @@
 "use client";
 
+import { CargandoFilas } from "@/components/dashboard/ido-kit";
 import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabaseClient";
@@ -1075,10 +1076,7 @@ export function TransformadoresResumenSection() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24 text-muted-foreground">
-        <Loader2 className="w-6 h-6 animate-spin mr-2" />
-        Cargando datos…
-      </div>
+      <CargandoFilas texto="Cargando datos…" style={{ minHeight: 240 }} />
     );
   }
 

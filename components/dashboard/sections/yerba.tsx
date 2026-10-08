@@ -1,5 +1,6 @@
 "use client";
 
+import { CargandoFilas } from "@/components/dashboard/ido-kit";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
@@ -193,9 +194,7 @@ export function YerbaSection() {
         <div className="relative">
           <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-4">Le toca comprar</p>
           {cargando ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-6">
-              <Loader2 className="w-4 h-4 animate-spin" /> Cargando…
-            </div>
+            <CargandoFilas texto="Cargando…" style={{ minHeight: 96 }} />
           ) : !proximo ? (
             <p className="text-sm text-muted-foreground py-6">
               No hay nadie en la ronda todavía. Sumá gente con «Sumar a la ronda».
@@ -254,7 +253,7 @@ export function YerbaSection() {
         </div>
 
         {cargando ? (
-          <div className="py-10 text-center"><Loader2 className="w-5 h-5 text-accent animate-spin inline" /></div>
+          <CargandoFilas texto="Cargando la ronda…" style={{ minHeight: 120 }} />
         ) : participantes.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">Sin participantes.</p>
         ) : (

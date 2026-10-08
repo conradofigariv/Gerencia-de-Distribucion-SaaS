@@ -1,5 +1,6 @@
 "use client";
 
+import { CargandoFilas } from "@/components/dashboard/ido-kit";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
@@ -754,9 +755,7 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
             <Card className="border-border bg-card lg:col-span-2 h-full">
               <CardContent className="p-5 space-y-5">
                 {loadingProfile ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-6">
-                    <Loader2 className="w-4 h-4 animate-spin" />Cargando perfil...
-                  </div>
+                  <CargandoFilas texto="Cargando perfil…" style={{ minHeight: 96 }} />
                 ) : (
                   <>
                     {/* Identidad: foto grande + quién sos + nivel. Redondo, no
@@ -1026,9 +1025,7 @@ export function SettingsSection({ user, onProfileUpdate }: SettingsSectionProps)
               </CardHeader>
               <CardContent>
                 {loadingUsers ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-                    <Loader2 className="w-4 h-4 animate-spin" />Cargando usuarios...
-                  </div>
+                  <CargandoFilas texto="Cargando usuarios…" style={{ minHeight: 96 }} />
                 ) : adminUsers.length === 0 ? (
                   <p className="text-sm text-muted-foreground py-4">No hay usuarios para mostrar.</p>
                 ) : (

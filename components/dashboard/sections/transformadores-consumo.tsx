@@ -1,9 +1,10 @@
 "use client";
 
+import { CargandoFilas } from "@/components/dashboard/ido-kit";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
-import { Loader2, TrendingUp, CalendarRange, Sigma, Boxes, ChevronRight } from "lucide-react";
+import { TrendingUp, CalendarRange, Sigma, Boxes, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -324,9 +325,7 @@ export function TransformadoresConsumoSection() {
 
       {/* KPIs */}
       {loading ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-[12px] text-muted-foreground">
-          <Loader2 className="w-4 h-4 animate-spin" /> Cargando consumo…
-        </div>
+        <CargandoFilas texto="Cargando consumo…" style={{ minHeight: 160 }} />
       ) : registros.length === 0 ? (
         <div className="py-16 text-center">
           <p className="text-[13px] font-semibold text-foreground">Todavía no hay consumo cargado</p>
