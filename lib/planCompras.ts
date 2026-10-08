@@ -46,30 +46,61 @@ const COLS_ITEM = ["id", "plan_id", "orden", ...CLAVES_TEXTO, ...CLAVES_NUMERO].
 
 // ─── Errores ─────────────────────────────────────────────────────────────────
 
-/** Si el error es que todavía no se corrió el SQL, lo dice en criollo. */
+/** Códigos de PostgREST / Postgres que significan «falta correr el SQL». */
+const CODIGOS_SIN_SQL = new Set(["PGRST205", "PGRST202", "PGRST204", "42P01", "42703", "42883"]);
+
+/**
+ * Texto para mostrar de un error de Supabase (o cualquier otro).
+ *
+ * ⚠ Los `error` que devuelve supabase-js NO son `Error`: son objetos planos
+ * `{ code, message, details, hint }`. Con `String(e)` daban «[object Object]»
+ * y el aviso de «falta el SQL» nunca aparecía.
+ */
 export function mensajeErrorPlan(e: unknown): string {
-  const msg = e instanceof Error ? e.message : String(e);
+  const obj = e && typeof e === "object" ? (e as { message?: unknown; code?: unknown }) : null;
+  const code = obj && typeof obj.code === "string" ? obj.code : "";
+  const msg = e instanceof Error ? e.message
+    : obj && obj.message != null && String(obj.message) ? String(obj.message)
+    : obj ? `Error de la base${code ? ` (${code})` : ""} sin detalle.`
+    : String(e);
   if (
-    /does not exist|schema cache|Could not find the (table|function)|column .* does not exist/i.test(msg)
+    CODIGOS_SIN_SQL.has(code) ||
+    /does not exist|schema cache|Could not find the (table|function)/i.test(msg)
   ) {
     return "La base todavía no tiene las tablas del Plan de Compras: hay que correr supabase/plan_compras.sql en Supabase.";
+  }
+  // Un ítem que apunta a una cabecera que ya no existe: otra importación del
+  // mismo año terminó primero y limpió esta.
+  if (code === "23503") {
+    return "Otra importación del mismo año terminó antes y reemplazó esta. Tocá Actualizar para ver el plan vigente.";
   }
   return msg;
 }
 
 // ─── Concurrencia ────────────────────────────────────────────────────────────
 
-/** Corre las tareas de a `n` a la vez, en orden. Corta en el primer error. */
+/**
+ * Corre las tareas de a `n` a la vez, en orden. Ante el primer error deja de
+ * arrancar tareas nuevas, ESPERA a las que ya estaban en vuelo y recién ahí
+ * relanza el error: así un rollback posterior corre después del último
+ * insert, y nadie sigue reportando progreso con la pantalla ya en error.
+ */
 async function enParalelo<T>(tareas: (() => Promise<T>)[], n: number): Promise<T[]> {
   const out: T[] = new Array(tareas.length);
   let sig = 0;
+  let fallo: { e: unknown } | null = null;
   async function trabajador() {
-    while (sig < tareas.length) {
+    while (!fallo && sig < tareas.length) {
       const i = sig++;
-      out[i] = await tareas[i]();
+      try {
+        out[i] = await tareas[i]();
+      } catch (e) {
+        if (!fallo) fallo = { e };
+      }
     }
   }
   await Promise.all(Array.from({ length: Math.min(n, tareas.length) }, trabajador));
+  if (fallo) throw (fallo as { e: unknown }).e;
   return out;
 }
 
@@ -126,7 +157,14 @@ export async function getItems(
     }),
     4,
   );
-  return lotes.flat();
+  const items = lotes.flat();
+  // Cada página es un request aparte: si otra importación reemplazó el plan
+  // mientras tanto, las páginas que faltaban vuelven vacías SIN error y la
+  // grilla mostraría un plan a medias con totales equivocados.
+  if (items.length !== total) {
+    throw new Error("El plan cambió mientras se cargaba (alguien lo volvió a importar). Tocá Actualizar.");
+  }
+  return items;
 }
 
 export async function getFamilias(planId: string): Promise<PlanFamilia[]> {
@@ -193,12 +231,15 @@ export async function importarPlan(
 
   const { data: userData } = await supabase.auth.getUser();
 
-  // Restos de una importación anterior que se cortó (cabecera inactiva).
+  // Restos de una importación anterior que se cortó (cabecera inactiva). Solo
+  // los de más de 30 minutos: una más nueva puede ser otra importación del
+  // mismo año que alguien está subiendo ahora mismo.
   const { error: errLimpieza } = await supabase
     .from("plan_compras")
     .delete()
     .eq("anio", imp.anio)
-    .eq("activo", false);
+    .eq("activo", false)
+    .lt("created_at", new Date(Date.now() - 30 * 60_000).toISOString());
   if (errLimpieza) throw new Error(mensajeErrorPlan(errLimpieza));
 
   const { data: plan, error: errPlan } = await supabase
@@ -215,10 +256,11 @@ export async function importarPlan(
       importado_por:  userData.user?.id ?? null,
       activo:         false,
     })
-    .select(COLS_PLAN)
+    .select(`${COLS_PLAN}, created_at`)
     .single();
   if (errPlan) throw new Error(mensajeErrorPlan(errPlan));
-  const nuevo = plan as PlanCompras;
+  const { created_at: creadoEn, ...cabecera } = plan as PlanCompras & { created_at: string };
+  const nuevo = cabecera as PlanCompras;
 
   try {
     let hechos = 0;
@@ -253,18 +295,22 @@ export async function importarPlan(
     await activar(nuevo);
   } catch (e) {
     // Deshace la versión a medio cargar; el plan anterior sigue activo.
-    await supabase.from("plan_compras").delete().eq("id", nuevo.id);
+    // `activo = false`: si la activación llegó a la base pero la respuesta se
+    // perdió (corte de red), la versión nueva YA es la vigente y no se toca.
+    await supabase.from("plan_compras").delete().eq("id", nuevo.id).eq("activo", false);
     throw e;
   }
 
   // Ya activa: borrar las versiones anteriores del año (los ítems se van en
-  // cascada). Si esto falla no se pierde nada: quedan inactivas, no se ven, y
-  // la próxima importación las limpia al arrancar.
+  // cascada). Solo las creadas ANTES que esta: una más nueva es otra
+  // importación en curso. Si esto falla no se pierde nada: quedan inactivas,
+  // no se ven, y una importación posterior las limpia.
   const { error: errBorrar } = await supabase
     .from("plan_compras")
     .delete()
     .eq("anio", imp.anio)
-    .eq("activo", false);
+    .eq("activo", false)
+    .lt("created_at", creadoEn);
   if (errBorrar) console.warn("[plan-compras] no se pudo borrar la versión anterior:", errBorrar.message);
   return { ...nuevo, activo: true };
 }
@@ -295,6 +341,13 @@ async function activar(nuevo: PlanCompras): Promise<void> {
     .eq("id", nuevo.id)
     .select("id");
   if (errAct || !activado || activado.length !== 1) {
+    // ¿Se activó igual y se perdió la respuesta? Entonces salió bien.
+    const { data: estado } = await supabase
+      .from("plan_compras")
+      .select("activo")
+      .eq("id", nuevo.id)
+      .maybeSingle();
+    if ((estado as { activo?: boolean } | null)?.activo) return;
     if (idsPrevios.length) {
       await supabase.from("plan_compras").update({ activo: true }).in("id", idsPrevios);
     }
