@@ -12,30 +12,26 @@
 --
 -- ⚠ En `plan_compras_items` se guarda SOLO lo que en el Excel es un dato
 -- cargado (o pegado como valor). Todo lo que es fórmula (ZA, INTERIOR, TOTAL,
--- GD 2025, Recorte, Análisis, Pu Sic + 20%, Pu Est ($), Verif. Precio,
--- Total $, % Incidencia, Total Ajustado, DIF PU%, DIF GLOBAL %, MAX) se calcula
+-- GD 2025, Recorte, Análisis, Pu Sic + 20%, Pu Est en pesos, Verif. Precio,
+-- Total en pesos, % Incidencia, Total Ajustado, DIF PU%, DIF GLOBAL %, MAX) se calcula
 -- en `lib/planComprasCalc.ts`. Guardarlo duplicaría la verdad y quedaría
 -- desfasado apenas se cambie el tipo de cambio o una cantidad.
 --
 -- Idempotente: se puede correr de nuevo sin perder datos.
+--
+-- Cómo correrlo: Supabase → SQL Editor → snippet nuevo → pegar TODO el archivo
+-- → Run (sin texto seleccionado: con una selección corre solo esa parte).
+-- No usa bloques con signo pesos doble (dollar quoting) a propósito: si el
+-- texto pasa por un visor que los interpreta como fórmulas, el editor recibe
+-- el cuerpo vacío y falla con «syntax error at end of input / LINE 0».
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- ─── Esqueleto viejo ─────────────────────────────────────────────────────────
 -- Una versión anterior de este archivo creaba `plan_compras_items` con un
--- modelo reducido (cant_gd, pu_sic, …) que nunca llegó a tener datos: la
--- pantalla era un cartel «en construcción». Si esa forma vieja existe, se
--- borra para crear la nueva. La condición (columna `cant_gd`) hace que esto
--- NO se vuelva a ejecutar una vez creada la tabla nueva.
-do $$
-begin
-  if exists (
-    select 1 from information_schema.columns
-    where table_schema = 'public' and table_name = 'plan_compras_items' and column_name = 'cant_gd'
-  ) then
-    drop table public.plan_compras_items;
-    delete from public.plan_compras;  -- solo tenía la fila semilla 2026, sin ítems
-  end if;
-end $$;
+-- modelo reducido (cant_gd, pu_sic, …) que nunca llegó a tener datos. Si esa
+-- tabla existe, el `create table if not exists` de abajo no la toca: los
+-- `add column if not exists` la completan y se le quita `cant_gd`. La fila
+-- semilla 2026 que creaba queda inactiva y se borra al final del archivo.
 
 -- ─── Cabecera ────────────────────────────────────────────────────────────────
 -- Cada importación del Excel crea una cabecera NUEVA (inactiva), le carga los
@@ -47,7 +43,7 @@ create table if not exists public.plan_compras (
   id              uuid primary key default gen_random_uuid(),
   anio            integer not null,
   nombre          text,
-  tipo_cambio     numeric not null default 1,      -- $ por USD («TC PLAN» / «TC 11/07/2025»)
+  tipo_cambio     numeric not null default 1,      -- pesos por dólar («TC PLAN» / «TC 11/07/2025»)
   pct_mayoracion  numeric not null default 0.20,   -- el «+20%» de Pu Sic + 20%
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now()
@@ -56,7 +52,7 @@ create table if not exists public.plan_compras (
 -- Columnas agregadas sobre la cabecera original (alter idempotente).
 alter table public.plan_compras add column if not exists activo        boolean not null default false;
 -- Encabezados tal cual vienen en el Excel, por clave de columna
--- ({"hist_1":"2023P","gd":"GD 2025","total_plan":"Total 2026 $", …}). Las
+-- ({"hist_1":"2023P","gd":"GD 2025","total_plan":"Total 2026 en pesos", …}). Las
 -- columnas en la base tienen nombres sin año; el año vive acá.
 alter table public.plan_compras add column if not exists etiquetas     jsonb not null default '{}'::jsonb;
 -- Celdas sueltas al pie de «Global» (TC y PC en USD de años anteriores):
@@ -148,6 +144,45 @@ create table if not exists public.plan_compras_items (
   updated_at              timestamptz not null default now()
 );
 
+-- Si la tabla ya existía con el esqueleto viejo, le faltan columnas.
+alter table public.plan_compras_items add column if not exists mat_serv               text;
+alter table public.plan_compras_items add column if not exists familia                text;
+alter table public.plan_compras_items add column if not exists familia_vieja          text;
+alter table public.plan_compras_items add column if not exists subfamilia             text;
+alter table public.plan_compras_items add column if not exists ultima_sic_area        text;
+alter table public.plan_compras_items add column if not exists ultima_sic_solicitante text;
+alter table public.plan_compras_items add column if not exists hist_1                 numeric;
+alter table public.plan_compras_items add column if not exists hist_2                 numeric;
+alter table public.plan_compras_items add column if not exists hist_3                 numeric;
+alter table public.plan_compras_items add column if not exists d_acr                  numeric;
+alter table public.plan_compras_items add column if not exists d_aord                 numeric;
+alter table public.plan_compras_items add column if not exists d_mantenimiento        numeric;
+alter table public.plan_compras_items add column if not exists d_seas                 numeric;
+alter table public.plan_compras_items add column if not exists d_sistemas             numeric;
+alter table public.plan_compras_items add column if not exists d_servicios            numeric;
+alter table public.plan_compras_items add column if not exists d_zb                   numeric;
+alter table public.plan_compras_items add column if not exists d_zc                   numeric;
+alter table public.plan_compras_items add column if not exists d_zd                   numeric;
+alter table public.plan_compras_items add column if not exists d_ze                   numeric;
+alter table public.plan_compras_items add column if not exists d_zf                   numeric;
+alter table public.plan_compras_items add column if not exists d_zg                   numeric;
+alter table public.plan_compras_items add column if not exists d_zh                   numeric;
+alter table public.plan_compras_items add column if not exists d_med                  numeric;
+alter table public.plan_compras_items add column if not exists d_tele                 numeric;
+alter table public.plan_compras_items add column if not exists d_tct                  numeric;
+alter table public.plan_compras_items add column if not exists d_trafos               numeric;
+alter table public.plan_compras_items add column if not exists d_reg_ten              numeric;
+alter table public.plan_compras_items add column if not exists d_obras                numeric;
+alter table public.plan_compras_items add column if not exists d_impacto              numeric;
+alter table public.plan_compras_items add column if not exists ajuste                 numeric;
+alter table public.plan_compras_items add column if not exists stock                  numeric;
+alter table public.plan_compras_items add column if not exists pendientes             numeric;
+alter table public.plan_compras_items add column if not exists consumo_promedio       numeric;
+alter table public.plan_compras_items add column if not exists pu_ajustado            numeric;
+alter table public.plan_compras_items add column if not exists partida                text;
+alter table public.plan_compras_items add column if not exists partida_descripcion    text;
+alter table public.plan_compras_items drop column if exists cant_gd;
+
 create index if not exists idx_plan_compras_items_plan_orden
   on public.plan_compras_items (plan_id, orden);
 create index if not exists idx_plan_compras_items_articulo
@@ -181,12 +216,14 @@ create index if not exists idx_plan_compras_cuentas_plan
 -- Reutiliza public.set_updated_at() (definida en ido_datos.sql). Se redefine
 -- acá para que este archivo se pueda correr solo, en cualquier orden.
 create or replace function public.set_updated_at()
-returns trigger as $$
+returns trigger
+language plpgsql
+as '
 begin
   new.updated_at = now();
   return new;
 end;
-$$ language plpgsql;
+';
 
 drop trigger if exists trg_plan_compras_updated_at on public.plan_compras;
 create trigger trg_plan_compras_updated_at
@@ -205,20 +242,20 @@ create trigger trg_plan_compras_items_updated_at
 create or replace function public.plan_compras_activar(p_plan uuid)
 returns void
 language plpgsql
-as $$
+as '
 declare
   v_anio integer;
 begin
   select anio into v_anio from public.plan_compras where id = p_plan for update;
   if v_anio is null then
-    raise exception 'plan_compras_activar: no existe el plan %', p_plan;
+    raise exception ''plan_compras_activar: no existe el plan %'', p_plan;
   end if;
 
   update public.plan_compras set activo = false where anio = v_anio and id <> p_plan and activo;
   update public.plan_compras set activo = true  where id = p_plan;
   delete from public.plan_compras where anio = v_anio and id <> p_plan;
 end;
-$$;
+';
 
 grant execute on function public.plan_compras_activar(uuid) to anon, authenticated;
 
@@ -245,3 +282,8 @@ create policy "plan_compras_familias_all" on public.plan_compras_familias
 drop policy if exists "plan_compras_cuentas_all" on public.plan_compras_cuentas;
 create policy "plan_compras_cuentas_all" on public.plan_compras_cuentas
   for all using (true) with check (true);
+
+-- ─── Limpieza del esqueleto viejo ────────────────────────────────────────────
+-- La fila semilla 2026 del esqueleto viejo quedó inactiva y nunca se importó.
+-- Una importación en curso no se toca: siempre tiene `importado_at`.
+delete from public.plan_compras where not activo and importado_at is null;
