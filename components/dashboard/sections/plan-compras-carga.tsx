@@ -762,9 +762,13 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
             <button type="button" className="ido-btn ido-btn-text" style={{ height: 32 }} onClick={() => cargar(planId ?? undefined)} disabled={cargando}>
               <RefreshCw className={`w-3.5 h-3.5${cargando ? " animate-spin" : ""}`} />Actualizar
             </button>
-            <button type="button" className="ido-btn ido-btn-primary" style={{ height: 32 }} onClick={() => setImportando(true)}>
-              <FileSpreadsheet className="w-4 h-4" />Importar Excel
-            </button>
+            {/* Sin plan, el botón primario es el del centro (un solo primario
+                por pantalla, regla del acento §1). */}
+            {!vacio && (
+              <button type="button" className="ido-btn ido-btn-primary" style={{ height: 32 }} onClick={() => setImportando(true)}>
+                <FileSpreadsheet className="w-4 h-4" />Importar Excel
+              </button>
+            )}
           </div>
         </div>
 
