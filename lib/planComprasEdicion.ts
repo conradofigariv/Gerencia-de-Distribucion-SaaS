@@ -20,7 +20,19 @@ const NUMERICAS = new Set<string>(CLAVES_NUMERO);
 /** Columnas de dato que no se editan. */
 const BLOQUEADAS = new Set<ClaveColumna>(["articulo"]);
 
-export const esEditable = (k: ClaveColumna): k is ClaveCarga => !esCalculada(k) && !BLOQUEADAS.has(k);
+/**
+ * Dónde se guarda lo que se escribe en una columna. Casi siempre es la misma
+ * clave; «Total Ajustado» es fórmula (PU ajustado × CANT. APROBADAS) pero se
+ * puede pisar a mano, y el monto escrito va a `total_ajustado_dato`.
+ * null = la columna no se edita (fórmula o Artículo).
+ */
+export function claveDato(k: ClaveColumna): ClaveCarga | null {
+  if (k === "total_ajustado") return "total_ajustado_dato";
+  if (esCalculada(k) || BLOQUEADAS.has(k)) return null;
+  return k as ClaveCarga;
+}
+
+export const esEditable = (k: ClaveColumna): boolean => claveDato(k) != null;
 export const esNumericaCarga = (k: ClaveCarga) => NUMERICAS.has(k);
 
 export type Valor = string | number | null;
@@ -47,8 +59,16 @@ export function parseNumero(texto: string): Parseo {
   return { ok: true, valor: n === 0 ? null : n };
 }
 
-export function parseValor(k: ClaveCarga, texto: string): Parseo {
-  if (esNumericaCarga(k)) return parseNumero(texto);
+export function parseValor(col: ClaveColumna, texto: string): Parseo {
+  const k = claveDato(col);
+  if (!k) return { ok: false, error: "La columna no se edita" };
+  if (esNumericaCarga(k)) {
+    const r = parseNumero(texto);
+    // Total Ajustado escrito en 0 es un dato («no se aprobó»), no «vacío =
+    // calcular»: vaciarlo con Supr es lo que vuelve a la fórmula.
+    if (r.ok && r.valor == null && k === "total_ajustado_dato" && !["", "-", "–"].includes(texto.trim())) return { ok: true, valor: 0 };
+    return r;
+  }
   const t = texto.trim();
   return { ok: true, valor: t === "" ? null : t };
 }
@@ -73,7 +93,9 @@ export const valorCelda = (it: PlanComprasItem, k: ClaveCarga): Valor =>
  * «modificada»: guarda el valor importado la primera vez y la saca si se
  * vuelve a ese valor. null si no hay cambio.
  */
-export function conCambio(it: PlanComprasItem, k: ClaveCarga, valor: Valor): PlanComprasItem | null {
+export function conCambio(it: PlanComprasItem, col: ClaveColumna, valor: Valor): PlanComprasItem | null {
+  const k = claveDato(col);
+  if (!k) return null;
   const actual = valorCelda(it, k);
   if (iguales(actual, valor)) return null;
   const imp = { ...(it.importado ?? {}) };
@@ -82,19 +104,24 @@ export function conCambio(it: PlanComprasItem, k: ClaveCarga, valor: Valor): Pla
   return { ...it, [k]: valor, importado: Object.keys(imp).length ? imp : null };
 }
 
-export const estaModificada = (it: PlanComprasItem, k: ClaveColumna) =>
-  !!it.importado && Object.prototype.hasOwnProperty.call(it.importado, k);
+export const estaModificada = (it: PlanComprasItem, col: ClaveColumna) => {
+  const k = claveDato(col);
+  return !!k && !!it.importado && Object.prototype.hasOwnProperty.call(it.importado, k);
+};
 
 /** Fila con la celda vuelta a su valor importado (null si no estaba modificada). */
-export function restaurada(it: PlanComprasItem, k: ClaveCarga): PlanComprasItem | null {
-  if (!estaModificada(it, k)) return null;
-  return conCambio(it, k, it.importado![k] ?? null);
+export function restaurada(it: PlanComprasItem, col: ClaveColumna): PlanComprasItem | null {
+  const k = claveDato(col);
+  if (!k || !estaModificada(it, col)) return null;
+  return conCambio(it, col, it.importado![k] ?? null);
 }
 
 /** Descripción del valor importado para el tooltip de una celda modificada. */
-export function textoImportado(it: PlanComprasItem, k: ClaveCarga): string {
-  const v = it.importado?.[k];
-  return v == null ? "(vacía)" : typeof v === "number" ? textoDeValor(v) : `«${v}»`;
+export function textoImportado(it: PlanComprasItem, col: ClaveColumna): string {
+  const k = claveDato(col);
+  const v = k ? it.importado?.[k] : null;
+  if (v == null) return col === "total_ajustado" ? "(calculado: PU ajustado × CANT. APROBADAS)" : "(vacía)";
+  return typeof v === "number" ? textoDeValor(v) : `«${v}»`;
 }
 
 // ─── Portapapeles (formato de Excel: tabulador + salto de línea) ─────────────

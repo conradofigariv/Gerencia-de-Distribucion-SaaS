@@ -29,6 +29,11 @@ export const CLAVES_NUMERO = [
   "ajuste", "cant_aprobadas",
   "stock", "pendientes", "consumo_promedio",
   "pu_sic", "pu_op", "pu_est_usd", "pu_ajustado",
+  // Desde el Excel 2027: datos del plan anterior pegados en Global.
+  "sics_anterior", "ppc_anterior", "pu_ppc_anterior",
+  // Total Ajustado escrito a mano (o pegado distinto de PU × cantidad). null =
+  // se calcula. No es una columna de la grilla: se edita desde «Total Ajustado».
+  "total_ajustado_dato",
 ] as const;
 
 /** Columnas que en el Excel son fórmula: se calculan, nunca se guardan. */
@@ -68,12 +73,25 @@ export interface PlanComprasItem extends PlanComprasItemInput {
   editado_at?:  string | null;
 }
 
+/**
+ * Variantes de fórmula de cada plan: el Excel cambia de un año a otro. Se
+ * detectan al importar comparando con los valores del propio archivo y se
+ * guardan en `plan_compras.formulas`. Sin datos = las del Excel 2026.
+ */
+export interface FormulasPlan {
+  /** 2026: CANT. APROBADAS − GD · 2027: GD − CANT. APROBADAS */
+  recorte?:  "aprobadas_menos_gd" | "gd_menos_aprobadas";
+  /** 2026: TOTAL / MAX(histórico) − 1 · 2027: TOTAL / PPC (año anterior) − 1 */
+  analisis?: "max_hist" | "ppc_anterior";
+}
+
 /** Parámetros del plan que intervienen en las fórmulas. */
 export interface ParametrosCalc {
   /** $ por USD — «TC PLAN» de Prioridad / «TC 11/07/2025» al pie de Global. */
   tipo_cambio:    number;
   /** El «+20%» de Pu Sic + 20%, como fracción (0.20). */
   pct_mayoracion: number;
+  formulas?:      FormulasPlan | null;
 }
 
 /**
@@ -95,9 +113,9 @@ export interface PlanComprasCalc {
   total:          number;
   /** AM · GD 2025 = TOTAL − AJUSTE */
   gd:             number;
-  /** AN · Recorte = CANT. APROBADAS − GD 2025 */
+  /** AN · Recorte = CANT. APROBADAS − GD (2026) · GD − CANT. APROBADAS (2027) */
   recorte:        number;
-  /** AP · Análisis = SI.ERROR(TOTAL / MAX 2023 − 1; "No se compro en 2023") */
+  /** AP · Análisis = SI.ERROR(TOTAL / MAX 2023 − 1; …) (2026) · TOTAL / PPC 2026 − 1 (2027) */
   analisis:       number | null;
   /** AT · Análisis Cons. Prom = Consumo Promedio − Pendientes − Stock */
   analisis_cons:  number;
@@ -111,9 +129,10 @@ export interface PlanComprasCalc {
   verif_precio:   number;
   /** BB · Total 2026 $ = Pu Est ($) × GD 2025 */
   total_plan:     number;
-  /** BE · Total Ajustado 2026 $ = Pu ajustado × CANT. APROBADAS
-   *  (en el Excel está pegado como valor; coincide con la cuenta en el 100%
-   *  de las filas del plan 2026). */
+  /** BE · Total Ajustado = el monto escrito a mano si lo hay
+   *  (`total_ajustado_dato`); si no, Pu ajustado × CANT. APROBADAS. En el
+   *  Excel está pegado como valor: en el 2026 coincide con la cuenta en el
+   *  100% de las filas; en el 2027 hay montos escritos a mano. */
   total_ajustado: number;
   /** BF · DIF PU% = SI.ERROR(Pu ajustado / Pu Est ($) − 1; "Sin Datos") */
   dif_pu:         number | null;
@@ -169,7 +188,12 @@ export function calcularFila(it: PlanComprasItemInput, p: ParametrosCalc): PlanC
   const puEstPesos = redondearMasExcel(n0(it.pu_est_usd) * p.tipo_cambio);
   // ⚠ El total multiplica por GD 2025 (lo pedido neto), NO por las aprobadas.
   const totalPlan  = puEstPesos * gd;
-  const totalAj    = n0(it.pu_ajustado) * n0(it.cant_aprobadas);
+  const totalAj    = it.total_ajustado_dato != null
+    ? it.total_ajustado_dato
+    : n0(it.pu_ajustado) * n0(it.cant_aprobadas);
+  const f = p.formulas ?? {};
+  const baseAnalisis = f.analisis === "ppc_anterior" ? n0(it.ppc_anterior) : maxHist;
+  const aprob = n0(it.cant_aprobadas);
 
   return {
     max_hist:       maxHist,
@@ -177,8 +201,8 @@ export function calcularFila(it: PlanComprasItemInput, p: ParametrosCalc): PlanC
     interior,
     total,
     gd,
-    recorte:        n0(it.cant_aprobadas) - gd,
-    analisis:       maxHist === 0 ? null : total / maxHist - 1,
+    recorte:        f.recorte === "gd_menos_aprobadas" ? gd - aprob : aprob - gd,
+    analisis:       baseAnalisis === 0 ? null : total / baseAnalisis - 1,
     analisis_cons:  n0(it.consumo_promedio) - pend - stock,
     analisis2:      gd - stock - pend,
     pu_sic_mas:     puSicMas,
@@ -278,10 +302,12 @@ export const COLUMNAS: ColumnaPlan[] = [
   { clave: "a_cargo_de",             letra: "H",  titulo: "A CARGO DE",            grupo: "clasificacion", formato: "texto",    ancho: 120 },
   { clave: "ultima_sic_area",        letra: "I",  titulo: "ULTIMA SIC",            grupo: "ultima_sic",    formato: "texto",    ancho: 130 },
   { clave: "ultima_sic_solicitante", letra: "J",  titulo: "ULTIMA SIC2",           grupo: "ultima_sic",    formato: "texto",    ancho: 180 },
+  { clave: "sics_anterior",          letra: "",   titulo: "SIC's 2026",            grupo: "ultima_sic",    formato: "cantidad", ancho: 100 },
   { clave: "hist_1",                 letra: "K",  titulo: "2023P",                 grupo: "historico",     formato: "cantidad", ancho: W_CANT },
   { clave: "hist_2",                 letra: "L",  titulo: "2023C",                 grupo: "historico",     formato: "cantidad", ancho: W_CANT },
   { clave: "hist_3",                 letra: "M",  titulo: "2024P",                 grupo: "historico",     formato: "cantidad", ancho: W_CANT },
   { clave: "max_hist",               letra: "N",  titulo: "MAX 2023",              grupo: "historico",     formato: "cantidad", ancho: 100 },
+  { clave: "ppc_anterior",           letra: "",   titulo: "PPC 2026",              grupo: "historico",     formato: "cantidad", ancho: 100 },
   { clave: "d_acr",                  letra: "O",  titulo: "ACR",                   grupo: "zona_a",        formato: "cantidad", ancho: W_CANT },
   { clave: "d_aord",                 letra: "P",  titulo: "AORD",                  grupo: "zona_a",        formato: "cantidad", ancho: W_CANT },
   { clave: "d_mantenimiento",        letra: "Q",  titulo: "MANTENIMIENTO",         grupo: "zona_a",        formato: "cantidad", ancho: 124 },
@@ -315,6 +341,7 @@ export const COLUMNAS: ColumnaPlan[] = [
   { clave: "consumo_promedio",       letra: "AS", titulo: "Consumo Promedio",      grupo: "stock",         formato: "cantidad", ancho: 144 },
   { clave: "analisis_cons",          letra: "AT", titulo: "Análisis Cons. Prom",   grupo: "stock",         formato: "cantidad", ancho: 164 },
   { clave: "analisis2",              letra: "AU", titulo: "Análisis2",             grupo: "stock",         formato: "cantidad", ancho: 96 },
+  { clave: "pu_ppc_anterior",        letra: "",   titulo: "PU PPC 2026",           grupo: "precios",       formato: "pesos",    ancho: W_PESOS },
   { clave: "pu_sic",                 letra: "AV", titulo: "Pu Sic",                grupo: "precios",       formato: "pesos",    ancho: W_PESOS },
   { clave: "pu_op",                  letra: "AW", titulo: "Pu OP",                 grupo: "precios",       formato: "pesos",    ancho: W_PESOS },
   { clave: "pu_sic_mas",             letra: "AX", titulo: "Pu Sic + 20%",          grupo: "precios",       formato: "pesos",    ancho: W_PESOS },
@@ -330,6 +357,20 @@ export const COLUMNAS: ColumnaPlan[] = [
   { clave: "partida",                letra: "BH", titulo: "Partida",               grupo: "partida",       formato: "codigo",   ancho: 124 },
   { clave: "partida_descripcion",    letra: "BI", titulo: "Descripción Partida",   grupo: "partida",       formato: "texto",    ancho: 240 },
 ];
+
+/** Columnas que solo traen los Excel desde 2027 (un plan viejo no las tiene). */
+const NUEVAS_2027 = new Set<ClaveColumna>(["sics_anterior", "ppc_anterior", "pu_ppc_anterior"]);
+
+/**
+ * ¿La columna es de este plan? Cada Excel trae su juego de columnas (el 2027
+ * cambió el histórico 2023P…MAX por SIC's / PPC del año anterior): se muestran
+ * las que vinieron en el archivo (`etiquetas`). Un plan sin etiquetas muestra
+ * las del 2026.
+ */
+export function columnaEnPlan(c: ColumnaPlan, etiquetas: Partial<Record<ClaveColumna, string>> | null | undefined): boolean {
+  if (etiquetas && Object.keys(etiquetas).length) return c.clave in etiquetas;
+  return !NUEVAS_2027.has(c.clave);
+}
 
 export const COLUMNA_POR_CLAVE: Record<ClaveColumna, ColumnaPlan> =
   Object.fromEntries(COLUMNAS.map((c) => [c.clave, c])) as Record<ClaveColumna, ColumnaPlan>;

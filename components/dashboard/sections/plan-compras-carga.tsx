@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   listPlanes, guardarEdiciones, eliminarPlan, nombresUsuarios, puedeEditarPlan, mensajeErrorPlan, calcularFila, incidencia, textoSinCompra, esCalculada,
-  COLUMNAS, GRUPOS, ETIQUETAS_DEFAULT,
+  COLUMNAS, GRUPOS, ETIQUETAS_DEFAULT, columnaEnPlan,
   type PlanCompras, type PlanComprasItem, type PlanComprasCalc, type ClaveColumna, type ClaveCarga, type ColumnaPlan,
   type GrupoId, type GrupoPlan,
 } from "@/lib/planCompras";
@@ -33,7 +33,7 @@ import {
   planesEnCache, guardarPlanesCache, planElegido, recordarPlan, olvidarPlan,
 } from "@/lib/planComprasCache";
 import {
-  esEditable, parseValor, textoDeValor, conCambio, restaurada, estaModificada, textoImportado,
+  esEditable, claveDato, parseValor, textoDeValor, conCambio, restaurada, estaModificada, textoImportado,
   parseTsv, celdaTsv, valorCelda, tituloColumna, type Valor,
 } from "@/lib/planComprasEdicion";
 import { PlanComprasImportarModal } from "./plan-compras-importar";
@@ -146,8 +146,8 @@ function formulas(e: (k: ClaveColumna) => string, plan: PlanCompras | null): Par
     interior:       `SUMA(${e("d_zb")} … ${e("d_zh")})`,
     total:          `${e("za")} + ${e("interior")} + ${e("d_med")} + ${e("d_tele")} + ${e("d_tct")} + ${e("d_trafos")} + ${e("d_obras")} + ${e("d_reg_ten")} + ${e("d_impacto")}`,
     gd:             `${e("total")} − ${e("ajuste")}`,
-    recorte:        `${e("cant_aprobadas")} − ${e("gd")}`,
-    analisis:       `${e("total")} / ${e("max_hist")} − 1`,
+    recorte:        plan?.formulas?.recorte === "gd_menos_aprobadas" ? `${e("gd")} − ${e("cant_aprobadas")}` : `${e("cant_aprobadas")} − ${e("gd")}`,
+    analisis:       `${e("total")} / ${e(plan?.formulas?.analisis === "ppc_anterior" ? "ppc_anterior" : "max_hist")} − 1`,
     analisis_cons:  `${e("consumo_promedio")} − ${e("pendientes")} − ${e("stock")}`,
     analisis2:      `${e("gd")} − ${e("stock")} − ${e("pendientes")}`,
     pu_sic_mas:     `REDONDEAR(MAX(${e("pu_sic")}; ${e("pu_op")}) × ${mayor}; 0)`,
@@ -155,7 +155,7 @@ function formulas(e: (k: ClaveColumna) => string, plan: PlanCompras | null): Par
     verif_precio:   `${e("pu_est_pesos")} / ${e("pu_sic_mas")} − 1`,
     total_plan:     `${e("pu_est_pesos")} × ${e("gd")}`,
     incidencia:     `${e("total_plan")} / total de las filas visibles`,
-    total_ajustado: `${e("pu_ajustado")} × ${e("cant_aprobadas")}`,
+    total_ajustado: `${e("pu_ajustado")} × ${e("cant_aprobadas")} (salvo que el monto se haya escrito a mano: entonces va en blanco, no en verde)`,
     dif_pu:         `${e("pu_ajustado")} / ${e("pu_est_pesos")} − 1`,
     dif_global:     `${e("total_ajustado")} / ${e("total_plan")} − 1`,
   };
@@ -208,7 +208,9 @@ const FilaGrilla = memo(function FilaGrilla({
     >
       {cols.map((c, i) => {
         const k = c.clave;
-        const calc = esCalculada(k);
+        // Total Ajustado escrito a mano es un dato (no va en verde itálica).
+        const manual = k === "total_ajustado" && fila.it.total_ajustado_dato != null;
+        const calc = esCalculada(k) && !manual;
         const num = esNumerica(c);
         const x = anclaX[k];
         const anclada = x != null;
@@ -248,6 +250,10 @@ const FilaGrilla = memo(function FilaGrilla({
             } else {
               contenido = <span>{formatear(c, v)}</span>;
               title = F_EXACT.format(v);
+              if (manual) {
+                const cuenta = (fila.it.pu_ajustado ?? 0) * (fila.it.cant_aprobadas ?? 0);
+                title += `\nEscrito a mano (PU ajustado × CANT. APROBADAS daría ${F_EXACT.format(cuenta)}). Supr vuelve al cálculo.`;
+              }
               if (calc && c.formato === "pct" && v < 0) cls += " is-neg";
             }
           } else {
@@ -599,8 +605,8 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
   const cacheFilas = useRef<{ clave: string; m: WeakMap<PlanComprasItem, Fila> }>({ clave: "", m: new WeakMap() });
   const filas = useMemo<Fila[]>(() => {
     if (!plan) return [];
-    const params = { tipo_cambio: plan.tipo_cambio, pct_mayoracion: plan.pct_mayoracion };
-    const clave = `${plan.id}|${plan.tipo_cambio}|${plan.pct_mayoracion}`;
+    const params = { tipo_cambio: plan.tipo_cambio, pct_mayoracion: plan.pct_mayoracion, formulas: plan.formulas };
+    const clave = `${plan.id}|${plan.tipo_cambio}|${plan.pct_mayoracion}|${JSON.stringify(plan.formulas ?? {})}`;
     if (cacheFilas.current.clave !== clave) cacheFilas.current = { clave, m: new WeakMap() };
     const m = cacheFilas.current.m;
     return items.map((it) => {
@@ -650,7 +656,9 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
     }
   };
 
-  const sinCompra = textoSinCompra(etiqueta("max_hist"));
+  // Texto del SI.ERROR de Análisis: «No se compró en 2023» (vs MAX histórico,
+  // 2026) o «… en 2026» (vs PPC del año anterior, 2027).
+  const sinCompra = textoSinCompra(etiqueta(plan?.formulas?.analisis === "ppc_anterior" ? "ppc_anterior" : "max_hist"));
 
   // Filtros de la barra + de columna. `excluir` deja afuera el filtro de una
   // columna: el menú de esa columna lista los valores de las filas que pasan
@@ -828,16 +836,24 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
   }
 
   // ── Columnas visibles ──────────────────────────────────────────────────────
+  // Cada plan muestra las columnas que trajo su Excel (el 2027 cambió el
+  // histórico 2023P…MAX por SIC's / PPC del año anterior).
+  const colsDelPlan = useMemo(() => COLUMNAS.filter((c) => columnaEnPlan(c, plan?.etiquetas)), [plan]);
+  const colsDeGrupo = useCallback((g: GrupoId) => colsDelPlan.filter((c) => c.grupo === g), [colsDelPlan]);
+  /** Se colapsa solo si su columna resumen es de este plan (MAX no está en el 2027). */
+  const colapsable = useCallback((g: GrupoPlan) => !!g.resumen && colsDelPlan.some((c) => c.clave === g.resumen), [colsDelPlan]);
+
   const gruposVisibles = useMemo(() => {
     const out: { g: GrupoPlan; cols: ColumnaPlan[]; colapsado: boolean }[] = [];
     for (const g of GRUPOS) {
       if (ocultos.has(g.id)) continue;
-      const todas = COLUMNAS.filter((c) => c.grupo === g.id);
-      const colapsado = !!g.resumen && colapsados.has(g.id);
+      const todas = colsDeGrupo(g.id);
+      if (!todas.length) continue;
+      const colapsado = colapsable(g) && colapsados.has(g.id);
       out.push({ g, cols: colapsado ? todas.filter((c) => c.clave === g.resumen) : todas, colapsado });
     }
     return out;
-  }, [ocultos, colapsados]);
+  }, [ocultos, colapsados, colsDeGrupo, colapsable]);
 
   const cols = useMemo(() => gruposVisibles.flatMap((x) => x.cols), [gruposVisibles]);
   const inicioGrupo = useMemo(() => new Set(gruposVisibles.map((x) => x.cols[0].clave)), [gruposVisibles]);
@@ -863,7 +879,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
     // estaba oculto).
     for (const g of GRUPOS) {
       if (!g.resumen || !colapsados.has(g.id) || !(g.resumen in w)) continue;
-      const ocultas = COLUMNAS.filter((c) => c.grupo === g.id).length - 1;
+      const ocultas = colsDeGrupo(g.id).length - 1;
       w[g.resumen] = Math.max(w[g.resumen], anchoGrupoColapsado(g.titulo, ocultas));
     }
     if (colW[ABSORBE] == null) {
@@ -1033,7 +1049,11 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
     if (!it) return;
     const err = errores[celda.id]?.[celda.k];
     editCerrado.current = false;
-    setEdit({ texto: inicial ?? err?.texto ?? textoDeValor(valorCelda(it, celda.k)), error: null });
+    // Total Ajustado arranca con lo que se ve (el monto escrito o el calculado).
+    const actual = celda.k === "total_ajustado"
+      ? filas.find((f) => f.it.id === it.id)?.c.total_ajustado ?? null
+      : valorCelda(it, claveDato(celda.k)!);
+    setEdit({ texto: inicial ?? err?.texto ?? textoDeValor(actual), error: null });
   };
 
   const quitarError = (id: string, k: ClaveColumna) =>
@@ -1053,7 +1073,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
     if (!it) return;
     quitarError(id, k);
     const nueva = conCambio(it, k, valor);
-    if (nueva) aplicarEdiciones(new Map([[id, { it: nueva, claves: new Set([k, ...Object.keys(it.importado ?? {})]) }]]));
+    if (nueva) aplicarEdiciones(new Map([[id, { it: nueva, claves: new Set([claveDato(k)!, ...Object.keys(it.importado ?? {})]) }]]));
   };
 
   /** Confirma la edición. Devuelve el error si el valor no es válido (y
@@ -1078,7 +1098,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
     const it = filaPorId(celda.id);
     const nueva = it ? restaurada(it, celda.k) : null;
     quitarError(celda.id, celda.k);
-    if (it && nueva) aplicarEdiciones(new Map([[it.id, { it: nueva, claves: new Set([celda.k]) }]]));
+    if (it && nueva) aplicarEdiciones(new Map([[it.id, { it: nueva, claves: new Set([claveDato(celda.k)!]) }]]));
   };
 
   /** Texto de la celda para copiar (número sin miles y con coma decimal). */
@@ -1133,7 +1153,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
         if (!nueva) return;
         const e = nuevas.get(f.it.id) ?? { it: base, claves: new Set<string>(Object.keys(base.importado ?? {})) };
         e.it = nueva;
-        e.claves.add(k);
+        e.claves.add(claveDato(k)!);
         nuevas.set(f.it.id, e);
       });
     });
@@ -1403,7 +1423,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
                     <div className="ido-pop-label">Grupos de columnas</div>
                     {GRUPOS.map((g) => {
                       const fijo = GRUPOS_FIJOS.has(g.id);
-                      const n = COLUMNAS.filter((c) => c.grupo === g.id).length;
+                      const n = colsDeGrupo(g.id).length;
                       return (
                         <DropdownMenuItem
                           key={g.id}
@@ -1571,7 +1591,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
                           gc.length > nAncla ? <div key="matricula-resto" style={{ gridColumn: `span ${gc.length - nAncla}` }} /> : null,
                         ];
                       }
-                      const total = COLUMNAS.filter((c) => c.grupo === g.id).length;
+                      const total = colsDeGrupo(g.id).length;
                       return (
                         <div key={g.id} className="pc-grupo" style={{ gridColumn: `span ${gc.length}` }} title={g.titulo}>
                           <span className="pc-grupo-in" style={{ left: anchoAnclado + 8 }}>
@@ -1580,12 +1600,12 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
                             {colapsado && (
                               <span className="pc-grupo-n shrink-0" title={`${g.titulo}: ${total - 1} columnas ocultas`}>+{total - 1}</span>
                             )}
-                            {g.resumen && (
+                            {colapsable(g) && (
                               <button
                                 type="button"
                                 className={`pc-colapsar ${colapsado ? "is-colapsado" : ""}`}
                                 onClick={() => toggleColapso(g.id)}
-                                title={colapsado ? `Expandir ${g.titulo}` : `Colapsar ${g.titulo} a ${etiqueta(g.resumen)}`}
+                                title={colapsado ? `Expandir ${g.titulo}` : `Colapsar ${g.titulo} a ${etiqueta(g.resumen!)}`}
                                 aria-label={colapsado ? `Expandir ${g.titulo}` : `Colapsar ${g.titulo}`}
                               >
                                 <ChevronLeft className="w-3 h-3" />
@@ -1607,7 +1627,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
                           key={c.clave}
                           onClick={() => { if (Date.now() - finResize.current > 200) toggleSort(c.clave); }}
                           className={`pc-th ${esNumerica(c) ? "is-num" : ""} ${activa ? "is-activa" : ""} ${inicioGrupo.has(c.clave) && i > 0 ? "is-ini" : ""} ${c.clave === ANCLADAS[ANCLADAS.length - 1] ? "pc-ancla-fin" : ""}`}
-                          title={`${label} · columna ${c.letra}${formula ? `\n= ${formula}` : ""}`}
+                          title={`${label}${c.letra && !plan?.formulas ? ` · columna ${c.letra}` : ""}${formula ? `\n= ${formula}` : ""}`}
                           style={anclado(anclada, anclaX[c.clave])}
                         >
                           <span className="truncate" style={esCalculada(c.clave) ? { fontStyle: "italic" } : undefined}>{label}</span>
@@ -1747,7 +1767,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
                   icon={Undo2}
                   label="Restaurar valor importado"
                   disabled={!puede || !mod}
-                  title={mod && it ? `Vuelve a ${textoImportado(it, k as ClaveCarga)}` : "La celda no fue modificada"}
+                  title={mod && it ? `Vuelve a ${textoImportado(it, k)}` : "La celda no fue modificada"}
                   onClick={() => { cerrar(); restaurar(); }}
                 />
               </>

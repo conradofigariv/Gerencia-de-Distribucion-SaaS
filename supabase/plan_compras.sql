@@ -257,3 +257,14 @@ delete from public.plan_compras where not activo and importado_at is null;
 alter table public.plan_compras_items add column if not exists importado   jsonb;
 alter table public.plan_compras_items add column if not exists editado_por uuid;
 alter table public.plan_compras_items add column if not exists editado_at  timestamptz;
+
+-- ─── Excel 2027 (columnas y fórmulas que cambiaron) ─────────────────────────
+-- El Excel 2027 reemplazó el histórico 2023P…MAX por datos del plan anterior
+-- («SIC's 2026», «PPC 2026», «PU PPC 2026») y trae «Total Ajustado» escrito a
+-- mano en algunas filas. `formulas` guarda qué variante usa cada plan (signo de
+-- Recorte, divisor de Análisis); null = las del Excel 2026.
+alter table public.plan_compras_items add column if not exists sics_anterior       numeric;
+alter table public.plan_compras_items add column if not exists ppc_anterior        numeric;
+alter table public.plan_compras_items add column if not exists pu_ppc_anterior     numeric;
+alter table public.plan_compras_items add column if not exists total_ajustado_dato numeric;
+alter table public.plan_compras       add column if not exists formulas            jsonb;

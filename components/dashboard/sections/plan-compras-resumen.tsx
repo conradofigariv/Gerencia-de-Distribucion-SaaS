@@ -459,7 +459,7 @@ export function PlanComprasResumenSection() {
   // ── Cálculo ────────────────────────────────────────────────────────────────
   const filas = useMemo<FilaCalc[]>(() => {
     if (!plan) return [];
-    const p = { tipo_cambio: plan.tipo_cambio, pct_mayoracion: plan.pct_mayoracion };
+    const p = { tipo_cambio: plan.tipo_cambio, pct_mayoracion: plan.pct_mayoracion, formulas: plan.formulas };
     return items.map((it) => ({ it, calc: calcularFila(it, p) }));
   }, [items, plan]);
 

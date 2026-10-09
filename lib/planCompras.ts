@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabaseClient";
 import {
   CLAVES_TEXTO, CLAVES_NUMERO,
-  type ClaveColumna, type PlanComprasItem, type PlanComprasItemInput,
+  type ClaveColumna, type PlanComprasItem, type PlanComprasItemInput, type FormulasPlan,
 } from "@/lib/planComprasCalc";
 import type { ImportacionPlan } from "@/lib/planComprasImport";
 
@@ -23,6 +23,8 @@ export interface PlanCompras {
   nombre:         string | null;
   tipo_cambio:    number;
   pct_mayoracion: number;
+  /** Variantes de fórmula de este plan (null = las del Excel 2026). */
+  formulas?:      FormulasPlan | null;
   /** Encabezado de cada columna tal cual vino en el Excel. */
   etiquetas:      Partial<Record<ClaveColumna, string>>;
   /** Celdas sueltas al pie de Global (TC y PC USD de años anteriores). */
@@ -39,10 +41,20 @@ export interface PlanFamilia {
   orden:     number;
 }
 
-const COLS_PLAN =
+const COLS_PLAN_BASE =
   "id, anio, nombre, tipo_cambio, pct_mayoracion, etiquetas, pie, archivo, importado_at, importado_por, activo";
+/** `formulas` (variantes por año) es del bloque «Excel 2027» del SQL. */
+const COLS_PLAN = `${COLS_PLAN_BASE}, formulas`;
 
 const COLS_ITEM = ["id", "plan_id", "orden", ...CLAVES_TEXTO, ...CLAVES_NUMERO].join(", ");
+/** Columnas que agregó el bloque «Excel 2027» del SQL (datos del año anterior
+ *  y Total Ajustado escrito a mano). Sin ellas la base sigue sirviendo los
+ *  planes viejos. */
+const NUEVAS_2027 = new Set(["sics_anterior", "ppc_anterior", "pu_ppc_anterior", "total_ajustado_dato"]);
+const COLS_ITEM_VIEJAS = ["id", "plan_id", "orden", ...CLAVES_TEXTO, ...CLAVES_NUMERO.filter((k) => !NUEVAS_2027.has(k))].join(", ");
+
+/** ¿Es el error de una columna que la base todavía no tiene? */
+const esColumnaFaltante = (e: { code?: string } | null | undefined) => e?.code === "42703" || e?.code === "PGRST204";
 /** Marcas de la edición en celda (supabase/plan_compras.sql, bloque «Edición»). */
 const COLS_EDICION = "importado, editado_por, editado_at";
 
@@ -69,6 +81,11 @@ export function mensajeErrorPlan(e: unknown): string {
     CODIGOS_SIN_SQL.has(code) ||
     /does not exist|schema cache|Could not find the (table|function)/i.test(msg)
   ) {
+    // Columna (no tabla) que falta: casi siempre un bloque nuevo del SQL
+    // (edición en celda, Excel 2027) que todavía no se corrió.
+    if (code === "PGRST204" || code === "42703" || /column/i.test(msg)) {
+      return "A la base le faltan columnas nuevas del Plan de Compras (por ejemplo las del Excel 2027): volvé a correr supabase/plan_compras.sql completo en el SQL Editor de Supabase.";
+    }
     return "La base todavía no tiene las tablas del Plan de Compras: hay que correr supabase/plan_compras.sql en Supabase.";
   }
   // Un ítem que apunta a una cabecera que ya no existe: otra importación del
@@ -110,13 +127,16 @@ async function enParalelo<T>(tareas: (() => Promise<T>)[], n: number): Promise<T
 
 /** Planes activos (uno por año), el más nuevo primero. */
 export async function listPlanes(): Promise<PlanCompras[]> {
-  const { data, error } = await supabase
+  const leer = (cols: string) => supabase
     .from("plan_compras")
-    .select(COLS_PLAN)
+    .select(cols)
     .eq("activo", true)
     .order("anio", { ascending: false });
+  let { data, error } = await leer(COLS_PLAN);
+  // Base sin el bloque «Excel 2027»: los planes se leen igual (fórmulas 2026).
+  if (esColumnaFaltante(error)) ({ data, error } = await leer(COLS_PLAN_BASE));
   if (error) throw new Error(mensajeErrorPlan(error));
-  return (data ?? []) as PlanCompras[];
+  return (data ?? []) as unknown as PlanCompras[];
 }
 
 const PAGINA = 1000; // tope de filas por request de Supabase
@@ -145,12 +165,22 @@ export async function getItemsEditables(
   planId: string,
   onProgreso?: (cargadas: number, total: number) => void,
 ): Promise<{ items: PlanComprasItem[]; edicion: boolean }> {
-  try {
-    return { items: await leerItems(planId, `${COLS_ITEM}, ${COLS_EDICION}`, onProgreso), edicion: true };
-  } catch (e) {
-    if (!(e instanceof ErrorColumnaFaltante)) throw e;
-    return { items: await leerItems(planId, COLS_ITEM, onProgreso), edicion: false };
+  // De la base más nueva a la más vieja: con edición y columnas 2027, sin
+  // edición, sin columnas 2027… La primera que la base acepte.
+  const intentos: { cols: string; edicion: boolean }[] = [
+    { cols: `${COLS_ITEM}, ${COLS_EDICION}`, edicion: true },
+    { cols: COLS_ITEM, edicion: false },
+    { cols: `${COLS_ITEM_VIEJAS}, ${COLS_EDICION}`, edicion: true },
+    { cols: COLS_ITEM_VIEJAS, edicion: false },
+  ];
+  for (const [i, x] of intentos.entries()) {
+    try {
+      return { items: await leerItems(planId, x.cols, onProgreso), edicion: x.edicion };
+    } catch (e) {
+      if (!(e instanceof ErrorColumnaFaltante) || i === intentos.length - 1) throw e;
+    }
   }
+  throw new Error("No se pudieron leer las filas del plan.");
 }
 
 class ErrorColumnaFaltante extends Error {}
@@ -180,7 +210,7 @@ async function leerItems(
         .order("id", { ascending: true })
         .range(p * PAGINA, p * PAGINA + PAGINA - 1);
       if (err) {
-        if (err.code === "42703" || err.code === "PGRST204") throw new ErrorColumnaFaltante(err.message);
+        if (esColumnaFaltante(err)) throw new ErrorColumnaFaltante(err.message);
         throw new Error(mensajeErrorPlan(err));
       }
       const lote = (data ?? []) as unknown as PlanComprasItem[];
@@ -395,11 +425,14 @@ export async function importarPlan(
       importado_at:   new Date().toISOString(),
       importado_por:  userData.user?.id ?? null,
       activo:         false,
+      // Solo si el Excel usa fórmulas distintas a las del 2026: así un Excel
+      // 2026 se sigue pudiendo importar en una base sin el bloque «Excel 2027».
+      ...(Object.keys(imp.formulas ?? {}).length ? { formulas: imp.formulas } : {}),
     })
-    .select(`${COLS_PLAN}, created_at`)
+    .select(`${Object.keys(imp.formulas ?? {}).length ? COLS_PLAN : COLS_PLAN_BASE}, created_at`)
     .single();
   if (errPlan) throw new Error(mensajeErrorPlan(errPlan));
-  const { created_at: creadoEn, ...cabecera } = plan as PlanCompras & { created_at: string };
+  const { created_at: creadoEn, ...cabecera } = plan as unknown as PlanCompras & { created_at: string };
   const nuevo = cabecera as PlanCompras;
 
   try {

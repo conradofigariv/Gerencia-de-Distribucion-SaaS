@@ -72,6 +72,32 @@ se persiste: cambiar el TC recalcula las 22.950 filas sin reescribir ninguna.
 | BG | DIF GLOBAL % | `dif_global` | `SI.ERROR(Total Aj. / Total $ − 1; "Sin Datos")` |
 | BH–BI | Partida, Descripción Partida | `partida`, `partida_descripcion` | dato |
 
+### Excel 2027: columnas y fórmulas que cambiaron
+
+El `PC_ANUAL_GD_27_Rev0` no es igual al 2026. Cada plan guarda su variante en
+`plan_compras.formulas` (detectada al importar probando las dos fórmulas contra los
+valores del archivo: gana la que coincide) y muestra solo las columnas que trajo su
+Excel (`columnaEnPlan`, por `etiquetas`). Los dos Excel verifican con 0 diferencias.
+
+| Qué | 2026 | 2027 |
+|---|---|---|
+| Histórico | 2023P, 2023C, 2024P, MAX 2023 | «SIC's 2026» (`sics_anterior`), «PPC 2026» (`ppc_anterior`) |
+| Análisis | `TOTAL / MAX − 1` | `TOTAL / PPC 2026 − 1` (`formulas.analisis = "ppc_anterior"`) |
+| Recorte | `CANT. APROBADAS − GD` | `GD − CANT. APROBADAS` (`formulas.recorte = "gd_menos_aprobadas"`) |
+| Precio año anterior | — | «PU PPC 2026» (`pu_ppc_anterior`, = Pu ajustado 2026) |
+| Total Ajustado | pegado, = PU aj. × aprobadas en el 100% | pegado, 71 filas escritas a mano |
+
+- **Total Ajustado = dato editable con respaldo de fórmula** (decisión del usuario):
+  si el Excel trae un monto distinto de `Pu ajustado × CANT. APROBADAS`, se guarda en
+  `total_ajustado_dato` y se respeta; si coincide, se sigue calculando (editar PU o
+  cantidad lo actualiza). En la grilla, el monto a mano va en blanco (no verde) con
+  tooltip «PU × cantidad daría …»; escribir en la celda lo pisa y Supr vuelve al cálculo.
+- **Columnas que el Excel trae y la app no reconoce** se avisan en la importación
+  («no se importan: …»): nada se pierde sin que se sepa.
+- **SQL:** bloque «Excel 2027» al final de `supabase/plan_compras.sql` (4 columnas en
+  items + `formulas` en la cabecera). Sin él la app sigue leyendo los planes viejos; para
+  importar un Excel 2027 hay que correrlo.
+
 - **Claves sin año.** Los encabezados del Excel llevan año («GD 2025», «Total 2026 $»)
   y cambian cada plan. La base usa claves fijas y guarda el encabezado real de cada
   importación en `plan_compras.etiquetas`; la grilla muestra ese texto.

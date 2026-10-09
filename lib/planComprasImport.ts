@@ -14,7 +14,7 @@
 import * as XLSX from "xlsx";
 import {
   COLUMNAS, CLAVES_TEXTO, CLAVES_NUMERO, esCalculada, calcularFila, itemVacio,
-  type ClaveColumna, type ClaveCalc, type PlanComprasItemInput, type ParametrosCalc,
+  type ClaveColumna, type ClaveCalc, type PlanComprasItemInput, type ParametrosCalc, type FormulasPlan,
 } from "./planComprasCalc";
 
 // ─── Tipos del resultado ─────────────────────────────────────────────────────
@@ -86,6 +86,8 @@ export interface ImportacionPlan {
   nombre:         string;
   tipo_cambio:    number;
   pct_mayoracion: number;
+  /** Variantes de fórmula de este Excel (detectadas contra sus valores). */
+  formulas:       FormulasPlan;
   /** Encabezado real de cada columna en este Excel. */
   etiquetas:      Partial<Record<ClaveColumna, string>>;
   /** Celdas sueltas al pie de Global (TC y PC USD de años anteriores). */
@@ -162,10 +164,11 @@ const fmt = (v: unknown): string =>
 // Excel del año que viene. Se buscan en el orden de COLUMNAS y cada columna
 // del Excel se usa una sola vez, así «2023P» y «2024P» (mismo patrón) caen en
 // hist_1 y hist_3 por orden de aparición.
-const MATCHERS: Record<ClaveColumna, string | RegExp> = {
+const MATCHERS: Partial<Record<ClaveColumna, string | RegExp>> = {
   articulo: "articulo", descripcion: "descripcion", unidad: "unidad", mat_serv: "m/s",
   familia: "familia", familia_vieja: "familias viejas", subfamilia: "subfamilia", a_cargo_de: "a cargo de",
-  ultima_sic_area: "ultima sic", ultima_sic_solicitante: "ultima sic2",
+  ultima_sic_area: "ultima sic", ultima_sic_solicitante: "ultima sic2", sics_anterior: /^sic'?s \d{4}$/,
+  ppc_anterior: /^ppc \d{4}$/, pu_ppc_anterior: /^pu ppc \d{4}$/,
   hist_1: /^\d{4} ?p$/, hist_2: /^\d{4} ?c$/, hist_3: /^\d{4} ?p$/, max_hist: /^max\b/,
   d_acr: "acr", d_aord: "aord", d_mantenimiento: "mantenimiento", d_seas: "seas",
   d_sistemas: "sistemas", d_servicios: "servicios", za: "za",
@@ -184,10 +187,18 @@ const MATCHERS: Record<ClaveColumna, string | RegExp> = {
   partida: "partida", partida_descripcion: "descripcion partida",
 };
 
+/** Columnas que no todos los años traen (el 2027 cambió el histórico por los
+ *  datos del año anterior): que falten no se avisa. */
+const OPCIONALES = new Set<ClaveColumna>([
+  "ultima_sic_solicitante", "hist_1", "hist_2", "hist_3", "max_hist",
+  "sics_anterior", "ppc_anterior", "pu_ppc_anterior",
+]);
+
 function mapearEncabezados(encabezado: Fila): {
   indice: Partial<Record<ClaveColumna, number>>;
   faltanCarga: string[];
   faltanCalc: string[];
+  sobran: string[];
 } {
   const norm = encabezado.map(normEncabezado);
   const usados = new Set<number>();
@@ -196,17 +207,26 @@ function mapearEncabezados(encabezado: Fila): {
   const faltanCalc: string[] = [];
   for (const c of COLUMNAS) {
     const m = MATCHERS[c.clave];
+    if (!m) continue;
     const i = norm.findIndex((h, j) => !usados.has(j) && (typeof m === "string" ? h === m : m.test(h)));
     if (i >= 0) {
       indice[c.clave] = i;
       usados.add(i);
+    } else if (OPCIONALES.has(c.clave)) {
+      continue;
     } else if (esCalculada(c.clave)) {
       faltanCalc.push(c.titulo);
     } else {
       faltanCarga.push(c.titulo);
     }
   }
-  return { indice, faltanCarga, faltanCalc };
+  // Encabezados del Excel que la app no reconoce: no se importan (se avisa,
+  // para que nada se pierda sin que se sepa).
+  const sobran = encabezado
+    .map((h, j) => ({ h: String(h ?? "").trim(), j }))
+    .filter(({ h, j }) => h && !usados.has(j))
+    .map(({ h }) => h);
+  return { indice, faltanCarga, faltanCalc, sobran };
 }
 
 // ─── Lectura ─────────────────────────────────────────────────────────────────
@@ -264,7 +284,7 @@ export function armarImportacion(
   // ── Encabezados ────────────────────────────────────────────────────────────
   // Los planes de otros años pueden traer columnas de más o de menos: solo
   // «Artículo» es obligatoria. Lo que falta queda vacío y se avisa.
-  const { indice, faltanCarga, faltanCalc } = mapearEncabezados(global[0]);
+  const { indice, faltanCarga, faltanCalc, sobran } = mapearEncabezados(global[0]);
   if (indice.articulo == null) {
     throw new ErrorImportacion("La pestaña «Global» no tiene la columna «Artículo» en la primera fila.");
   }
@@ -273,6 +293,9 @@ export function armarImportacion(
   }
   if (faltanCalc.length) {
     advertencias.push(`No se pudieron verificar contra el Excel (no están): ${faltanCalc.join(", ")}.`);
+  }
+  if (sobran.length) {
+    advertencias.push(`Columnas del Excel que la app no reconoce y no se importan: ${sobran.join(", ")}.`);
   }
   const col = (f: Fila, k: ClaveColumna): Celda => {
     const i = indice[k];
@@ -369,7 +392,30 @@ export function armarImportacion(
   // a 2 decimales; la verificación de abajo confirma que es el correcto.
   const pct = deducirMayoracion(filas, indice) ?? 0.2;
 
-  const params: ParametrosCalc = { tipo_cambio: tipoCambio, pct_mayoracion: pct };
+  // ── Total Ajustado: dato si no coincide con PU ajustado × CANT. APROBADAS ──
+  // En el Excel está pegado como valor; en el 2027 hay montos escritos a mano
+  // (redondeos, montos sin PU). Esos se guardan como dato para no perderlos;
+  // los que coinciden se siguen calculando (así editar PU o cantidad lo
+  // actualiza).
+  const iTA = indice.total_ajustado;
+  let manuales = 0;
+  if (iTA != null) {
+    filas.forEach((f, i) => {
+      const it = items[i];
+      const excel = numCrudo(f[iTA]) ?? 0;
+      const cuenta = (it.pu_ajustado ?? 0) * (it.cant_aprobadas ?? 0);
+      if (!iguales(excel, cuenta)) { it.total_ajustado_dato = excel; manuales++; }
+    });
+  }
+  if (manuales) {
+    advertencias.push(
+      `${manuales.toLocaleString("es-AR")} filas traen «${etiquetas.total_ajustado ?? "Total Ajustado"}» distinto de ` +
+      `Pu ajustado × CANT. APROBADAS (montos escritos a mano): se guardan tal cual y se pueden editar.`,
+    );
+  }
+
+  const formulas = detectarFormulas(filas, items, indice, { tipo_cambio: tipoCambio, pct_mayoracion: pct });
+  const params: ParametrosCalc = { tipo_cambio: tipoCambio, pct_mayoracion: pct, formulas };
 
   // ── Prioridad (familias) ───────────────────────────────────────────────────
   const familias: FamiliaImportada[] = [];
@@ -378,8 +424,11 @@ export function armarImportacion(
     const enc = prioridad[0].map(normEncabezado);
     const iFam = enc.indexOf("familia");
     const iPri = enc.indexOf("prioridad");
-    const iCant = enc.findIndex((h) => h.startsWith("cantidad matriculas"));
-    const iTot = enc.findIndex((h) => h === "total gd $");
+    // 2026: «CANTIDAD MATRICULAS» / «Total GD $» · 2027: «MATRICULAS 2027» /
+    // «Total GD 2027 $» (y también trae las del año anterior: se toma la del
+    // año del plan).
+    const iCant = enc.findIndex((h) => h.startsWith("cantidad matriculas") || h === `matriculas ${anio}`);
+    const iTot = enc.findIndex((h) => h === "total gd $" || h === `total gd ${anio} $`);
     if (iFam >= 0) {
       const vistas = new Set<string>();
       for (let r = 1; r < prioridad.length; r++) {
@@ -423,6 +472,7 @@ export function armarImportacion(
     nombre: `Plan de Compras Anual GD ${anio}`,
     tipo_cambio: tipoCambio,
     pct_mayoracion: pct,
+    formulas,
     etiquetas,
     pie,
     items,
@@ -431,6 +481,53 @@ export function armarImportacion(
     verificacion,
     advertencias,
   };
+}
+
+/**
+ * Qué variante de cada fórmula usa este Excel: se prueban las dos contra los
+ * valores que guardó el archivo y gana la que más coincide. Sin columna para
+ * comparar queda la del 2026 (o la única posible: sin histórico, Análisis va
+ * contra el PPC del año anterior).
+ */
+function detectarFormulas(
+  filas: Fila[],
+  items: ItemImportado[],
+  indice: Partial<Record<ClaveColumna, number>>,
+  base: ParametrosCalc,
+): FormulasPlan {
+  const out: FormulasPlan = {};
+  const probar = <T extends string>(clave: ClaveCalc, opciones: { v: T; f: FormulasPlan }[]): T | null => {
+    const i = indice[clave];
+    if (i == null) return null;
+    let mejor: { v: T; ok: number } | null = null;
+    for (const o of opciones) {
+      let ok = 0;
+      filas.forEach((f, r) => {
+        const excel = numCrudo(f[i]);
+        const app = calcularFila(items[r], { ...base, formulas: o.f })[clave as keyof ReturnType<typeof calcularFila>] as number | null;
+        if (excel == null ? app == null || app === 0 : app != null && iguales(excel, app)) ok++;
+      });
+      if (!mejor || ok > mejor.ok) mejor = { v: o.v, ok };
+    }
+    return mejor?.v ?? null;
+  };
+  const rec = probar("recorte", [
+    { v: "aprobadas_menos_gd" as const, f: { recorte: "aprobadas_menos_gd" } },
+    { v: "gd_menos_aprobadas" as const, f: { recorte: "gd_menos_aprobadas" } },
+  ]);
+  if (rec === "gd_menos_aprobadas") out.recorte = rec;
+  const tieneHist = indice.hist_1 != null || indice.hist_2 != null || indice.hist_3 != null;
+  const tienePpc = indice.ppc_anterior != null;
+  if (tienePpc && !tieneHist) {
+    out.analisis = "ppc_anterior";
+  } else if (tienePpc && tieneHist) {
+    const an = probar("analisis", [
+      { v: "max_hist" as const, f: { analisis: "max_hist" } },
+      { v: "ppc_anterior" as const, f: { analisis: "ppc_anterior" } },
+    ]);
+    if (an === "ppc_anterior") out.analisis = an;
+  }
+  return out;
 }
 
 function deducirMayoracion(filas: Fila[], indice: Partial<Record<ClaveColumna, number>>): number | null {
