@@ -13,13 +13,15 @@
 // Sistema de diseño (confirmado): §4.7 pestañas · §4.8 filtros (plan +
 // «A cargo de») · §4.11 tabla CSS grid con encabezado sticky opaco y fila de
 // totales · §1 calculado en verde itálica, % negativo en rojo · §4.12 barra de
-// estado · §4.25 «Cargando filas». Prioridad editable en la celda.
+// estado · §4.25 «Cargando filas». Prioridad editable en la celda. Filtros de
+// columna tipo Excel (mismo menú que Carga de datos): los % y los totales se
+// recalculan sobre las filas visibles, como el SUBTOTAL del Excel.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { AlertTriangle, FileSpreadsheet, RefreshCw } from "lucide-react";
+import { AlertTriangle, FileSpreadsheet, Filter, RefreshCw, X } from "lucide-react";
 import { SortArrow, CargandoFilas, type SortDir } from "@/components/dashboard/ido-kit";
 import {
   listPlanes, getItems, getFamilias, getCuentas, guardarPrioridad, mensajeErrorPlan, calcularFila,
@@ -27,9 +29,15 @@ import {
 } from "@/lib/planCompras";
 import {
   filtrarACargo, resumenPrioridad, resumenPartidas, resumenCuentas, descripcionesPartida, claveTexto,
+  reproporcionarPrioridad, reproporcionarPartidas, totalesCuentas,
   type FilaCalc, type FilaPrioridad, type FilaPartida, type FilaCuenta,
 } from "@/lib/planComprasResumen";
 import { FiltroSelect, SelectorPlan } from "./plan-compras-ui";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  MenuFiltroColumna, pasaFiltro, resumenFiltro,
+  type FiltroColumna, type ValorFiltro, type OpcionValor,
+} from "./plan-compras-filtro-columna";
 
 // ─── Formato ─────────────────────────────────────────────────────────────────
 
@@ -69,23 +77,77 @@ interface Col<T> {
   total?:   ReactNode;
 }
 
+type Filtros = Partial<Record<string, FiltroColumna>>;
+
+const esNumCol = <T,>(c: Col<T>) => c.formato !== "texto" && c.formato !== "codigo";
+
+/** Valor de una celda para el filtro de columna (lo que se ve en la tabla). */
+function valorFiltroCol<T>(c: Col<T>, f: T): ValorFiltro {
+  const v = c.valor(f);
+  if (esNumCol(c)) {
+    const n = typeof v === "number" && Number.isFinite(v) ? v : 0;
+    return { clave: String(n), label: n === 0 ? "–" : celdaNumero(n, c.formato).texto, num: n };
+  }
+  const t = v == null || v === "" ? null : String(v);
+  return t == null ? { clave: "∅", label: "(Vacías)", num: null } : { clave: t, label: t, num: null };
+}
+
+/** Filas que pasan los filtros de columna (`excluir`: el de esa columna no cuenta). */
+function filtrarFilas<T>(filas: T[], cols: Col<T>[], filtros: Filtros, excluir?: string): T[] {
+  const activos = Object.entries(filtros)
+    .filter(([id, f]) => f && id !== excluir)
+    .map(([id, f]) => ({ col: cols.find((c) => c.id === id), f: f!, set: f!.valores ? new Set(f!.valores) : undefined }))
+    .filter((a): a is { col: Col<T>; f: FiltroColumna; set: Set<string> | undefined } => !!a.col);
+  if (!activos.length) return filas;
+  return filas.filter((r) => activos.every((a) => pasaFiltro(a.f, valorFiltroCol(a.col, r), a.set)));
+}
+
 function celdaNumero(v: number | null, formato: Formato): { texto: string; vacio: boolean } {
   if (v == null || v === 0 || !Number.isFinite(v)) return { texto: "–", vacio: true };
   return { texto: formato === "pct" ? F_PCT.format(v) : formato === "cant" ? F_CANT.format(v) : F_ENT.format(v), vacio: false };
 }
 
 function Tabla<T>({
-  columnas, filas, clave, total, vacia,
+  columnas, filas, todas, filtros, onFiltro, clave, total, vacia,
 }: {
   columnas: Col<T>[];
+  /** Filas visibles (ya filtradas y con los % recalculados). */
   filas: T[];
+  /** Todas las filas: de acá salen los valores del menú de filtro. */
+  todas: T[];
+  filtros: Filtros;
+  onFiltro: (id: string, f: FiltroColumna | null) => void;
   clave: (f: T) => string;
   total?: boolean;
   vacia: string;
 }) {
   const [orden, setOrden] = useState<{ id: string; dir: SortDir } | null>(null);
-  const plantilla = columnas.map((c) => c.ancho).join(" ");
-  const minW = columnas.reduce((s, c) => s + c.min, 0);
+  const [menuCol, setMenuCol] = useState<string | null>(null);
+
+  // Valores del menú abierto: de las filas que pasan los DEMÁS filtros, como
+  // el autofiltro de Excel.
+  const opcionesMenu = useMemo<OpcionValor[]>(() => {
+    if (!menuCol) return [];
+    const col = columnas.find((c) => c.id === menuCol);
+    if (!col) return [];
+    const cnt = new Map<string, OpcionValor & { num: number | null }>();
+    for (const f of filtrarFilas(todas, columnas, filtros, menuCol)) {
+      const v = valorFiltroCol(col, f);
+      const o = cnt.get(v.clave);
+      if (o) o.n++; else cnt.set(v.clave, { clave: v.clave, label: v.label, n: 1, num: v.num });
+    }
+    const lista = [...cnt.values()];
+    if (esNumCol(col)) lista.sort((a, b) => (a.num ?? 0) - (b.num ?? 0));
+    else lista.sort((a, b) => (a.clave === "∅" ? 1 : b.clave === "∅" ? -1 : a.label.localeCompare(b.label, "es")));
+    return lista;
+  }, [menuCol, columnas, todas, filtros]);
+
+  const activos = columnas.filter((c) => filtros[c.id]);
+  // Cada encabezado lleva el embudo de filtro (18px + hueco): se suma a la
+  // pista para que el título no se corte.
+  const EMBUDO = 22;
+  const plantilla = columnas.map((c) => c.ancho.replace(/(\d+)px/, (_, n) => `${Number(n) + EMBUDO}px`)).join(" ");
+  const minW = columnas.reduce((s, c) => s + c.min + EMBUDO, 0);
 
   const ordenadas = useMemo(() => {
     if (!orden) return filas;
@@ -105,9 +167,34 @@ function Tabla<T>({
   const ordenar = (id: string) => setOrden((o) =>
     !o || o.id !== id ? { id, dir: "asc" } : o.dir === "asc" ? { id, dir: "desc" } : null);
 
-  const esNum = (c: Col<T>) => c.formato !== "texto" && c.formato !== "codigo";
+  const esNum = esNumCol;
+  const labelDe = (c: Col<T>) => (clave: string) =>
+    clave === "∅" ? "(Vacías)" : esNum(c) ? (Number(clave) === 0 ? "0" : celdaNumero(Number(clave), c.formato).texto) : clave;
 
   return (
+    <>
+    {/* Chips de filtros de columna activos (§4.3) */}
+    {activos.length > 0 && (
+      <div className="pc-chips">
+        <Filter className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--ido-accent)" }} />
+        {activos.map((c) => {
+          const resumen = resumenFiltro(filtros[c.id]!, labelDe(c));
+          return (
+            <span key={c.id} className="pc-chip" title={`${c.titulo}: ${resumen}`}>
+              <button type="button" className="pc-chip-txt" onClick={() => setMenuCol(c.id)}>
+                <b>{c.titulo}</b>: {resumen}
+              </button>
+              <button type="button" className="pc-chip-x" onClick={() => onFiltro(c.id, null)} aria-label={`Quitar filtro de ${c.titulo}`}>
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          );
+        })}
+        <button type="button" className="ido-btn ido-btn-text" style={{ height: 26 }} onClick={() => activos.forEach((c) => onFiltro(c.id, null))}>
+          Quitar filtros de columna
+        </button>
+      </div>
+    )}
     <div className="flex-1 min-h-0" style={{ overflow: "auto" }}>
       <div style={{ minWidth: Math.max(minW, 0), minHeight: "100%", display: "flex", flexDirection: "column" }}>
         <div
@@ -128,6 +215,36 @@ function Tabla<T>({
               >
                 <span className="truncate" style={c.calc ? { fontStyle: "italic" } : undefined}>{c.titulo}</span>
                 {activa && <SortArrow active dir={orden.dir} className="w-3 h-3 shrink-0" />}
+                <Popover open={menuCol === c.id} onOpenChange={(o) => setMenuCol(o ? c.id : null)}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className={`pc-filtro-btn ${filtros[c.id] ? "is-on" : ""}`}
+                      onClick={(e) => e.stopPropagation()}
+                      title={filtros[c.id] ? `Filtrado: ${resumenFiltro(filtros[c.id]!, labelDe(c))}` : `Filtrar ${c.titulo}`}
+                      aria-label={`Filtrar ${c.titulo}`}
+                    >
+                      <Filter className="w-3 h-3" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align={esNum(c) ? "end" : "start"}
+                    className="ido-terminal ido-pop border-0 p-1 w-[290px] z-[10000]"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {menuCol === c.id && (
+                      <MenuFiltroColumna
+                        titulo={c.titulo}
+                        numerica={esNum(c)}
+                        opciones={opcionesMenu}
+                        filtro={filtros[c.id] ?? null}
+                        onAplicar={(f) => onFiltro(c.id, f)}
+                        onOrdenar={(dir) => setOrden({ id: c.id, dir })}
+                        onCerrar={() => setMenuCol(null)}
+                      />
+                    )}
+                  </PopoverContent>
+                </Popover>
               </div>
             );
           })}
@@ -173,6 +290,7 @@ function Tabla<T>({
         )}
       </div>
     </div>
+    </>
   );
 }
 
@@ -312,9 +430,18 @@ export function PlanComprasResumenSection() {
 
   const filtradas = useMemo(() => filtrarACargo(filas, aCargo === TODOS ? null : aCargo), [filas, aCargo]);
   const descripciones = useMemo(() => descripcionesPartida(filas), [filas]);
-  const prioridad = useMemo(() => resumenPrioridad(filtradas, familias), [filtradas, familias]);
-  const partidas = useMemo(() => resumenPartidas(filtradas, descripciones), [filtradas, descripciones]);
-  const ctas = useMemo(() => resumenCuentas(cuentas, partidas, descripciones), [cuentas, partidas, descripciones]);
+  const prioridadBase = useMemo(() => resumenPrioridad(filtradas, familias), [filtradas, familias]);
+  const partidasBase = useMemo(() => resumenPartidas(filtradas, descripciones), [filtradas, descripciones]);
+  const ctasBase = useMemo(() => resumenCuentas(cuentas, partidasBase, descripciones), [cuentas, partidasBase, descripciones]);
+
+  // Filtros de columna, uno por pestaña (cambiar de pestaña no los pierde).
+  const [filtrosVista, setFiltrosVista] = useState<Record<Vista, Filtros>>({ prioridad: {}, partida: {}, cuentas: {} });
+  const onFiltro = (v: Vista) => (id: string, f: FiltroColumna | null) =>
+    setFiltrosVista((prev) => {
+      const next = { ...prev[v] };
+      if (f) next[id] = f; else delete next[id];
+      return { ...prev, [v]: next };
+    });
 
   const tc = plan?.tipo_cambio ?? 0;
   const usd = (v: number) => (tc > 0 ? v / tc : null);
@@ -339,7 +466,9 @@ export function PlanComprasResumenSection() {
   };
 
   // ── Columnas ───────────────────────────────────────────────────────────────
-  const colsPrioridad: Col<FilaPrioridad>[] = [
+  // Las columnas reciben el resumen VISIBLE (con filtros de columna) para la
+  // fila de totales; el filtro usa solo `valor`, que no depende de eso.
+  const colsPrioridad = (prioridad: { total: ReturnType<typeof reproporcionarPrioridad>["total"] }): Col<FilaPrioridad>[] => [
     {
       id: "familia", titulo: "Familia", ancho: "minmax(220px, 2.2fr)", min: 220, formato: "texto", valor: (f) => f.familia,
       render: (f) => (
@@ -376,7 +505,7 @@ export function PlanComprasResumenSection() {
       tooltip: `Suma de «${tituloAjustado}» de la familia`, total: <Tot v={prioridad.total.totalAprobado} />,
     },
     {
-      id: "ap_usd", titulo: "Total Aprobado USD", ancho: "minmax(130px, 0.9fr)", min: 130, formato: "ent", calc: true, valor: (f) => usd(f.totalAprobado),
+      id: "ap_usd", titulo: "Total Aprobado USD", ancho: "minmax(150px, 0.9fr)", min: 150, formato: "ent", calc: true, valor: (f) => usd(f.totalAprobado),
       tooltip: "Total Aprobado $ / TC del plan", total: <Tot v={usd(prioridad.total.totalAprobado)} />,
     },
     {
@@ -390,7 +519,7 @@ export function PlanComprasResumenSection() {
     },
   ];
 
-  const colsPartida: Col<FilaPartida>[] = [
+  const colsPartida = (partidas: { total: ReturnType<typeof reproporcionarPartidas>["total"] }): Col<FilaPartida>[] => [
     {
       id: "partida", titulo: "Partida", ancho: "128px", min: 128, formato: "codigo", valor: (f) => f.partida || null,
       total: <span style={{ fontWeight: 600 }}>Total</span>,
@@ -425,7 +554,7 @@ export function PlanComprasResumenSection() {
     },
   ];
 
-  const colsCuentas: Col<FilaCuenta>[] = [
+  const colsCuentas = (ctas: { total: ReturnType<typeof totalesCuentas> }): Col<FilaCuenta>[] => [
     {
       id: "cuenta", titulo: "Cuenta", ancho: "minmax(240px, 1.6fr)", min: 240, formato: "codigo", valor: (f) => f.cuenta,
       total: <span style={{ fontWeight: 600 }}>Total</span>,
@@ -454,6 +583,15 @@ export function PlanComprasResumenSection() {
       total: <NumCalc v={ctas.total.totalExcel - ctas.total.totalCalc} signo />,
     },
   ];
+
+  // ── Filas visibles (filtros de columna) ────────────────────────────────────
+  const fPri = filtrosVista.prioridad, fPar = filtrosVista.partida, fCta = filtrosVista.cuentas;
+  const hayF = (f: Filtros) => Object.values(f).some(Boolean);
+  const prioridad = hayF(fPri) ? reproporcionarPrioridad(filtrarFilas(prioridadBase.filas, colsPrioridad(prioridadBase), fPri)) : prioridadBase;
+  const partidas = hayF(fPar) ? reproporcionarPartidas(filtrarFilas(partidasBase.filas, colsPartida(partidasBase), fPar)) : partidasBase;
+  const ctasFilas = hayF(fCta) ? filtrarFilas(ctasBase.filas, colsCuentas(ctasBase), fCta) : ctasBase.filas;
+  const ctas = { ...ctasBase, filas: ctasFilas, total: hayF(fCta) ? totalesCuentas(ctasFilas) : ctasBase.total };
+  const deN = (vis: number, todas: number) => (vis === todas ? `${vis}` : `${vis} de ${todas}`);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   const vacio = !cargando && !error && !plan;
@@ -518,24 +656,32 @@ export function PlanComprasResumenSection() {
           </div>
         ) : vista === "prioridad" ? (
           <>
-            <Tabla columnas={colsPrioridad} filas={prioridad.filas} clave={(f) => f.familia} total vacia="No hay familias en este plan." />
+            <Tabla
+              columnas={colsPrioridad(prioridad)} filas={prioridad.filas} todas={prioridadBase.filas}
+              filtros={fPri} onFiltro={onFiltro("prioridad")}
+              clave={(f) => f.familia} total vacia={hayF(fPri) ? "Ninguna familia pasa los filtros." : "No hay familias en este plan."}
+            />
             <div className="pc-estado">
               <span>Total GD $: <b>$ {F_ENT.format(prioridad.total.totalGd)}</b>{tc > 0 && <> · USD <b>{F_ENT.format(prioridad.total.totalGd / tc)}</b></>}</span>
               <span>Total Aprobado $: <b>$ {F_ENT.format(prioridad.total.totalAprobado)}</b>{tc > 0 && <> · USD <b>{F_ENT.format(prioridad.total.totalAprobado / tc)}</b></>}</span>
               {prioridad.total.totalGd > 0 && (
                 <span title="Total Aprobado $ / Total GD $ − 1">Ajuste: <b>{F_PCT.format(prioridad.total.totalAprobado / prioridad.total.totalGd - 1)}</b></span>
               )}
-              <span style={{ marginLeft: "auto" }}><b>{prioridad.filas.length}</b> familias · {filtroTxt}</span>
+              <span style={{ marginLeft: "auto" }}><b>{deN(prioridad.filas.length, prioridadBase.filas.length)}</b> familias · {filtroTxt}</span>
               <span className="pc-estado-dim">Importado {fecha(plan!.importado_at)}</span>
             </div>
           </>
         ) : vista === "partida" ? (
           <>
-            <Tabla columnas={colsPartida} filas={partidas.filas} clave={(f) => f.partida || "∅"} total vacia="No hay filas con este filtro." />
+            <Tabla
+              columnas={colsPartida(partidas)} filas={partidas.filas} todas={partidasBase.filas}
+              filtros={fPar} onFiltro={onFiltro("partida")}
+              clave={(f) => f.partida || "∅"} total vacia={hayF(fPar) ? "Ninguna partida pasa los filtros." : "No hay filas con este filtro."}
+            />
             <div className="pc-estado">
               <span>{tituloAjustado}: <b>$ {F_ENT.format(partidas.total.totalAjustado)}</b>{tc > 0 && <> · USD <b>{F_ENT.format(partidas.total.totalAjustado / tc)}</b></>}</span>
               <span>Cant. aprobadas: <b>{F_CANT.format(partidas.total.cantAprobadas)}</b></span>
-              <span style={{ marginLeft: "auto" }}><b>{partidas.filas.length}</b> partidas · {filtroTxt}</span>
+              <span style={{ marginLeft: "auto" }}><b>{deN(partidas.filas.length, partidasBase.filas.length)}</b> partidas · {filtroTxt}</span>
             </div>
           </>
         ) : (
@@ -549,12 +695,16 @@ export function PlanComprasResumenSection() {
                 </span>
               </div>
             )}
-            <Tabla columnas={colsCuentas} filas={ctas.filas} clave={(f) => String(f.orden)} total vacia="El Excel de este plan no traía cuentas contables." />
+            <Tabla
+              columnas={colsCuentas(ctas)} filas={ctas.filas} todas={ctasBase.filas}
+              filtros={fCta} onFiltro={onFiltro("cuentas")}
+              clave={(f) => String(f.orden)} total vacia={hayF(fCta) ? "Ninguna cuenta pasa los filtros." : "El Excel de este plan no traía cuentas contables."}
+            />
             <div className="pc-estado">
               <span>Total Excel: <b>$ {F_ENT.format(ctas.total.totalExcel)}</b></span>
               <span>Total calculado: <b>$ {F_ENT.format(ctas.total.totalCalc)}</b></span>
               <span>Diferencia: <b>$ {F_ENT.format(ctas.total.totalExcel - ctas.total.totalCalc)}</b></span>
-              <span style={{ marginLeft: "auto" }}><b>{ctas.filas.length}</b> cuentas · {filtroTxt}</span>
+              <span style={{ marginLeft: "auto" }}><b>{deN(ctas.filas.length, ctasBase.filas.length)}</b> cuentas · {filtroTxt}</span>
             </div>
           </>
         )}

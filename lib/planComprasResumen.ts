@@ -229,3 +229,41 @@ export function resumenCuentas(
     sinCuenta: partidas.filas.filter((p) => !primera.has(p.partida) && p.totalAjustado !== 0),
   };
 }
+
+// ─── Subconjuntos visibles (filtros de columna) ──────────────────────────────
+// Con filtros de columna, los % y los totales se recalculan sobre las filas
+// visibles, como el SUBTOTAL de la fila de totales del Excel.
+
+export function reproporcionarPrioridad(filas: FilaPrioridad[]): ResumenPrioridad {
+  const totalGd = filas.reduce((s, f) => s + f.totalGd, 0);
+  const totalAprobado = filas.reduce((s, f) => s + f.totalAprobado, 0);
+  const gva = div(totalGd, totalAprobado);
+  return {
+    filas: filas.map((f) => ({ ...f, pctGd: div(f.totalGd, totalGd), pctAprobado: div(f.totalAprobado, totalAprobado) })),
+    total: {
+      matriculas: filas.reduce((s, f) => s + f.matriculas, 0),
+      totalGd, totalAprobado,
+      gdVsAprobado: gva == null ? null : gva - 1,
+    },
+  };
+}
+
+export function reproporcionarPartidas(filas: FilaPartida[]): ResumenPartidas {
+  const totalAjustado = filas.reduce((s, f) => s + f.totalAjustado, 0);
+  return {
+    filas: filas.map((f) => ({ ...f, pctAjustado: div(f.totalAjustado, totalAjustado) })),
+    total: {
+      matriculas: filas.reduce((s, f) => s + f.matriculas, 0),
+      cantAprobadas: filas.reduce((s, f) => s + f.cantAprobadas, 0),
+      totalGd: filas.reduce((s, f) => s + f.totalGd, 0),
+      totalAjustado,
+    },
+  };
+}
+
+export function totalesCuentas(filas: FilaCuenta[]): ResumenCuentas["total"] {
+  return {
+    totalExcel: filas.reduce((s, f) => s + (f.totalExcel ?? 0), 0),
+    totalCalc: filas.reduce((s, f) => s + (f.totalCalc ?? 0), 0),
+  };
+}

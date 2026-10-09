@@ -207,6 +207,12 @@ el Excel; si el plan no tiene GD pasa a «todos»). Tres pestañas:
   partidas con Total Ajustado que no tienen cuenta. Plan 2026: el Excel suma $105.111 M
   y lo calculado da $118.425 M (lo pegado es de la tabla dinámica vieja).
 
+**Filtros de columna tipo Excel** en las tres pestañas (mismo menú que Carga de datos:
+valores con conteo, condición numérica, ordenar; embudo verde + chips). Son por
+pestaña y sobreviven al cambio de pestaña. Con filtros, los **% y la fila de totales se
+recalculan sobre lo visible** (como el SUBTOTAL del Excel); la barra de estado dice
+«6 de 29 familias». El filtro sobre una columna % usa el % del total sin filtrar.
+
 Sistema de diseño (confirmado): §4.7 pestañas · §4.8 filtros · §4.11 tabla CSS grid con
 encabezado sticky opaco, orden por columna (asc → desc → orden del Excel) y fila de
 totales sticky abajo · §1 calculado verde itálica, % negativo en rojo · §4.12 barra de
