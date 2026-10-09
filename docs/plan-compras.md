@@ -1,9 +1,9 @@
 # Plan de Compras (`plan-compras-carga`, `plan-compras-resumen`)
 
 Réplica en la app del Excel anual **PC_ANUAL_GD** (plan 2026: `PC_ANUAL_GD_26_Rev3.xlsx`).
-Primera etapa: **importar todo el Excel y verlo en una grilla** con los encabezados
-de la pestaña «Global». La edición en celda y las vistas Prioridad / Resumen vienen
-después.
+Hecho: **importar todo el Excel y verlo en una grilla** con los encabezados de la
+pestaña «Global» (Carga de datos) y las vistas **Prioridad / Por partida / Cuentas
+contables** (Resumen). Pendiente: la edición en celda de Global.
 
 | Pieza | Archivo |
 |---|---|
@@ -16,6 +16,9 @@ después.
 | Grilla | `components/dashboard/sections/plan-compras-carga.tsx` |
 | Filtro de columna tipo Excel | `components/dashboard/sections/plan-compras-filtro-columna.tsx` |
 | Modal de importación | `components/dashboard/sections/plan-compras-importar.tsx` |
+| Resumen (Prioridad, partidas, cuentas — puro) | `lib/planComprasResumen.ts` |
+| Pantalla Resumen | `components/dashboard/sections/plan-compras-resumen.tsx` |
+| Selector de plan + select de filtro (compartidos) | `components/dashboard/sections/plan-compras-ui.tsx` |
 | Estilos | bloque `.pc-*` al final de `app/globals.css` |
 
 ## El Excel
@@ -142,6 +145,37 @@ su fórmula.
 
 Pendiente para la etapa de edición: §4.4 estados de celda (edición / error /
 modificada), §4.5 menú de clic derecho, pegado desde Excel, guardado automático.
+
+## Resumen (`plan-compras-resumen`)
+
+Lo que el Excel calcula como resultado, recalculado en vivo desde Global (cálculo en
+`lib/planComprasResumen.ts`). Filtros: plan (año) y «A cargo de» (GD por defecto, como
+el Excel; si el plan no tiene GD pasa a «todos»). Tres pestañas:
+
+- **Prioridad** (Tabla7 del Excel): por familia, Matrículas = `CONTAR.SI.CONJUNTO(familia;
+  A CARGO DE; GD > 0)`, Total GD $ = `SUMAR.SI.CONJUNTO(Total $)`, Total Aprobado $ =
+  `SUMAR.SI.CONJUNTO(Total Ajustado $)`, USD = $ / TC, %, % Aj. y «GD vs. aprobado» =
+  GD / Aprobado − 1 (en el Excel se llama «Respecto Año pasado»; si Aprobado = 0 se ve
+  «–» donde el Excel pone 0). Verificado contra el Excel: 29/29 familias y totales
+  ($126.050.778.065 / $118.471.917.841 / 6,4 %). La **prioridad es editable en la
+  celda** (0–99, Enter guarda, Esc cancela; upsert en `plan_compras_familias`). Una
+  familia con filas en Global que no estaba en la tabla del Excel aparece marcada «No
+  estaba en Prioridad».
+- **Por partida**: reemplaza la tabla dinámica (desactualizada en el Excel): matrículas
+  con cantidad aprobada, cant. aprobadas, Total $, Total Ajustado $ (+ USD y %).
+- **Cuentas contables** (Tabla5): partida = `EXTRAE(cuenta; 6; 12)`, descripción desde
+  Global (el BUSCARV del Excel da #N/A), **Total Excel** (lo pegado) vs **Total
+  calculado** (Total Ajustado de esa partida) y la diferencia. Si dos cuentas comparten
+  partida, el total se cuenta en la primera («misma partida que la fila N»). Avisa las
+  partidas con Total Ajustado que no tienen cuenta. Plan 2026: el Excel suma $105.111 M
+  y lo calculado da $118.425 M (lo pegado es de la tabla dinámica vieja).
+
+Sistema de diseño (confirmado): §4.7 pestañas · §4.8 filtros · §4.11 tabla CSS grid con
+encabezado sticky opaco, orden por columna (asc → desc → orden del Excel) y fila de
+totales sticky abajo · §1 calculado verde itálica, % negativo en rojo · §4.12 barra de
+estado · §4.25 «Cargando filas». Excluido: columnas colapsables/redimensionables,
+persistencia de layout, selección de filas, menú de clic derecho (tablas chicas, solo
+lectura salvo Prioridad).
 
 ## Problemas del Excel que la app evita
 

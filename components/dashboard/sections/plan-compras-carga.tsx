@@ -16,7 +16,6 @@ import {
   type Density, type SortDir, DENSITY_ROW_H, DENSITY_LABEL, DENSITY_ORDER, isDensity,
   SortArrow, IdoCheckbox, TipoPill, monoFont, sansFont, autoFitTextWidth, CargandoFilas,
 } from "@/components/dashboard/ido-kit";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -28,6 +27,7 @@ import {
 } from "@/lib/planCompras";
 import type { ImportacionPlan } from "@/lib/planComprasImport";
 import { PlanComprasImportarModal } from "./plan-compras-importar";
+import { FiltroSelect, SelectorPlan } from "./plan-compras-ui";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   MenuFiltroColumna, pasaFiltro, resumenFiltro,
@@ -236,51 +236,6 @@ const FilaGrilla = memo(function FilaGrilla({
     </div>
   );
 });
-
-// ─── Select de filtro (shadcn Select con el panel IDO) ───────────────────────
-
-function FiltroSelect({
-  value, onChange, opciones, todos, ancho,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  opciones: { v: string; label: string; n: number }[];
-  todos: string;
-  ancho: number;
-}) {
-  const activo = value !== "__todos";
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger
-        size="sm"
-        className={`ido-selectbtn shrink-0 shadow-none focus-visible:ring-0 ${activo ? "is-on" : ""}`}
-        style={{ height: 32, maxWidth: ancho, minWidth: 120, color: "var(--ido-text)" }}
-      >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent className="ido-terminal ido-pop border-0 max-h-[360px]">
-        <SelectItem
-          value="__todos"
-          className="ido-pop-item focus:bg-white/5 focus:text-[var(--ido-text)] data-[state=checked]:text-[var(--ido-text)]"
-        >
-          {todos}
-        </SelectItem>
-        {opciones.map((o) => (
-          <SelectItem
-            key={o.v}
-            value={o.v}
-            className="ido-pop-item focus:bg-white/5 focus:text-[var(--ido-text)] data-[state=checked]:text-[var(--ido-text)]"
-          >
-            <span className="truncate">{o.label}</span>
-            <span style={{ marginLeft: "auto", paddingLeft: 12, fontFamily: "var(--font-mono, ui-monospace, monospace)", fontSize: 11, color: "var(--ido-text-2)" }}>
-              {o.n.toLocaleString("es-AR")}
-            </span>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
 
 // ─── Sección ─────────────────────────────────────────────────────────────────
 
@@ -730,22 +685,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
       <div className="ido-card flex flex-col flex-1 min-h-0" style={{ position: "relative" }}>
         {/* ── Toolbar (§4.10) + filtros (§4.8) ─────────────────────────────── */}
         <div className="ido-toolbar" style={{ padding: "10px 16px", gap: 8 }}>
-          {planes.length > 1 ? (
-            <Select value={planId ?? ""} onValueChange={elegirPlan}>
-              <SelectTrigger size="sm" className="ido-selectbtn shrink-0 shadow-none focus-visible:ring-0" style={{ height: 32, color: "var(--ido-text)" }}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="ido-terminal ido-pop border-0">
-                {planes.map((p) => (
-                  <SelectItem key={p.id} value={p.id} className="ido-pop-item focus:bg-white/5 focus:text-[var(--ido-text)] data-[state=checked]:text-[var(--ido-text)]">
-                    Plan {p.anio}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : plan ? (
-            <span className="ido-title shrink-0">Plan {plan.anio}</span>
-          ) : null}
+          <SelectorPlan planes={planes} planId={planId} onChange={elegirPlan} />
           {plan && (
             <span
               className="ido-chipbtn shrink-0"

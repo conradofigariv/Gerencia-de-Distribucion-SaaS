@@ -167,6 +167,37 @@ export async function getItems(
   return items;
 }
 
+export interface PlanCuenta {
+  orden:  number;
+  cuenta: string;
+  /** Total como quedó pegado en el Excel (no se recalcula). */
+  total:  number | null;
+}
+
+export async function getCuentas(planId: string): Promise<PlanCuenta[]> {
+  const { data, error } = await supabase
+    .from("plan_compras_cuentas")
+    .select("orden, cuenta, total")
+    .eq("plan_id", planId)
+    .order("orden", { ascending: true });
+  if (error) throw new Error(mensajeErrorPlan(error));
+  return (data ?? []).map((c) => ({ ...c, total: c.total == null ? null : Number(c.total) })) as PlanCuenta[];
+}
+
+/**
+ * Cambia la prioridad de una familia (pestaña Prioridad). Upsert: una familia
+ * que tiene matrículas en Global pero no estaba en la tabla del Excel se
+ * agrega con el `orden` que se le pase.
+ */
+export async function guardarPrioridad(
+  planId: string, familia: string, prioridad: number | null, orden: number,
+): Promise<void> {
+  const { error } = await supabase
+    .from("plan_compras_familias")
+    .upsert({ plan_id: planId, familia, prioridad, orden }, { onConflict: "plan_id,familia" });
+  if (error) throw new Error(mensajeErrorPlan(error));
+}
+
 export async function getFamilias(planId: string): Promise<PlanFamilia[]> {
   const { data, error } = await supabase
     .from("plan_compras_familias")
