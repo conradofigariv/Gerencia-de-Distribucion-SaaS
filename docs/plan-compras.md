@@ -116,8 +116,9 @@ se persiste: cambiar el TC recalcula las 22.950 filas sin reescribir ninguna.
   Si la subida se corta antes, se borra lo nuevo y el plan anterior queda intacto.
   Un solo plan activo por año (índice único parcial).
 - **Planes de otros años**: cada año es un plan aparte. Importar el Excel de 2027 agrega
-  el plan 2027 sin tocar el 2026; importar de nuevo un año reemplaza solo ese año. Con
-  más de un plan aparece el selector de plan en la barra de la grilla.
+  el plan 2027 sin tocar el 2026; importar de nuevo un año reemplaza solo ese año. El
+  selector de plan está siempre en la barra (Carga y Resumen), con la fecha de
+  importación de cada año y, en Carga, la opción «+ Importar plan de otro año…».
 - **El SQL no tiene funciones ni triggers**, a propósito: pegado en el SQL Editor
   de Supabase, el cuerpo de las funciones llegaba alterado («syntax error at end of
   input / LINE 0», «relation "v_anio" does not exist»). Solo tablas, índices y RLS.

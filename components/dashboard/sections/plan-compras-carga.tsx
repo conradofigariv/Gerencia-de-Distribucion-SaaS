@@ -1301,7 +1301,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
       <div className="ido-card flex flex-col flex-1 min-h-0" style={{ position: "relative" }}>
         {/* ── Toolbar (§4.10) + filtros (§4.8) ─────────────────────────────── */}
         <div className="ido-toolbar" style={{ padding: "10px 16px", gap: 8 }}>
-          <SelectorPlan planes={planes} planId={planId} onChange={elegirPlan} />
+          <SelectorPlan planes={planes} planId={planId} onChange={elegirPlan} onImportar={() => setImportando(true)} />
           {plan && (
             <span
               className="ido-chipbtn shrink-0"

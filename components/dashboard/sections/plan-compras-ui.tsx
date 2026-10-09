@@ -3,7 +3,7 @@
 // Piezas de UI compartidas por las pantallas del Plan de Compras (Carga de
 // datos y Resumen).
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { PlanCompras } from "@/lib/planCompras";
 
 const ITEM = "ido-pop-item focus:bg-white/5 focus:text-[var(--ido-text)] data-[state=checked]:text-[var(--ido-text)]";
@@ -55,30 +55,58 @@ export function FiltroSelect({
 
 // ─── Selector de plan (un plan activo por año) ───────────────────────────────
 
-/** Con un solo plan muestra el título; con varios, el selector de año. */
+const IMPORTAR = "__importar";
+
+/**
+ * Selector de año del plan. Se muestra SIEMPRE (aunque haya un solo plan),
+ * para que se vea que cada año es un plan aparte; con `onImportar`, la última
+ * opción abre la importación de otro año.
+ */
 export function SelectorPlan({
-  planes, planId, onChange,
+  planes, planId, onChange, onImportar,
 }: {
   planes: PlanCompras[];
   planId: string | null;
   onChange: (id: string) => void;
+  onImportar?: () => void;
 }) {
-  const plan = planes.find((p) => p.id === planId) ?? null;
-  if (planes.length > 1) {
-    return (
-      <Select value={planId ?? ""} onValueChange={onChange}>
-        <SelectTrigger size="sm" className="ido-selectbtn shrink-0 shadow-none focus-visible:ring-0" style={{ height: 32, color: "var(--ido-text)" }}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="ido-terminal ido-pop border-0">
-          {planes.map((p) => (
-            <SelectItem key={p.id} value={p.id} className={ITEM}>
-              Plan {p.anio}
+  if (!planes.length) return null;
+  const actual = planes.find((p) => p.id === planId) ?? null;
+  const fecha = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }) : null);
+  return (
+    <Select
+      value={planId ?? ""}
+      onValueChange={(v) => { if (v === IMPORTAR) onImportar?.(); else onChange(v); }}
+    >
+      <SelectTrigger
+        size="sm"
+        className="ido-selectbtn shrink-0 shadow-none focus-visible:ring-0"
+        style={{ height: 32, color: "var(--ido-text)" }}
+        title="Cada año es un plan aparte: elegí cuál ver"
+      >
+        {/* Texto fijo: el ítem lleva además la fecha de importación. */}
+        <SelectValue>{actual ? `Plan ${actual.anio}` : null}</SelectValue>
+      </SelectTrigger>
+      <SelectContent className="ido-terminal ido-pop border-0">
+        {planes.map((p) => (
+          <SelectItem key={p.id} value={p.id} className={ITEM} style={{ paddingRight: 32 }}>
+            <span>Plan {p.anio}</span>
+            {fecha(p.importado_at) && (
+              <span style={{ marginLeft: "auto", paddingLeft: 12, fontSize: 11, color: "var(--ido-text-2)" }}>
+                importado {fecha(p.importado_at)}
+              </span>
+            )}
+          </SelectItem>
+        ))}
+        {onImportar && (
+          <>
+            <SelectSeparator className="bg-[var(--ido-line)]" />
+            <SelectItem value={IMPORTAR} className={ITEM}>
+              <span style={{ color: "var(--ido-accent)" }}>+ Importar plan de otro año…</span>
             </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    );
-  }
-  return plan ? <span className="ido-title shrink-0">Plan {plan.anio}</span> : null;
+          </>
+        )}
+      </SelectContent>
+    </Select>
+  );
 }
