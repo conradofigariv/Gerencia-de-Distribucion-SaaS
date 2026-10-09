@@ -15,6 +15,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties, type DragEvent,
 import { createPortal } from "react-dom";
 import { AlertTriangle, Check, Download, FileSpreadsheet, Loader2, Plus, UploadCloud } from "lucide-react";
 import { leerExcelPlan, ErrorEstructuraPlan } from "@/lib/planComprasLeer";
+import { esErrorDeVersion, recargarPagina, MENSAJE_VERSION_NUEVA } from "@/lib/versionNueva";
 import {
   importarPlan, mensajeErrorPlan,
   type PlanCompras, type ProgresoImportacion,
@@ -31,7 +32,7 @@ type Paso =
   | { tipo: "leyendo"; archivo: string }
   | { tipo: "revisar"; imp: ImportacionPlan }
   | { tipo: "subiendo"; progreso: ProgresoImportacion }
-  | { tipo: "error"; origen: "lectura" | "subida"; mensaje: string };
+  | { tipo: "error"; origen: "lectura" | "subida"; mensaje: string; version?: boolean };
 
 /** Cruce con el catálogo de matrículas: corre en paralelo a la revisión y es
  *  informativo (no bloquea la importación). */
@@ -80,6 +81,8 @@ function mensajeLectura(e: unknown): string {
   // ErrorEstructuraPlan ya dice qué columnas faltan; el resto también viene
   // armado por el lector («No se pudo leer el archivo: …»).
   if (e instanceof ErrorEstructuraPlan) return e.message;
+  // «Failed to load chunk …»: la pestaña quedó con una versión vieja de la app.
+  if (esErrorDeVersion(e)) return MENSAJE_VERSION_NUEVA;
   return e instanceof Error ? e.message : String(e);
 }
 
@@ -671,7 +674,7 @@ export function PlanComprasImportarModal({
         cruzar(imp);
       }
     } catch (e) {
-      if (id === lecturaRef.current) setPaso({ tipo: "error", origen: "lectura", mensaje: mensajeLectura(e) });
+      if (id === lecturaRef.current) setPaso({ tipo: "error", origen: "lectura", mensaje: mensajeLectura(e), version: esErrorDeVersion(e) });
     }
   };
 
@@ -833,7 +836,8 @@ export function PlanComprasImportarModal({
             <AlertTriangle className="w-4 h-4" />
           </span>
           <span style={{ fontSize: 15, fontWeight: 600, color: "var(--ido-text)" }}>
-            {paso.origen === "lectura" ? "No se pudo leer el archivo" : "No se pudo importar el plan"}
+            {paso.version ? "Hay una versión nueva de la app"
+              : paso.origen === "lectura" ? "No se pudo leer el archivo" : "No se pudo importar el plan"}
           </span>
         </div>
         <p style={{ fontSize: 13, lineHeight: 1.55, color: "var(--ido-text-2)", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
@@ -852,9 +856,17 @@ export function PlanComprasImportarModal({
         <button type="button" className="ido-btn ido-btn-text" style={{ height: 38 }} onClick={onClose}>
           Cerrar
         </button>
-        <button type="button" className="ido-btn ido-btn-primary" style={{ height: 38 }} onClick={volverAElegir}>
-          Elegir otro archivo
-        </button>
+        {paso.version ? (
+          // Elegir otro archivo fallaría igual: el código viejo queda cacheado
+          // hasta recargar.
+          <button type="button" className="ido-btn ido-btn-primary" style={{ height: 38 }} onClick={recargarPagina}>
+            Recargar página
+          </button>
+        ) : (
+          <button type="button" className="ido-btn ido-btn-primary" style={{ height: 38 }} onClick={volverAElegir}>
+            Elegir otro archivo
+          </button>
+        )}
       </>
     );
   }

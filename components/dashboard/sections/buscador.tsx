@@ -11,6 +11,7 @@ import {
   Copy, Check, CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
+import { manejarErrorDeVersion } from "@/lib/versionNueva";
 import { cn } from "@/lib/utils";
 import {
   buscar, reconstruirIndice, estadoIndice, rowKey, fechaMs, fmtFechaISO,
@@ -2415,6 +2416,7 @@ export function BuscadorSection() {
       XLSX.writeFile(wb, `${nombre.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, "-")}.xlsx`);
       toast.success(`${filas.length} fila(s) exportadas.`);
     } catch (e) {
+      if (manejarErrorDeVersion(e)) return;
       toast.error(`No se pudo exportar: ${e instanceof Error ? e.message : String(e)}`);
     }
   }, []);
@@ -2655,6 +2657,7 @@ export function BuscadorSection() {
           ];
           await exportarAExcel(filas.map((f) => f.datos), cols, t.nombre);
         } catch (err) {
+          if (manejarErrorDeVersion(err)) return;
           toast.error(`No se pudo exportar: ${err instanceof Error ? err.message : String(err)}`);
         }
       },

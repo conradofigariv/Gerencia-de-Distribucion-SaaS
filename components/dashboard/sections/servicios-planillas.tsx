@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
+import { manejarErrorDeVersion } from "@/lib/versionNueva";
 import {
   UploadCloud, Loader2, Trash2, CheckCircle2,
   AlertTriangle, RefreshCw, Database, BellRing, X, HelpCircle, Check,
@@ -602,7 +603,7 @@ export function ServiciosPlanillasSection() {
       if (userId) await markUpdated("planillas-OP", "OP — Envíos (órdenes de compra)", userId).catch(() => {});
       reconstruirIndiceEnSegundoPlano("cargar OP");
     } catch (e) {
-      toast.error(`Error OP: ${e instanceof Error ? e.message : "Error"}`);
+      if (!manejarErrorDeVersion(e)) toast.error(`Error OP: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
       setS("OP", { uploading: false });
       await loadStatus();
@@ -671,7 +672,7 @@ export function ServiciosPlanillasSection() {
       // — sin reconstruir, quedarían mostrando el histórico anterior.
       reconstruirIndiceEnSegundoPlano("cargar transacciones");
     } catch (e) {
-      toast.error(`Error TRANSACCIONES: ${e instanceof Error ? e.message : "Error"}`);
+      if (!manejarErrorDeVersion(e)) toast.error(`Error TRANSACCIONES: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
       setS("TRANSACCIONES", { uploading: false });
       await loadStatus();
@@ -718,7 +719,7 @@ export function ServiciosPlanillasSection() {
       if (userId) await markUpdated("planillas-SIC", "SICs", userId).catch(() => {});
       reconstruirIndiceEnSegundoPlano("cargar SIC");
     } catch (e) {
-      toast.error(`Error SIC: ${e instanceof Error ? e.message : "Error"}`);
+      if (!manejarErrorDeVersion(e)) toast.error(`Error SIC: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
       setS("SIC", { uploading: false });
       await loadStatus();
@@ -773,7 +774,7 @@ export function ServiciosPlanillasSection() {
       if (userId) await markUpdated("planillas-MATRICULAS", "MATRICULAS — Catálogo de materiales", userId).catch(() => {});
       reconstruirIndiceEnSegundoPlano("cargar MATRICULAS");
     } catch (e) {
-      toast.error(`Error MATRICULAS: ${e instanceof Error ? e.message : "Error"}`);
+      if (!manejarErrorDeVersion(e)) toast.error(`Error MATRICULAS: ${e instanceof Error ? e.message : "Error"}`);
     } finally {
       setS("MATRICULAS", { uploading: false });
       await loadStatus();

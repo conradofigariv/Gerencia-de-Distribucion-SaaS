@@ -155,6 +155,23 @@ Excel (`columnaEnPlan`, por `etiquetas`). Los dos Excel verifican con 0 diferenc
 - **Pie de Global**: TC y PC USD de años anteriores se guardan en `plan_compras.pie`.
   Los del año del plan no: son fórmulas que dependen del filtro activo al guardar.
 
+## «Versión nueva» (pestaña abierta durante un redespliegue)
+
+Vercel redespliega con cada push a main y los archivos de código cambian de nombre. Una
+pestaña abierta desde antes, al cargar algo bajo demanda (el lector de Excel en su
+worker, xlsx, el mapa, el diagrama SIC…), pide archivos que ya no existen: Turbopack
+tira `Failed to load chunk … from module N` y lo deja cacheado (reintentar no sirve;
+hay que recargar). `lib/versionNueva.ts` lo reconoce y muestra «Hay una versión nueva
+de la app · Recargar»:
+
+- Modal de importación: el mensaje y el botón «Recargar página» (en vez del texto técnico).
+- Errores no atrapados: aviso global (`components/app/aviso-version-nueva.tsx`, montado
+  en `app/layout.tsx`).
+- Error al dibujar una sección (next/dynamic del diagrama SIC o del mapa): queda en la
+  sección (`components/app/limite-seccion.tsx` alrededor de `renderSection()` en
+  `app/page.tsx`); antes Next reemplazaba toda la página por «Application error».
+- `catch` propios (exportar a Excel/PDF, cargar planillas, sincronizar): `manejarErrorDeVersion`.
+
 ## Grilla (sistema de diseño IDO)
 
 Aplicado (confirmado con el usuario): §4.11 tabla CSS grid con encabezado fijo opaco

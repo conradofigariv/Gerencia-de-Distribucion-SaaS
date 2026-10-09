@@ -1,4 +1,5 @@
 import type { ImportacionPlan } from "@/lib/planComprasImport";
+import { esErrorDeVersion } from "@/lib/versionNueva";
 
 // Lee el .xlsx del Plan de Compras en un Web Worker (lib/planComprasImport.worker.ts).
 // Si el navegador no puede levantar el worker, cae a leerlo en el hilo
@@ -26,6 +27,9 @@ function leerEnWorker(buffer: ArrayBuffer, archivo: string): Promise<Importacion
       else reject(new Error(`No se pudo leer el archivo: ${d.error ?? "error desconocido"}`));
     };
     w.onerror = (ev) => {
+      // Lo maneja quien llamó (modal / plan B): que no siga hasta window, donde
+      // el aviso global de «versión nueva» lo mostraría por duplicado.
+      ev.preventDefault();
       w.terminate();
       reject(new FalloWorker(ev.message || "el worker no arrancó"));
     };
@@ -40,6 +44,10 @@ export async function leerExcelPlan(file: File): Promise<ImportacionPlan> {
       return await leerEnWorker(await file.arrayBuffer(), file.name);
     } catch (e) {
       if (!(e instanceof FalloWorker)) throw e;
+      // El worker no arrancó porque su código es de una versión vieja de la app
+      // (redespliegue con la pestaña abierta): el plan B en el hilo principal
+      // pediría código de la misma versión y fallaría igual. Hay que recargar.
+      if (esErrorDeVersion(e.message)) throw e;
       console.warn("[plan-compras] worker no disponible, se lee en el hilo principal:", e.message);
     }
   }

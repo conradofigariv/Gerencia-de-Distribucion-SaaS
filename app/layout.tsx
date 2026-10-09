@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import { DM_Sans, JetBrains_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from 'sonner'
+import { AvisoVersionNueva } from '@/components/app/aviso-version-nueva'
 import './globals.css'
 
 const dmSans = DM_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-dm-sans", display: "swap" });
@@ -51,6 +52,7 @@ export default function RootLayout({
         {children}
         <Analytics />
         <Toaster position="bottom-right" richColors />
+        <AvisoVersionNueva />
       </body>
     </html>
   )

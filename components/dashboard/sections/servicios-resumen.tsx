@@ -22,6 +22,7 @@ import {
 import { supabase } from "@/lib/supabaseClient";
 import { fetchReglas, reglaServicios, SERVICIOS_DEFAULT, type ConfigServicios } from "@/lib/notificaciones";
 import { toast } from "sonner";
+import { manejarErrorDeVersion } from "@/lib/versionNueva";
 import {
   getColumnLabels,
   saveColumnLabel,
@@ -282,7 +283,7 @@ export function ServiciosResumenSection() {
         toast.warning(`${errores.length} fila${errores.length === 1 ? "" : "s"} con problemas de cruce: ${errores.slice(0, 3).join(" · ")}${errores.length > 3 ? "…" : ""}`, { duration: 10000 });
       }
     } catch (e) {
-      toast.error(`No se pudo sincronizar: ${e instanceof Error ? e.message : String(e)}`);
+      if (!manejarErrorDeVersion(e)) toast.error(`No se pudo sincronizar: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSincronizando(false);
     }

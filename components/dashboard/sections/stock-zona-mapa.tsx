@@ -21,6 +21,7 @@ import {
 import { distanciasPorRuta, fmtDuracion, trazadoRuta, type Recorrido, type Ruta } from "@/lib/ruteo";
 import { getDepositos, guardarDeposito, quitarDeposito, type Deposito } from "@/lib/stockDepositos";
 import { toast } from "sonner";
+import { manejarErrorDeVersion } from "@/lib/versionNueva";
 import type { DatosPdf } from "@/lib/mapaPdf";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -808,9 +809,11 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
       let L: LeafletNS;
       try {
         L = (await import("leaflet")).default;
-      } catch {
+      } catch (e) {
         // Sin la librería del mapa (red cortada, deploy nuevo): mismo estado que si
-        // falla la geometría, con «Reintentar».
+        // falla la geometría, con «Reintentar». Si es un deploy nuevo, además el
+        // aviso de recargar (reintentar sin recargar no alcanza).
+        manejarErrorDeVersion(e);
         if (cancelled) return;
         introRunningRef.current = false;
         setIntroOn(false);
@@ -1646,9 +1649,10 @@ export default function MapaZonas({ rows, pinned, articulos, onArticulosChange, 
         excluir: ["mz-zoom", "mz-globe", "mz-hint", "mz-ver-resultado", "mz-dd", "mz-kbd", "leaflet-control-zoom"],
       });
       // Si la vista previa no se puede dibujar, el diálogo igual deja descargar.
-      const hojas = await hojasComoImagen(blob, 880).catch(() => [] as string[]);
+      const hojas = await hojasComoImagen(blob, 880).catch((e) => { manejarErrorDeVersion(e); return [] as string[]; });
       setPrevia({ blob, archivo: `mapa-stock-${quien}-${hoy()}.pdf`, hojas });
-    } catch {
+    } catch (e) {
+      if (manejarErrorDeVersion(e)) return;
       toast.error("No se pudo generar el PDF del mapa");
     } finally {
       setExportando(false);

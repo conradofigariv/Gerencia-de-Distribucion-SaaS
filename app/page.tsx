@@ -37,6 +37,7 @@ import { BuscadorSection } from "@/components/dashboard/sections/buscador";
 import { YerbaSection } from "@/components/dashboard/sections/yerba";
 import { LoginPage } from "@/components/auth/login";
 import { Loader2 } from "lucide-react";
+import { LimiteSeccion } from "@/components/app/limite-seccion";
 
 // @xyflow/react uses browser-only APIs — disable SSR to prevent hydration crash
 const SicDiagramaSection = dynamic(
@@ -245,7 +246,9 @@ export default function Dashboard() {
           />
           <main className="flex-1 p-4 sm:p-6 overflow-auto">
             <div key={activeSection} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-              {renderSection()}
+              {/* Un error al dibujar una sección queda en la sección (no tira abajo
+                  toda la app); el key de arriba lo resetea al cambiar de sección. */}
+              <LimiteSeccion>{renderSection()}</LimiteSeccion>
             </div>
           </main>
         </div>

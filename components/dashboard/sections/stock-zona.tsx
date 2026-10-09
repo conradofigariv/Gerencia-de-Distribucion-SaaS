@@ -26,6 +26,7 @@ import { getMatriculasInfo } from "@/lib/stockFamilies";
 import type { FamilyRow, ArticuloTipo, MatriculaInfo } from "@/lib/stockFamilies";
 import { getFamilyRowsCompat } from "@/lib/familias";
 import { toast } from "sonner";
+import { manejarErrorDeVersion } from "@/lib/versionNueva";
 
 type Tab            = "resumen" | "mapa" | "cargar";
 
@@ -886,7 +887,8 @@ export function StockZonaSection() {
       XLSX.utils.book_append_sheet(wb, ws, "Stock");
       const fecha = new Date().toISOString().slice(0, 10);
       XLSX.writeFile(wb, `stock-por-zona_${fecha}.xlsx`);
-    } catch {
+    } catch (e) {
+      if (manejarErrorDeVersion(e)) return;
       toast.error("No se pudo generar el Excel");
     } finally {
       setExporting(false);
