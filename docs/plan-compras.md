@@ -126,7 +126,7 @@ se persiste: cambiar el TC recalcula las 22.950 filas sin reescribir ninguna.
 
 Aplicado (confirmado con el usuario): §4.11 tabla CSS grid con encabezado fijo opaco
 (`--ido-header`) en dos filas (grupos + columnas) · §4.14 grupos colapsables solo donde
-el Excel ya tiene subtotal (Histórico → MAX, Zona A → ZA, Interior → INTERIOR) · §4.15
+el Excel ya tiene subtotal (Histórico → MAX, Zona A → ZA, Interior → INTERIOR); colapsado, el grupo sigue mostrando su nombre y cuántas columnas oculta («ZONA A +6»): la columna que queda se ensancha lo justo para que entre · §4.15
 redimensionado + doble clic · §4.17/§4.18 Artículo + Descripción anclados con sombra y
 borde al scrollear en X, padding compacto (61 columnas siempre desbordan) · §4.19/§4.20
 densidad (compacta por defecto), anchos, grupos colapsados y ocultos por usuario

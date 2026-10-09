@@ -237,6 +237,17 @@ const FilaGrilla = memo(function FilaGrilla({
   );
 });
 
+/**
+ * Ancho mínimo de la columna que queda de un grupo colapsado para que entre su
+ * etiqueta: marca + nombre (9px, mayúsculas, espaciado .18em ≈ 7,6px por
+ * letra) + «+N» (mono) + botón de expandir + huecos y padding.
+ */
+function anchoGrupoColapsado(titulo: string, ocultas: number): number {
+  const nombre = Math.ceil(titulo.length * 7.6);
+  const contador = (String(ocultas).length + 1) * 6;
+  return 16 /* padding */ + 2 + nombre + contador + 20 /* botón */ + 3 * 6 /* gaps */;
+}
+
 // ─── Sección ─────────────────────────────────────────────────────────────────
 
 export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?: (s: string | null) => void } = {}) {
@@ -543,6 +554,14 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
   const anchos = useMemo(() => {
     const w = {} as Record<ClaveColumna, number>;
     for (const c of cols) w[c.clave] = colW[c.clave] ?? c.ancho;
+    // Grupo colapsado: su única columna se ensancha lo justo para que entre
+    // la etiqueta «ZONA A +6» (si no, quedaba solo el «+6» y no se sabía qué
+    // estaba oculto).
+    for (const g of GRUPOS) {
+      if (!g.resumen || !colapsados.has(g.id) || !(g.resumen in w)) continue;
+      const ocultas = COLUMNAS.filter((c) => c.grupo === g.id).length - 1;
+      w[g.resumen] = Math.max(w[g.resumen], anchoGrupoColapsado(g.titulo, ocultas));
+    }
     if (colW[ABSORBE] == null) {
       const usado = cols.reduce((s, c) => s + w[c.clave], 0);
       w[ABSORBE] += Math.max(0, availW - usado);
@@ -555,7 +574,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
       if (exceso > 0) w[ABSORBE] = Math.max(COLUMNAS[1].ancho, w[ABSORBE] - exceso);
     }
     return w;
-  }, [cols, colW, availW]);
+  }, [cols, colW, availW, colapsados]);
   const absorbiendo = colW[ABSORBE] == null && cols.reduce((s, c) => s + (colW[c.clave] ?? c.ancho), 0) < availW;
 
   const template = useMemo(() => cols.map((c) => `${anchos[c.clave]}px`).join(" "), [cols, anchos]);
@@ -902,12 +921,10 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
                         <div key={g.id} className="pc-grupo" style={{ gridColumn: `span ${gc.length}` }} title={g.titulo}>
                           <span className="pc-grupo-in" style={{ left: anchoAnclado + 8 }}>
                             <span className="pc-grupo-marca" />
-                            {/* Colapsado queda una sola columna angosta: el nombre
-                                del grupo va en el tooltip y el encabezado de la
-                                columna resumen (MAX / ZA / INTERIOR) ya lo dice. */}
-                            {colapsado
-                              ? <span className="pc-grupo-n" title={`${g.titulo}: ${total - 1} columnas ocultas`}>+{total - 1}</span>
-                              : <span className="truncate">{g.titulo}</span>}
+                            <span className="truncate">{g.titulo}</span>
+                            {colapsado && (
+                              <span className="pc-grupo-n shrink-0" title={`${g.titulo}: ${total - 1} columnas ocultas`}>+{total - 1}</span>
+                            )}
                             {g.resumen && (
                               <button
                                 type="button"
