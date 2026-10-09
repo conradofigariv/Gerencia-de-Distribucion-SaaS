@@ -43,6 +43,8 @@ const COLS_PLAN =
   "id, anio, nombre, tipo_cambio, pct_mayoracion, etiquetas, pie, archivo, importado_at, importado_por, activo";
 
 const COLS_ITEM = ["id", "plan_id", "orden", ...CLAVES_TEXTO, ...CLAVES_NUMERO].join(", ");
+/** Marcas de la edición en celda (supabase/plan_compras.sql, bloque «Edición»). */
+const COLS_EDICION = "importado, editado_por, editado_at";
 
 // ─── Errores ─────────────────────────────────────────────────────────────────
 
@@ -130,6 +132,34 @@ export async function getItems(
   planId: string,
   onProgreso?: (cargadas: number, total: number) => void,
 ): Promise<PlanComprasItem[]> {
+  return leerItems(planId, COLS_ITEM, onProgreso);
+}
+
+/**
+ * Ítems + marcas de edición (valor importado, quién y cuándo). Si la base
+ * todavía no tiene esas columnas (falta correr el bloque «Edición» del SQL),
+ * trae los ítems igual y avisa con `edicion: false`: la grilla se ve, pero no
+ * se puede editar.
+ */
+export async function getItemsEditables(
+  planId: string,
+  onProgreso?: (cargadas: number, total: number) => void,
+): Promise<{ items: PlanComprasItem[]; edicion: boolean }> {
+  try {
+    return { items: await leerItems(planId, `${COLS_ITEM}, ${COLS_EDICION}`, onProgreso), edicion: true };
+  } catch (e) {
+    if (!(e instanceof ErrorColumnaFaltante)) throw e;
+    return { items: await leerItems(planId, COLS_ITEM, onProgreso), edicion: false };
+  }
+}
+
+class ErrorColumnaFaltante extends Error {}
+
+async function leerItems(
+  planId: string,
+  cols: string,
+  onProgreso?: (cargadas: number, total: number) => void,
+): Promise<PlanComprasItem[]> {
   const { count, error } = await supabase
     .from("plan_compras_items")
     .select("id", { count: "exact", head: true })
@@ -144,12 +174,15 @@ export async function getItems(
     Array.from({ length: paginas }, (_, p) => async () => {
       const { data, error: err } = await supabase
         .from("plan_compras_items")
-        .select(COLS_ITEM)
+        .select(cols)
         .eq("plan_id", planId)
         .order("orden", { ascending: true })
         .order("id", { ascending: true })
         .range(p * PAGINA, p * PAGINA + PAGINA - 1);
-      if (err) throw new Error(mensajeErrorPlan(err));
+      if (err) {
+        if (err.code === "42703" || err.code === "PGRST204") throw new ErrorColumnaFaltante(err.message);
+        throw new Error(mensajeErrorPlan(err));
+      }
       const lote = (data ?? []) as unknown as PlanComprasItem[];
       cargadas += lote.length;
       onProgreso?.(cargadas, total);
@@ -206,6 +239,69 @@ export async function getFamilias(planId: string): Promise<PlanFamilia[]> {
     .order("orden", { ascending: true });
   if (error) throw new Error(mensajeErrorPlan(error));
   return (data ?? []) as PlanFamilia[];
+}
+
+// ─── Edición en celda ────────────────────────────────────────────────────────
+
+/**
+ * Guarda filas editadas: los campos tocados + `importado` (valores
+ * originales) + quién y cuándo. Va como upsert por id, en lotes de filas que
+ * cambiaron las mismas columnas (PostgREST exige las mismas claves en todo el
+ * lote): un pegado de 2.000 filas son unos pocos requests, no 2.000.
+ */
+export async function guardarEdiciones(
+  cambios: { it: PlanComprasItem; claves: string[] }[],
+  userId: string | null,
+): Promise<string> {
+  const ahora = new Date().toISOString();
+  const grupos = new Map<string, Record<string, unknown>[]>();
+  for (const { it, claves } of cambios) {
+    const ks = [...new Set(claves)].sort();
+    const fila: Record<string, unknown> = {
+      id: it.id, plan_id: it.plan_id, orden: it.orden,
+      importado: it.importado && Object.keys(it.importado).length ? it.importado : null,
+      editado_por: userId, editado_at: ahora, updated_at: ahora,
+    };
+    for (const k of ks) fila[k] = (it as unknown as Record<string, unknown>)[k] ?? null;
+    const firma = ks.join(",");
+    const g = grupos.get(firma) ?? [];
+    g.push(fila);
+    grupos.set(firma, g);
+  }
+  const tareas: (() => Promise<void>)[] = [];
+  for (const filas of grupos.values()) {
+    for (let i = 0; i < filas.length; i += 500) {
+      const lote = filas.slice(i, i + 500);
+      tareas.push(async () => {
+        const { error } = await supabase.from("plan_compras_items").upsert(lote, { onConflict: "id" });
+        if (error) {
+          // El plan se volvió a importar (la versión vieja se borró en cascada).
+          if (error.code === "23503") throw new Error("El plan se volvió a importar mientras editabas: estos cambios no se guardaron. Tocá Actualizar.");
+          throw new Error(mensajeErrorPlan(error));
+        }
+      });
+    }
+  }
+  await enParalelo(tareas, 3);
+  return ahora;
+}
+
+/** Nombre de cada usuario (para «editado por»). */
+export async function nombresUsuarios(): Promise<Map<string, string>> {
+  const { data, error } = await supabase.from("profiles").select("id, nombre, apellido");
+  if (error) return new Map();
+  return new Map((data ?? []).map((p: { id: string; nombre?: string | null; apellido?: string | null }) => [
+    p.id, [p.nombre, p.apellido].filter(Boolean).join(" ") || "otro usuario",
+  ]));
+}
+
+/** ¿El usuario actual puede editar? (el nivel «visualizador» no). */
+export async function puedeEditarPlan(): Promise<{ userId: string | null; puede: boolean }> {
+  const { data } = await supabase.auth.getUser();
+  const uid = data.user?.id ?? null;
+  if (!uid) return { userId: null, puede: false };
+  const { data: prof } = await supabase.from("profiles").select("nivel_acceso").eq("id", uid).maybeSingle();
+  return { userId: uid, puede: (prof as { nivel_acceso?: string } | null)?.nivel_acceso !== "visualizador" };
 }
 
 // ─── Parámetros ──────────────────────────────────────────────────────────────

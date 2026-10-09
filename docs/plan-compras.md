@@ -3,7 +3,7 @@
 Réplica en la app del Excel anual **PC_ANUAL_GD** (plan 2026: `PC_ANUAL_GD_26_Rev3.xlsx`).
 Hecho: **importar todo el Excel y verlo en una grilla** con los encabezados de la
 pestaña «Global» (Carga de datos) y las vistas **Prioridad / Por partida / Cuentas
-contables** (Resumen). Pendiente: la edición en celda de Global.
+contables** (Resumen), con **edición en celda** en la grilla de Global.
 
 | Pieza | Archivo |
 |---|---|
@@ -18,6 +18,7 @@ contables** (Resumen). Pendiente: la edición en celda de Global.
 | Modal de importación | `components/dashboard/sections/plan-compras-importar.tsx` |
 | Resumen (Prioridad, partidas, cuentas — puro) | `lib/planComprasResumen.ts` |
 | Pantalla Resumen | `components/dashboard/sections/plan-compras-resumen.tsx` |
+| Edición en celda (validación, modificada, pegado — puro) | `lib/planComprasEdicion.ts` |
 | Selector de plan + select de filtro (compartidos) | `components/dashboard/sections/plan-compras-ui.tsx` |
 | Estilos | bloque `.pc-*` al final de `app/globals.css` |
 
@@ -143,8 +144,44 @@ USD, total del plan si hay filtro, total ajustado) · §1 valor calculado verde 
 % calculado negativo en rojo (§4.11 «Var %») · tooltip de cada encabezado calculado con
 su fórmula.
 
-Pendiente para la etapa de edición: §4.4 estados de celda (edición / error /
-modificada), §4.5 menú de clic derecho, pegado desde Excel, guardado automático.
+## Edición en celda
+
+Confirmado con el usuario: §4.4 estados de celda · §4.5 menú de clic derecho · pegado
+desde Excel · §4.10 indicador de guardado. Guardado automático, edita admin + editor,
+registro de quién/cuándo por fila. Excluido: §4.16 selección de filas + barra
+flotante, selección de rango con el mouse.
+
+- **Qué se edita:** las columnas de dato. Las 17 fórmula y Artículo quedan
+  **bloqueadas** (tinte verde mínimo; al intentar escribir avisa por qué).
+- **Teclado como Excel:** clic selecciona; flechas / Tab / Enter mueven (Ctrl+flecha
+  al borde, Inicio/Fin, RePág/AvPág); escribir empieza a editar; F2 o doble clic
+  edita el valor; Enter/Tab confirman y avanzan; Esc cancela; Supr vacía.
+- **Números:** es-AR («1.234,5») o con punto decimal («1234.5»); «1.500» = mil
+  quinientos. 0 se guarda como vacío (como la importación). Inválido → borde rojo y
+  no se guarda.
+- **Modificada:** triángulo verde abajo a la izquierda. La primera edición guarda el
+  valor importado en `importado` (jsonb, clave → valor); volver a ese valor saca la
+  marca. Tooltip: valor importado + «Editado por X el …». «Restaurar valor importado»
+  en el menú de clic derecho.
+- **Pegado (Ctrl+V o menú):** bloque de Excel (tabuladores/saltos) desde la celda
+  seleccionada, hacia la derecha y abajo **sobre las filas visibles** (con filtros y
+  orden aplicados). Las celdas que caen en fórmulas se saltean; las inválidas quedan
+  en rojo (estado Error) sin guardarse. Si hay grupos colapsados u ocultos dentro del
+  rango, no pega (el bloque quedaría corrido).
+- **Orden congelado:** editar no reordena ni esconde la fila (como Excel); se vuelve a
+  aplicar al tocar un filtro, el orden o Actualizar.
+- **Guardado automático:** las fórmulas recalculan al instante; se guarda a los 2 s del
+  último cambio (upsert por id, agrupado por columnas tocadas: un pegado de miles de
+  filas son pocos requests). Indicador: «Cambios sin guardar» → «Guardando…» →
+  «Guardado»; si falla, «No se guardó · Reintentar». Cerrar la pestaña con cambios
+  pendientes pide confirmación; Actualizar / cambiar de plan guarda primero.
+- **Permisos:** `nivel_acceso = visualizador` ve «Solo lectura».
+- **SQL:** bloque «Edición en celda» al final de `supabase/plan_compras.sql`
+  (`importado`, `editado_por`, `editado_at`). Sin esas columnas la grilla carga igual,
+  en solo lectura, con un aviso.
+- ⚠ Si dos personas editan **la misma fila** a la vez, cada celda queda con el último
+  valor guardado, pero la marca de «modificada» de la otra puede perderse (la columna
+  `importado` se escribe entera).
 
 ## Resumen (`plan-compras-resumen`)
 

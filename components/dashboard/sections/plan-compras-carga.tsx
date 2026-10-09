@@ -4,10 +4,12 @@ import {
   useState, useEffect, useMemo, useRef, useCallback, useDeferredValue, memo,
   type CSSProperties, type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { toast } from "sonner";
 import {
   Search, RefreshCw, AlertTriangle, FileSpreadsheet, Columns3, ChevronLeft, X, Filter,
+  Copy, ClipboardPaste, Eraser, Undo2, Check, Loader2, Lock,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { loadTableLayout, saveTableLayout } from "@/lib/tableLayout";
@@ -20,12 +22,16 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  listPlanes, getItems, mensajeErrorPlan, calcularFila, incidencia, textoSinCompra, esCalculada,
+  listPlanes, getItemsEditables, guardarEdiciones, nombresUsuarios, puedeEditarPlan, mensajeErrorPlan, calcularFila, incidencia, textoSinCompra, esCalculada,
   COLUMNAS, GRUPOS, ETIQUETAS_DEFAULT,
-  type PlanCompras, type PlanComprasItem, type PlanComprasCalc, type ClaveColumna, type ColumnaPlan,
+  type PlanCompras, type PlanComprasItem, type PlanComprasCalc, type ClaveColumna, type ClaveCarga, type ColumnaPlan,
   type GrupoId, type GrupoPlan,
 } from "@/lib/planCompras";
 import type { ImportacionPlan } from "@/lib/planComprasImport";
+import {
+  esEditable, parseValor, textoDeValor, conCambio, restaurada, estaModificada, textoImportado,
+  parseTsv, celdaTsv, valorCelda, tituloColumna, type Valor,
+} from "@/lib/planComprasEdicion";
 import { PlanComprasImportarModal } from "./plan-compras-importar";
 import { FiltroSelect, SelectorPlan } from "./plan-compras-ui";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -45,8 +51,9 @@ import {
 //   con scroll horizontal y sombra · §4.19/§4.20 densidad y layout por usuario
 //   · §4.10 menú Columnas · §4.8 filtros · §4.12 barra de estado · §1 valor
 //   calculado en verde itálica.
-// Esta etapa es de lectura + importación; la edición en celda (§4.4, §4.5)
-// llega en la siguiente.
+// Edición en celda (confirmada): §4.4 estados de celda (selección con
+// teclado, edición, bloqueada, modificada, error) · §4.5 menú de clic derecho
+// · pegado de bloques desde Excel · §4.10 indicador de guardado automático.
 //
 // Las columnas fórmula no se guardan: se calculan acá con lib/planComprasCalc
 // (verificado contra el Excel: 0 diferencias en las 22.950 filas).
@@ -152,6 +159,9 @@ function formulas(e: (k: ClaveColumna) => string, plan: PlanCompras | null): Par
 
 // ─── Fila de la grilla (memo: al scrollear solo se montan las nuevas) ────────
 
+/** Valor pegado o escrito que no pasó la validación (estado Error, §4.4). */
+interface ErrCelda { texto: string; error: string }
+
 interface FilaProps {
   fila:        Fila;
   cols:        ColumnaPlan[];
@@ -160,18 +170,31 @@ interface FilaProps {
   anclaX:      Partial<Record<ClaveColumna, number>>;
   top:         number;
   h:           number;
-  sel:         boolean;
+  /** Celda seleccionada en ESTA fila (null en el resto: no se re-renderizan). */
+  selK:        ClaveColumna | null;
+  /** Input de edición, si se está editando la celda seleccionada. */
+  editor:      ReactNode;
+  errs:        Partial<Record<ClaveColumna, ErrCelda>> | undefined;
+  editable:    boolean;
+  nombres:     Map<string, string>;
   totalVis:    number;
   sinCompra:   string;
-  onSel:       (id: string) => void;
+}
+
+function quienEdito(it: PlanComprasItem, nombres: Map<string, string>): string {
+  if (!it.editado_at) return "";
+  const quien = it.editado_por ? nombres.get(it.editado_por) ?? "otro usuario" : "alguien";
+  const cuando = new Date(it.editado_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return `Editado por ${quien} el ${cuando}`;
 }
 
 const FilaGrilla = memo(function FilaGrilla({
-  fila, cols, inicioGrupo, template, anclaX, top, h, sel, totalVis, sinCompra, onSel,
+  fila, cols, inicioGrupo, template, anclaX, top, h, selK, editor, errs, editable, nombres, totalVis, sinCompra,
 }: FilaProps) {
+  const sel = selK != null;
   return (
     <div
-      onClick={() => onSel(fila.it.id)}
+      data-id={fila.it.id}
       className={`ido-table-row grid ${sel ? "ido-row-selected" : ""}`}
       style={{
         gridTemplateColumns: template, position: "absolute", top: 0, left: 0, width: "100%",
@@ -192,6 +215,7 @@ const FilaGrilla = memo(function FilaGrilla({
         if (inicioGrupo.has(k) && i > 0) cls += " is-ini";
         if (anclada) cls += " ido-sticky-cell";
         if (k === ANCLADAS[ANCLADAS.length - 1]) cls += " pc-ancla-fin";
+        if (editable && !esEditable(k)) cls += " is-bloq";
         const style: CSSProperties | undefined = anclada
           // boxShadow inherit en la primera: si no, su fondo opaco taparía el
           // borde verde de fila seleccionada (un inset shadow de la fila).
@@ -227,8 +251,26 @@ const FilaGrilla = memo(function FilaGrilla({
             title = v;
           }
         }
+        // ── Estados de celda (§4.4) ────────────────────────────────────────
+        const err = errs?.[k];
+        if (err) {
+          cls += " is-err";
+          contenido = <span>{err.texto}</span>;
+          title = `${err.error}. Escribí un valor válido o tocá Supr para vaciarla.`;
+        }
+        if (esEditable(k) && estaModificada(fila.it, k)) {
+          cls += " is-mod";
+          const quien = quienEdito(fila.it, nombres);
+          title = `${title ?? ""}\nModificada · valor importado: ${textoImportado(fila.it, k)}${quien ? `\n${quien}` : ""}`.trim();
+        } else if (k === "articulo" && fila.it.editado_at) {
+          title = `${title ?? ""}\n${quienEdito(fila.it, nombres)}`.trim();
+        }
+        if (selK === k) {
+          cls += " is-sel";
+          if (editor) { cls += " is-editando"; contenido = editor; title = undefined; }
+        }
         return (
-          <div key={k} className={cls} style={style} title={title}>
+          <div key={k} data-k={k} className={cls} style={style} title={title}>
             {contenido}
           </div>
         );
@@ -236,6 +278,63 @@ const FilaGrilla = memo(function FilaGrilla({
     </div>
   );
 });
+
+// ─── Menú de clic derecho (§4.5) ─────────────────────────────────────────────
+
+function ItemMenu({ icon: Icon, label, atajo, disabled, title, onClick }: {
+  icon: React.ElementType; label: string; atajo?: string; disabled?: boolean; title?: string; onClick: () => void;
+}) {
+  return (
+    <div
+      role="menuitem"
+      aria-disabled={disabled}
+      className="ido-menu-item ido-ctx-item"
+      title={title}
+      onClick={disabled ? undefined : onClick}
+      style={{ cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1 }}
+    >
+      <Icon className="ido-ctx-icon w-3.5 h-3.5 shrink-0" />
+      <span style={{ flex: 1 }}>{label}</span>
+      {atajo && <span className="ido-menu-shortcut">{atajo}</span>}
+    </div>
+  );
+}
+
+// ─── Indicador de guardado (§4.10) ───────────────────────────────────────────
+
+function IndicadorGuardado({ estado, error, editable, puedeEditar, onReintentar }: {
+  estado: "idle" | "pendiente" | "guardando" | "guardado" | "error";
+  error: string | null;
+  editable: boolean;
+  puedeEditar: boolean;
+  onReintentar: () => void;
+}) {
+  if (!puedeEditar) {
+    return (
+      <span className="pc-guardado" title="Tu usuario es de nivel visualizador: puede ver el plan pero no editarlo.">
+        <Lock className="w-3.5 h-3.5" />Solo lectura
+      </span>
+    );
+  }
+  if (!editable) return null;
+  switch (estado) {
+    case "pendiente":
+      return <span className="pc-guardado" title="Se guardan solos a los 2 segundos del último cambio"><span className="pc-guardado-punto" />Cambios sin guardar</span>;
+    case "guardando":
+      return <span className="pc-guardado"><Loader2 className="w-3.5 h-3.5 animate-spin" />Guardando…</span>;
+    case "guardado":
+      return <span className="pc-guardado is-ok"><Check className="w-3.5 h-3.5" />Guardado</span>;
+    case "error":
+      return (
+        <span className="pc-guardado is-error" title={error ?? undefined}>
+          <AlertTriangle className="w-3.5 h-3.5" />No se guardó
+          <button type="button" className="ido-btn ido-btn-text" style={{ height: 24, padding: "0 6px" }} onClick={onReintentar}>Reintentar</button>
+        </span>
+      );
+    default:
+      return null;
+  }
+}
 
 /**
  * Ancho mínimo de la columna que queda de un grupo colapsado para que entre su
@@ -270,10 +369,118 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
 
   const plan = useMemo(() => planes.find((p) => p.id === planId) ?? null, [planes, planId]);
 
+  // ── Edición: permisos, columnas en la base y autoguardado (§4.10) ─────────
+  const [puedeEditar, setPuedeEditar] = useState(false);
+  const [edicionOk, setEdicionOk] = useState(true);
+  const editable = puedeEditar && edicionOk;
+  const [nombres, setNombres] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    puedeEditarPlan().then((r) => setPuedeEditar(r.puede)).catch(() => setPuedeEditar(false));
+    nombresUsuarios().then(setNombres).catch(() => {});
+  }, []);
+
+  // Las ediciones se aplican al estado al instante (las fórmulas recalculan)
+  // y se guardan solas a los 2 s del último cambio. `pendientes` = filas con
+  // cambios sin guardar; la versión evita borrar de la cola una fila que se
+  // volvió a editar mientras se guardaba.
+  type EstadoGuardado = "idle" | "pendiente" | "guardando" | "guardado" | "error";
+  // Celda seleccionada (por id de fila: sobrevive a filtros y orden), edición
+  // en curso y valores inválidos (§4.4 Error).
+  const [celda, setCelda] = useState<{ id: string; k: ClaveColumna } | null>(null);
+  const [edit, setEdit] = useState<{ texto: string; error: string | null } | null>(null);
+  // La edición ya se cerró por teclado (Enter/Tab/Esc): el blur que sigue al
+  // devolver el foco a la grilla no tiene que volver a confirmarla.
+  const editCerrado = useRef(false);
+  const [errores, setErrores] = useState<Record<string, Partial<Record<ClaveColumna, ErrCelda>>>>({});
+  const [guardado, setGuardado] = useState<EstadoGuardado>("idle");
+  const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
+  const itemsRef = useRef<PlanComprasItem[]>([]);
+  const pendientes = useRef(new Map<string, { claves: Set<string>; version: number }>());
+  const guardandoRef = useRef(false);
+  const otraVez = useRef(false);
+  const timerGuardar = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerGuardado = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // true mientras los cambios de `items` sean ediciones (no una carga): la
+  // grilla mantiene el orden y las filas visibles, como Excel, en vez de
+  // reordenar / sacar la fila que se acaba de editar.
+  const soloEdiciones = useRef(false);
+
+  const guardar = useCallback(async () => {
+    if (timerGuardar.current) { clearTimeout(timerGuardar.current); timerGuardar.current = null; }
+    if (guardandoRef.current) { otraVez.current = true; return; }
+    const snap = [...pendientes.current.entries()].map(([id, p]) => ({ id, version: p.version, claves: [...p.claves] }));
+    if (!snap.length) return;
+    guardandoRef.current = true;
+    setGuardado("guardando");
+    try {
+      const porId = new Map(itemsRef.current.map((it) => [it.id, it]));
+      const cambios = snap.flatMap((c) => { const it = porId.get(c.id); return it ? [{ it, claves: c.claves }] : []; });
+      const uid = userIdRef.current;
+      const ahora = await guardarEdiciones(cambios, uid);
+      for (const c of snap) if (pendientes.current.get(c.id)?.version === c.version) pendientes.current.delete(c.id);
+      const ids = new Set(snap.map((c) => c.id));
+      soloEdiciones.current = true;
+      itemsRef.current = itemsRef.current.map((it) => (ids.has(it.id) ? { ...it, editado_por: uid, editado_at: ahora } : it));
+      setItems(itemsRef.current);
+      setErrorGuardado(null);
+      if (pendientes.current.size) {
+        setGuardado("pendiente");
+      } else {
+        setGuardado("guardado");
+        if (timerGuardado.current) clearTimeout(timerGuardado.current);
+        timerGuardado.current = setTimeout(() => setGuardado((g) => (g === "guardado" ? "idle" : g)), 1500);
+      }
+    } catch (e) {
+      setGuardado("error");
+      setErrorGuardado(e instanceof Error ? e.message : mensajeErrorPlan(e));
+    } finally {
+      guardandoRef.current = false;
+      if (otraVez.current || (pendientes.current.size && !timerGuardar.current)) {
+        otraVez.current = false;
+        if (pendientes.current.size) timerGuardar.current = setTimeout(() => void guardar(), 2000);
+      }
+    }
+  }, []);
+
+  /** Aplica filas editadas: estado al instante + cola de guardado. */
+  const aplicarEdiciones = useCallback((nuevas: Map<string, { it: PlanComprasItem; claves: Set<string> }>) => {
+    if (!nuevas.size) return;
+    soloEdiciones.current = true;
+    itemsRef.current = itemsRef.current.map((it) => nuevas.get(it.id)?.it ?? it);
+    setItems(itemsRef.current);
+    for (const [id, { claves }] of nuevas) {
+      const p = pendientes.current.get(id) ?? { claves: new Set<string>(), version: 0 };
+      for (const k of claves) p.claves.add(k);
+      p.version++;
+      pendientes.current.set(id, p);
+    }
+    setGuardado("pendiente");
+    if (timerGuardar.current) clearTimeout(timerGuardar.current);
+    timerGuardar.current = setTimeout(() => void guardar(), 2000);
+  }, [guardar]);
+
+  // Cerrar la pestaña con cambios sin guardar: el navegador pregunta.
+  useEffect(() => {
+    const h = (e: BeforeUnloadEvent) => {
+      if (pendientes.current.size || guardandoRef.current) { e.preventDefault(); e.returnValue = ""; }
+    };
+    window.addEventListener("beforeunload", h);
+    // Al salir de la sección se guarda lo que haya quedado en la cola.
+    return () => { window.removeEventListener("beforeunload", h); if (pendientes.current.size) void guardar(); };
+  }, [guardar]);
+
   // Pedido en curso: si se cambia de plan a mitad de la carga, la respuesta
   // vieja no tiene que pisar la nueva.
   const pedido = useRef(0);
   const cargar = useCallback(async (preferido?: string) => {
+    // Primero se guarda lo pendiente: recargar lo pisaría.
+    if (pendientes.current.size || guardandoRef.current) {
+      await guardar();
+      if (pendientes.current.size) {
+        toast.error("Hay cambios sin guardar: reintentá el guardado antes de actualizar.");
+        return;
+      }
+    }
     const yo = ++pedido.current;
     setCargando(true);
     setError(null);
@@ -284,18 +491,24 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
       setPlanes(ps);
       const elegido = ps.find((p) => p.id === preferido) ?? ps[0] ?? null;
       setPlanId(elegido?.id ?? null);
-      if (!elegido) { setItems([]); return; }
-      const its = await getItems(elegido.id, (n, total) => {
+      if (!elegido) { itemsRef.current = []; setItems([]); return; }
+      const r = await getItemsEditables(elegido.id, (n, total) => {
         if (yo === pedido.current) setProgreso({ n, total });
       });
       if (yo !== pedido.current) return;
-      setItems(its);
+      soloEdiciones.current = false;
+      itemsRef.current = r.items;
+      setItems(r.items);
+      setEdicionOk(r.edicion);
+      setCelda(null);
+      setEdit(null);
+      setErrores({});
     } catch (e) {
       if (yo === pedido.current) setError(mensajeErrorPlan(e));
     } finally {
       if (yo === pedido.current) { setCargando(false); setProgreso(null); }
     }
-  }, []);
+  }, [guardar]);
   useEffect(() => { cargar(); }, [cargar]);
 
   const elegirPlan = (id: string) => { if (id !== planId) cargar(id); };
@@ -314,14 +527,23 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
   const tooltipsFormula = useMemo(() => formulas(etiqueta, plan), [etiqueta, plan]);
 
   // ── Filas con sus cálculos ─────────────────────────────────────────────────
+  // Cache por objeto ítem: al editar una celda solo se recalcula esa fila (y
+  // el resto de las filas conserva su objeto, así su memo no se re-renderiza).
+  const cacheFilas = useRef<{ clave: string; m: WeakMap<PlanComprasItem, Fila> }>({ clave: "", m: new WeakMap() });
   const filas = useMemo<Fila[]>(() => {
     if (!plan) return [];
     const params = { tipo_cambio: plan.tipo_cambio, pct_mayoracion: plan.pct_mayoracion };
-    return items.map((it) => ({
-      it,
-      c: calcularFila(it, params),
-      busq: normBusq(`${it.articulo ?? ""} ${it.descripcion ?? ""}`),
-    }));
+    const clave = `${plan.id}|${plan.tipo_cambio}|${plan.pct_mayoracion}`;
+    if (cacheFilas.current.clave !== clave) cacheFilas.current = { clave, m: new WeakMap() };
+    const m = cacheFilas.current.m;
+    return items.map((it) => {
+      let f = m.get(it);
+      if (!f) {
+        f = { it, c: calcularFila(it, params), busq: normBusq(`${it.articulo ?? ""} ${it.descripcion ?? ""}`) };
+        m.set(it, f);
+      }
+      return f;
+    });
   }, [items, plan]);
 
   // ── Filtros (§4.8) ─────────────────────────────────────────────────────────
@@ -386,7 +608,21 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
     };
   }, [aCargo, familia, soloDemanda, busquedaDiferida, filtrosCol, sinCompra]);
 
+  // Orden y filas visibles congelados mientras solo haya ediciones (como
+  // Excel: editar no reordena ni esconde la fila hasta volver a filtrar).
+  const ordenPrevio = useRef<{ deps: unknown[]; ids: string[] } | null>(null);
   const filtradas = useMemo(() => {
+    const deps: unknown[] = [pasaFiltros, sortKey, sortDir, plan?.id];
+    const prev = ordenPrevio.current;
+    if (soloEdiciones.current && prev && prev.deps.length === deps.length && prev.deps.every((d, i) => d === deps[i])) {
+      const porId = new Map(filas.map((f) => [f.it.id, f]));
+      return prev.ids.flatMap((id) => { const f = porId.get(id); return f ? [f] : []; });
+    }
+    const out = calcularFiltradas();
+    ordenPrevio.current = { deps, ids: out.map((f) => f.it.id) };
+    return out;
+
+    function calcularFiltradas() {
     const out = filas.filter((f) => pasaFiltros(f));
     if (sortKey && sortKey !== "incidencia") {
       const dir = sortDir === "asc" ? 1 : -1;
@@ -407,7 +643,8 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
       out.sort((a, b) => dir * (a.c.total_plan - b.c.total_plan));
     }
     return out;
-  }, [filas, pasaFiltros, sortKey, sortDir]);
+    }
+  }, [filas, pasaFiltros, sortKey, sortDir, plan?.id]);
 
   // Valores del menú de la columna abierta (solo se calcula con el menú abierto).
   const opcionesMenu = useMemo<OpcionValor[]>(() => {
@@ -669,9 +906,320 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
   });
   useEffect(() => { virtualizer.measure(); }, [density]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Selección de fila (§4.11: fila seleccionada) ───────────────────────────
-  const [selId, setSelId] = useState<string | null>(null);
-  const onSel = useCallback((id: string) => setSelId((p) => (p === id ? null : id)), []);
+  // ── Selección de celda y teclado (§4.4) ───────────────────────────────────
+  const idxFila = useMemo(() => new Map(filtradas.map((f, i) => [f.it.id, i])), [filtradas]);
+  const idxCol = useMemo(() => new Map(cols.map((c, i) => [c.clave, i])), [cols]);
+  const colLeftX = (k: ClaveColumna) => colRightX(k) - anchos[k];
+
+  const enfocarGrilla = () => scrollRef.current?.focus({ preventScroll: true });
+
+  /** Lleva la celda a la vista (el encabezado sticky y las ancladas tapan). */
+  const mostrarCelda = (r: number, k: ClaveColumna) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const cab = GRUPO_H + HEADER_H + 1;
+    const top = cab + r * ROW_H;
+    if (top < el.scrollTop + cab) el.scrollTop = top - cab;
+    else if (top + ROW_H > el.scrollTop + el.clientHeight) el.scrollTop = top + ROW_H - el.clientHeight;
+    if (anclaX[k] != null) return;
+    const left = colLeftX(k), right = left + anchos[k];
+    if (left < el.scrollLeft + anchoAnclado) el.scrollLeft = left - anchoAnclado;
+    else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth;
+  };
+
+  const irA = (r: number, c: number) => {
+    if (!filtradas.length || !cols.length) return;
+    const rr = Math.max(0, Math.min(filtradas.length - 1, r));
+    const cc = Math.max(0, Math.min(cols.length - 1, c));
+    const k = cols[cc].clave;
+    setCelda({ id: filtradas[rr].it.id, k });
+    mostrarCelda(rr, k);
+  };
+
+  const posActual = () => {
+    if (!celda) return null;
+    const r = idxFila.get(celda.id), c = idxCol.get(celda.k);
+    return r == null || c == null ? null : { r, c };
+  };
+
+  // Si la celda seleccionada desaparece (filtro, columna oculta), se suelta.
+  useEffect(() => {
+    if (celda && (!idxFila.has(celda.id) || !idxCol.has(celda.k))) { setCelda(null); setEdit(null); }
+  }, [celda, idxFila, idxCol]);
+
+  const avisoNoEditable = (k: ClaveColumna) => {
+    if (!puedeEditar) { toast.info("Tu usuario es de solo lectura: no puede editar el plan.", { id: "pc-solo-lectura" }); return; }
+    if (!edicionOk) { toast.info("Para editar falta correr el bloque «Edición» de supabase/plan_compras.sql.", { id: "pc-sin-sql" }); return; }
+    toast.info(
+      k === "articulo" ? "El artículo identifica la fila: no se edita." : `«${etiqueta(k)}» es una fórmula: se calcula sola.`,
+      { id: "pc-bloqueada" },
+    );
+  };
+
+  const filaPorId = (id: string) => itemsRef.current.find((it) => it.id === id) ?? null;
+
+  /** Empieza a editar la celda seleccionada (con un texto inicial o el valor actual). */
+  const empezarEdicion = (inicial?: string) => {
+    if (!celda) return;
+    if (!editable || !esEditable(celda.k)) { avisoNoEditable(celda.k); return; }
+    const it = filaPorId(celda.id);
+    if (!it) return;
+    const err = errores[celda.id]?.[celda.k];
+    editCerrado.current = false;
+    setEdit({ texto: inicial ?? err?.texto ?? textoDeValor(valorCelda(it, celda.k)), error: null });
+  };
+
+  const quitarError = (id: string, k: ClaveColumna) =>
+    setErrores((prev) => {
+      if (!prev[id]?.[k]) return prev;
+      const fila = { ...prev[id] };
+      delete fila[k];
+      const next = { ...prev };
+      if (Object.keys(fila).length) next[id] = fila; else delete next[id];
+      return next;
+    });
+
+  /** Pone un valor (ya validado) en una celda. */
+  const ponerValor = (id: string, k: ClaveColumna, valor: Valor) => {
+    if (!esEditable(k)) return;
+    const it = filaPorId(id);
+    if (!it) return;
+    quitarError(id, k);
+    const nueva = conCambio(it, k, valor);
+    if (nueva) aplicarEdiciones(new Map([[id, { it: nueva, claves: new Set([k, ...Object.keys(it.importado ?? {})]) }]]));
+  };
+
+  /** Confirma la edición. Devuelve el error si el valor no es válido (y
+   *  queda editando, en rojo); null si se aplicó. */
+  const confirmarEdicion = (): string | null => {
+    if (!celda || !edit || !esEditable(celda.k)) { setEdit(null); return null; }
+    const r = parseValor(celda.k, edit.texto);
+    if (!r.ok) { setEdit({ ...edit, error: r.error }); return r.error; }
+    ponerValor(celda.id, celda.k, r.valor);
+    setEdit(null);
+    return null;
+  };
+
+  const vaciar = () => {
+    if (!celda) return;
+    if (!editable || !esEditable(celda.k)) { avisoNoEditable(celda.k); return; }
+    ponerValor(celda.id, celda.k, null);
+  };
+
+  const restaurar = () => {
+    if (!celda || !editable || !esEditable(celda.k)) return;
+    const it = filaPorId(celda.id);
+    const nueva = it ? restaurada(it, celda.k) : null;
+    quitarError(celda.id, celda.k);
+    if (it && nueva) aplicarEdiciones(new Map([[it.id, { it: nueva, claves: new Set([celda.k]) }]]));
+  };
+
+  /** Texto de la celda para copiar (número sin miles y con coma decimal). */
+  const textoCopia = (id: string, k: ClaveColumna): string => {
+    const f = filas.find((x) => x.it.id === id);
+    if (!f) return "";
+    if (k === "incidencia") return textoDeValor(incidencia(f.c.total_plan, totales.vis));
+    const v = valorDe(f, k);
+    if (v == null && esCalculada(k)) return k === "analisis" ? sinCompra : k === "dif_pu" || k === "dif_global" ? "Sin Datos" : "";
+    return textoDeValor(v as Valor);
+  };
+
+  /** Pega un bloque (texto con tabuladores y saltos de línea, como lo copia Excel). */
+  const pegar = (texto: string) => {
+    const pos = posActual();
+    if (!pos) return;
+    if (!editable) { avisoNoEditable(cols[pos.c].clave); return; }
+    const bloque = parseTsv(texto);
+    if (!bloque.length) return;
+    const ancho = Math.max(...bloque.map((f) => f.length));
+    const destino = cols.slice(pos.c, pos.c + ancho);
+    // Con grupos colapsados u ocultos en el medio, el bloque caería corrido
+    // respecto de las columnas del Excel.
+    const iCol = destino.map((c) => COLUMNAS.indexOf(c));
+    if (iCol.some((v, i) => i > 0 && v !== iCol[i - 1] + 1)) {
+      toast.error("Hay columnas colapsadas u ocultas dentro del rango a pegar: expandilas antes, así el bloque no queda corrido.");
+      return;
+    }
+    const nuevas = new Map<string, { it: PlanComprasItem; claves: Set<string> }>();
+    const nuevosErr: Record<string, Partial<Record<ClaveColumna, ErrCelda>>> = {};
+    const limpiarErr: { id: string; k: ClaveColumna }[] = [];
+    let pegadas = 0, formulas = 0, invalidas = 0, fuera = 0;
+    bloque.forEach((filaTxt, r) => {
+      const f = filtradas[pos.r + r];
+      if (!f) { fuera++; return; }
+      filaTxt.forEach((txt, c) => {
+        const col = destino[c];
+        if (!col) return;
+        const k = col.clave;
+        if (!esEditable(k)) { formulas++; return; }
+        const p = parseValor(k, txt);
+        if (!p.ok) {
+          (nuevosErr[f.it.id] ??= {})[k] = { texto: txt.trim(), error: p.error };
+          invalidas++;
+          return;
+        }
+        const base = nuevas.get(f.it.id)?.it ?? filaPorId(f.it.id);
+        if (!base) return;
+        limpiarErr.push({ id: f.it.id, k });
+        const nueva = conCambio(base, k, p.valor);
+        pegadas++;
+        if (!nueva) return;
+        const e = nuevas.get(f.it.id) ?? { it: base, claves: new Set<string>(Object.keys(base.importado ?? {})) };
+        e.it = nueva;
+        e.claves.add(k);
+        nuevas.set(f.it.id, e);
+      });
+    });
+    setErrores((prev) => {
+      const next = { ...prev };
+      for (const { id, k } of limpiarErr) {
+        if (!next[id]?.[k]) continue;
+        const fila = { ...next[id] };
+        delete fila[k];
+        if (Object.keys(fila).length) next[id] = fila; else delete next[id];
+      }
+      for (const [id, e] of Object.entries(nuevosErr)) next[id] = { ...(next[id] ?? {}), ...e };
+      return next;
+    });
+    aplicarEdiciones(nuevas);
+    const partes = [`${pegadas.toLocaleString("es-AR")} celdas pegadas`];
+    if (formulas) partes.push(`${formulas.toLocaleString("es-AR")} salteadas (fórmulas o Artículo)`);
+    if (invalidas) partes.push(`${invalidas.toLocaleString("es-AR")} con valores inválidos (en rojo)`);
+    if (fuera) partes.push(`${fuera.toLocaleString("es-AR")} filas del bloque no entraron (no hay más filas visibles)`);
+    (invalidas || fuera ? toast.warning : toast.success)(partes.join(" · "));
+  };
+
+  // ── Menú de clic derecho (§4.5) ───────────────────────────────────────────
+  const [menuCtx, setMenuCtx] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!menuCtx) return;
+    const cerrar = () => setMenuCtx(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") cerrar(); };
+    window.addEventListener("mousedown", cerrar);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", cerrar);
+    window.addEventListener("wheel", cerrar, { passive: true });
+    // Solo un scroll real cierra el menú: el foco que toma la grilla al hacer
+    // clic derecho dispara un evento de scroll sin moverla.
+    const sc = scrollRef.current;
+    const x0 = sc?.scrollLeft ?? 0, y0 = sc?.scrollTop ?? 0;
+    const onScroll = () => {
+      if (sc && (Math.abs(sc.scrollLeft - x0) > 2 || Math.abs(sc.scrollTop - y0) > 2)) cerrar();
+    };
+    sc?.addEventListener("scroll", onScroll);
+    return () => {
+      window.removeEventListener("mousedown", cerrar);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", cerrar);
+      window.removeEventListener("wheel", cerrar);
+      sc?.removeEventListener("scroll", onScroll);
+    };
+  }, [menuCtx]);
+
+  const copiarAlPortapapeles = async () => {
+    if (!celda) return;
+    try { await navigator.clipboard.writeText(textoCopia(celda.id, celda.k)); }
+    catch { toast.error("El navegador no dejó copiar: usá Ctrl+C."); }
+  };
+  const pegarDelPortapapeles = async () => {
+    try { pegar(await navigator.clipboard.readText()); }
+    catch { toast.error("El navegador no dejó leer el portapapeles: usá Ctrl+V."); }
+  };
+
+  // ── Eventos de la grilla ───────────────────────────────────────────────────
+  const celdaDeEvento = (e: React.MouseEvent): { id: string; k: ClaveColumna } | null => {
+    const cel = (e.target as HTMLElement).closest<HTMLElement>("[data-k]");
+    const fila = cel?.closest<HTMLElement>("[data-id]");
+    if (!cel || !fila) return null;
+    return { id: fila.dataset.id!, k: cel.dataset.k as ClaveColumna };
+  };
+
+  const onMouseDownGrilla = (e: React.MouseEvent) => {
+    const c = celdaDeEvento(e);
+    if (!c) return;
+    if (edit && celda && (celda.id !== c.id || celda.k !== c.k)) {
+      // Clic en otra celda: confirma la edición (si es inválida, cancela).
+      editCerrado.current = true;
+      const err = confirmarEdicion();
+      if (err) { toast.error(`${err}: no se guardó.`, { id: "pc-edit-invalido" }); setEdit(null); }
+    }
+    if (!celda || celda.id !== c.id || celda.k !== c.k) setCelda(c);
+  };
+
+  const onKeyDownGrilla = (e: React.KeyboardEvent) => {
+    if (edit || e.target !== e.currentTarget) return;
+    const pos = posActual();
+    if (!pos) {
+      if (["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Enter", "Tab"].includes(e.key) && filtradas.length) {
+        e.preventDefault();
+        irA(0, 0);
+      }
+      return;
+    }
+    const pagina = Math.max(1, Math.floor(((scrollRef.current?.clientHeight ?? 400) - GRUPO_H - HEADER_H) / ROW_H) - 1);
+    const mod = e.ctrlKey || e.metaKey;
+    switch (e.key) {
+      case "ArrowDown":  e.preventDefault(); irA(mod ? filtradas.length - 1 : pos.r + 1, pos.c); return;
+      case "ArrowUp":    e.preventDefault(); irA(mod ? 0 : pos.r - 1, pos.c); return;
+      case "ArrowRight": e.preventDefault(); irA(pos.r, mod ? cols.length - 1 : pos.c + 1); return;
+      case "ArrowLeft":  e.preventDefault(); irA(pos.r, mod ? 0 : pos.c - 1); return;
+      case "Tab":        e.preventDefault(); irA(pos.r, pos.c + (e.shiftKey ? -1 : 1)); return;
+      case "Enter":      e.preventDefault(); irA(pos.r + (e.shiftKey ? -1 : 1), pos.c); return;
+      case "PageDown":   e.preventDefault(); irA(pos.r + pagina, pos.c); return;
+      case "PageUp":     e.preventDefault(); irA(pos.r - pagina, pos.c); return;
+      case "Home":       e.preventDefault(); irA(mod ? 0 : pos.r, 0); return;
+      case "End":        e.preventDefault(); irA(mod ? filtradas.length - 1 : pos.r, cols.length - 1); return;
+      case "F2":         e.preventDefault(); empezarEdicion(); return;
+      case "Delete":     e.preventDefault(); vaciar(); return;
+      case "Backspace":  e.preventDefault(); empezarEdicion(""); return;
+      case "Escape":     setCelda(null); return;
+    }
+    if (e.key.length === 1 && !mod && !e.altKey) {
+      e.preventDefault();
+      empezarEdicion(e.key);
+    }
+  };
+
+  /** Input de edición (§4.4 Edición). */
+  const editor = edit && celda ? (
+    <input
+      autoFocus
+      className={`pc-editor ${edit.error ? "is-error" : ""} ${esNumerica(COLUMNAS[COLUMNAS.findIndex((c) => c.clave === celda.k)]) ? "is-num" : ""}`}
+      value={edit.texto}
+      title={edit.error ?? undefined}
+      aria-label={`Editar ${etiqueta(celda.k)}`}
+      aria-invalid={!!edit.error}
+      onChange={(e) => setEdit({ texto: e.target.value, error: null })}
+      onFocus={(e) => { const t = e.currentTarget; t.setSelectionRange(t.value.length, t.value.length); }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        const pos = posActual();
+        if (e.key === "Escape") { e.preventDefault(); editCerrado.current = true; setEdit(null); enfocarGrilla(); return; }
+        if (e.key === "Enter" || e.key === "Tab") {
+          e.preventDefault();
+          if (confirmarEdicion()) return;
+          editCerrado.current = true;
+          enfocarGrilla();
+          if (pos) {
+            if (e.key === "Enter") irA(pos.r + (e.shiftKey ? -1 : 1), pos.c);
+            else irA(pos.r, pos.c + (e.shiftKey ? -1 : 1));
+          }
+        }
+      }}
+      onBlur={() => {
+        if (editCerrado.current) return;
+        editCerrado.current = true;
+        // Al salir con un valor inválido se descarta la edición (la celda
+        // conserva su valor); el error queda a la vista en el toast.
+        const err = confirmarEdicion();
+        if (err) {
+          toast.error(`${err}: no se guardó.`, { id: "pc-edit-invalido" });
+          setEdit(null);
+        }
+      }}
+    />
+  ) : null;
 
   const vItems = virtualizer.getVirtualItems();
   const fecha = (iso: string | null) =>
@@ -802,6 +1350,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
                 <span style={{ width: 1, height: 20, background: "var(--ido-line)", margin: "0 4px" }} />
               </>
             )}
+            {plan && <IndicadorGuardado estado={guardado} error={errorGuardado} editable={editable} puedeEditar={puedeEditar} onReintentar={() => void guardar()} />}
             <button type="button" className="ido-btn ido-btn-text" style={{ height: 32 }} onClick={() => cargar(planId ?? undefined)} disabled={cargando}>
               <RefreshCw className={`w-3.5 h-3.5${cargando ? " animate-spin" : ""}`} />Actualizar
             </button>
@@ -814,6 +1363,13 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
             )}
           </div>
         </div>
+
+        {plan && puedeEditar && !edicionOk && (
+          <div className="ido-banner-warning" style={{ padding: "8px 16px", borderBottom: "1px solid var(--ido-border)" }}>
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            <span>Para editar en la grilla falta correr el bloque «Edición en celda» de <b>supabase/plan_compras.sql</b> en el SQL Editor de Supabase. Mientras tanto la grilla es de solo lectura.</span>
+          </div>
+        )}
 
         {/* ── Chips de filtros de columna activos (§4.3) ───────────────────── */}
         {plan && filtrosActivos.length > 0 && (
@@ -876,8 +1432,34 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
             <div
               ref={scrollRef}
               onScroll={onScroll}
-              className={`pc-scroll flex-1 min-h-0 ${scrolledX ? "is-scrolled-x" : ""}`}
-              style={{ overflow: "auto" }}
+              tabIndex={0}
+              onMouseDown={onMouseDownGrilla}
+              onDoubleClick={(e) => { if (celdaDeEvento(e)) empezarEdicion(); }}
+              onContextMenu={(e) => {
+                const c = celdaDeEvento(e);
+                if (!c) return;
+                e.preventDefault();
+                setCelda(c);
+                setEdit(null);
+                const MENU_W = 216, MENU_H = 150;
+                setMenuCtx({
+                  x: Math.min(e.clientX, window.innerWidth - MENU_W - 8),
+                  y: e.clientY + MENU_H > window.innerHeight - 8 ? Math.max(8, e.clientY - MENU_H) : e.clientY,
+                });
+              }}
+              onKeyDown={onKeyDownGrilla}
+              onCopy={(e) => {
+                if (edit || !celda) return;
+                e.preventDefault();
+                e.clipboardData.setData("text/plain", celdaTsv(textoCopia(celda.id, celda.k)));
+              }}
+              onPaste={(e) => {
+                if (edit || !celda) return;
+                e.preventDefault();
+                pegar(e.clipboardData.getData("text/plain"));
+              }}
+              className={`pc-scroll flex-1 min-h-0 ${scrolledX ? "is-scrolled-x" : ""} ${editable ? "is-editable" : ""}`}
+              style={{ overflow: "auto", outline: "none" }}
             >
               <div style={{ width: contentW, minWidth: "100%", minHeight: "100%", position: "relative" }}>
                 {resizingCol && (
@@ -1025,10 +1607,13 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
                           anclaX={anclaX}
                           top={vi.start}
                           h={ROW_H}
-                          sel={selId === f.it.id}
+                          selK={celda?.id === f.it.id ? celda.k : null}
+                          editor={celda?.id === f.it.id ? editor : null}
+                          errs={errores[f.it.id]}
+                          editable={editable}
+                          nombres={nombres}
                           totalVis={totales.vis}
                           sinCompra={sinCompra}
-                          onSel={onSel}
                         />
                       );
                     })}
@@ -1064,6 +1649,40 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
           </>
         )}
       </div>
+
+      {menuCtx && celda && createPortal(
+        <div
+          className="ido-terminal ido-menu"
+          style={{ left: menuCtx.x, top: menuCtx.y, width: 216 }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+          role="menu"
+        >
+          {(() => {
+            const k = celda.k;
+            const puede = editable && esEditable(k);
+            const it = filaPorId(celda.id);
+            const mod = !!it && esEditable(k) && estaModificada(it, k);
+            const cerrar = () => { setMenuCtx(null); enfocarGrilla(); };
+            return (
+              <>
+                <ItemMenu icon={Copy} label="Copiar" atajo="Ctrl+C" onClick={() => { cerrar(); void copiarAlPortapapeles(); }} />
+                <ItemMenu icon={ClipboardPaste} label="Pegar" atajo="Ctrl+V" disabled={!editable} onClick={() => { cerrar(); void pegarDelPortapapeles(); }} />
+                <div className="ido-menu-sep" />
+                <ItemMenu icon={Eraser} label="Vaciar celda" atajo="Supr" disabled={!puede} onClick={() => { cerrar(); vaciar(); }} />
+                <ItemMenu
+                  icon={Undo2}
+                  label="Restaurar valor importado"
+                  disabled={!puede || !mod}
+                  title={mod && it ? `Vuelve a ${textoImportado(it, k as ClaveCarga)}` : "La celda no fue modificada"}
+                  onClick={() => { cerrar(); restaurar(); }}
+                />
+              </>
+            );
+          })()}
+        </div>,
+        document.body,
+      )}
 
       {importando && (
         <PlanComprasImportarModal

@@ -60,6 +60,12 @@ export interface PlanComprasItem extends PlanComprasItemInput {
   id:      string;
   plan_id: string;
   orden:   number;
+  /** Valor importado de cada celda editada a mano (clave → valor original).
+   *  Una clave presente = celda modificada. null/ausente = fila como vino. */
+  importado?:   Partial<Record<ClaveCarga, string | number | null>> | null;
+  /** Último usuario (auth uid) y fecha de edición a mano. */
+  editado_por?: string | null;
+  editado_at?:  string | null;
 }
 
 /** Parámetros del plan que intervienen en las fórmulas. */

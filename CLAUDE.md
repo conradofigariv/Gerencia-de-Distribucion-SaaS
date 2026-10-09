@@ -116,7 +116,7 @@ nueva o se lo recordés vos en el chat.
 | `transformadores-consumo` | transformadores-consumo.tsx | Stock de Transformadores | Consumo promedio mensual y anual, filtrable por tipo/potencia/sector | [`docs/consumo-transformadores.md`](docs/consumo-transformadores.md) |
 | `sic-diagrama` | sic-diagrama.tsx | Proceso SIC - SIGA | Diagrama de flujo neon + seguimiento de SICs | [`docs/sic-diagrama.md`](docs/sic-diagrama.md) |
 | `informe-tecnico` | informe-tecnico.tsx | Licitaciones | Análisis de ofertas y adjudicación por renglón | [`docs/informe-tecnico.md`](docs/informe-tecnico.md) |
-| `plan-compras-carga` | plan-compras-carga.tsx (+ plan-compras-importar.tsx) | Plan de Compras | Pestaña «Global» del Excel PC_ANUAL_GD: importación con verificación de fórmulas + grilla de 61 columnas | [`docs/plan-compras.md`](docs/plan-compras.md) |
+| `plan-compras-carga` | plan-compras-carga.tsx (+ plan-compras-importar.tsx) | Plan de Compras | Pestaña «Global» del Excel PC_ANUAL_GD: importación con verificación de fórmulas + grilla de 61 columnas con edición en celda (autoguardado) | [`docs/plan-compras.md`](docs/plan-compras.md) |
 | `plan-compras-resumen` | plan-compras-resumen.tsx | Plan de Compras | Pestañas Prioridad (prioridad editable), Por partida y Cuentas contables, recalculadas desde Global | [`docs/plan-compras.md`](docs/plan-compras.md) |
 | `buscador` | buscador.tsx | Herramientas | Búsqueda global + pestañas de seguimiento por usuario | [`docs/buscador.md`](docs/buscador.md) |
 | `yerba` | yerba.tsx | (raíz) | Control de Yerba: de quién es el turno de comprar (rotación en orden fijo) | — |

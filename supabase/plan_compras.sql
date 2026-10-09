@@ -249,3 +249,11 @@ create policy "plan_compras_cuentas_all" on public.plan_compras_cuentas
 -- La fila semilla 2026 del esqueleto viejo quedó inactiva y nunca se importó.
 -- Una importación en curso no se toca: siempre tiene `importado_at`.
 delete from public.plan_compras where not activo and importado_at is null;
+
+-- ─── Edición en celda (Carga de datos) ──────────────────────────────────────
+-- `importado`: valor original de cada celda editada a mano (clave → valor);
+-- una clave presente = celda «modificada». `editado_por` / `editado_at`:
+-- último usuario y fecha de edición de la fila. Sin funciones: lo completa la app.
+alter table public.plan_compras_items add column if not exists importado   jsonb;
+alter table public.plan_compras_items add column if not exists editado_por uuid;
+alter table public.plan_compras_items add column if not exists editado_at  timestamptz;
