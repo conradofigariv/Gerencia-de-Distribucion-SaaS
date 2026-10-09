@@ -164,13 +164,14 @@ export function BirthdayModal() {
   const titulo = soyYo && gente.length === 1
     ? `¡Feliz cumpleaños, ${gente[0].nombre}!`
     : `¡Feliz cumpleaños, ${juntar(gente.map((p) => p.nombre))}!`;
-  const bajada = soyYo
-    ? gente.length === 1
-      ? "Toda la oficina te saluda en tu día. ¡Que lo disfrutes!"
-      : `Hoy es tu día, y también el de ${juntar(gente.filter((p) => p.id !== yoId).map((p) => p.completo))}. ¡Que lo disfruten!`
+  // Para el resto de la oficina alcanza con el título (se sacó «Hoy cumple
+  // años X. ¡No te olvides de saludar!» a pedido); el cumpleañero sí tiene
+  // una línea propia.
+  const bajada = !soyYo
+    ? null
     : gente.length === 1
-      ? `Hoy cumple años ${gente[0].completo}. ¡No te olvides de saludar!`
-      : `Hoy cumplen años ${juntar(gente.map((p) => p.completo))}. ¡No te olvides de saludar!`;
+      ? "Toda la oficina te saluda en tu día. ¡Que lo disfrutes!"
+      : `Hoy es tu día, y también el de ${juntar(gente.filter((p) => p.id !== yoId).map((p) => p.completo))}. ¡Que lo disfruten!`;
 
   return createPortal(
     <div
@@ -178,7 +179,7 @@ export function BirthdayModal() {
       role="dialog"
       aria-modal="true"
       aria-labelledby="gd-cumple-titulo"
-      aria-describedby="gd-cumple-bajada"
+      aria-describedby={bajada ? "gd-cumple-bajada" : undefined}
       data-k="cumple-modal"
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -199,7 +200,7 @@ export function BirthdayModal() {
         <div className="gd-cumple-cuerpo">
           <span className="gd-cumple-icono"><Cake className="w-5 h-5" /></span>
           <h2 id="gd-cumple-titulo" className="gd-cumple-titulo">{titulo}</h2>
-          <p id="gd-cumple-bajada" className="gd-cumple-bajada">{bajada}</p>
+          {bajada && <p id="gd-cumple-bajada" className="gd-cumple-bajada">{bajada}</p>}
         </div>
         <div className="gd-cumple-pie">
           <button ref={botonRef} type="button" className="ido-btn ido-btn-primary" style={{ height: 38, padding: "0 20px", fontSize: 13 }} onClick={cerrar}>
