@@ -1541,16 +1541,10 @@ html.gd-cumple-sin-cursor * { cursor: none !important; }
 }
 .gd-cumple-titulo { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.25; color: var(--ido-text); }
 .gd-cumple-bajada { margin: 0; max-width: 440px; font-size: 13px; line-height: 1.55; color: var(--ido-text-2); }
-.gd-cumple-pie { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 28px 22px; }
-.gd-cumple-hint { font-size: 11px; color: var(--ido-placeholder); }
-.gd-cumple-hint kbd {
-  padding: 1px 5px;
-  border: 1px solid var(--ido-border-strong);
-  border-radius: 4px;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  color: var(--ido-text-2);
-}
+.gd-cumple-pie { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 18px 28px 12px; }
+/* «Apretá Enter para continuar»: lo más chico posible, a pedido. */
+.gd-cumple-hint { font-size: 8px; line-height: 1; color: var(--ido-placeholder); }
+.gd-cumple-hint kbd { font: inherit; color: inherit; }
 /* Papel picado: cae por toda la pantalla, detrás de la tarjeta. */
 .gd-cumple-papeles { position: absolute; inset: 0; pointer-events: none; }
 .gd-cumple-papel {
