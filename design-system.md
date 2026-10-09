@@ -313,6 +313,14 @@ Tabla única de referencia — tres modos, sin valores intermedios:
 - Funciona dentro y fuera de `.ido-terminal`: los tokens `--ido-*` tienen respaldo al tema shadcn (`--muted`, `--sidebar-primary`, `--muted-foreground`).
 - Solo para el área principal que espera datos. Los spinners chiquitos de botones («Guardar», «Actualizar») y de diálogos siguen siendo un `Loader2` suelto.
 
+### 4.26 Cartel de feliz cumpleaños — `components/dashboard/birthday-modal.tsx`
+- `.ido-modal` (520px; 760px con 2+ cumpleañeros) sobre overlay `bg.base` al 82% + blur 6px, con papel picado (accent, warning, cat-1, cat-5) cayendo detrás. Entrada 420ms (sube 12px y escala 0.96 → 1).
+- Arriba la imagen de cada cumpleañero (`object-fit: contain`, alto `min(46vh, 380px)`, fondo `bg.base`), en columnas si hay varios. Prioridad: imagen subida por el admin → foto de perfil → iniciales 40px en círculo accent 14%.
+- Ícono de torta en círculo accent 14% + título 22/600 + bajada 13 secundaria. Pie: botón primario «¡Feliz cumple! 🎉» (38px) y hint 11px «Apretá Enter para continuar».
+- **Bloqueante a pedido:** sin X, Esc y clic afuera no cierran, Tab no saca el foco del botón y ninguna tecla llega a la sección de abajo. La flecha del mouse se oculta en toda la página (`html.gd-cumple-sin-cursor`) hasta cerrar con **Enter** o tocando el botón.
+- ⚠ Cerrar la pestaña/el navegador **no se puede impedir** (lo bloquean los navegadores): no intentar `beforeunload` para esto.
+- Aparece en cada ingreso (cada carga de la app) el día del cumpleaños, para todos, incluido el cumpleañero (que ve una bajada propia). Con `prefers-reduced-motion` no hay papel picado ni animación de entrada.
+
 ## 5. Pendiente de definir
 
 El archivo de Design fuente **no** especifica de forma explícita los siguientes

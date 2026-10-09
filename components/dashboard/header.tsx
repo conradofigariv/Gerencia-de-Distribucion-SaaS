@@ -5,6 +5,7 @@ import { Calendar, Menu, Tag, type LucideIcon } from "lucide-react";
 import { BgSelector } from "@/components/bg-selector";
 import type { BgEffect } from "@/components/canvas-background";
 import { ReminderBell } from "@/components/dashboard/reminder-bell";
+import { BirthdayModal } from "@/components/dashboard/birthday-modal";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface HeaderProps {
@@ -98,6 +99,10 @@ export function Header({ activeSection, bgEffect = "swirl", onBgChange, onMenuCl
 
         {/* Notifications */}
         <ReminderBell />
+
+        {/* Cartel de feliz cumpleaños (se portalea a <body>; el Header no se
+            desmonta al cambiar de sección, así sale una vez por ingreso). */}
+        <BirthdayModal />
 
         {/* User avatar */}
         <button className="w-8 h-8 rounded-lg overflow-hidden bg-secondary ring-2 ring-transparent hover:ring-accent/50 transition-all duration-200">

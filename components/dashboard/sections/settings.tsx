@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   User as UserIcon, Shield, RefreshCw, Check, LogOut, Eye, EyeOff,
-  Lock, Loader2, Upload, Users, Trash2, Plus, ListChecks, ChevronDown, Pencil,
+  Lock, Loader2, Upload, Users, Trash2, Plus, ListChecks, ChevronDown, Pencil, Cake, X,
 } from "lucide-react";
 import { SIDEBAR_SECTIONS } from "@/components/dashboard/sidebar";
 import { AvatarCropDialog } from "@/components/dashboard/avatar-crop-dialog";
@@ -50,6 +50,9 @@ interface AdminUser {
   nivel_acceso:         NivelAcceso;
   // null = sin restricción, ve todo (default). Ver lib/sectionAccess.ts.
   secciones_permitidas: string[] | null;
+  // Imagen del cartel de cumpleaños ("" = sin imagen, se usa la foto de
+  // perfil). Ver supabase/cumpleanos_imagenes.sql.
+  cumple_imagen_url:    string;
   created_at:           string;
 }
 
@@ -172,6 +175,12 @@ function EditUserDialog({
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [saving,     setSaving]     = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Imagen del cartel de cumpleaños: sin recorte (puede ser un GIF animado y
+  // se muestra entera). `cumpleQuitar` = borrar la que está guardada.
+  const [cumpleFile, setCumpleFile] = useState<File | null>(null);
+  const [cumplePreview, setCumplePreview] = useState<string | null>(null);
+  const [cumpleQuitar, setCumpleQuitar] = useState(false);
+  const cumpleInputRef = useRef<HTMLInputElement>(null);
   // Recorte antes de subir: mismo diálogo que usa la propia pestaña "Perfil".
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [cropOpen, setCropOpen] = useState(false);
@@ -230,6 +239,7 @@ function EditUserDialog({
     setEmpresa(usuario.empresa); setCargo(usuario.cargo);
     setTelefono(usuario.telefono); setCumpleanos(usuario.cumpleanos);
     setAvatarFile(null); setAvatarPreview(null);
+    setCumpleFile(null); setCumplePreview(null); setCumpleQuitar(false);
     setNivel(usuario.nivel_acceso);
     setSecciones(usuario.secciones_permitidas ?? SIDEBAR_SECTIONS.map((s) => s.id));
     setNuevaPass(""); setShowNuevaPass(false);
@@ -246,6 +256,26 @@ function EditUserDialog({
     setCropFile(file);
     setCropOpen(true);
   };
+
+  const handleCumpleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { toast.error("Solo se permiten imágenes"); return; }
+    if (file.size > 3 * 1024 * 1024) { toast.error("La imagen de cumpleaños no puede superar 3 MB"); return; }
+    setCumpleFile(file);
+    setCumplePreview(URL.createObjectURL(file));
+    setCumpleQuitar(false);
+  };
+
+  const quitarCumple = () => {
+    setCumpleFile(null); setCumplePreview(null);
+    setCumpleQuitar(!!usuario.cumple_imagen_url);
+  };
+
+  // Lo que se ve en la vista previa: la recién elegida, la guardada (si no se
+  // marcó para quitar) o nada.
+  const cumpleVista = cumplePreview ?? (cumpleQuitar ? null : usuario.cumple_imagen_url || null);
 
   const handleCropped = (file: File) => {
     setAvatarFile(file);
@@ -265,6 +295,8 @@ function EditUserDialog({
       form.set("telefono", telefono);
       form.set("cumpleanos", cumpleanos);
       if (avatarFile) form.set("avatar", avatarFile);
+      if (cumpleFile) form.set("cumple_imagen", cumpleFile);
+      else if (cumpleQuitar) form.set("cumple_imagen_quitar", "1");
 
       const res = await fetch("/api/admin/users", {
         method: "PATCH",
@@ -301,6 +333,7 @@ function EditUserDialog({
         nivel_acceso: nivel,
         secciones_permitidas: seccionesFinal,
         ...(json.avatar_url ? { avatar_url: json.avatar_url as string } : {}),
+        ...("cumple_imagen_url" in json ? { cumple_imagen_url: (json.cumple_imagen_url as string | null) ?? "" } : {}),
       });
       toast.success("Usuario actualizado");
       onOpenChange(false);
@@ -378,6 +411,40 @@ function EditUserDialog({
               <Label className="text-xs text-muted-foreground">Cumpleaños</Label>
               <input type="date" value={cumpleanos} onChange={(e) => setCumpleanos(e.target.value)}
                 className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent transition-all" />
+            </div>
+          </div>
+
+          {/* ── Cartel de cumpleaños ──
+              Imagen que ve toda la oficina al entrar el día de su cumpleaños
+              (components/dashboard/birthday-modal.tsx). Sin imagen se usa la
+              foto de perfil. Solo el admin la cambia: viaja en este mismo
+              PATCH multipart y la ruta la guarda con la service role. */}
+          <div className="flex items-center gap-5" data-k="cumple-imagen">
+            <div className="w-28 h-20 shrink-0 rounded-lg border border-border bg-secondary overflow-hidden flex items-center justify-center">
+              {cumpleVista
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={cumpleVista} alt="Imagen de cumpleaños" className="w-full h-full object-cover" />
+                : <Cake className="w-6 h-6 text-muted-foreground" />}
+            </div>
+            <div className="space-y-2 min-w-0">
+              <Label className="text-sm font-medium">Imagen del cartel de cumpleaños</Label>
+              <div className="flex flex-wrap items-center gap-2">
+                <input ref={cumpleInputRef} type="file" accept="image/*" className="hidden" onChange={handleCumpleFile} />
+                <Button type="button" variant="outline" size="sm" onClick={() => cumpleInputRef.current?.click()}>
+                  <Upload className="w-4 h-4 mr-2" />
+                  {cumpleVista ? "Cambiar imagen" : "Subir imagen"}
+                </Button>
+                {cumpleVista && (
+                  <Button type="button" variant="ghost" size="sm" onClick={quitarCumple}>
+                    <X className="w-4 h-4 mr-1" />Quitar
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {cumpleQuitar
+                  ? "Se va a quitar al guardar: el cartel usará la foto de perfil."
+                  : "Se muestra al entrar el día de su cumpleaños. JPG, PNG o GIF · hasta 3 MB · sin imagen se usa la foto de perfil."}
+              </p>
             </div>
           </div>
 

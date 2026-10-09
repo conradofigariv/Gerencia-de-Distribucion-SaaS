@@ -43,6 +43,13 @@ export async function GET(req: NextRequest) {
   };
   const profileMap = Object.fromEntries((profiles ?? [] as ProfileRow[]).map((p: ProfileRow) => [p.id, p]));
 
+  // Imagen del cartel de cumpleaños. Si todavía no se corrió
+  // supabase/cumpleanos_imagenes.sql la tabla no existe: se sigue sin imágenes.
+  const { data: imagenes } = await supabaseAdmin.from("cumple_imagenes").select("user_id, imagen_url");
+  const imagenMap = Object.fromEntries(
+    ((imagenes ?? []) as { user_id: string; imagen_url: string }[]).map((r) => [r.user_id, r.imagen_url]),
+  );
+
   const users = authData.users.map(u => ({
     id:                   u.id,
     email:                u.email ?? "",
@@ -55,6 +62,7 @@ export async function GET(req: NextRequest) {
     avatar_url:           profileMap[u.id]?.avatar_url ?? "",
     nivel_acceso:         profileMap[u.id]?.nivel_acceso ?? "visualizador",
     secciones_permitidas: profileMap[u.id]?.secciones_permitidas ?? null,
+    cumple_imagen_url:    imagenMap[u.id] ?? "",
     created_at:           u.created_at,
   }));
 
@@ -148,7 +156,55 @@ export async function PATCH(req: NextRequest) {
 
     const { error } = await supabaseAdmin.from("profiles").update(update).eq("id", userId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ ok: true, avatar_url: update.avatar_url ?? null });
+
+    // ── Imagen del cartel de cumpleaños (una por persona) ──
+    // Va a su propio bucket/tabla (supabase/cumpleanos_imagenes.sql), que no
+    // tienen policies de escritura: solo esta ruta, con la service role, puede
+    // cambiarla — así nadie se pone su propia imagen desde el cliente.
+    // `cumple_imagen_url` en la respuesta: string = nueva, null = quitada,
+    // ausente = sin cambios.
+    const FALTA_SQL = "Falta correr supabase/cumpleanos_imagenes.sql en Supabase.";
+    const faltaSql = (msg: string) => /cumple_imagenes|bucket not found|does not exist|schema cache/i.test(msg);
+    const cumplePath = `${userId}/imagen`;
+    let cumpleImagenUrl: string | null | undefined;
+
+    const cumpleImagen = form.get("cumple_imagen");
+    if (cumpleImagen instanceof File && cumpleImagen.size > 0) {
+      if (!cumpleImagen.type.startsWith("image/")) {
+        return NextResponse.json({ error: "La imagen de cumpleaños tiene que ser una imagen" }, { status: 400 });
+      }
+      // Vercel corta el cuerpo de la request en 4,5 MB (y puede viajar junto
+      // con la foto de perfil).
+      if (cumpleImagen.size > 3 * 1024 * 1024) {
+        return NextResponse.json({ error: "La imagen de cumpleaños no puede superar 3 MB" }, { status: 400 });
+      }
+      const buffer = Buffer.from(await cumpleImagen.arrayBuffer());
+      const { error: upError } = await supabaseAdmin.storage
+        .from("cumpleanos")
+        .upload(cumplePath, buffer, { upsert: true, contentType: cumpleImagen.type });
+      if (upError) {
+        return NextResponse.json({ error: faltaSql(upError.message) ? FALTA_SQL : `Error al subir la imagen de cumpleaños: ${upError.message}` }, { status: 500 });
+      }
+      const { data: { publicUrl } } = supabaseAdmin.storage.from("cumpleanos").getPublicUrl(cumplePath);
+      cumpleImagenUrl = `${publicUrl}?t=${Date.now()}`;
+      const { error: dbError } = await supabaseAdmin.from("cumple_imagenes").upsert({
+        user_id: userId, imagen_url: cumpleImagenUrl, updated_at: new Date().toISOString(), updated_by: user.id,
+      });
+      if (dbError) return NextResponse.json({ error: faltaSql(dbError.message) ? FALTA_SQL : dbError.message }, { status: 500 });
+    } else if (form.get("cumple_imagen_quitar") === "1") {
+      const { error: dbError } = await supabaseAdmin.from("cumple_imagenes").delete().eq("user_id", userId);
+      if (dbError) return NextResponse.json({ error: faltaSql(dbError.message) ? FALTA_SQL : dbError.message }, { status: 500 });
+      // Si el archivo no se puede borrar no importa: sin fila, el cartel ya
+      // no lo usa.
+      await supabaseAdmin.storage.from("cumpleanos").remove([cumplePath]);
+      cumpleImagenUrl = null;
+    }
+
+    return NextResponse.json({
+      ok: true,
+      avatar_url: update.avatar_url ?? null,
+      ...(cumpleImagenUrl !== undefined ? { cumple_imagen_url: cumpleImagenUrl } : {}),
+    });
   }
 
   const body = await req.json();

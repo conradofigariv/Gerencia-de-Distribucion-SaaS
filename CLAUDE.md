@@ -91,6 +91,7 @@ nueva o se lo recordés vos en el chat.
 - `app/`: Rutas y vistas principales (App Router).
 - `components/dashboard/sections/`: Secciones del dashboard (una por módulo).
 - `components/dashboard/reminder-bell.tsx`: Campana global de recordatorios.
+- `components/dashboard/birthday-modal.tsx`: Cartel de feliz cumpleaños al entrar (bloqueante, sin flecha hasta Enter). Montado en el Header; imagen por persona desde Configuración → Usuarios. Ver `design-system.md` §4.26.
 - `lib/`: Utilidades, configuraciones de API y lógica compartida.
 - `lib/reminders.ts`: Helpers `markUpdated`, `fetchReminders`, `upsertConfig` para el sistema de recordatorios.
 - `lib/supabaseClient.ts`: Cliente de Supabase.
@@ -140,7 +141,7 @@ nueva o se lo recordés vos en el chat.
 | plan-compras-carga | `plan_compras` (cabecera, una activa por año), `plan_compras_items` (Global), `plan_compras_familias` (Prioridad), `plan_compras_cuentas` (Resumen), `matriculas` (cruce al importar + alta de faltantes) — SQL sin funciones (la activación la hace la app) en `supabase/plan_compras.sql` y doc en [`docs/plan-compras.md`](docs/plan-compras.md) |
 | buscador | `busqueda_index` (lectura), `op_datos` (descripción y zona de la OP, cargadas a mano), `buscador_tabs`, `buscador_tab_filas`, `buscador_tab_shares` (compartir), `profiles` (lectura, para elegir con quién compartir) — SQL en `supabase/buscador_tabs.sql` + `supabase/buscador_tab_shares.sql` y doc completo en [`docs/buscador.md`](docs/buscador.md) |
 | yerba | `yerba_participantes`, `yerba_compras`, `yerba_compra_marca`, `profiles` (lectura, para sumar usuarios registrados) — SQL en `supabase/yerba.sql` |
-| settings | `profiles` (incluye `nivel_acceso` y `secciones_permitidas`) |
+| settings | `profiles` (incluye `nivel_acceso`, `secciones_permitidas` y `cumpleanos`), `cumple_imagenes` + bucket `cumpleanos` (imagen del cartel de cumpleaños, solo la escribe `/api/admin/users`) — SQL en `supabase/cumpleanos_imagenes.sql` |
 | notificaciones | `notif_reglas`, `notif_descartes`, `section_reminders` |
 
 ---

@@ -1475,6 +1475,106 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
   @keyframes ido-cargando-pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 0.7; } }
 }
 
+/* ── Cartel de feliz cumpleaños (components/dashboard/birthday-modal.tsx) ───
+   Bloqueante a pedido: mientras está abierto no hay flecha del mouse en
+   ninguna parte de la página (clase en <html>). */
+html.gd-cumple-sin-cursor,
+html.gd-cumple-sin-cursor * { cursor: none !important; }
+.gd-cumple-overlay {
+  background: color-mix(in srgb, var(--ido-base) 82%, transparent);
+  backdrop-filter: blur(6px);
+  overflow: hidden;
+}
+.gd-cumple-overlay.is-saliendo { animation: gd-cumple-out 180ms var(--ido-ease) both; }
+@keyframes gd-cumple-out { to { opacity: 0; } }
+.gd-cumple {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 32px);
+  animation: gd-cumple-in 420ms var(--ido-ease) both;
+}
+@keyframes gd-cumple-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+.gd-cumple-retratos { display: grid; gap: 1px; background: var(--ido-line); min-height: 0; }
+.gd-cumple-retrato {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: min(46vh, 380px);
+  background: var(--ido-base);
+  overflow: hidden;
+}
+.gd-cumple-retrato img { width: 100%; height: 100%; object-fit: contain; }
+.gd-cumple-iniciales {
+  display: grid;
+  place-items: center;
+  width: 120px;
+  height: 120px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ido-accent) 14%, transparent);
+  color: var(--ido-accent);
+  font-size: 40px;
+  font-weight: 600;
+}
+.gd-cumple-cuerpo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 22px 28px 6px;
+  text-align: center;
+}
+.gd-cumple-icono {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ido-accent) 14%, transparent);
+  color: var(--ido-accent);
+}
+.gd-cumple-titulo { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.25; color: var(--ido-text); }
+.gd-cumple-bajada { margin: 0; max-width: 440px; font-size: 13px; line-height: 1.55; color: var(--ido-text-2); }
+.gd-cumple-pie { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 28px 22px; }
+.gd-cumple-hint { font-size: 11px; color: var(--ido-placeholder); }
+.gd-cumple-hint kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--ido-border-strong);
+  border-radius: 4px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--ido-text-2);
+}
+/* Papel picado: cae por toda la pantalla, detrás de la tarjeta. */
+.gd-cumple-papeles { position: absolute; inset: 0; pointer-events: none; }
+.gd-cumple-papel {
+  position: absolute;
+  top: -24px;
+  height: 14px;
+  border-radius: 2px;
+  opacity: 0.85;
+  animation-name: gd-cumple-cae;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.gd-cumple-papel.t0 { background: var(--ido-accent); }
+.gd-cumple-papel.t1 { background: var(--ido-warning); }
+.gd-cumple-papel.t2 { background: var(--ido-cat-1); }
+.gd-cumple-papel.t3 { background: var(--ido-cat-5); }
+@keyframes gd-cumple-cae {
+  from { transform: translate3d(0, 0, 0) rotate(0deg); }
+  to { transform: translate3d(40px, 110vh, 0) rotate(540deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gd-cumple-papeles { display: none; }
+  .gd-cumple { animation: none; }
+}
+
 /* ── Footer ──────────────────────────────────────────────────────────────── */
 .ido-foot {
   display: flex;
