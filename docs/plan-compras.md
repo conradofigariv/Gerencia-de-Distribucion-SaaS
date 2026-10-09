@@ -119,6 +119,10 @@ se persiste: cambiar el TC recalcula las 22.950 filas sin reescribir ninguna.
   el plan 2027 sin tocar el 2026; importar de nuevo un año reemplaza solo ese año. El
   selector de plan está siempre en la barra (Carga y Resumen), con la fecha de
   importación de cada año y, en Carga, la opción «+ Importar plan de otro año…».
+- **Eliminar un plan:** selector de año → «Eliminar plan NNNN…» (solo quien puede
+  editar; el visualizador no lo ve). Pide escribir el año para confirmar, guarda antes
+  las ediciones pendientes y borra la cabecera; las filas, Prioridad y cuentas se van
+  en cascada (`on delete cascade`). No se puede deshacer; los otros años no se tocan.
 - **El SQL no tiene funciones ni triggers**, a propósito: pegado en el SQL Editor
   de Supabase, el cuerpo de las funciones llegaba alterado («syntax error at end of
   input / LINE 0», «relation "v_anio" does not exist»). Solo tablas, índices y RLS.

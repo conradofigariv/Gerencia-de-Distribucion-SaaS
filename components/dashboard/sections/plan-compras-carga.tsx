@@ -22,7 +22,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  listPlanes, guardarEdiciones, nombresUsuarios, puedeEditarPlan, mensajeErrorPlan, calcularFila, incidencia, textoSinCompra, esCalculada,
+  listPlanes, guardarEdiciones, eliminarPlan, nombresUsuarios, puedeEditarPlan, mensajeErrorPlan, calcularFila, incidencia, textoSinCompra, esCalculada,
   COLUMNAS, GRUPOS, ETIQUETAS_DEFAULT,
   type PlanCompras, type PlanComprasItem, type PlanComprasCalc, type ClaveColumna, type ClaveCarga, type ColumnaPlan,
   type GrupoId, type GrupoPlan,
@@ -30,14 +30,14 @@ import {
 import type { ImportacionPlan } from "@/lib/planComprasImport";
 import {
   cargarItemsPlan, itemsEnCache, planCambio, actualizarItemsCache, refrescarFirma,
-  planesEnCache, guardarPlanesCache, planElegido, recordarPlan,
+  planesEnCache, guardarPlanesCache, planElegido, recordarPlan, olvidarPlan,
 } from "@/lib/planComprasCache";
 import {
   esEditable, parseValor, textoDeValor, conCambio, restaurada, estaModificada, textoImportado,
   parseTsv, celdaTsv, valorCelda, tituloColumna, type Valor,
 } from "@/lib/planComprasEdicion";
 import { PlanComprasImportarModal } from "./plan-compras-importar";
-import { FiltroSelect, SelectorPlan } from "./plan-compras-ui";
+import { ConfirmarEliminarPlan, FiltroSelect, SelectorPlan } from "./plan-compras-ui";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   MenuFiltroColumna, pasaFiltro, resumenFiltro,
@@ -370,6 +370,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
   const [progreso, setProgreso] = useState<{ n: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importando, setImportando] = useState(false);
+  const [eliminando, setEliminando] = useState(false);
 
   const plan = useMemo(() => planes.find((p) => p.id === planId) ?? null, [planes, planId]);
 
@@ -561,6 +562,23 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
   useEffect(() => { cargar(); }, [cargar]);
 
   const elegirPlan = (id: string) => { if (id !== planId) cargar(id); };
+
+  /** Borra el plan que se está viendo y pasa al siguiente año disponible. */
+  const confirmarEliminar = async () => {
+    if (!plan) return;
+    // Lo pendiente se guarda antes: si no, se intentaría guardar sobre un plan borrado.
+    if (pendientes.current.size || guardandoRef.current) {
+      await guardar();
+      if (pendientes.current.size) throw new Error("Hay cambios sin guardar que no se pudieron guardar: reintentá antes de eliminar.");
+    }
+    await eliminarPlan(plan.id);
+    olvidarPlan(plan.id);
+    if (planElegido() === plan.id) recordarPlan(null);
+    guardarPlanesCache((planesEnCache() ?? []).filter((p) => p.id !== plan.id));
+    setEliminando(false);
+    toast.success(`Plan ${plan.anio} eliminado`);
+    void cargar(undefined, true);
+  };
 
   const onImportado = (p: PlanCompras, imp: ImportacionPlan) => {
     setImportando(false);
@@ -1301,7 +1319,13 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
       <div className="ido-card flex flex-col flex-1 min-h-0" style={{ position: "relative" }}>
         {/* ── Toolbar (§4.10) + filtros (§4.8) ─────────────────────────────── */}
         <div className="ido-toolbar" style={{ padding: "10px 16px", gap: 8 }}>
-          <SelectorPlan planes={planes} planId={planId} onChange={elegirPlan} onImportar={() => setImportando(true)} />
+          <SelectorPlan
+            planes={planes}
+            planId={planId}
+            onChange={elegirPlan}
+            onImportar={() => setImportando(true)}
+            onEliminar={puedeEditar ? () => setEliminando(true) : undefined}
+          />
           {plan && (
             <span
               className="ido-chipbtn shrink-0"
@@ -1731,6 +1755,10 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
           })()}
         </div>,
         document.body,
+      )}
+
+      {eliminando && plan && (
+        <ConfirmarEliminarPlan plan={plan} onCancelar={() => setEliminando(false)} onConfirmar={confirmarEliminar} />
       )}
 
       {importando && (

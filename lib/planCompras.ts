@@ -241,6 +241,19 @@ export async function getFamilias(planId: string): Promise<PlanFamilia[]> {
   return (data ?? []) as PlanFamilia[];
 }
 
+// ─── Eliminar un plan ────────────────────────────────────────────────────────
+
+/**
+ * Borra el plan de un año completo: la cabecera y, en cascada (FK `on delete
+ * cascade`), sus filas de Global, Prioridad y cuentas. No se puede deshacer.
+ */
+export async function eliminarPlan(id: string): Promise<void> {
+  const { data, error } = await supabase.from("plan_compras").delete().eq("id", id).select("id");
+  if (error) throw new Error(mensajeErrorPlan(error));
+  // Con RLS que no deja borrar, PostgREST no da error: devuelve 0 filas.
+  if (!data?.length) throw new Error("No se borró nada: el plan ya no existe o la base no permite borrarlo.");
+}
+
 // ─── Edición en celda ────────────────────────────────────────────────────────
 
 /**
