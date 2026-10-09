@@ -12,6 +12,7 @@ contables** (Resumen), con **edición en celda** en la grilla de Global.
 | Lectura del Excel (puro, corre en worker) | `lib/planComprasImport.ts` |
 | Worker + cliente con fallback | `lib/planComprasImport.worker.ts`, `lib/planComprasLeer.ts` |
 | Supabase (lectura / importación) | `lib/planCompras.ts` |
+| Caché en memoria compartida Carga ↔ Resumen | `lib/planComprasCache.ts` |
 | Cruce con el catálogo de matrículas | `lib/planComprasCatalogo.ts` |
 | Grilla | `components/dashboard/sections/plan-compras-carga.tsx` |
 | Filtro de columna tipo Excel | `components/dashboard/sections/plan-compras-filtro-columna.tsx` |
@@ -182,6 +183,21 @@ flotante, selección de rango con el mouse.
 - ⚠ Si dos personas editan **la misma fila** a la vez, cada celda queda con el último
   valor guardado, pero la marca de «modificada» de la otra puede perderse (la columna
   `importado` se escribe entera).
+
+## Caché entre Carga de datos y Resumen
+
+Las dos pantallas leen las mismas ~23.000 filas; al cambiar de sección se desmontan.
+`lib/planComprasCache.ts` guarda en memoria (mientras la pestaña esté abierta, hasta 2
+planes) las filas, la lista de planes, el plan elegido y Prioridad/cuentas:
+
+- Volver a una pantalla muestra el plan **al instante** desde la caché.
+- En segundo plano se compara la **firma** del plan (cantidad de filas + máx.
+  `updated_at`): si otra sesión editó o reimportó, se recarga sola y avisa con un toast.
+  En Carga no se recarga si hay ediciones sin guardar.
+- Las ediciones de Carga se escriben en la caché al instante (Resumen las ve) y, tras
+  guardar, se actualiza la firma para no recargar por un cambio propio.
+- **Actualizar**, Reintentar e importar fuerzan la lectura de la base.
+- No sobrevive a recargar la página (F5): eso pediría IndexedDB.
 
 ## Resumen (`plan-compras-resumen`)
 

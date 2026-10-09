@@ -22,12 +22,16 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  listPlanes, getItemsEditables, guardarEdiciones, nombresUsuarios, puedeEditarPlan, mensajeErrorPlan, calcularFila, incidencia, textoSinCompra, esCalculada,
+  listPlanes, guardarEdiciones, nombresUsuarios, puedeEditarPlan, mensajeErrorPlan, calcularFila, incidencia, textoSinCompra, esCalculada,
   COLUMNAS, GRUPOS, ETIQUETAS_DEFAULT,
   type PlanCompras, type PlanComprasItem, type PlanComprasCalc, type ClaveColumna, type ClaveCarga, type ColumnaPlan,
   type GrupoId, type GrupoPlan,
 } from "@/lib/planCompras";
 import type { ImportacionPlan } from "@/lib/planComprasImport";
+import {
+  cargarItemsPlan, itemsEnCache, planCambio, actualizarItemsCache, refrescarFirma,
+  planesEnCache, guardarPlanesCache, planElegido, recordarPlan,
+} from "@/lib/planComprasCache";
 import {
   esEditable, parseValor, textoDeValor, conCambio, restaurada, estaModificada, textoImportado,
   parseTsv, celdaTsv, valorCelda, tituloColumna, type Valor,
@@ -422,6 +426,8 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
       soloEdiciones.current = true;
       itemsRef.current = itemsRef.current.map((it) => (ids.has(it.id) ? { ...it, editado_por: uid, editado_at: ahora } : it));
       setItems(itemsRef.current);
+      const pid = itemsRef.current[0]?.plan_id;
+      if (pid) { actualizarItemsCache(pid, itemsRef.current); void refrescarFirma(pid); }
       setErrorGuardado(null);
       if (pendientes.current.size) {
         setGuardado("pendiente");
@@ -448,6 +454,9 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
     soloEdiciones.current = true;
     itemsRef.current = itemsRef.current.map((it) => nuevas.get(it.id)?.it ?? it);
     setItems(itemsRef.current);
+    // Resumen ve las ediciones sin recargar (caché compartida).
+    const pid = itemsRef.current[0]?.plan_id;
+    if (pid) actualizarItemsCache(pid, itemsRef.current);
     for (const [id, { claves }] of nuevas) {
       const p = pendientes.current.get(id) ?? { claves: new Set<string>(), version: 0 };
       for (const k of claves) p.claves.add(k);
@@ -472,7 +481,22 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
   // Pedido en curso: si se cambia de plan a mitad de la carga, la respuesta
   // vieja no tiene que pisar la nueva.
   const pedido = useRef(0);
-  const cargar = useCallback(async (preferido?: string) => {
+  const ponerItems = (items: PlanComprasItem[], edicion: boolean) => {
+    soloEdiciones.current = false;
+    itemsRef.current = items;
+    setItems(items);
+    setEdicionOk(edicion);
+    setCelda(null);
+    setEdit(null);
+    setErrores({});
+  };
+
+  /**
+   * Carga el plan. Si está en la caché (se cargó antes en esta pestaña, acá o
+   * en Resumen) aparece al instante y se revalida en segundo plano; `forzar`
+   * (botón Actualizar, importación) va siempre a la base.
+   */
+  const cargar = useCallback(async (preferido?: string, forzar = false) => {
     // Primero se guarda lo pendiente: recargar lo pisaría.
     if (pendientes.current.size || guardandoRef.current) {
       await guardar();
@@ -482,27 +506,52 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
       }
     }
     const yo = ++pedido.current;
-    setCargando(true);
     setError(null);
     setProgreso(null);
+
+    // ── Camino rápido: caché ────────────────────────────────────────────────
+    const psCache = planesEnCache();
+    const pidCache = preferido ?? planElegido() ?? psCache?.[0]?.id ?? null;
+    const enCache = !forzar && psCache && pidCache && psCache.some((p) => p.id === pidCache) ? itemsEnCache(pidCache) : null;
+    if (enCache && psCache && pidCache) {
+      setPlanes(psCache);
+      setPlanId(pidCache);
+      recordarPlan(pidCache);
+      ponerItems(enCache.items, enCache.edicion);
+      setCargando(false);
+      // Revalidación: ¿cambió la lista de planes o alguien editó/reimportó?
+      try {
+        const [ps, cambio] = await Promise.all([listPlanes(), planCambio(pidCache)]);
+        if (yo !== pedido.current) return;
+        guardarPlanesCache(ps);
+        setPlanes(ps);
+        if (!ps.some((p) => p.id === pidCache)) { void cargar(undefined, true); return; }
+        if (cambio && !pendientes.current.size) {
+          const r = await cargarItemsPlan(pidCache);
+          if (yo !== pedido.current || pendientes.current.size) return;
+          ponerItems(r.items, r.edicion);
+          toast.info("El plan tenía cambios hechos desde otra sesión: se actualizó.", { id: "pc-revalidado" });
+        }
+      } catch { /* se sigue con lo que hay en memoria */ }
+      return;
+    }
+
+    // ── Camino normal: base ─────────────────────────────────────────────────
+    setCargando(true);
     try {
       const ps = await listPlanes();
       if (yo !== pedido.current) return;
+      guardarPlanesCache(ps);
       setPlanes(ps);
-      const elegido = ps.find((p) => p.id === preferido) ?? ps[0] ?? null;
+      const elegido = ps.find((p) => p.id === (preferido ?? planElegido())) ?? ps[0] ?? null;
       setPlanId(elegido?.id ?? null);
+      recordarPlan(elegido?.id ?? null);
       if (!elegido) { itemsRef.current = []; setItems([]); return; }
-      const r = await getItemsEditables(elegido.id, (n, total) => {
+      const r = await cargarItemsPlan(elegido.id, (n, total) => {
         if (yo === pedido.current) setProgreso({ n, total });
       });
       if (yo !== pedido.current) return;
-      soloEdiciones.current = false;
-      itemsRef.current = r.items;
-      setItems(r.items);
-      setEdicionOk(r.edicion);
-      setCelda(null);
-      setEdit(null);
-      setErrores({});
+      ponerItems(r.items, r.edicion);
     } catch (e) {
       if (yo === pedido.current) setError(mensajeErrorPlan(e));
     } finally {
@@ -516,7 +565,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
   const onImportado = (p: PlanCompras, imp: ImportacionPlan) => {
     setImportando(false);
     toast.success(`Plan ${p.anio} importado: ${imp.items.length.toLocaleString("es-AR")} filas`);
-    cargar(p.id);
+    cargar(p.id, true);
   };
 
   // ── Etiquetas: el encabezado real del Excel de este plan ──────────────────
@@ -1351,7 +1400,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
               </>
             )}
             {plan && <IndicadorGuardado estado={guardado} error={errorGuardado} editable={editable} puedeEditar={puedeEditar} onReintentar={() => void guardar()} />}
-            <button type="button" className="ido-btn ido-btn-text" style={{ height: 32 }} onClick={() => cargar(planId ?? undefined)} disabled={cargando}>
+            <button type="button" className="ido-btn ido-btn-text" style={{ height: 32 }} onClick={() => cargar(planId ?? undefined, true)} disabled={cargando}>
               <RefreshCw className={`w-3.5 h-3.5${cargando ? " animate-spin" : ""}`} />Actualizar
             </button>
             {/* Sin plan, el botón primario es el del centro (un solo primario
@@ -1401,7 +1450,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
           <div className="ido-loading" style={{ flexDirection: "column", gap: 10, flex: 1, textAlign: "center", padding: "0 24px" }}>
             <AlertTriangle className="w-5 h-5" style={{ color: "var(--ido-warning)" }} />
             <span style={{ maxWidth: 520 }}>{error}</span>
-            <button type="button" className="ido-btn ido-btn-ghost" style={{ height: 32 }} onClick={() => cargar(planId ?? undefined)}>
+            <button type="button" className="ido-btn ido-btn-ghost" style={{ height: 32 }} onClick={() => cargar(planId ?? undefined, true)}>
               Reintentar
             </button>
           </div>

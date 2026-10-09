@@ -24,7 +24,7 @@ import { toast } from "sonner";
 import { AlertTriangle, FileSpreadsheet, Filter, RefreshCw, X } from "lucide-react";
 import { SortArrow, CargandoFilas, type SortDir } from "@/components/dashboard/ido-kit";
 import {
-  listPlanes, getItems, getFamilias, getCuentas, guardarPrioridad, mensajeErrorPlan, calcularFila,
+  listPlanes, getFamilias, getCuentas, guardarPrioridad, mensajeErrorPlan, calcularFila,
   type PlanCompras, type PlanComprasItem, type PlanFamilia, type PlanCuenta,
 } from "@/lib/planCompras";
 import {
@@ -33,6 +33,10 @@ import {
   type FilaCalc, type FilaPrioridad, type FilaPartida, type FilaCuenta,
 } from "@/lib/planComprasResumen";
 import { FiltroSelect, SelectorPlan } from "./plan-compras-ui";
+import {
+  cargarItemsPlan, itemsEnCache, planCambio, planesEnCache, guardarPlanesCache, planElegido, recordarPlan,
+  extrasEnCache, guardarExtrasCache,
+} from "@/lib/planComprasCache";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   MenuFiltroColumna, pasaFiltro, resumenFiltro,
@@ -372,27 +376,74 @@ export function PlanComprasResumenSection() {
   const plan = useMemo(() => planes.find((p) => p.id === planId) ?? null, [planes, planId]);
 
   const pedido = useRef(0);
-  const cargar = useCallback(async (preferido?: string) => {
+  /**
+   * Si el plan ya está en memoria (se abrió antes en Carga de datos o acá)
+   * aparece al instante y se revalida en segundo plano; `forzar` (Actualizar)
+   * va siempre a la base. Ver lib/planComprasCache.ts.
+   */
+  const cargar = useCallback(async (preferido?: string, forzar = false) => {
     const yo = ++pedido.current;
-    setCargando(true);
     setError(null);
     setProgreso(null);
+    const traerExtras = async (id: string) => {
+      const [fams, cts] = await Promise.all([getFamilias(id), getCuentas(id)]);
+      guardarExtrasCache(id, { familias: fams, cuentas: cts });
+      return { fams, cts };
+    };
+
+    // ── Camino rápido: caché ────────────────────────────────────────────────
+    const psCache = planesEnCache();
+    const pid = preferido ?? planElegido() ?? psCache?.[0]?.id ?? null;
+    const enCache = !forzar && psCache && pid && psCache.some((p) => p.id === pid) ? itemsEnCache(pid) : null;
+    if (enCache && psCache && pid) {
+      const ex = extrasEnCache(pid);
+      setPlanes(psCache);
+      setPlanId(pid);
+      recordarPlan(pid);
+      setItems(enCache.items);
+      if (ex) { setFamilias(ex.familias); setCuentas(ex.cuentas); }
+      setCargando(!ex);
+      try {
+        const [ps, cambio, extrasNuevos] = await Promise.all([listPlanes(), planCambio(pid), traerExtras(pid)]);
+        if (yo !== pedido.current) return;
+        guardarPlanesCache(ps);
+        setPlanes(ps);
+        setFamilias(extrasNuevos.fams);
+        setCuentas(extrasNuevos.cts);
+        setCargando(false);
+        if (!ps.some((p) => p.id === pid)) { void cargar(undefined, true); return; }
+        if (cambio) {
+          const r = await cargarItemsPlan(pid);
+          if (yo !== pedido.current) return;
+          setItems(r.items);
+          toast.info("El plan tenía cambios hechos desde otra sesión: se actualizó.", { id: "pc-revalidado" });
+        }
+      } catch (e) {
+        if (yo === pedido.current && !ex) setError(mensajeErrorPlan(e));
+        if (yo === pedido.current) setCargando(false);
+      }
+      return;
+    }
+
+    // ── Camino normal: base ─────────────────────────────────────────────────
+    setCargando(true);
     try {
       const ps = await listPlanes();
       if (yo !== pedido.current) return;
+      guardarPlanesCache(ps);
       setPlanes(ps);
-      const elegido = ps.find((p) => p.id === preferido) ?? ps[0] ?? null;
+      const elegido = ps.find((p) => p.id === (preferido ?? planElegido())) ?? ps[0] ?? null;
       setPlanId(elegido?.id ?? null);
+      recordarPlan(elegido?.id ?? null);
       if (!elegido) { setItems([]); setFamilias([]); setCuentas([]); return; }
-      const [its, fams, cts] = await Promise.all([
-        getItems(elegido.id, (n, total) => { if (yo === pedido.current) setProgreso({ n, total }); }),
-        getFamilias(elegido.id),
-        getCuentas(elegido.id),
+      const [r, ex] = await Promise.all([
+        cargarItemsPlan(elegido.id, (n, total) => { if (yo === pedido.current) setProgreso({ n, total }); }),
+        traerExtras(elegido.id),
       ]);
       if (yo !== pedido.current) return;
-      setItems(its);
-      setFamilias(fams);
-      setCuentas(cts);
+      setItems(r.items);
+      setFamilias(ex.fams);
+      setCuentas(ex.cts);
     } catch (e) {
       if (yo === pedido.current) setError(mensajeErrorPlan(e));
     } finally {
@@ -400,6 +451,10 @@ export function PlanComprasResumenSection() {
     }
   }, []);
   useEffect(() => { cargar(); }, [cargar]);
+  // Prioridad editada acá → la caché queda al día para la próxima entrada.
+  useEffect(() => {
+    if (planId && !cargando) guardarExtrasCache(planId, { familias, cuentas });
+  }, [planId, familias, cuentas, cargando]);
 
   // ── Cálculo ────────────────────────────────────────────────────────────────
   const filas = useMemo<FilaCalc[]>(() => {
@@ -617,7 +672,7 @@ export function PlanComprasResumenSection() {
             </>
           )}
           <div className="flex items-center gap-2" style={{ marginLeft: "auto" }}>
-            <button type="button" className="ido-btn ido-btn-text" style={{ height: 32 }} onClick={() => cargar(planId ?? undefined)} disabled={cargando}>
+            <button type="button" className="ido-btn ido-btn-text" style={{ height: 32 }} onClick={() => cargar(planId ?? undefined, true)} disabled={cargando}>
               <RefreshCw className={`w-3.5 h-3.5${cargando ? " animate-spin" : ""}`} />Actualizar
             </button>
           </div>
@@ -640,7 +695,7 @@ export function PlanComprasResumenSection() {
           <div className="ido-loading" style={{ flexDirection: "column", gap: 10, flex: 1, textAlign: "center", padding: "0 24px" }}>
             <AlertTriangle className="w-5 h-5" style={{ color: "var(--ido-warning)" }} />
             <span style={{ maxWidth: 520 }}>{error}</span>
-            <button type="button" className="ido-btn ido-btn-ghost" style={{ height: 32 }} onClick={() => cargar(planId ?? undefined)}>
+            <button type="button" className="ido-btn ido-btn-ghost" style={{ height: 32 }} onClick={() => cargar(planId ?? undefined, true)}>
               Reintentar
             </button>
           </div>
