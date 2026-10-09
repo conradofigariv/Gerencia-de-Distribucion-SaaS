@@ -11,9 +11,11 @@
 // navegadores no lo permiten (a lo sumo muestran su propio «¿Salir del
 // sitio?», que igual deja salir) — ver docs en design-system.md §4.26.
 //
-// Imagen: la que subió un admin para esa persona (Configuración → Usuarios →
-// editar; supabase/cumpleanos_imagenes.sql). Sin imagen, la foto de perfil, y
-// sin foto, las iniciales.
+// Video: el que subió un admin para esa persona (Configuración → Usuarios →
+// editar; supabase/cumpleanos_imagenes.sql), SIEMPRE mudo y en loop — así
+// arranca solo en todos los navegadores (con sonido lo bloquean hasta que la
+// persona toque algo). Sin video, la foto de perfil, y sin foto, las
+// iniciales. Lo subido como imagen antes de pasar a video se sigue mostrando.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -22,33 +24,68 @@ import { supabase } from "@/lib/supabaseClient";
 import { fetchCumpleanerosDeHoy, type Cumpleanero } from "@/lib/birthdays";
 
 const SIN_CURSOR = "gd-cumple-sin-cursor";
-// Cuánto se espera a que bajen las imágenes antes de mostrar el cartel (así
-// no aparece con el recuadro vacío). Pasado esto se muestra igual.
-const ESPERA_IMG_MS = 3000;
+// Cuánto se espera a que bajen imágenes/videos antes de mostrar el cartel (así
+// no aparece con el recuadro vacío). Pasado esto se muestra igual y el video
+// arranca cuando llegue.
+const ESPERA_MEDIA_MS = 3000;
 
 const juntar = (xs: string[]) =>
   xs.length <= 1 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} y ${xs[xs.length - 1]}`;
 
-function precargar(urls: string[]): Promise<void> {
-  if (!urls.length) return Promise.resolve();
-  const todas = Promise.all(urls.map((u) => new Promise<void>((res) => {
-    const img = new Image();
-    img.onload = img.onerror = () => res();
-    img.src = u;
+type Media = { url: string; tipo: "imagen" | "video" };
+
+/** Lo que se muestra de cada uno: su video/imagen o, si no, la foto. */
+const mediaDe = (p: Cumpleanero): Media | null =>
+  p.media ?? (p.avatarUrl ? { url: p.avatarUrl, tipo: "imagen" } : null);
+
+function precargar(medias: Media[]): Promise<void> {
+  if (!medias.length) return Promise.resolve();
+  const todas = Promise.all(medias.map((m) => new Promise<void>((res) => {
+    if (m.tipo === "video") {
+      // Alcanza con el primer cuadro; el resto se sigue bajando ya visible.
+      const v = document.createElement("video");
+      v.preload = "auto";
+      v.muted = true;
+      v.onloadeddata = v.onerror = () => res();
+      v.src = m.url;
+    } else {
+      const img = new Image();
+      img.onload = img.onerror = () => res();
+      img.src = m.url;
+    }
   })));
-  return Promise.race([todas.then(() => undefined), new Promise<void>((r) => setTimeout(r, ESPERA_IMG_MS))]);
+  return Promise.race([todas.then(() => undefined), new Promise<void>((r) => setTimeout(r, ESPERA_MEDIA_MS))]);
 }
 
 function Retrato({ p }: { p: Cumpleanero }) {
-  const [fallo, setFallo] = useState<string | null>(null);
-  const src = [p.imagenUrl, p.avatarUrl].find((u) => u && u !== fallo) ?? null;
+  // Si el video/imagen no carga se pasa al siguiente: foto → iniciales.
+  const [fallidos, setFallidos] = useState<string[]>([]);
+  const opciones: Media[] = [p.media, p.avatarUrl ? { url: p.avatarUrl, tipo: "imagen" as const } : null]
+    .filter((m): m is Media => !!m && !fallidos.includes(m.url));
+  const m = opciones[0] ?? null;
+  const fallo = () => m && setFallidos((f) => [...f, m.url]);
   const iniciales = p.completo.split(/\s+/).map((w) => w[0] ?? "").join("").slice(0, 2).toUpperCase();
   return (
     <figure className="gd-cumple-retrato">
-      {src
-        // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={src} alt={`Cumpleaños de ${p.completo}`} onError={() => setFallo(src)} />
-        : <span className="gd-cumple-iniciales" aria-hidden>{iniciales}</span>}
+      {m?.tipo === "video"
+        ? (
+          <video
+            key={m.url}
+            src={m.url}
+            autoPlay
+            muted
+            loop
+            playsInline
+            disablePictureInPicture
+            controls={false}
+            aria-label={`Video de cumpleaños de ${p.completo}`}
+            onError={fallo}
+          />
+        )
+        : m
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={m.url} alt={`Cumpleaños de ${p.completo}`} onError={fallo} />
+          : <span className="gd-cumple-iniciales" aria-hidden>{iniciales}</span>}
     </figure>
   );
 }
@@ -65,7 +102,7 @@ export function BirthdayModal() {
       try {
         const [lista, { data: { user } }] = await Promise.all([fetchCumpleanerosDeHoy(), supabase.auth.getUser()]);
         if (!vivo || !lista.length) return;
-        await precargar(lista.flatMap((p) => (p.imagenUrl ? [p.imagenUrl] : p.avatarUrl ? [p.avatarUrl] : [])));
+        await precargar(lista.flatMap((p) => { const m = mediaDe(p); return m ? [m] : []; }));
         if (!vivo) return;
         setYoId(user?.id ?? null);
         setGente(lista);
@@ -143,6 +180,7 @@ export function BirthdayModal() {
       aria-labelledby="gd-cumple-titulo"
       aria-describedby="gd-cumple-bajada"
       data-k="cumple-modal"
+      onContextMenu={(e) => e.preventDefault()}
     >
       <div className="gd-cumple-papeles" aria-hidden>
         {papeles.map((p, i) => (

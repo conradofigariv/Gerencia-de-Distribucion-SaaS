@@ -315,7 +315,8 @@ Tabla única de referencia — tres modos, sin valores intermedios:
 
 ### 4.26 Cartel de feliz cumpleaños — `components/dashboard/birthday-modal.tsx`
 - `.ido-modal` (520px; 760px con 2+ cumpleañeros) sobre overlay `bg.base` al 82% + blur 6px, con papel picado (accent, warning, cat-1, cat-5) cayendo detrás. Entrada 420ms (sube 12px y escala 0.96 → 1).
-- Arriba la imagen de cada cumpleañero (`object-fit: contain`, alto `min(46vh, 380px)`, fondo `bg.base`), en columnas si hay varios. Prioridad: imagen subida por el admin → foto de perfil → iniciales 40px en círculo accent 14%.
+- Arriba el **video** de cada cumpleañero, **siempre mudo y en loop**, sin controles (`object-fit: contain`, alto `min(46vh, 380px)`, fondo `bg.base`), en columnas si hay varios. Mudo a propósito: con sonido los navegadores no lo dejan arrancar solo. Prioridad: video subido por el admin → foto de perfil → iniciales 40px en círculo accent 14% (si el video no se puede reproducir, cae a la siguiente). Una imagen subida antes del cambio a video se sigue mostrando.
+- Subida (Configuración → Usuarios → editar): solo video, hasta 50 MB, vista previa muda en loop; se rechaza lo que el navegador no reproduce (recomendado MP4 H.264). El archivo va directo a Storage con una URL firmada por `/api/admin/users` (Vercel corta en 4,5 MB) y muestra barra de progreso (`.ido-cargando-bar`) mientras sube.
 - Ícono de torta en círculo accent 14% + título 22/600 + bajada 13 secundaria. Pie: botón primario «¡Feliz cumple! 🎉» (38px) y hint 11px «Apretá Enter para continuar».
 - **Bloqueante a pedido:** sin X, Esc y clic afuera no cierran, Tab no saca el foco del botón y ninguna tecla llega a la sección de abajo. La flecha del mouse se oculta en toda la página (`html.gd-cumple-sin-cursor`) hasta cerrar con **Enter** o tocando el botón.
 - ⚠ Cerrar la pestaña/el navegador **no se puede impedir** (lo bloquean los navegadores): no intentar `beforeunload` para esto.

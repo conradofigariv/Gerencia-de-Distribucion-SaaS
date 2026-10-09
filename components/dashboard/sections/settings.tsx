@@ -50,9 +50,11 @@ interface AdminUser {
   nivel_acceso:         NivelAcceso;
   // null = sin restricción, ve todo (default). Ver lib/sectionAccess.ts.
   secciones_permitidas: string[] | null;
-  // Imagen del cartel de cumpleaños ("" = sin imagen, se usa la foto de
-  // perfil). Ver supabase/cumpleanos_imagenes.sql.
-  cumple_imagen_url:    string;
+  // Video del cartel de cumpleaños ("" = sin video, se usa la foto de
+  // perfil). `cumple_tipo` = "imagen" solo para lo subido antes de pasar a
+  // video. Ver supabase/cumpleanos_imagenes.sql.
+  cumple_url:           string;
+  cumple_tipo:          "imagen" | "video";
   created_at:           string;
 }
 
@@ -155,6 +157,58 @@ function SeccionesCheckboxes({
 // escribe con la service role key. Ver el comentario de CAMPOS_PERFIL_EDITABLES
 // en esa ruta.
 
+// ─── Video del cartel de cumpleaños ───────────────────────────────────────────
+
+const VIDEO_MAX_BYTES = 50 * 1024 * 1024; // = file_size_limit del bucket `cumpleanos`
+
+/** ¿Este navegador puede reproducir el video? Carga solo los metadatos. */
+function videoReproducible(url: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const v = document.createElement("video");
+    const fin = (ok: boolean) => { clearTimeout(t); v.removeAttribute("src"); v.load(); resolve(ok); };
+    const t = setTimeout(() => fin(true), 8000); // no se pudo saber: que lo intente
+    v.preload = "metadata";
+    v.muted = true;
+    v.onloadedmetadata = () => fin(v.videoWidth > 0);
+    v.onerror = () => fin(false);
+    v.src = url;
+  });
+}
+
+/**
+ * Sube el archivo a la URL firmada de Storage (la misma petición que hace
+ * `uploadToSignedUrl` de supabase-js), pero con XHR para tener progreso: un
+ * video de 50 MB tarda, y sin barra parecería colgado.
+ */
+function subirConProgreso(url: string, file: File, token: string | undefined, onProgreso: (p: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (anon) xhr.setRequestHeader("apikey", anon);
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.setRequestHeader("x-upsert", "false");
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgreso(e.loaded / e.total); };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) { onProgreso(1); resolve(); return; }
+      let msg = "";
+      try { msg = String(JSON.parse(xhr.responseText).message ?? ""); } catch { /* cuerpo no JSON */ }
+      reject(new Error(
+        xhr.status === 413 || /maximum allowed size|too large/i.test(msg)
+          ? "El video supera el tamaño máximo que acepta Supabase (50 MB, o menos si se bajó el límite global en Settings → Storage)."
+          : /mime/i.test(msg)
+            ? "Supabase no acepta ese tipo de archivo: tiene que ser un video."
+            : `No se pudo subir el video${msg ? `: ${msg}` : ` (error ${xhr.status})`}`,
+      ));
+    };
+    xhr.onerror = () => reject(new Error("Se cortó la conexión mientras se subía el video."));
+    const form = new FormData();
+    form.append("cacheControl", "3600");
+    form.append("", file);
+    xhr.send(form);
+  });
+}
+
 function EditUserDialog({
   usuario, esYo, open, onOpenChange, onSaved,
 }: {
@@ -175,11 +229,12 @@ function EditUserDialog({
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [saving,     setSaving]     = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Imagen del cartel de cumpleaños: sin recorte (puede ser un GIF animado y
-  // se muestra entera). `cumpleQuitar` = borrar la que está guardada.
+  // Video del cartel de cumpleaños. `cumpleQuitar` = borrar el guardado;
+  // `subida` = progreso (0–1) mientras sube directo a Storage.
   const [cumpleFile, setCumpleFile] = useState<File | null>(null);
   const [cumplePreview, setCumplePreview] = useState<string | null>(null);
   const [cumpleQuitar, setCumpleQuitar] = useState(false);
+  const [subida, setSubida] = useState<number | null>(null);
   const cumpleInputRef = useRef<HTMLInputElement>(null);
   // Recorte antes de subir: mismo diálogo que usa la propia pestaña "Perfil".
   const [cropFile, setCropFile] = useState<File | null>(null);
@@ -239,7 +294,7 @@ function EditUserDialog({
     setEmpresa(usuario.empresa); setCargo(usuario.cargo);
     setTelefono(usuario.telefono); setCumpleanos(usuario.cumpleanos);
     setAvatarFile(null); setAvatarPreview(null);
-    setCumpleFile(null); setCumplePreview(null); setCumpleQuitar(false);
+    setCumpleFile(null); setCumplePreview(null); setCumpleQuitar(false); setSubida(null);
     setNivel(usuario.nivel_acceso);
     setSecciones(usuario.secciones_permitidas ?? SIDEBAR_SECTIONS.map((s) => s.id));
     setNuevaPass(""); setShowNuevaPass(false);
@@ -257,25 +312,62 @@ function EditUserDialog({
     setCropOpen(true);
   };
 
-  const handleCumpleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCumpleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (!file.type.startsWith("image/")) { toast.error("Solo se permiten imágenes"); return; }
-    if (file.size > 3 * 1024 * 1024) { toast.error("La imagen de cumpleaños no puede superar 3 MB"); return; }
+    if (!file.type.startsWith("video/")) { toast.error("Solo se permiten videos"); return; }
+    if (file.size > VIDEO_MAX_BYTES) { toast.error("El video no puede superar 50 MB"); return; }
+    // Si ESTE navegador no lo puede reproducir (p. ej. un .mov HEVC de
+    // iPhone en Windows), la oficina tampoco lo va a ver: se rechaza acá.
+    const url = URL.createObjectURL(file);
+    if (!(await videoReproducible(url))) {
+      URL.revokeObjectURL(url);
+      toast.error("Este navegador no puede reproducir ese video. Exportalo como MP4 (H.264) y probá de nuevo.");
+      return;
+    }
     setCumpleFile(file);
-    setCumplePreview(URL.createObjectURL(file));
+    setCumplePreview(url);
     setCumpleQuitar(false);
   };
 
   const quitarCumple = () => {
     setCumpleFile(null); setCumplePreview(null);
-    setCumpleQuitar(!!usuario.cumple_imagen_url);
+    setCumpleQuitar(!!usuario.cumple_url);
   };
 
-  // Lo que se ve en la vista previa: la recién elegida, la guardada (si no se
+  // Lo que se ve en la vista previa: el recién elegido, el guardado (si no se
   // marcó para quitar) o nada.
-  const cumpleVista = cumplePreview ?? (cumpleQuitar ? null : usuario.cumple_imagen_url || null);
+  const cumpleVista: { url: string; tipo: "imagen" | "video" } | null = cumplePreview
+    ? { url: cumplePreview, tipo: "video" }
+    : !cumpleQuitar && usuario.cumple_url ? { url: usuario.cumple_url, tipo: usuario.cumple_tipo } : null;
+
+  /** Sube (o quita) el video del cartel. Devuelve el cambio para la lista, o
+   *  null si no había nada que hacer. Ver `cumpleVideo` en /api/admin/users. */
+  const guardarVideo = async (token: string | undefined): Promise<Partial<AdminUser> | null> => {
+    const pedir = async (cumple_video: Record<string, unknown>) => {
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ userId: usuario.id, cumple_video }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? "Error con el video de cumpleaños");
+      return json;
+    };
+    if (cumpleFile) {
+      const { path, signedUrl } = await pedir({ accion: "firmar", contentType: cumpleFile.type, size: cumpleFile.size });
+      setSubida(0);
+      await subirConProgreso(signedUrl, cumpleFile, token, setSubida);
+      const ok = await pedir({ accion: "confirmar", path });
+      return { cumple_url: ok.cumple_url, cumple_tipo: "video" };
+    }
+    if (cumpleQuitar) {
+      await pedir({ accion: "quitar" });
+      return { cumple_url: "", cumple_tipo: "video" };
+    }
+    return null;
+  };
 
   const handleCropped = (file: File) => {
     setAvatarFile(file);
@@ -286,6 +378,10 @@ function EditUserDialog({
     setSaving(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      // El video va primero: es lo que más tarda y lo que más puede fallar
+      // (si falla, no se guardó nada a medias).
+      const cambioVideo = await guardarVideo(session?.access_token);
+
       const form = new FormData();
       form.set("userId", usuario.id);
       form.set("nombre", nombre);
@@ -295,8 +391,6 @@ function EditUserDialog({
       form.set("telefono", telefono);
       form.set("cumpleanos", cumpleanos);
       if (avatarFile) form.set("avatar", avatarFile);
-      if (cumpleFile) form.set("cumple_imagen", cumpleFile);
-      else if (cumpleQuitar) form.set("cumple_imagen_quitar", "1");
 
       const res = await fetch("/api/admin/users", {
         method: "PATCH",
@@ -333,7 +427,7 @@ function EditUserDialog({
         nivel_acceso: nivel,
         secciones_permitidas: seccionesFinal,
         ...(json.avatar_url ? { avatar_url: json.avatar_url as string } : {}),
-        ...("cumple_imagen_url" in json ? { cumple_imagen_url: (json.cumple_imagen_url as string | null) ?? "" } : {}),
+        ...(cambioVideo ?? {}),
       });
       toast.success("Usuario actualizado");
       onOpenChange(false);
@@ -341,11 +435,12 @@ function EditUserDialog({
       toast.error(e instanceof Error ? e.message : "Error al guardar");
     } finally {
       setSaving(false);
+      setSubida(null);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v && saving) return; onOpenChange(v); }}>
       {/* ⚠ DialogContent no trae tope de alto: con las 18 secciones el diálogo
           crecía más que la pantalla y quedaba cortado arriba y abajo, sin forma
           de llegar a los botones. Se acota a 90vh y se define la grilla en tres
@@ -415,36 +510,49 @@ function EditUserDialog({
           </div>
 
           {/* ── Cartel de cumpleaños ──
-              Imagen que ve toda la oficina al entrar el día de su cumpleaños
-              (components/dashboard/birthday-modal.tsx). Sin imagen se usa la
-              foto de perfil. Solo el admin la cambia: viaja en este mismo
-              PATCH multipart y la ruta la guarda con la service role. */}
-          <div className="flex items-center gap-5" data-k="cumple-imagen">
+              Video que ve toda la oficina al entrar el día de su cumpleaños
+              (components/dashboard/birthday-modal.tsx), mudo y en loop. Sin
+              video se usa la foto de perfil. Solo el admin lo cambia: la ruta
+              firma una subida de un uso y el archivo va directo a Storage. */}
+          <div className="flex items-center gap-5" data-k="cumple-video">
             <div className="w-28 h-20 shrink-0 rounded-lg border border-border bg-secondary overflow-hidden flex items-center justify-center">
-              {cumpleVista
-                // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={cumpleVista} alt="Imagen de cumpleaños" className="w-full h-full object-cover" />
-                : <Cake className="w-6 h-6 text-muted-foreground" />}
+              {cumpleVista?.tipo === "video"
+                ? <video key={cumpleVista.url} src={cumpleVista.url} muted loop autoPlay playsInline className="w-full h-full object-cover" />
+                : cumpleVista
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={cumpleVista.url} alt="Imagen de cumpleaños" className="w-full h-full object-cover" />
+                  : <Cake className="w-6 h-6 text-muted-foreground" />}
             </div>
-            <div className="space-y-2 min-w-0">
-              <Label className="text-sm font-medium">Imagen del cartel de cumpleaños</Label>
+            <div className="space-y-2 min-w-0 flex-1">
+              <Label className="text-sm font-medium">Video del cartel de cumpleaños</Label>
               <div className="flex flex-wrap items-center gap-2">
-                <input ref={cumpleInputRef} type="file" accept="image/*" className="hidden" onChange={handleCumpleFile} />
-                <Button type="button" variant="outline" size="sm" onClick={() => cumpleInputRef.current?.click()}>
+                <input ref={cumpleInputRef} type="file" accept="video/*" className="hidden" onChange={handleCumpleFile} />
+                <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => cumpleInputRef.current?.click()}>
                   <Upload className="w-4 h-4 mr-2" />
-                  {cumpleVista ? "Cambiar imagen" : "Subir imagen"}
+                  {cumpleVista ? "Cambiar video" : "Subir video"}
                 </Button>
                 {cumpleVista && (
-                  <Button type="button" variant="ghost" size="sm" onClick={quitarCumple}>
+                  <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={quitarCumple}>
                     <X className="w-4 h-4 mr-1" />Quitar
                   </Button>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                {cumpleQuitar
-                  ? "Se va a quitar al guardar: el cartel usará la foto de perfil."
-                  : "Se muestra al entrar el día de su cumpleaños. JPG, PNG o GIF · hasta 3 MB · sin imagen se usa la foto de perfil."}
-              </p>
+              {subida != null ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground" data-k="cumple-subida">
+                  <span className="ido-cargando-bar" style={{ width: 160 }}>
+                    <span style={{ width: `${Math.round(subida * 100)}%` }} />
+                  </span>
+                  Subiendo video… {Math.round(subida * 100)} %
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {cumpleQuitar
+                    ? "Se va a quitar al guardar: el cartel usará la foto de perfil."
+                    : cumpleVista?.tipo === "imagen"
+                      ? "Tiene una imagen de antes. Se sigue mostrando hasta que subas un video o la quites."
+                      : "Se reproduce sin sonido y en loop al entrar el día de su cumpleaños. MP4 recomendado · hasta 50 MB · sin video se usa la foto de perfil."}
+                </p>
+              )}
             </div>
           </div>
 
@@ -538,7 +646,7 @@ function EditUserDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancelar</Button>
           <Button variant="accent" onClick={handleGuardar} loading={saving}>
             {!saving && <Check className="w-4 h-4 mr-2" />}
-            Guardar cambios
+            {subida != null && subida < 1 ? "Subiendo video…" : "Guardar cambios"}
           </Button>
         </DialogFooter>
       </DialogContent>

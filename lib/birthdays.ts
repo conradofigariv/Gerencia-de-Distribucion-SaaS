@@ -70,8 +70,9 @@ export interface Cumpleanero {
   id:        string;
   nombre:    string; // nombre de pila (o el completo si no hay)
   completo:  string;
-  /** Imagen subida por un admin (supabase/cumpleanos_imagenes.sql). */
-  imagenUrl: string | null;
+  /** Video subido por un admin (supabase/cumpleanos_imagenes.sql); "imagen"
+   *  solo para lo subido antes de pasar a video. */
+  media:     { url: string; tipo: "imagen" | "video" } | null;
   avatarUrl: string | null;
 }
 
@@ -88,7 +89,7 @@ export function cumpleEsHoy(cumpleanos: string, hoy = new Date()): boolean {
   return mes === 2 && dia === 29 && !bisiesto && m === 2 && d === 28;
 }
 
-/** Quiénes cumplen años hoy, con su imagen de cartel o foto de perfil. */
+/** Quiénes cumplen años hoy, con su video de cartel o foto de perfil. */
 export async function fetchCumpleanerosDeHoy(): Promise<Cumpleanero[]> {
   const { data, error } = await supabase
     .from("profiles")
@@ -101,12 +102,15 @@ export async function fetchCumpleanerosDeHoy(): Promise<Cumpleanero[]> {
   if (!hoy.length) return [];
 
   // Sin la tabla (SQL todavía no corrido) el cartel sale igual, con la foto
-  // de perfil.
-  const { data: imgs } = await supabase
-    .from("cumple_imagenes")
-    .select("user_id, imagen_url")
-    .in("user_id", hoy.map((p) => p.id));
-  const imagenDe = new Map(((imgs ?? []) as { user_id: string; imagen_url: string }[]).map((r) => [r.user_id, r.imagen_url]));
+  // de perfil. Sin la columna `tipo` (SQL de la versión de imágenes) todo lo
+  // guardado es imagen.
+  const ids = hoy.map((p) => p.id);
+  type MediaRow = { user_id: string; imagen_url: string; tipo?: "imagen" | "video" };
+  const conTipo = await supabase.from("cumple_imagenes").select("user_id, imagen_url, tipo").in("user_id", ids);
+  const filas = (conTipo.error
+    ? (await supabase.from("cumple_imagenes").select("user_id, imagen_url").in("user_id", ids)).data
+    : conTipo.data) as MediaRow[] | null;
+  const mediaDe = new Map((filas ?? []).map((r) => [r.user_id, { url: r.imagen_url, tipo: r.tipo ?? "imagen" }]));
 
   return hoy
     .map((p) => {
@@ -115,7 +119,7 @@ export async function fetchCumpleanerosDeHoy(): Promise<Cumpleanero[]> {
         id: p.id,
         nombre: p.nombre?.trim() || completo,
         completo,
-        imagenUrl: imagenDe.get(p.id) ?? null,
+        media: mediaDe.get(p.id) ?? null,
         avatarUrl: p.avatar_url || null,
       };
     })

@@ -1509,7 +1509,8 @@ html.gd-cumple-sin-cursor * { cursor: none !important; }
   background: var(--ido-base);
   overflow: hidden;
 }
-.gd-cumple-retrato img { width: 100%; height: 100%; object-fit: contain; }
+.gd-cumple-retrato img,
+.gd-cumple-retrato video { width: 100%; height: 100%; object-fit: contain; }
 .gd-cumple-iniciales {
   display: grid;
   place-items: center;

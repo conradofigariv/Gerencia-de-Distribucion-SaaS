@@ -43,12 +43,9 @@ export async function GET(req: NextRequest) {
   };
   const profileMap = Object.fromEntries((profiles ?? [] as ProfileRow[]).map((p: ProfileRow) => [p.id, p]));
 
-  // Imagen del cartel de cumpleaños. Si todavía no se corrió
-  // supabase/cumpleanos_imagenes.sql la tabla no existe: se sigue sin imágenes.
-  const { data: imagenes } = await supabaseAdmin.from("cumple_imagenes").select("user_id, imagen_url");
-  const imagenMap = Object.fromEntries(
-    ((imagenes ?? []) as { user_id: string; imagen_url: string }[]).map((r) => [r.user_id, r.imagen_url]),
-  );
+  // Video (o imagen vieja) del cartel de cumpleaños. Si todavía no se corrió
+  // supabase/cumpleanos_imagenes.sql la tabla no existe: se sigue sin nada.
+  const cumpleMap = await leerCumpleMedia();
 
   const users = authData.users.map(u => ({
     id:                   u.id,
@@ -62,7 +59,8 @@ export async function GET(req: NextRequest) {
     avatar_url:           profileMap[u.id]?.avatar_url ?? "",
     nivel_acceso:         profileMap[u.id]?.nivel_acceso ?? "visualizador",
     secciones_permitidas: profileMap[u.id]?.secciones_permitidas ?? null,
-    cumple_imagen_url:    imagenMap[u.id] ?? "",
+    cumple_url:           cumpleMap[u.id]?.url ?? "",
+    cumple_tipo:          cumpleMap[u.id]?.tipo ?? "video",
     created_at:           u.created_at,
   }));
 
@@ -157,59 +155,15 @@ export async function PATCH(req: NextRequest) {
     const { error } = await supabaseAdmin.from("profiles").update(update).eq("id", userId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    // ── Imagen del cartel de cumpleaños (una por persona) ──
-    // Va a su propio bucket/tabla (supabase/cumpleanos_imagenes.sql), que no
-    // tienen policies de escritura: solo esta ruta, con la service role, puede
-    // cambiarla — así nadie se pone su propia imagen desde el cliente.
-    // `cumple_imagen_url` en la respuesta: string = nueva, null = quitada,
-    // ausente = sin cambios.
-    const FALTA_SQL = "Falta correr supabase/cumpleanos_imagenes.sql en Supabase.";
-    const faltaSql = (msg: string) => /cumple_imagenes|bucket not found|does not exist|schema cache/i.test(msg);
-    const cumplePath = `${userId}/imagen`;
-    let cumpleImagenUrl: string | null | undefined;
-
-    const cumpleImagen = form.get("cumple_imagen");
-    if (cumpleImagen instanceof File && cumpleImagen.size > 0) {
-      if (!cumpleImagen.type.startsWith("image/")) {
-        return NextResponse.json({ error: "La imagen de cumpleaños tiene que ser una imagen" }, { status: 400 });
-      }
-      // Vercel corta el cuerpo de la request en 4,5 MB (y puede viajar junto
-      // con la foto de perfil).
-      if (cumpleImagen.size > 3 * 1024 * 1024) {
-        return NextResponse.json({ error: "La imagen de cumpleaños no puede superar 3 MB" }, { status: 400 });
-      }
-      const buffer = Buffer.from(await cumpleImagen.arrayBuffer());
-      const { error: upError } = await supabaseAdmin.storage
-        .from("cumpleanos")
-        .upload(cumplePath, buffer, { upsert: true, contentType: cumpleImagen.type });
-      if (upError) {
-        return NextResponse.json({ error: faltaSql(upError.message) ? FALTA_SQL : `Error al subir la imagen de cumpleaños: ${upError.message}` }, { status: 500 });
-      }
-      const { data: { publicUrl } } = supabaseAdmin.storage.from("cumpleanos").getPublicUrl(cumplePath);
-      cumpleImagenUrl = `${publicUrl}?t=${Date.now()}`;
-      const { error: dbError } = await supabaseAdmin.from("cumple_imagenes").upsert({
-        user_id: userId, imagen_url: cumpleImagenUrl, updated_at: new Date().toISOString(), updated_by: user.id,
-      });
-      if (dbError) return NextResponse.json({ error: faltaSql(dbError.message) ? FALTA_SQL : dbError.message }, { status: 500 });
-    } else if (form.get("cumple_imagen_quitar") === "1") {
-      const { error: dbError } = await supabaseAdmin.from("cumple_imagenes").delete().eq("user_id", userId);
-      if (dbError) return NextResponse.json({ error: faltaSql(dbError.message) ? FALTA_SQL : dbError.message }, { status: 500 });
-      // Si el archivo no se puede borrar no importa: sin fila, el cartel ya
-      // no lo usa.
-      await supabaseAdmin.storage.from("cumpleanos").remove([cumplePath]);
-      cumpleImagenUrl = null;
-    }
-
-    return NextResponse.json({
-      ok: true,
-      avatar_url: update.avatar_url ?? null,
-      ...(cumpleImagenUrl !== undefined ? { cumple_imagen_url: cumpleImagenUrl } : {}),
-    });
+    return NextResponse.json({ ok: true, avatar_url: update.avatar_url ?? null });
   }
 
   const body = await req.json();
   const { userId } = body;
   if (!userId) return NextResponse.json({ error: "userId requerido" }, { status: 400 });
+
+  // ── Video del cartel de cumpleaños (diálogo "Editar" de Configuración → Usuarios) ──
+  if ("cumple_video" in body) return cumpleVideo(userId, body.cumple_video, user.id);
 
   // ── Restablecer contraseña (botón "Restablecer contraseña" del diálogo) ──
   // `auth.admin.updateUserById` es la única forma de cambiarle la contraseña
@@ -268,4 +222,86 @@ export async function DELETE(req: NextRequest) {
   await supabaseAdmin.from("profiles").delete().eq("id", userId);
 
   return NextResponse.json({ ok: true });
+}
+
+// ─── Video del cartel de cumpleaños ───────────────────────────────────────────
+// Uno por persona, bucket `cumpleanos` + tabla `cumple_imagenes`
+// (supabase/cumpleanos_imagenes.sql), sin policies de escritura: solo esta
+// ruta, con la service role, los cambia — así nadie se pone su propio video.
+//
+// El archivo NO viaja por acá: Vercel corta el cuerpo de los pedidos en 4,5 MB
+// y un video pesa más. En tres pasos:
+//   1. `firmar`    → valida tipo/tamaño y devuelve una URL de subida de UN uso.
+//   2. el navegador sube directo a Storage con esa URL (con progreso).
+//   3. `confirmar` → verifica que el archivo esté, guarda la fila y borra los
+//                    archivos anteriores de esa persona.
+// `quitar` borra la fila y los archivos.
+
+const CUMPLE_BUCKET = "cumpleanos";
+const CUMPLE_MAX_BYTES = 50 * 1024 * 1024; // = file_size_limit del bucket
+const FALTA_SQL_CUMPLE = "Falta correr supabase/cumpleanos_imagenes.sql en Supabase (la versión con video).";
+const faltaSqlCumple = (msg: string) => /cumple_imagenes|tipo|bucket not found|does not exist|schema cache/i.test(msg);
+type CumpleTipo = "imagen" | "video";
+
+async function leerCumpleMedia(): Promise<Record<string, { url: string; tipo: CumpleTipo }>> {
+  let { data, error } = await supabaseAdmin.from("cumple_imagenes").select("user_id, imagen_url, tipo");
+  // Tabla de la versión de imágenes (sin `tipo`): todo lo que hay es imagen.
+  if (error) ({ data, error } = await supabaseAdmin.from("cumple_imagenes").select("user_id, imagen_url"));
+  if (error || !data) return {};
+  return Object.fromEntries(
+    (data as { user_id: string; imagen_url: string; tipo?: CumpleTipo }[])
+      .map((r) => [r.user_id, { url: r.imagen_url, tipo: r.tipo ?? "imagen" }]),
+  );
+}
+
+async function archivosDe(userId: string): Promise<string[]> {
+  const { data } = await supabaseAdmin.storage.from(CUMPLE_BUCKET).list(userId, { limit: 100 });
+  return (data ?? []).map((f) => `${userId}/${f.name}`);
+}
+
+async function cumpleVideo(userId: string, pedido: unknown, adminId: string) {
+  const p = (pedido ?? {}) as { accion?: string; contentType?: string; size?: number; path?: string };
+  const err = (msg: string, status = 400) =>
+    NextResponse.json({ error: faltaSqlCumple(msg) ? FALTA_SQL_CUMPLE : msg }, { status });
+
+  if (p.accion === "firmar") {
+    if (typeof p.contentType !== "string" || !p.contentType.startsWith("video/")) return err("El archivo tiene que ser un video");
+    if (typeof p.size !== "number" || p.size <= 0) return err("Tamaño de archivo inválido");
+    if (p.size > CUMPLE_MAX_BYTES) return err("El video no puede superar 50 MB");
+    // Nombre nuevo en cada subida: la URL cambia y nadie ve uno viejo cacheado.
+    const path = `${userId}/video-${Date.now()}`;
+    const { data, error } = await supabaseAdmin.storage.from(CUMPLE_BUCKET).createSignedUploadUrl(path);
+    if (error || !data) return err(error?.message ?? "No se pudo preparar la subida", 500);
+    return NextResponse.json({ path, signedUrl: data.signedUrl });
+  }
+
+  if (p.accion === "confirmar") {
+    const path = p.path ?? "";
+    // Solo un archivo firmado para ESTA persona (no cualquier ruta del bucket).
+    const prefijo = `${userId}/video-`;
+    if (!path.startsWith(prefijo) || !/^\d+$/.test(path.slice(prefijo.length))) return err("Ruta de archivo inválida");
+    const archivos = await archivosDe(userId);
+    if (!archivos.includes(path)) return err("No se encontró el video subido; probá de nuevo", 404);
+    const { data: { publicUrl } } = supabaseAdmin.storage.from(CUMPLE_BUCKET).getPublicUrl(path);
+    const { error } = await supabaseAdmin.from("cumple_imagenes").upsert({
+      user_id: userId, imagen_url: publicUrl, tipo: "video",
+      updated_at: new Date().toISOString(), updated_by: adminId,
+    });
+    if (error) return err(error.message, 500);
+    const viejos = archivos.filter((a) => a !== path);
+    if (viejos.length) await supabaseAdmin.storage.from(CUMPLE_BUCKET).remove(viejos);
+    return NextResponse.json({ ok: true, cumple_url: publicUrl, cumple_tipo: "video" });
+  }
+
+  if (p.accion === "quitar") {
+    const { error } = await supabaseAdmin.from("cumple_imagenes").delete().eq("user_id", userId);
+    if (error) return err(error.message, 500);
+    // Si los archivos no se pueden borrar no importa: sin fila, el cartel ya
+    // no los usa.
+    const archivos = await archivosDe(userId);
+    if (archivos.length) await supabaseAdmin.storage.from(CUMPLE_BUCKET).remove(archivos);
+    return NextResponse.json({ ok: true, cumple_url: "", cumple_tipo: "video" });
+  }
+
+  return err("Acción inválida");
 }
