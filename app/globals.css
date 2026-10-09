@@ -2394,3 +2394,72 @@ select.ido-cell-edit option { background: var(--ido-elevated); color: var(--ido-
   color: var(--ido-text);
 }
 .pc-estado-dim { color: var(--ido-placeholder); }
+
+/* Botón de filtro de columna (autofiltro estilo Excel). Tenue en reposo,
+   visible al pasar por el encabezado; verde cuando la columna está filtrada
+   (§1, elemento activo). */
+.pc-filtro-btn {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ido-text-2);
+  opacity: 0.35;
+  cursor: pointer;
+  transition: opacity 120ms var(--ido-ease), color 120ms var(--ido-ease), background 120ms var(--ido-ease);
+}
+.pc-th:hover .pc-filtro-btn,
+.pc-filtro-btn[data-state="open"] { opacity: 1; }
+.pc-filtro-btn:hover { color: var(--ido-text); background: var(--ido-elevated); }
+.pc-filtro-btn.is-on { opacity: 1; color: var(--ido-accent); }
+
+/* Chips de filtros de columna activos (§4.3). */
+.pc-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--ido-line);
+}
+.pc-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  max-width: 360px;
+  border-radius: 999px;
+  background: var(--ido-elevated);
+  border: 1px solid var(--ido-border);
+  font-size: 12px;
+  color: var(--ido-text-2);
+  overflow: hidden;
+}
+.pc-chip-txt {
+  min-width: 0;
+  padding: 0 4px 0 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.pc-chip-txt b { font-weight: 500; color: var(--ido-text); }
+.pc-chip-x {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ido-text-2);
+  cursor: pointer;
+}
+.pc-chip-x:hover { color: var(--ido-text); background: rgba(255, 255, 255, 0.06); }

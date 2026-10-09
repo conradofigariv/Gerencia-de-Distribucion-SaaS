@@ -13,13 +13,16 @@
 
 import { useEffect, useId, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Check, FileSpreadsheet, Loader2, UploadCloud } from "lucide-react";
+import { AlertTriangle, Check, Download, FileSpreadsheet, Loader2, Plus, UploadCloud } from "lucide-react";
 import { leerExcelPlan, ErrorEstructuraPlan } from "@/lib/planComprasLeer";
 import {
   importarPlan, mensajeErrorPlan,
   type PlanCompras, type ProgresoImportacion,
 } from "@/lib/planCompras";
 import type { ImportacionPlan } from "@/lib/planComprasImport";
+import {
+  altaEnCatalogo, descargarCsv, revisarContraCatalogo, type CruceCatalogo,
+} from "@/lib/planComprasCatalogo";
 
 // ─── Estado ──────────────────────────────────────────────────────────────────
 
@@ -29,6 +32,29 @@ type Paso =
   | { tipo: "revisar"; imp: ImportacionPlan }
   | { tipo: "subiendo"; progreso: ProgresoImportacion }
   | { tipo: "error"; origen: "lectura" | "subida"; mensaje: string };
+
+/** Cruce con el catálogo de matrículas: corre en paralelo a la revisión y es
+ *  informativo (no bloquea la importación). */
+type EstadoCatalogo =
+  | { tipo: "cargando" }
+  | { tipo: "listo"; cruce: CruceCatalogo }
+  | { tipo: "error"; mensaje: string };
+
+type EstadoAlta =
+  | { tipo: "nada" }
+  | { tipo: "confirmar" }
+  | { tipo: "subiendo"; hechas: number; total: number }
+  | { tipo: "hecho"; cantidad: number }
+  | { tipo: "error"; mensaje: string };
+
+/** Año válido para un plan: 4 cifras, rango razonable. */
+function anioValido(txt: string): number | null {
+  const n = Number(txt.trim());
+  return Number.isInteger(n) && n >= 2000 && n <= 2100 ? n : null;
+}
+
+/** Filas que se muestran en las tablas del catálogo (el CSV lleva todas). */
+const MAX_FILAS_TABLA = 300;
 
 // ─── Formato ─────────────────────────────────────────────────────────────────
 
@@ -148,6 +174,22 @@ function Verificacion({ imp }: { imp: ImportacionPlan }) {
   const famOk = v.familias.length - famMal.length;
   const colsMal = v.porColumna.filter((c) => c.diferencias > 0);
 
+  // Sin columnas fórmula en el Excel no hay nada que comparar: «Verificado»
+  // con 0 celdas sería mentira.
+  if (v.celdasComparadas === 0) {
+    return (
+      <div
+        className="flex flex-col gap-2"
+        style={{ padding: 12, borderRadius: 8, border: "1px solid var(--ido-border)", background: "var(--ido-panel)" }}
+      >
+        <span className="ido-chip ido-badge-neutral self-start">Sin verificar</span>
+        <p style={{ fontSize: 13, color: "var(--ido-text-2)" }}>
+          El Excel no trae las columnas calculadas, así que no hay contra qué comparar. La app las calcula igual.
+        </p>
+      </div>
+    );
+  }
+
   // Una familia de Prioridad que no cierra también es una diferencia con el
   // Excel: el «Verificado» verde exige que coincidan celdas Y familias.
   if (v.diferencias === 0 && famMal.length === 0) {
@@ -250,13 +292,60 @@ function Verificacion({ imp }: { imp: ImportacionPlan }) {
   );
 }
 
-function Revision({ imp, planActual }: { imp: ImportacionPlan; planActual: PlanCompras | null }) {
-  const reemplaza = planActual != null && planActual.anio === imp.anio;
+function OrigenAnio({ imp, anio }: { imp: ImportacionPlan; anio: number | null }) {
+  const { anioEncabezado: enc, anioArchivo: arch } = imp;
+  let texto: string;
+  let aviso = false;
+  if (enc != null && arch != null && enc !== arch) {
+    texto = `El encabezado dice ${enc} y el nombre del archivo ${arch}: confirmá cuál es.`;
+    aviso = true;
+  } else if (enc != null) {
+    texto = `Detectado del encabezado «${imp.etiquetas.total_plan ?? enc}».`;
+  } else if (arch != null) {
+    texto = "Detectado del nombre del archivo (los encabezados no traen el año).";
+  } else {
+    texto = "No se pudo detectar: escribilo.";
+    aviso = true;
+  }
+  if (anio == null) { texto = "Escribí un año de 4 cifras."; aviso = true; }
+  return (
+    <span style={{ fontSize: 12, color: aviso ? "var(--ido-warning)" : "var(--ido-text-dim)" }}>{texto}</span>
+  );
+}
+
+function Revision({
+  imp, anioTxt, onAnio, planes, catalogo, alta, onAlta, onReintentarCatalogo,
+}: {
+  imp: ImportacionPlan;
+  anioTxt: string;
+  onAnio: (txt: string) => void;
+  planes: PlanCompras[];
+  catalogo: EstadoCatalogo;
+  alta: EstadoAlta;
+  onAlta: (a: "pedir" | "cancelar" | "confirmar") => void;
+  onReintentarCatalogo: () => void;
+}) {
+  const anio = anioValido(anioTxt);
+  const existente = anio == null ? null : planes.find((p) => p.anio === anio) ?? null;
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3">
-        <Dato etiqueta="Año" valor={String(imp.anio)} />
-        <Dato etiqueta="Nombre" valor={imp.nombre} className="sm:col-span-3" />
+        <div className="col-span-2 sm:col-span-4 flex flex-col gap-1.5">
+          <label htmlFor="pc-imp-anio" style={ETIQUETA}>Año del plan</label>
+          <div className="flex items-center gap-3 flex-wrap">
+            <input
+              id="pc-imp-anio"
+              className="ido-input ido-input-mono"
+              style={{ width: 96, height: 32 }}
+              inputMode="numeric"
+              maxLength={4}
+              value={anioTxt}
+              onChange={(e) => onAnio(e.target.value.replace(/\D/g, ""))}
+            />
+            <OrigenAnio imp={imp} anio={anio} />
+          </div>
+        </div>
+        <Dato etiqueta="Nombre" valor={anio == null ? "—" : nombrePlan(anio)} className="col-span-2 sm:col-span-4" />
         <Dato etiqueta="Tipo de cambio" valor={nro(imp.tipo_cambio, 4)} />
         <Dato etiqueta="Mayoración" valor={`${nro(imp.pct_mayoracion * 100, 2)} %`} />
         <Dato etiqueta="Filas de Global" valor={nro(imp.items.length)} />
@@ -266,6 +355,8 @@ function Revision({ imp, planActual }: { imp: ImportacionPlan; planActual: PlanC
       </div>
 
       <Verificacion imp={imp} />
+
+      <Catalogo estado={catalogo} alta={alta} onAlta={onAlta} onReintentar={onReintentarCatalogo} />
 
       {imp.advertencias.length > 0 && (
         <ul className="flex flex-col gap-1.5">
@@ -278,7 +369,7 @@ function Revision({ imp, planActual }: { imp: ImportacionPlan; planActual: PlanC
         </ul>
       )}
 
-      {reemplaza && (
+      {existente ? (
         <div
           className="ido-banner-warning"
           style={{
@@ -288,16 +379,206 @@ function Revision({ imp, planActual }: { imp: ImportacionPlan; planActual: PlanC
         >
           <AlertTriangle className="w-4 h-4 shrink-0" style={{ marginTop: 2 }} />
           <span>
-            Ya hay un plan {planActual.anio} cargado
-            {(planActual.importado_at || planActual.archivo) && (
+            Ya hay un plan {existente.anio} cargado
+            {(existente.importado_at || existente.archivo) && (
               <>
                 {" ("}importado
-                {planActual.importado_at && <> el {fechaHora(planActual.importado_at)}</>}
-                {planActual.archivo && <> desde «{planActual.archivo}»</>}
+                {existente.importado_at && <> el {fechaHora(existente.importado_at)}</>}
+                {existente.archivo && <> desde «{existente.archivo}»</>}
                 {")"}
               </>
             )}
-            . Importar lo <strong>REEMPLAZA</strong> completo.
+            . Importar lo <strong>REEMPLAZA</strong> completo. Los planes de otros años no se tocan.
+          </span>
+        </div>
+      ) : anio != null && planes.length > 0 ? (
+        <p style={{ fontSize: 13, color: "var(--ido-text-2)" }}>
+          No hay plan {anio} cargado: se agrega como un plan nuevo y los de otros años quedan como están.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Mismo nombre que arma el importador, con el año (posiblemente corregido). */
+const nombrePlan = (anio: number) => `Plan de Compras Anual GD ${anio}`;
+
+// ─── Matrículas vs. catálogo ─────────────────────────────────────────────────
+
+function CabeceraBloque({ titulo, children }: { titulo: string; children?: ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span style={{ fontSize: 13, fontWeight: 500, color: "var(--ido-text)", marginRight: "auto" }}>{titulo}</span>
+      {children}
+    </div>
+  );
+}
+
+function Catalogo({
+  estado, alta, onAlta, onReintentar,
+}: {
+  estado: EstadoCatalogo;
+  alta: EstadoAlta;
+  onAlta: (a: "pedir" | "cancelar" | "confirmar") => void;
+  onReintentar: () => void;
+}) {
+  const caja: CSSProperties = {
+    padding: 12, borderRadius: 8, border: "1px solid var(--ido-border)", background: "var(--ido-panel)",
+  };
+
+  if (estado.tipo === "cargando") {
+    return (
+      <div className="flex items-center gap-2" style={{ ...caja, fontSize: 13, color: "var(--ido-text-2)" }}>
+        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        Cruzando las matrículas con el catálogo…
+      </div>
+    );
+  }
+  if (estado.tipo === "error") {
+    return (
+      <div className="flex items-center gap-3 flex-wrap" style={{ ...caja, fontSize: 13, color: "var(--ido-text-2)" }}>
+        <AlertTriangle className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--ido-warning)" }} />
+        <span style={{ marginRight: "auto" }}>No se pudo leer el catálogo de matrículas: {estado.mensaje}</span>
+        <button type="button" className="ido-btn ido-btn-ghost" style={{ height: 30 }} onClick={onReintentar}>
+          Reintentar
+        </button>
+      </div>
+    );
+  }
+
+  const c = estado.cruce;
+  const hechoAlta = alta.tipo === "hecho" ? (
+    <span className="ido-chip ido-badge-ok self-start">
+      <Check className="w-3 h-3" strokeWidth={2.6} />
+      {nro(alta.cantidad)} dadas de alta en el catálogo
+    </span>
+  ) : null;
+
+  if (c.faltantes.length === 0 && c.diferencias.length === 0) {
+    return (
+      <div className="flex flex-col gap-2" style={caja}>
+        <span className="ido-chip ido-badge-ok self-start">
+          <Check className="w-3 h-3" strokeWidth={2.6} />
+          Catálogo al día
+        </span>
+        {hechoAlta}
+        <p style={{ fontSize: 13, color: "var(--ido-text-2)" }}>
+          Las {nro(c.revisadas)} matrículas del Excel están en el catálogo con los mismos datos.
+        </p>
+      </div>
+    );
+  }
+
+  const ocupado = alta.tipo === "subiendo";
+  return (
+    <div className="flex flex-col gap-4" style={caja}>
+      <div className="flex flex-col gap-1">
+        <span style={ETIQUETA}>Matrículas vs. catálogo</span>
+        <span style={{ fontSize: 13, color: "var(--ido-text-2)" }}>
+          {nro(c.enCatalogo)} de {nro(c.revisadas)} matrículas del Excel están en el catálogo
+          ({nro(c.catalogo)} matrículas en total). No bloquea la importación.
+        </span>
+        {hechoAlta}
+      </div>
+
+      {c.faltantes.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <CabeceraBloque titulo={`${nro(c.faltantes.length)} no están en el catálogo`}>
+            <button
+              type="button"
+              className="ido-btn ido-btn-ghost"
+              style={{ height: 30 }}
+              onClick={() => descargarCsv("matriculas_fuera_de_catalogo",
+                ["Matrícula", "Descripción", "Unidad", "M/S", "Familia", "A cargo de"],
+                c.faltantes.map((f) => [f.articulo, f.descripcion, f.unidad, f.mat_serv, f.familia, f.a_cargo_de]))}
+            >
+              <Download className="w-3.5 h-3.5" />
+              CSV
+            </button>
+            {alta.tipo !== "confirmar" && (
+              <button
+                type="button"
+                className="ido-btn ido-btn-ghost"
+                style={{ height: 30 }}
+                disabled={ocupado}
+                onClick={() => onAlta("pedir")}
+              >
+                {ocupado ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                {ocupado
+                  ? `Dando de alta… ${nro(alta.hechas)}/${nro(alta.total)}`
+                  : `Dar de alta ${nro(c.faltantes.length)}`}
+              </button>
+            )}
+          </CabeceraBloque>
+
+          {alta.tipo === "confirmar" && (
+            <div
+              className="flex items-center gap-3 flex-wrap"
+              style={{
+                padding: "10px 12px", borderRadius: 8, fontSize: 13, color: "var(--ido-text-2)",
+                border: "1px solid var(--ido-border-strong)", background: "var(--ido-elevated)",
+              }}
+            >
+              <span style={{ marginRight: "auto", minWidth: 0 }}>
+                Se agregan {nro(c.faltantes.length)} matrículas al catálogo con el código, la descripción,
+                la unidad y el M/S tal como vienen en el Excel.
+              </span>
+              <button type="button" className="ido-btn ido-btn-text" style={{ height: 30 }} onClick={() => onAlta("cancelar")}>
+                Cancelar
+              </button>
+              <button type="button" className="ido-btn ido-btn-primary" style={{ height: 30 }} onClick={() => onAlta("confirmar")}>
+                Dar de alta
+              </button>
+            </div>
+          )}
+          {alta.tipo === "error" && (
+            <p style={{ fontSize: 12, color: "var(--ido-error)" }}>{alta.mensaje}</p>
+          )}
+
+          <TablaChica
+            columnas={[
+              { titulo: "Matrícula", ancho: "104px" },
+              { titulo: "Descripción", ancho: "minmax(0, 2fr)" },
+              { titulo: "Unidad", ancho: "64px" },
+              { titulo: "A cargo de", ancho: "minmax(0, 0.8fr)" },
+            ]}
+            filas={c.faltantes.slice(0, MAX_FILAS_TABLA).map((f) => [f.articulo, f.descripcion, f.unidad, f.a_cargo_de])}
+          />
+          {c.faltantes.length > MAX_FILAS_TABLA && (
+            <span style={{ fontSize: 12, color: "var(--ido-text-dim)" }}>
+              Se muestran las primeras {nro(MAX_FILAS_TABLA)}; el CSV las tiene todas.
+            </span>
+          )}
+        </div>
+      )}
+
+      {c.diferencias.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <CabeceraBloque titulo={`${nro(c.diferencias.length)} datos distintos al catálogo`}>
+            <button
+              type="button"
+              className="ido-btn ido-btn-ghost"
+              style={{ height: 30 }}
+              onClick={() => descargarCsv("matriculas_diferencias_catalogo",
+                ["Matrícula", "Campo", "Excel del plan", "Catálogo"],
+                c.diferencias.map((d) => [d.articulo, d.campo, d.plan, d.catalogo]))}
+            >
+              <Download className="w-3.5 h-3.5" />
+              CSV
+            </button>
+          </CabeceraBloque>
+          <TablaChica
+            columnas={[
+              { titulo: "Matrícula", ancho: "104px" },
+              { titulo: "Campo", ancho: "108px" },
+              { titulo: "Excel del plan", ancho: "minmax(0, 1fr)" },
+              { titulo: "Catálogo", ancho: "minmax(0, 1fr)" },
+            ]}
+            filas={c.diferencias.slice(0, MAX_FILAS_TABLA).map((d) => [d.articulo, d.campo, d.plan, d.catalogo])}
+          />
+          <span style={{ fontSize: 12, color: "var(--ido-text-dim)" }}>
+            {c.diferencias.length > MAX_FILAS_TABLA && <>Se muestran las primeras {nro(MAX_FILAS_TABLA)}; el CSV las tiene todas. </>}
+            El plan guarda lo que dice el Excel; el catálogo no se modifica.
           </span>
         </div>
       )}
@@ -308,9 +589,10 @@ function Revision({ imp, planActual }: { imp: ImportacionPlan; planActual: PlanC
 // ─── Modal ───────────────────────────────────────────────────────────────────
 
 export function PlanComprasImportarModal({
-  planActual, onClose, onImportado,
+  planes, onClose, onImportado,
 }: {
-  planActual: PlanCompras | null;
+  /** Planes activos (uno por año): para avisar si el año elegido ya tiene uno. */
+  planes: PlanCompras[];
   onClose: () => void;
   onImportado: (plan: PlanCompras, imp: ImportacionPlan) => void;
 }) {
@@ -322,9 +604,39 @@ export function PlanComprasImportarModal({
   const lecturaRef = useRef(0);
   const tituloId = useId();
 
+  // Revisión: año (editable), cruce con el catálogo y alta de faltantes.
+  const [anioTxt, setAnioTxt] = useState("");
+  const [catalogo, setCatalogo] = useState<EstadoCatalogo>({ tipo: "cargando" });
+  const [alta, setAlta] = useState<EstadoAlta>({ tipo: "nada" });
+  const cruceRef = useRef(0);
+
+  const cruzar = (imp: ImportacionPlan) => {
+    const id = ++cruceRef.current;
+    setCatalogo({ tipo: "cargando" });
+    revisarContraCatalogo(imp.items).then(
+      (cruce) => { if (id === cruceRef.current) setCatalogo({ tipo: "listo", cruce }); },
+      (e) => { if (id === cruceRef.current) setCatalogo({ tipo: "error", mensaje: mensajeErrorPlan(e) }); },
+    );
+  };
+
+  const onAlta = async (accion: "pedir" | "cancelar" | "confirmar", imp: ImportacionPlan) => {
+    if (accion === "pedir") { setAlta({ tipo: "confirmar" }); return; }
+    if (accion === "cancelar") { setAlta({ tipo: "nada" }); return; }
+    if (catalogo.tipo !== "listo") return;
+    const faltantes = catalogo.cruce.faltantes;
+    setAlta({ tipo: "subiendo", hechas: 0, total: faltantes.length });
+    try {
+      const n = await altaEnCatalogo(faltantes, (hechas, total) => setAlta({ tipo: "subiendo", hechas, total }));
+      setAlta({ tipo: "hecho", cantidad: n });
+      cruzar(imp);
+    } catch (e) {
+      setAlta({ tipo: "error", mensaje: mensajeErrorPlan(e) });
+    }
+  };
+
   // A mitad de la subida no se cierra: importarPlan deshace la versión nueva
   // si falla, pero solo si la promesa sigue viva para atrapar el error.
-  const puedeCerrar = paso.tipo !== "subiendo";
+  const puedeCerrar = paso.tipo !== "subiendo" && alta.tipo !== "subiendo";
   const cerrarSiSePuede = () => { if (puedeCerrar) onClose(); };
 
   useEffect(() => {
@@ -338,6 +650,7 @@ export function PlanComprasImportarModal({
 
   const volverAElegir = () => {
     lecturaRef.current++;
+    cruceRef.current++;
     setArrastrando(false);
     setPaso({ tipo: "elegir", error: null });
   };
@@ -351,13 +664,21 @@ export function PlanComprasImportarModal({
     setPaso({ tipo: "leyendo", archivo: file.name });
     try {
       const imp = await leerExcelPlan(file);
-      if (id === lecturaRef.current) setPaso({ tipo: "revisar", imp });
+      if (id === lecturaRef.current) {
+        setAnioTxt(String(imp.anio));
+        setAlta({ tipo: "nada" });
+        setPaso({ tipo: "revisar", imp });
+        cruzar(imp);
+      }
     } catch (e) {
       if (id === lecturaRef.current) setPaso({ tipo: "error", origen: "lectura", mensaje: mensajeLectura(e) });
     }
   };
 
-  const importar = async (imp: ImportacionPlan) => {
+  const importar = async (leida: ImportacionPlan, anio: number) => {
+    // El año pudo corregirse en la revisión: el nombre se arma con el elegido.
+    const imp: ImportacionPlan = { ...leida, anio, nombre: nombrePlan(anio) };
+    cruceRef.current++;
     setPaso({ tipo: "subiendo", progreso: { fase: "preparando", hechos: 0, total: imp.items.length } });
     try {
       const plan = await importarPlan(imp, (progreso) => setPaso({ tipo: "subiendo", progreso }));
@@ -446,14 +767,33 @@ export function PlanComprasImportarModal({
   } else if (paso.tipo === "revisar") {
     const imp = paso.imp;
     const limpio = imp.verificacion.diferencias === 0 && imp.verificacion.familias.every((f) => f.ok);
-    cuerpo = <Revision imp={imp} planActual={planActual} />;
+    const anio = anioValido(anioTxt);
+    cuerpo = (
+      <Revision
+        imp={imp}
+        anioTxt={anioTxt}
+        onAnio={setAnioTxt}
+        planes={planes}
+        catalogo={catalogo}
+        alta={alta}
+        onAlta={(a) => void onAlta(a, imp)}
+        onReintentarCatalogo={() => cruzar(imp)}
+      />
+    );
     pie = (
       <>
         <button type="button" className="ido-btn ido-btn-text" style={{ height: 38, marginRight: "auto" }} onClick={volverAElegir}>
           Elegir otro archivo
         </button>
         {btnCancelar}
-        <button type="button" className="ido-btn ido-btn-primary" style={{ height: 38 }} onClick={() => void importar(imp)}>
+        <button
+          type="button"
+          className="ido-btn ido-btn-primary"
+          style={{ height: 38 }}
+          disabled={anio == null || alta.tipo === "subiendo"}
+          title={anio == null ? "Falta el año del plan" : alta.tipo === "subiendo" ? "Esperá a que termine el alta en el catálogo" : undefined}
+          onClick={() => { if (anio != null) void importar(imp, anio); }}
+        >
           {limpio ? `Importar ${nro(imp.items.length)} filas` : "Importar igual"}
         </button>
       </>

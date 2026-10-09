@@ -7,7 +7,7 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { toast } from "sonner";
 import {
-  Search, RefreshCw, AlertTriangle, FileSpreadsheet, Columns3, ChevronLeft, X,
+  Search, RefreshCw, AlertTriangle, FileSpreadsheet, Columns3, ChevronLeft, X, Filter,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { loadTableLayout, saveTableLayout } from "@/lib/tableLayout";
@@ -28,6 +28,11 @@ import {
 } from "@/lib/planCompras";
 import type { ImportacionPlan } from "@/lib/planComprasImport";
 import { PlanComprasImportarModal } from "./plan-compras-importar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  MenuFiltroColumna, pasaFiltro, resumenFiltro,
+  type FiltroColumna, type ValorFiltro, type OpcionValor,
+} from "./plan-compras-filtro-columna";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Plan de Compras — Carga de datos: la pestaña «Global» del Excel.
@@ -53,6 +58,11 @@ const GRUPO_H = 22;         // fila de etiquetas de grupo
 const HEADER_H = 34;        // fila de encabezados de columna
 const ANCLADAS: ClaveColumna[] = ["articulo", "descripcion"];
 const ABSORBE: ClaveColumna = "descripcion";
+/** Las columnas ancladas nunca ocupan más que esta fracción del ancho visible:
+ *  si Descripción se agranda (a mano o con doble clic sobre una descripción
+ *  larguísima), al scrollear en X taparía todo el resto de la grilla. */
+const MAX_ANCLADAS = 0.45;
+const MAX_DESCRIPCION_AUTOFIT = 480;
 /** Grupos que no se pueden ocultar: sin la matrícula la fila no se identifica. */
 const GRUPOS_FIJOS = new Set<GrupoId>(["matricula"]);
 
@@ -93,6 +103,25 @@ function valorDe(f: Fila, k: ClaveColumna): string | number | null {
   if (k === "incidencia") return null;
   if (esCalculada(k)) return f.c[k as keyof PlanComprasCalc];
   return (f.it as unknown as Record<string, string | number | null>)[k];
+}
+
+/** Valor de la celda para el filtro de columna (lo que se ve en la grilla). */
+function valorFiltro(f: Fila, c: ColumnaPlan, sinCompra: string): ValorFiltro {
+  const v = valorDe(f, c.clave);
+  if (esNumerica(c)) {
+    if (v == null) {
+      // % calculado sin valor = texto del SI.ERROR; dato numérico vacío = 0.
+      if (esCalculada(c.clave)) {
+        const txt = c.clave === "analisis" ? sinCompra : "Sin Datos";
+        return { clave: `t:${txt}`, label: txt, num: null };
+      }
+      return { clave: "0", label: "0", num: 0 };
+    }
+    const n = v as number;
+    return { clave: String(n), label: n === 0 ? "0" : formatear(c, n), num: n };
+  }
+  const t = v == null || v === "" ? null : String(v);
+  return t == null ? { clave: "∅", label: "(Vacías)", num: null } : { clave: t, label: t, num: null };
 }
 
 // ─── Fórmulas (tooltip de los encabezados calculados) ────────────────────────
@@ -335,6 +364,9 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
   const [aCargo, setACargo] = useState("__todos");
   const [familia, setFamilia] = useState("__todos");
   const [soloDemanda, setSoloDemanda] = useState(false);
+  // Filtros de columna estilo Excel (por clave). Estado de sesión (§4.20).
+  const [filtrosCol, setFiltrosCol] = useState<Partial<Record<ClaveColumna, FiltroColumna>>>({});
+  const [menuCol, setMenuCol] = useState<ClaveColumna | null>(null);
 
   const opcionesDe = useCallback((k: "a_cargo_de" | "familia") => {
     const cnt = new Map<string, number>();
@@ -363,17 +395,33 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
     }
   };
 
-  const filtradas = useMemo(() => {
+  const sinCompra = textoSinCompra(etiqueta("max_hist"));
+
+  // Filtros de la barra + de columna. `excluir` deja afuera el filtro de una
+  // columna: el menú de esa columna lista los valores de las filas que pasan
+  // los DEMÁS filtros, como el autofiltro de Excel.
+  const pasaFiltros = useMemo(() => {
     const q = normBusq(busquedaDiferida.trim());
-    const out = filas.filter((f) => {
+    const activos = (Object.entries(filtrosCol) as [ClaveColumna, FiltroColumna][])
+      .filter(([, f]) => f)
+      .map(([k, f]) => ({ k, f, col: COLUMNAS.find((c) => c.clave === k)!, set: f.valores ? new Set(f.valores) : undefined }));
+    return (f: Fila, excluir?: ClaveColumna) => {
       if (aCargo !== "__todos" && f.it.a_cargo_de !== aCargo) return false;
       if (familia !== "__todos" && f.it.familia !== familia) return false;
       // «Con cantidades»: pedido, neto o aprobado. Solo TOTAL/GD dejaría
       // afuera las filas aprobadas que nadie pidió este año.
       if (soloDemanda && f.c.total === 0 && f.c.gd === 0 && !f.it.cant_aprobadas) return false;
       if (q && !f.busq.includes(q)) return false;
+      for (const a of activos) {
+        if (a.k === excluir) continue;
+        if (!pasaFiltro(a.f, valorFiltro(f, a.col, sinCompra), a.set)) return false;
+      }
       return true;
-    });
+    };
+  }, [aCargo, familia, soloDemanda, busquedaDiferida, filtrosCol, sinCompra]);
+
+  const filtradas = useMemo(() => {
+    const out = filas.filter((f) => pasaFiltros(f));
     if (sortKey && sortKey !== "incidencia") {
       const dir = sortDir === "asc" ? 1 : -1;
       const col = COLUMNAS.find((c) => c.clave === sortKey)!;
@@ -393,7 +441,36 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
       out.sort((a, b) => dir * (a.c.total_plan - b.c.total_plan));
     }
     return out;
-  }, [filas, aCargo, familia, soloDemanda, busquedaDiferida, sortKey, sortDir]);
+  }, [filas, pasaFiltros, sortKey, sortDir]);
+
+  // Valores del menú de la columna abierta (solo se calcula con el menú abierto).
+  const opcionesMenu = useMemo<OpcionValor[]>(() => {
+    if (!menuCol) return [];
+    const col = COLUMNAS.find((c) => c.clave === menuCol)!;
+    const cnt = new Map<string, OpcionValor & { num: number | null }>();
+    for (const f of filas) {
+      if (!pasaFiltros(f, menuCol)) continue;
+      const v = valorFiltro(f, col, sinCompra);
+      const o = cnt.get(v.clave);
+      if (o) o.n++; else cnt.set(v.clave, { clave: v.clave, label: v.label, n: 1, num: v.num });
+    }
+    const lista = [...cnt.values()];
+    if (esNumerica(col)) {
+      // Números de menor a mayor; los textos (Sin Datos…) al final.
+      lista.sort((a, b) => (a.num == null ? 1 : b.num == null ? -1 : a.num - b.num));
+    } else {
+      lista.sort((a, b) => (a.clave === "∅" ? 1 : b.clave === "∅" ? -1 : COLLATOR.compare(a.label, b.label)));
+    }
+    return lista;
+  }, [menuCol, filas, pasaFiltros, sinCompra]);
+
+  const filtrosActivos = (Object.entries(filtrosCol) as [ClaveColumna, FiltroColumna][]).filter(([, f]) => f);
+  const aplicarFiltroCol = (k: ClaveColumna, f: FiltroColumna | null) =>
+    setFiltrosCol((prev) => {
+      const next = { ...prev };
+      if (f) next[k] = f; else delete next[k];
+      return next;
+    });
 
   const totales = useMemo(() => {
     let vis = 0, visAj = 0, todo = 0;
@@ -402,8 +479,8 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
     return { vis, visAj, todo };
   }, [filtradas, filas]);
 
-  const hayFiltro = aCargo !== "__todos" || familia !== "__todos" || soloDemanda || busquedaDiferida.trim() !== "";
-  const limpiarFiltros = () => { setBusqueda(""); setACargo("__todos"); setFamilia("__todos"); setSoloDemanda(false); };
+  const hayFiltro = aCargo !== "__todos" || familia !== "__todos" || soloDemanda || busquedaDiferida.trim() !== "" || filtrosActivos.length > 0;
+  const limpiarFiltros = () => { setBusqueda(""); setACargo("__todos"); setFamilia("__todos"); setSoloDemanda(false); setFiltrosCol({}); };
 
   // Conteo en el header global (como Matrículas).
   useEffect(() => {
@@ -515,6 +592,13 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
       const usado = cols.reduce((s, c) => s + w[c.clave], 0);
       w[ABSORBE] += Math.max(0, availW - usado);
     }
+    // Tope de las ancladas: Descripción cede lo que se pase (nunca menos de
+    // su ancho natural).
+    if (availW > 0) {
+      const tope = Math.max(availW * MAX_ANCLADAS, w.articulo + COLUMNAS[1].ancho);
+      const exceso = ANCLADAS.reduce((s, k) => s + w[k], 0) - tope;
+      if (exceso > 0) w[ABSORBE] = Math.max(COLUMNAS[1].ancho, w[ABSORBE] - exceso);
+    }
     return w;
   }, [cols, colW, availW]);
   const absorbiendo = colW[ABSORBE] == null && cols.reduce((s, c) => s + (colW[c.clave] ?? c.ancho), 0) < availW;
@@ -582,7 +666,8 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
     ctx.font = sansFont(10, 500);
     const label = etiqueta(c.clave).toUpperCase();
     const labelW = Math.ceil(ctx.measureText(label).width + label.length * 1 + 16 + 16);
-    const w = Math.max(fit, labelW);
+    let w = Math.max(fit, labelW);
+    if (c.clave === ABSORBE) w = Math.min(w, MAX_DESCRIPCION_AUTOFIT);
     setColW((p) => ({ ...p, [c.clave]: w }));
     if (userIdRef.current) saveTableLayout(userIdRef.current, TABLE_ID, { colW: { ...colWRef.current, [c.clave]: w } as Record<string, number> });
   }
@@ -614,7 +699,6 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
   const [selId, setSelId] = useState<string | null>(null);
   const onSel = useCallback((id: string) => setSelId((p) => (p === id ? null : id)), []);
 
-  const sinCompra = textoSinCompra(etiqueta("max_hist"));
   const vItems = virtualizer.getVirtualItems();
   const fecha = (iso: string | null) =>
     iso ? new Date(iso).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
@@ -772,6 +856,31 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
           </div>
         </div>
 
+        {/* ── Chips de filtros de columna activos (§4.3) ───────────────────── */}
+        {plan && filtrosActivos.length > 0 && (
+          <div className="pc-chips">
+            <Filter className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--ido-accent)" }} />
+            {filtrosActivos.map(([k, f]) => {
+              const col = COLUMNAS.find((c) => c.clave === k)!;
+              const etq = etiqueta(k);
+              const resumen = resumenFiltro(f, (clave) => (clave === "∅" ? "(Vacías)" : clave.startsWith("t:") ? clave.slice(2) : esNumerica(col) ? formatear(col, Number(clave)) : clave));
+              return (
+                <span key={k} className="pc-chip" title={`${etq}: ${resumen}`}>
+                  <button type="button" className="pc-chip-txt" onClick={() => setMenuCol(k)}>
+                    <b>{etq}</b>: {resumen}
+                  </button>
+                  <button type="button" className="pc-chip-x" onClick={() => aplicarFiltroCol(k, null)} aria-label={`Quitar filtro de ${etq}`}>
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              );
+            })}
+            <button type="button" className="ido-btn ido-btn-text" style={{ height: 26 }} onClick={() => setFiltrosCol({})}>
+              Quitar filtros de columna
+            </button>
+          </div>
+        )}
+
         {/* ── Cuerpo ─────────────────────────────────────────────────────── */}
         {error ? (
           <div className="ido-loading" style={{ flexDirection: "column", gap: 10, flex: 1, textAlign: "center", padding: "0 24px" }}>
@@ -890,7 +999,41 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
                           style={anclado(anclada, anclaX[c.clave])}
                         >
                           <span className="truncate" style={esCalculada(c.clave) ? { fontStyle: "italic" } : undefined}>{label}</span>
-                          <SortArrow active={activa} dir={activa ? sortDir : "asc"} className="w-3 h-3 shrink-0" />
+                          {/* La flecha solo en la columna ordenada: con el embudo de filtro al
+                              lado, una flecha apagada en cada columna se comía el encabezado. */}
+                          {activa && <SortArrow active dir={sortDir} className="w-3 h-3 shrink-0" />}
+                          {c.clave !== "incidencia" && (
+                            <Popover open={menuCol === c.clave} onOpenChange={(o) => setMenuCol(o ? c.clave : null)}>
+                              <PopoverTrigger asChild>
+                                <button
+                                  type="button"
+                                  className={`pc-filtro-btn ${filtrosCol[c.clave] ? "is-on" : ""}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  title={filtrosCol[c.clave] ? `Filtrado: ${resumenFiltro(filtrosCol[c.clave]!, (k) => k.replace(/^t:/, ""))}` : `Filtrar ${label}`}
+                                  aria-label={`Filtrar ${label}`}
+                                >
+                                  <Filter className="w-3 h-3" />
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                align={esNumerica(c) ? "end" : "start"}
+                                className="ido-terminal ido-pop border-0 p-1 w-[290px] z-[10000]"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {menuCol === c.clave && (
+                                  <MenuFiltroColumna
+                                    titulo={label}
+                                    numerica={esNumerica(c)}
+                                    opciones={opcionesMenu}
+                                    filtro={filtrosCol[c.clave] ?? null}
+                                    onAplicar={(f) => aplicarFiltroCol(c.clave, f)}
+                                    onOrdenar={(dir) => { setSortKey(c.clave); setSortDir(dir); }}
+                                    onCerrar={() => setMenuCol(null)}
+                                  />
+                                )}
+                              </PopoverContent>
+                            </Popover>
+                          )}
                           {renderResizer(c.clave, c)}
                           {c.clave === ABSORBE && absorbiendo && (
                             <span
@@ -967,7 +1110,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
 
       {importando && (
         <PlanComprasImportarModal
-          planActual={plan}
+          planes={planes}
           onClose={() => setImportando(false)}
           onImportado={onImportado}
         />
@@ -978,5 +1121,7 @@ export function PlanComprasCargaSection({ onSummaryChange }: { onSummaryChange?:
 
 /** Estilo de una celda de encabezado anclada a la izquierda. */
 function anclado(anclada: boolean, x: number | undefined): CSSProperties | undefined {
-  return anclada ? { position: "sticky", left: x, zIndex: 2, background: "var(--ido-header)" } : undefined;
+  // zIndex 21: por encima de los tiradores de redimensionado (z-20) de las
+  // columnas que pasan por debajo al scrollear en X.
+  return anclada ? { position: "sticky", left: x, zIndex: 21, background: "var(--ido-header)" } : undefined;
 }

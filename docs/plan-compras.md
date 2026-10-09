@@ -12,7 +12,9 @@ después.
 | Lectura del Excel (puro, corre en worker) | `lib/planComprasImport.ts` |
 | Worker + cliente con fallback | `lib/planComprasImport.worker.ts`, `lib/planComprasLeer.ts` |
 | Supabase (lectura / importación) | `lib/planCompras.ts` |
+| Cruce con el catálogo de matrículas | `lib/planComprasCatalogo.ts` |
 | Grilla | `components/dashboard/sections/plan-compras-carga.tsx` |
+| Filtro de columna tipo Excel | `components/dashboard/sections/plan-compras-filtro-columna.tsx` |
 | Modal de importación | `components/dashboard/sections/plan-compras-importar.tsx` |
 | Estilos | bloque `.pc-*` al final de `app/globals.css` |
 
@@ -33,7 +35,7 @@ se persiste: cambiar el TC recalcula las 22.950 filas sin reescribir ninguna.
 
 | Letra | Encabezado (2026) | Clave | Tipo / fórmula |
 |---|---|---|---|
-| A–D | Artículo, Descripción, Unidad, M/S | `articulo`, `descripcion`, `unidad`, `mat_serv` | dato (artículo sin el «.0» del export) |
+| A–D | Artículo, Descripción, Unidad, M/S | `articulo`, `descripcion`, `unidad`, `mat_serv` | dato — el artículo se guarda **literal**, como viene («00021126.0») |
 | E–H | FAMILIA, FAMILIAS VIEJAS, SUBFAMILIA, A CARGO DE | `familia`, `familia_vieja`, `subfamilia`, `a_cargo_de` | dato |
 | I–J | ULTIMA SIC, ULTIMA SIC2 | `ultima_sic_area`, `ultima_sic_solicitante` | dato (pegado) |
 | K–M | 2023P, 2023C, 2024P | `hist_1..3` | dato |
@@ -87,13 +89,30 @@ se persiste: cambiar el TC recalcula las 22.950 filas sin reescribir ninguna.
   diferencias**; además, total GD $ y cantidad de matrículas por familia contra
   Prioridad: 29/29.
 - **Mapeo por encabezado**, no por posición: las columnas con año van por patrón, así el
-  mismo importador sirve para el Excel del año que viene. Si falta una columna de carga,
-  se corta con el nombre de lo que falta.
+  mismo importador sirve para el Excel del año que viene. Solo **Artículo** es
+  obligatoria: si el Excel de otro año no trae alguna columna de carga, se avisa y queda
+  vacía; si no trae alguna columna fórmula, se avisa que no se pudo verificar. Las filas
+  de datos van hasta la última con Artículo (las vacías del medio se saltean; las que
+  tienen datos pero no Artículo se avisan).
+- **Año del plan**: se detecta del encabezado «Total NNNN $» y, si no, del nombre del
+  archivo («…_26…» → 2026). En la revisión se puede corregir; el modal dice de dónde
+  salió y avisa si encabezado y archivo no coinciden.
+- **Matrículas vs. catálogo** (informativo, no bloquea): antes de subir se cruza contra
+  `matriculas` por la clave normalizada (como `gd_norm_articulo`: sin el «.0»). Lista
+  las que **no están** (CSV + botón «Dar de alta N», que las inserta con el código
+  literal, descripción, unidad y M/S del Excel, previa confirmación y re-chequeando el
+  catálogo para no duplicar) y las que están con **datos distintos** (descripción,
+  unidad, M/S; sin mayúsculas ni espacios de más; un vacío no cuenta) con CSV. El
+  plan guarda lo del Excel y el catálogo no se modifica. «00000000» es relleno y no se
+  cruza. El alta no reconstruye el índice del Buscador (se hace desde el Buscador).
 - **Versionado.** Cada importación crea una cabecera nueva **inactiva** y carga los
   ítems (lotes de 500, 3 en paralelo). Al final la app apaga la versión activa del
   año, prende la nueva (si falla, vuelve a prender la anterior) y borra las inactivas.
   Si la subida se corta antes, se borra lo nuevo y el plan anterior queda intacto.
   Un solo plan activo por año (índice único parcial).
+- **Planes de otros años**: cada año es un plan aparte. Importar el Excel de 2027 agrega
+  el plan 2027 sin tocar el 2026; importar de nuevo un año reemplaza solo ese año. Con
+  más de un plan aparece el selector de plan en la barra de la grilla.
 - **El SQL no tiene funciones ni triggers**, a propósito: pegado en el SQL Editor
   de Supabase, el cuerpo de las funciones llegaba alterado («syntax error at end of
   input / LINE 0», «relation "v_anio" does not exist»). Solo tablas, índices y RLS.
@@ -109,7 +128,14 @@ redimensionado + doble clic · §4.17/§4.18 Artículo + Descripción anclados c
 borde al scrollear en X, padding compacto (61 columnas siempre desbordan) · §4.19/§4.20
 densidad (compacta por defecto), anchos, grupos colapsados y ocultos por usuario
 (`planComprasGlobal`) · §4.10 menú Columnas (por grupo) · §4.8 filtros (búsqueda,
-A cargo de, Familia, «Con cantidades») · §4.12 barra de estado (total visible en $ y
+A cargo de, Familia, «Con cantidades») · **filtro de columna tipo Excel**: embudo en
+cada encabezado (menos % Incidencia) con ordenar A→Z/Z→A, búsqueda, lista de valores
+con conteo (solo los que pasan los otros filtros, como Excel) y, en numéricas,
+condición (>, ≥, <, ≤, =, entre, ≠ 0, = 0); embudo verde en la columna filtrada y
+chips de filtros activos debajo de la barra (clic abre el menú, × lo quita). La flecha
+de orden se muestra solo en la columna ordenada. Las columnas ancladas no superan el
+45 % del ancho (Descripción autoajusta hasta 480 px) para que siempre quede lugar
+para scrollear el resto · §4.12 barra de estado (total visible en $ y
 USD, total del plan si hay filtro, total ajustado) · §1 valor calculado verde itálica;
 % calculado negativo en rojo (§4.11 «Var %») · tooltip de cada encabezado calculado con
 su fórmula.

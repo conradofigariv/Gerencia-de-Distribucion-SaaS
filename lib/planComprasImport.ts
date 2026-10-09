@@ -74,7 +74,15 @@ export interface VerificacionPlan {
 
 export interface ImportacionPlan {
   archivo:        string;
+  /** Año del plan. Se detecta (encabezado «Total 2026 $» / nombre del archivo)
+   *  y el usuario lo puede corregir antes de importar. */
   anio:           number;
+  /** Año según el encabezado «Total NNNN $» (null si no lo trae). */
+  anioEncabezado: number | null;
+  /** Año según el nombre del archivo («…_26…» → 2026; null si no lo trae). */
+  anioArchivo:    number | null;
+  /** Columnas de carga que el Excel no trae (quedan vacías). */
+  columnasFaltantes: string[];
   nombre:         string;
   tipo_cambio:    number;
   pct_mayoracion: number;
@@ -104,10 +112,12 @@ export function normEncabezado(v: Celda): string {
     .toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-/** Código de artículo sin el sufijo ".0" del export (igual que lib/parseo). */
-function normArticulo(v: Celda): string | null {
-  if (v == null) return null;
-  const s = String(v).trim().replace(/\.0+$/, "");
+/** Código de artículo TAL CUAL viene en el Excel («00021126.0»): el usuario
+ *  lo quiere literal. Solo se recorta el espacio de los costados. Para cruzar
+ *  con el catálogo se normaliza aparte (lib/planComprasCatalogo.ts). */
+function articuloLiteral(v: Celda): string | null {
+  if (v == null || typeof v === "boolean") return null;
+  const s = String(v).trim();
   return s || null;
 }
 
@@ -174,24 +184,29 @@ const MATCHERS: Record<ClaveColumna, string | RegExp> = {
   partida: "partida", partida_descripcion: "descripcion partida",
 };
 
-function mapearEncabezados(encabezado: Fila): { indice: Partial<Record<ClaveColumna, number>>; faltan: string[] } {
+function mapearEncabezados(encabezado: Fila): {
+  indice: Partial<Record<ClaveColumna, number>>;
+  faltanCarga: string[];
+  faltanCalc: string[];
+} {
   const norm = encabezado.map(normEncabezado);
   const usados = new Set<number>();
   const indice: Partial<Record<ClaveColumna, number>> = {};
-  const faltan: string[] = [];
+  const faltanCarga: string[] = [];
+  const faltanCalc: string[] = [];
   for (const c of COLUMNAS) {
     const m = MATCHERS[c.clave];
     const i = norm.findIndex((h, j) => !usados.has(j) && (typeof m === "string" ? h === m : m.test(h)));
     if (i >= 0) {
       indice[c.clave] = i;
       usados.add(i);
-    } else if (!esCalculada(c.clave)) {
-      // Una columna fórmula que falta solo deja sin verificar esa columna;
-      // una de carga que falta es un Excel con otra estructura.
-      faltan.push(`${c.titulo} (${c.letra})`);
+    } else if (esCalculada(c.clave)) {
+      faltanCalc.push(c.titulo);
+    } else {
+      faltanCarga.push(c.titulo);
     }
   }
-  return { indice, faltan };
+  return { indice, faltanCarga, faltanCalc };
 }
 
 // ─── Lectura ─────────────────────────────────────────────────────────────────
@@ -211,12 +226,16 @@ function filasDe(ws: XLSX.WorkSheet): Fila[] {
  * Lanza `ErrorImportacion` si el archivo no tiene la estructura de Global.
  */
 export function leerLibroPlan(data: ArrayBuffer, archivo: string): ImportacionPlan {
+  // Primero solo los nombres: el filtro `sheets` de SheetJS compara exacto (sin
+  // espacios ni tildes de más), así que se le pasan los nombres REALES.
+  const nombres = XLSX.read(data, { type: "array", bookSheets: true }).SheetNames;
+  const real = (n: string) => nombres.find((s) => normEncabezado(s) === normEncabezado(n));
   const wb = XLSX.read(data, {
     type: "array",
     // Solo las tres pestañas que se usan: las ocultas (stock, Envíos, OPS,
     // SIC, PREPARADOR) son reportes del sistema que la app ya carga por su
     // lado, y parsearlas duplicaría el tiempo y la memoria.
-    sheets: ["Global", "Prioridad", "Resumen"],
+    sheets: ["Global", "Prioridad", "Resumen"].map(real).filter((n): n is string => !!n),
     dense: true,
     cellFormula: false, cellHTML: false, cellText: false, cellStyles: false, cellNF: false,
   });
@@ -243,11 +262,17 @@ export function armarImportacion(
   if (global.length < 2) throw new ErrorImportacion("La pestaña «Global» está vacía.");
 
   // ── Encabezados ────────────────────────────────────────────────────────────
-  const { indice, faltan } = mapearEncabezados(global[0]);
-  if (faltan.length) {
-    throw new ErrorImportacion(
-      `La pestaña «Global» no tiene la estructura esperada. Faltan: ${faltan.join(", ")}.`,
-    );
+  // Los planes de otros años pueden traer columnas de más o de menos: solo
+  // «Artículo» es obligatoria. Lo que falta queda vacío y se avisa.
+  const { indice, faltanCarga, faltanCalc } = mapearEncabezados(global[0]);
+  if (indice.articulo == null) {
+    throw new ErrorImportacion("La pestaña «Global» no tiene la columna «Artículo» en la primera fila.");
+  }
+  if (faltanCarga.length) {
+    advertencias.push(`El Excel no trae ${faltanCarga.length} columnas de datos; quedan vacías: ${faltanCarga.join(", ")}.`);
+  }
+  if (faltanCalc.length) {
+    advertencias.push(`No se pudieron verificar contra el Excel (no están): ${faltanCalc.join(", ")}.`);
   }
   const col = (f: Fila, k: ClaveColumna): Celda => {
     const i = indice[k];
@@ -262,31 +287,51 @@ export function armarImportacion(
   // ── Año del plan ───────────────────────────────────────────────────────────
   // Del encabezado «Total 2026 $»; si no, del nombre del archivo
   // («PC_ANUAL_GD_26» → 2026).
-  let anio = Number(etiquetas.total_plan?.match(/\d{4}/)?.[0] ?? NaN);
-  if (!Number.isFinite(anio)) {
-    const yy = archivo.match(/_(\d{2})(?:_|\b)/)?.[1];
-    anio = yy ? 2000 + Number(yy) : new Date().getFullYear() + 1;
-    advertencias.push(`No se encontró el año en los encabezados; se tomó ${anio}.`);
-  }
+  const anioEncabezado = Number(etiquetas.total_plan?.match(/\d{4}/)?.[0] ?? NaN);
+  const yy = archivo.match(/_(\d{2})(?=[_.\s-]|$)/)?.[1];
+  const anioArchivo = yy ? 2000 + Number(yy) : null;
+  const anioEnc = Number.isFinite(anioEncabezado) ? anioEncabezado : null;
+  const anio = anioEnc ?? anioArchivo ?? new Date().getFullYear() + 1;
+  // Sin advertencia acá: el modal muestra de dónde salió el año (encabezado /
+  // archivo / ninguno) al lado del campo para corregirlo.
 
-  // ── Filas de datos: hasta la primera fila sin Artículo (la de totales) ─────
-  const iArt = indice.articulo!;
-  let fin = 1;
-  while (fin < global.length && normArticulo(global[fin]?.[iArt]) != null) fin++;
-  const filas = global.slice(1, fin);
-  if (filas.length === 0) throw new ErrorImportacion("La pestaña «Global» no tiene filas con Artículo.");
-  const filaTotales: Fila = global[fin] ?? [];
-  const pieFilas = global.slice(fin + 1);
+  // ── Filas de datos: hasta la ÚLTIMA fila con Artículo ──────────────────────
+  // (no la primera vacía: una fila en blanco en el medio de la tabla cortaría
+  // el plan sin avisar). Las filas vacías del medio se saltean; las que tienen
+  // datos pero no Artículo se avisan.
+  const iArt = indice.articulo;
+  let ultima = 0;
+  for (let r = 1; r < global.length; r++) if (articuloLiteral(global[r]?.[iArt]) != null) ultima = r;
+  if (ultima === 0) throw new ErrorImportacion("La pestaña «Global» no tiene filas con Artículo.");
+
+  const filas: Fila[] = [];
+  const filasExcel: number[] = []; // índice de la fila en la hoja (0 = encabezado)
+  const sinArticulo: number[] = [];
+  for (let r = 1; r <= ultima; r++) {
+    const f = global[r] ?? [];
+    if (articuloLiteral(f[iArt]) != null) { filas.push(f); filasExcel.push(r); continue; }
+    if (f.some((v) => v != null && String(v).trim() !== "")) sinArticulo.push(r + 1);
+  }
+  if (sinArticulo.length) {
+    const ej = sinArticulo.slice(0, 8).join(", ");
+    advertencias.push(`${sinArticulo.length} filas de Global tienen datos pero no Artículo y no se importan (filas ${ej}${sinArticulo.length > 8 ? "…" : ""}).`);
+  }
+  // Fila de totales: la primera no vacía después de los datos.
+  let iTotales = ultima + 1;
+  while (iTotales < global.length && !(global[iTotales] ?? []).some((v) => v != null && String(v).trim() !== "")) iTotales++;
+  const filaTotales: Fila = global[iTotales] ?? [];
+  const pieFilas = global.slice(iTotales + 1);
 
   const items: ItemImportado[] = filas.map((f, i) => {
     const it = itemVacio() as ItemImportado;
     for (const k of CLAVES_TEXTO) {
-      (it as unknown as Record<string, string | null>)[k] = k === "articulo" ? normArticulo(col(f, k)) : texto(col(f, k));
+      (it as unknown as Record<string, string | null>)[k] = k === "articulo" ? articuloLiteral(col(f, k)) : texto(col(f, k));
     }
     for (const k of CLAVES_NUMERO) {
       (it as unknown as Record<string, number | null>)[k] = numero(col(f, k));
     }
-    it.orden = i + 1;
+    // `orden` = fila del Excel − 1 (la fila 2 de la hoja es orden 1).
+    it.orden = filasExcel[i];
     return it;
   });
 
@@ -372,6 +417,9 @@ export function armarImportacion(
   return {
     archivo,
     anio,
+    anioEncabezado: anioEnc,
+    anioArchivo,
+    columnasFaltantes: faltanCarga,
     nombre: `Plan de Compras Anual GD ${anio}`,
     tipo_cambio: tipoCambio,
     pct_mayoracion: pct,
@@ -464,7 +512,7 @@ function verificar(
         difs++;
         pc.diferencias++;
         if (ejemplos.length < MAX_EJEMPLOS) {
-          ejemplos.push({ fila: r + 2, articulo: it.articulo ?? "", clave, excel: fmt(excelRaw), app: fmt(app) });
+          ejemplos.push({ fila: it.orden + 1, articulo: it.articulo ?? "", clave, excel: fmt(excelRaw), app: fmt(app) });
         }
       }
     }
